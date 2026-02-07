@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// <see cref="BlobResourceContents"/> is used when binary data needs to be exchanged through
 /// the Model Context Protocol. The binary data is represented as base64-encoded UTF-8 bytes
-/// in the <see cref="Blob"/> property, providing a zero-copy representation of the wire payload.
+/// in the <see cref="Blob"/> property.
 /// </para>
 /// <para>
 /// This class inherits from <see cref="ResourceContents"/>, which also has a sibling implementation
@@ -40,20 +40,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// <exception cref="InvalidOperationException"></exception>
     public static BlobResourceContents FromData(ReadOnlyMemory<byte> data, string uri, string? mimeType = null)
     {
-        ReadOnlyMemory<byte> blob;
-
-        // Encode directly to UTF-8 base64 bytes without string intermediate
-        int maxLength = Base64.GetMaxEncodedToUtf8Length(data.Length);
-        byte[] buffer = new byte[maxLength];
-        if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
-        {
-            Debug.Assert(bytesWritten == buffer.Length, "Base64 encoding should always produce exact length for non-padded input");
-            blob = buffer.AsMemory(0, bytesWritten);
-        }
-        else
-        {
-            throw new InvalidOperationException("Failed to encode binary data to base64");
-        }
+        ReadOnlyMemory<byte> blob = Base64Helpers.EncodeToBase64Utf8(data);
         
         return new()
         {
@@ -68,7 +55,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
     /// </summary>
     /// <remarks>
-    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
     /// </remarks>
     [JsonPropertyName("blob")]
     public required ReadOnlyMemory<byte> Blob
@@ -90,7 +77,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// Subsequent accesses return the cached value unless <see cref="Blob"/> is modified.
     /// </para>
     /// <para>
-    /// When setting, the binary data is stored without copying and <see cref="Blob"/> is updated
+    /// When setting, the binary data is stored and <see cref="Blob"/> is updated
     /// with the base64-encoded UTF-8 representation.
     /// </para>
     /// </remarks>
@@ -101,17 +88,7 @@ public sealed class BlobResourceContents : ResourceContents
         {
             if (_decodedData is null)
             {
-                // Decode directly from UTF-8 base64 bytes without string intermediate
-                int maxLength = Base64.GetMaxDecodedFromUtf8Length(Blob.Length);
-                byte[] buffer = new byte[maxLength];
-                if (Base64.DecodeFromUtf8(Blob.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
-                {
-                    _decodedData = buffer.AsMemory(0, bytesWritten);
-                }
-                else
-                {
-                    throw new FormatException("Invalid base64 data");
-                }
+                _decodedData = Base64Helpers.DecodeFromBase64Utf8(Blob);
             }
             return _decodedData.Value;
         }

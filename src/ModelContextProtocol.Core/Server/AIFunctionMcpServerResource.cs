@@ -396,9 +396,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 { 
                     Uri = request.Params!.Uri, 
                     MimeType = dc.MediaType, 
-                    Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                        ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                        : Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
+                    Blob = GetBase64Utf8Bytes(dc)
                 }],
             },
 
@@ -428,9 +426,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                                ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                                : Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
+                            Blob = GetBase64Utf8Bytes(dc)
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
@@ -451,5 +447,15 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             _ => throw new InvalidOperationException($"Unsupported result type '{result.GetType()}' returned from resource function."),
         };
+    }
+
+    /// <summary>
+    /// Helper method to get UTF-8 bytes from DataContent.Base64Data efficiently.
+    /// </summary>
+    private static ReadOnlyMemory<byte> GetBase64Utf8Bytes(DataContent dataContent)
+    {
+        return MemoryMarshal.TryGetArray(dataContent.Base64Data, out ArraySegment<char> segment)
+            ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count)
+            : Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString());
     }
 }
