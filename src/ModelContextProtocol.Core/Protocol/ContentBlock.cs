@@ -1,6 +1,9 @@
+using System.Buffers;
+using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -87,7 +90,7 @@ public abstract class ContentBlock
             string? type = null;
             string? text = null;
             string? name = null;
-            string? data = null;
+            ReadOnlyMemory<byte>? data = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -128,7 +131,7 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        data = reader.GetString();
+                        data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
 
                     case "mimeType":
@@ -279,12 +282,12 @@ public abstract class ContentBlock
                     break;
 
                 case ImageContentBlock imageContent:
-                    writer.WriteString("data", imageContent.Data);
+                    writer.WriteString("data", imageContent.Data.Span);
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    writer.WriteString("data", audioContent.Data);
+                    writer.WriteString("data", audioContent.Data.Span);
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;
 
@@ -376,14 +379,76 @@ public sealed class TextContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte>? _decodedData;
+    private ReadOnlyMemory<byte> _data;
+
+    /// <summary>
+    /// Creates an <see cref="ImageContentBlock"/> from decoded image bytes.
+    /// </summary>
+    /// <param name="imageData">The decoded image bytes.</param>
+    /// <param name="mimeType">The MIME type of the image.</param>
+    /// <returns>A new <see cref="ImageContentBlock"/> instance.</returns>
+    /// <remarks>
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static ImageContentBlock FromBytes(ReadOnlyMemory<byte> imageData, string mimeType)
+    {
+        ReadOnlyMemory<byte> data = Base64Helpers.EncodeToBase64Utf8(imageData);
+        
+        return new()
+        {
+            _decodedData = imageData,
+            Data = data,
+            MimeType = mimeType
+        };
+    }
+
     /// <inheritdoc/>
     public override string Type => "image";
 
     /// <summary>
-    /// Gets or sets the base64-encoded image data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the image data.
     /// </summary>
+    /// <remarks>
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get => _data;
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the decoded image data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </para>
+    /// <para>
+    /// When setting, the binary data is stored and <see cref="Data"/> is updated
+    /// with the base64-encoded UTF-8 representation.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+                _decodedData = Base64Helpers.DecodeFromBase64Utf8(Data);
+            }
+            return _decodedData.Value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -402,14 +467,76 @@ public sealed class ImageContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte>? _decodedData;
+    private ReadOnlyMemory<byte> _data;
+
+    /// <summary>
+    /// Creates an <see cref="AudioContentBlock"/> from decoded audio bytes.
+    /// </summary>
+    /// <param name="audioData">The decoded audio bytes.</param>
+    /// <param name="mimeType">The MIME type of the audio.</param>
+    /// <returns>A new <see cref="AudioContentBlock"/> instance.</returns>
+    /// <remarks>
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static AudioContentBlock FromBytes(ReadOnlyMemory<byte> audioData, string mimeType)
+    {
+        ReadOnlyMemory<byte> data = Base64Helpers.EncodeToBase64Utf8(audioData);
+        
+        return new()
+        {
+            _decodedData = audioData,
+            Data = data,
+            MimeType = mimeType
+        };
+    }
+
     /// <inheritdoc/>
     public override string Type => "audio";
 
     /// <summary>
-    /// Gets or sets the base64-encoded audio data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the audio data.
     /// </summary>
+    /// <remarks>
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get => _data;
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the decoded audio data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </para>
+    /// <para>
+    /// When setting, the binary data is stored and <see cref="Data"/> is updated
+    /// with the base64-encoded UTF-8 representation.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+                _decodedData = Base64Helpers.DecodeFromBase64Utf8(Data);
+            }
+            return _decodedData.Value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -628,3 +755,52 @@ public sealed class ToolResultContentBlock : ContentBlock
         }
     }
 }
+
+/// <summary>
+/// Helper methods for base64 encoding and decoding operations.
+/// </summary>
+internal static class Base64Helpers
+{
+    /// <summary>
+    /// Encodes binary data to base64-encoded UTF-8 bytes.
+    /// </summary>
+    internal static ReadOnlyMemory<byte> EncodeToBase64Utf8(ReadOnlyMemory<byte> data)
+        {
+#if NET
+            int maxLength = Base64.GetMaxEncodedToUtf8Length(data.Length);
+            byte[] buffer = new byte[maxLength];
+            if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+            {
+                Debug.Assert(bytesWritten == buffer.Length, "Base64 encoding should always produce the same length as the max length");
+                return buffer.AsMemory(0, bytesWritten);
+            }
+            throw new InvalidOperationException("Failed to encode binary data to base64");
+#else
+            byte[] array = MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
+                ? segment.Array 
+                : data.ToArray();
+            return System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(array));
+#endif
+        }
+
+        /// <summary>
+        /// Decodes base64-encoded UTF-8 bytes to binary data.
+        /// </summary>
+        internal static ReadOnlyMemory<byte> DecodeFromBase64Utf8(ReadOnlyMemory<byte> base64Data)
+        {
+#if NET
+            int maxLength = Base64.GetMaxDecodedFromUtf8Length(base64Data.Length);
+            byte[] buffer = new byte[maxLength];
+            if (Base64.DecodeFromUtf8(base64Data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+            {
+                return buffer.AsMemory(0, bytesWritten);
+            }
+            throw new FormatException("Invalid base64 data");
+#else
+            byte[] array = MemoryMarshal.TryGetArray(base64Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
+                ? segment.Array 
+                : base64Data.ToArray();
+            return Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
+#endif
+        }
+    }

@@ -7,6 +7,7 @@
     <PackageId>ModelContextProtocol</PackageId>
     <Description>.NET SDK for the Model Context Protocol (MCP) with hosting and dependency injection extensions.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <!-- Suppress the experimental tasks warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
   </PropertyGroup>

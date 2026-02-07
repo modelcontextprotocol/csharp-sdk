@@ -160,11 +160,7 @@ public class McpClientTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = [new ImageContentBlock
-                    {
-                        MimeType = "image/png",
-                        Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
-                    }],
+                    Content = [ImageContentBlock.FromBytes((byte[])[1, 2, 3], "image/png")],
                 }
             ],
             MaxTokens = 100
@@ -196,7 +192,8 @@ public class McpClientTests : ClientServerTestBase
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(expectedData, result.Content.OfType<ImageContentBlock>().FirstOrDefault()?.Data);
+        var imageData = result.Content.OfType<ImageContentBlock>().FirstOrDefault()?.Data.ToArray() ?? [];
+        Assert.Equal(expectedData, System.Text.Encoding.UTF8.GetString(imageData));
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -211,7 +208,7 @@ public class McpClientTests : ClientServerTestBase
         var mockChatClient = new Mock<IChatClient>();
         var resource = new BlobResourceContents
         {
-            Blob = data,
+            Blob = System.Text.Encoding.UTF8.GetBytes(data),
             MimeType = "application/octet-stream",
             Uri = "data:application/octet-stream"
         };
