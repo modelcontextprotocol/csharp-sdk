@@ -411,7 +411,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var extraMessage = await extraNotificationReceived.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var extraMessage = await extraNotificationReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         Assert.Equal("extra", extraMessage);
     }
