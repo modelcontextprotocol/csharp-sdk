@@ -392,7 +392,7 @@ public class ElicitationServerDefaultsTests(ITestOutputHelper testOutputHelper) 
                     ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
                 }, McpJsonUtilities.DefaultOptions),
             }, CancellationToken.None);
-            await _initTcs.Task.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            await _initTcs.Task.WaitAsync(TestConstants.DefaultTimeout, CancellationToken.None);
         }
 
         public ValueTask DisposeAsync()

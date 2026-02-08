@@ -45,6 +45,14 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 
         await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
+        // The stderr reading thread may not have delivered the callback yet
+        // after the IOException is thrown. Poll briefly for it to arrive.
+        var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
+        while (Volatile.Read(ref count) == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
         Assert.InRange(count, 1, int.MaxValue);
         Assert.Contains(id, sb.ToString());
     }
