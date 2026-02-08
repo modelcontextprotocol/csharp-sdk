@@ -44,6 +44,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string? _clientId;
     private string? _clientSecret;
+    private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -293,6 +294,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             }
         }
 
+        // Determine the token endpoint auth method from server metadata if not already set by DCR.
+        _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
+
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
@@ -385,19 +389,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<string?> RefreshTokensAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["client_id"] = GetClientIdOrThrow(),
-            ["client_secret"] = _clientSecret ?? string.Empty,
             ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
         };
+
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -482,21 +481,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
 
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
-            ["client_secret"] = _clientSecret ?? string.Empty,
             ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
         };
+
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
@@ -504,6 +498,38 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
         return tokens.AccessToken;
+    }
+
+    /// <summary>
+    /// Creates an HTTP request to the token endpoint, applying the appropriate authentication
+    /// method based on <see cref="_tokenEndpointAuthMethod"/>.
+    /// </summary>
+    private HttpRequestMessage CreateTokenRequest(Uri tokenEndpoint, Dictionary<string, string> formFields)
+    {
+        HttpRequestMessage request = new(HttpMethod.Post, tokenEndpoint);
+
+        var clientId = GetClientIdOrThrow();
+        if (string.Equals(_tokenEndpointAuthMethod, "client_secret_basic", StringComparison.Ordinal))
+        {
+            // Per RFC 6749 §2.3.1: send client_id:client_secret as HTTP Basic auth.
+            request.Headers.Authorization = new(
+                "Basic",
+                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Uri.EscapeDataString(clientId)}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}")));
+        }
+        else if (string.Equals(_tokenEndpointAuthMethod, "none", StringComparison.Ordinal))
+        {
+            // Public client: include client_id in the body but no secret.
+            formFields["client_id"] = clientId;
+        }
+        else
+        {
+            // Default to client_secret_post: include credentials in the body.
+            formFields["client_id"] = clientId;
+            formFields["client_secret"] = _clientSecret ?? string.Empty;
+        }
+
+        request.Content = new FormUrlEncodedContent(formFields);
+        return request;
     }
 
     private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -618,6 +644,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (!string.IsNullOrEmpty(registrationResponse.ClientSecret))
         {
             _clientSecret = registrationResponse.ClientSecret;
+        }
+
+        if (!string.IsNullOrEmpty(registrationResponse.TokenEndpointAuthMethod))
+        {
+            _tokenEndpointAuthMethod = registrationResponse.TokenEndpointAuthMethod;
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);

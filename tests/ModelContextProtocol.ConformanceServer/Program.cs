@@ -1,7 +1,11 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
@@ -26,8 +30,28 @@ public class Program
 
         builder.Services
             .AddMcpServer()
-            .WithHttpTransport()
+            .WithHttpTransport(options =>
+            {
+                // Enable resumability for SSE polling conformance test
+                options.EventStreamStore = new DistributedCacheEventStreamStore(
+                    new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
+            })
             .WithTools<ConformanceTools>()
+            .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
+            .AddCallToolFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+
+                // For the test_reconnection tool, enable polling mode after the tool runs.
+                // This stores the result and closes the SSE stream, so the client
+                // must reconnect via GET with Last-Event-ID to retrieve the result.
+                if (request.Params?.Name == "test_reconnection")
+                {
+                    await request.EnablePollingAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
+                }
+
+                return result;
+            })
             .WithPrompts<ConformancePrompts>()
             .WithResources<ConformanceResources>()
             .WithSubscribeToResourcesHandler(async (ctx, ct) =>

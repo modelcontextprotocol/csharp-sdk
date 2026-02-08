@@ -3,7 +3,6 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace ConformanceServer.Tools;
 
@@ -398,5 +397,49 @@ public class ConformanceTools
         {
             return $"Elicitation not supported or error: {ex.Message}";
         }
+    }
+
+    /// <summary>Create the json_schema_2020_12_tool with a raw JSON Schema 2020-12 inputSchema.</summary>
+    public static McpServerTool CreateJsonSchema202012Tool()
+    {
+        var tool = McpServerTool.Create(
+            () => "JSON Schema 2020-12 tool executed successfully",
+            new()
+            {
+                Name = "json_schema_2020_12_tool",
+                Description = "Tool with JSON Schema 2020-12 features"
+            });
+
+        tool.ProtocolTool.InputSchema = JsonElement.Parse("""
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "$defs": {
+                    "address": {
+                        "type": "object",
+                        "properties": {
+                            "street": { "type": "string" },
+                            "city": { "type": "string" }
+                        }
+                    }
+                },
+                "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/$defs/address" }
+                },
+                "additionalProperties": false
+            }
+            """);
+
+        return tool;
+    }
+
+    [McpServerTool(Name = "test_reconnection")]
+    [Description("Tests SSE stream reconnection by closing the stream mid-call")]
+    public static string TestReconnection()
+    {
+        // This tool doesn't need to do anything - the call filter will close the stream after this tool runs,
+        // and the client must reconnect to get the result.
+        return "Reconnection test completed successfully";
     }
 }
