@@ -5,11 +5,11 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.ConformanceTests;
 
 /// <summary>
-/// Runs the official MCP conformance tests against the ConformanceServer.
-/// This test starts the ConformanceServer, runs the Node.js-based conformance test suite,
-/// and reports the results.
+/// Shared fixture that starts a single ConformanceServer instance for all tests in
+/// <see cref="ServerConformanceTests"/>. This avoids TCP port TIME_WAIT conflicts
+/// that occur when each test starts and stops its own server on the same port.
 /// </summary>
-public class ServerConformanceTests : IAsyncLifetime
+public class ConformanceServerFixture : IAsyncLifetime
 {
     // Use different ports for each target framework to allow parallel execution
     // net10.0 -> 3001, net9.0 -> 3002, net8.0 -> 3003
@@ -27,22 +27,16 @@ public class ServerConformanceTests : IAsyncLifetime
         };
     }
 
-    private readonly int _serverPort = GetPortForTargetFramework();
-    private readonly string _serverUrl;
-    private readonly ITestOutputHelper _output;
     private Task? _serverTask;
     private CancellationTokenSource? _serverCts;
 
-    public ServerConformanceTests(ITestOutputHelper output)
-    {
-        _output = output;
-        _serverUrl = $"http://localhost:{_serverPort}";
-    }
+    public string ServerUrl { get; } = $"http://localhost:{GetPortForTargetFramework()}";
 
     public async ValueTask InitializeAsync()
     {
-        // Start the ConformanceServer
-        StartConformanceServer();
+        _serverCts = new CancellationTokenSource();
+        _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(
+            ["--urls", ServerUrl], cancellationToken: _serverCts.Token));
 
         // Wait for server to be ready (retry for up to 30 seconds)
         var timeout = TimeSpan.FromSeconds(30);
@@ -53,9 +47,7 @@ public class ServerConformanceTests : IAsyncLifetime
         {
             try
             {
-                // Try to connect to the health endpoint
-                await httpClient.GetAsync($"{_serverUrl}/health");
-                // Any response (even an error) means the server is up
+                await httpClient.GetAsync($"{ServerUrl}/health");
                 return;
             }
             catch (HttpRequestException)
@@ -75,7 +67,6 @@ public class ServerConformanceTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        // Stop the server
         if (_serverCts != null)
         {
             _serverCts.Cancel();
@@ -93,16 +84,23 @@ public class ServerConformanceTests : IAsyncLifetime
             _serverCts.Dispose();
         }
     }
+}
 
+/// <summary>
+/// Runs the official MCP conformance tests against the ConformanceServer.
+/// Uses a shared <see cref="ConformanceServerFixture"/> so the server is started once
+/// and reused across all tests, avoiding TCP port conflicts on Windows.
+/// </summary>
+public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutputHelper output)
+    : IClassFixture<ConformanceServerFixture>
+{
     [Fact]
     public async Task RunConformanceTests()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
-        // Run the conformance test suite
-        var result = await RunConformanceTestsAsync($"server --url {_serverUrl}");
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl}");
 
-        // Report the results
         Assert.True(result.Success,
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
@@ -112,7 +110,7 @@ public class ServerConformanceTests : IAsyncLifetime
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
-        var result = await RunConformanceTestsAsync($"server --url {_serverUrl} --scenario json-schema-2020-12");
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario json-schema-2020-12");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -123,17 +121,10 @@ public class ServerConformanceTests : IAsyncLifetime
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
-        var result = await RunConformanceTestsAsync($"server --url {_serverUrl} --scenario server-sse-polling");
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario server-sse-polling");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
-    }
-
-    private void StartConformanceServer()
-    {
-        // Start the server in a background task
-        _serverCts = new CancellationTokenSource();
-        _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
@@ -149,7 +140,7 @@ public class ServerConformanceTests : IAsyncLifetime
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                output.WriteLine(e.Data);
                 outputBuilder.AppendLine(e.Data);
             }
         };
@@ -158,7 +149,7 @@ public class ServerConformanceTests : IAsyncLifetime
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                output.WriteLine(e.Data);
                 errorBuilder.AppendLine(e.Data);
             }
         };
