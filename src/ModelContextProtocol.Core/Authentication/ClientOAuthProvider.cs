@@ -24,7 +24,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     private const string BearerScheme = "Bearer";
     private const string ProtectedResourceMetadataWellKnownPath = "/.well-known/oauth-protected-resource";
-    private static readonly string HttpsPlusHttpScheme = $"{Uri.UriSchemeHttps}+{Uri.UriSchemeHttp}";
 
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
@@ -343,13 +342,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     ThrowFailedToHandleUnauthorizedResponse($"No authorization_endpoint was provided via '{wellKnownEndpoint}'.");
                 }
 
-                string authorizationEndpointScheme = metadata.AuthorizationEndpoint.Scheme;
-
-                if (authorizationEndpointScheme != Uri.UriSchemeHttp &&
-                    authorizationEndpointScheme != Uri.UriSchemeHttps &&
-                    authorizationEndpointScheme != HttpsPlusHttpScheme)
+                if (metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
+                    metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
                 {
-                    ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP, HTTPS, or HTTPS+HTTP. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
+                    ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
 
                 metadata.ResponseTypesSupported ??= ["code"];
