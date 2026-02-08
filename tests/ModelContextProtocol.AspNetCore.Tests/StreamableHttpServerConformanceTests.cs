@@ -470,15 +470,16 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await CallInitializeAndValidateAsync();
         await CallEchoAndValidateAsync();
 
-        // Add 5 seconds to idle timeout to account for the interval of the PeriodicTimer.
-        fakeTimeProvider.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(5));
-
         // The background IdleTrackingBackgroundService prunes sessions asynchronously after
-        // the timer tick fires. Poll until pruning completes and the session returns NotFound.
+        // the PeriodicTimer (5s interval) tick fires. We advance past the 2-hour idle timeout
+        // then poll until the session returns NotFound. Each HTTP POST also refreshes the
+        // session's LastActivityTicks via AcquireReferenceAsync, so we must re-advance time
+        // each iteration to ensure the session appears idle again for the next prune pass.
         var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
         HttpStatusCode statusCode;
         do
         {
+            fakeTimeProvider.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(5));
             await Task.Delay(100, TestContext.Current.CancellationToken);
             using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
             statusCode = response.StatusCode;
