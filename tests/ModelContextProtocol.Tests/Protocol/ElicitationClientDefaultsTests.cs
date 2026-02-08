@@ -360,7 +360,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
                 Params = JsonSerializer.SerializeToNode(elicitParams, McpJsonUtilities.DefaultOptions),
             }, cancellationToken);
 
-            return await _elicitResultTcs.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            return await _elicitResultTcs.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
         }
 
         private void HandleOutgoingMessage(JsonRpcMessage message)
