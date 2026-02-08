@@ -7,8 +7,6 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 public sealed class HttpClientTransportOptions
 {
-    private static readonly string HttpsPlusHttpScheme = $"{Uri.UriSchemeHttps}+{Uri.UriSchemeHttp}";
-
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
     /// </summary>
@@ -26,14 +24,6 @@ public sealed class HttpClientTransportOptions
             if (!value.IsAbsoluteUri)
             {
                 throw new ArgumentException("Endpoint must be an absolute URI.", nameof(value));
-            }
-            string scheme = value.Scheme;
-
-            if (scheme != Uri.UriSchemeHttp &&
-                scheme != Uri.UriSchemeHttps &&
-                scheme != HttpsPlusHttpScheme)
-            {
-                throw new ArgumentException("Endpoint must use HTTP, HTTPS, or HTTPS+HTTP scheme.", nameof(value));
             }
 
             field = value;
