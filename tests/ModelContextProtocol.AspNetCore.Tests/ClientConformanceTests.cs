@@ -103,7 +103,20 @@ public class ClientConformanceTests
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await process.WaitForExitAsync();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            return (
+                Success: false,
+                Output: outputBuilder.ToString(),
+                Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
+            );
+        }
 
         return (
             Success: process.ExitCode == 0,

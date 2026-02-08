@@ -83,10 +83,11 @@ public static class NodeHelpers
         var repoRoot = FindRepoRoot();
         var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
 
+        ProcessStartInfo startInfo;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             // On Windows, node_modules/.bin contains .cmd shims that can be executed directly
-            return new ProcessStartInfo
+            startInfo = new ProcessStartInfo
             {
                 FileName = $"{binPath}.cmd",
                 Arguments = arguments,
@@ -98,7 +99,7 @@ public static class NodeHelpers
         }
         else
         {
-            return new ProcessStartInfo
+            startInfo = new ProcessStartInfo
             {
                 FileName = binPath,
                 Arguments = arguments,
@@ -108,6 +109,21 @@ public static class NodeHelpers
                 CreateNoWindow = true
             };
         }
+
+        // On macOS, disable .NET mini-dump file generation for child processes. When
+        // dotnet test runs with --blame-crash, it sets DOTNET_DbgEnableMiniDump=1 in the
+        // environment. This is inherited by grandchild .NET processes (e.g. ConformanceClient
+        // launched via node). On macOS, the createdump tool can hang indefinitely due to
+        // ptrace/SIP restrictions, causing the entire test run to hang. Disabling mini-dumps
+        // only suppresses the dump file creation; the runtime still prints crash diagnostics
+        // (stack traces, signal info, etc.) to stderr, which the test captures.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
+            startInfo.Environment["COMPlus_DbgEnableMiniDump"] = "0";
+        }
+
+        return startInfo;
     }
 
     /// <summary>
