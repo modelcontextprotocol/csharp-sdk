@@ -65,7 +65,7 @@ jobs:
 
     - name: 🧪 AOT Compatibility
       if: matrix.configuration == 'Release'
-      run: dotnet publish tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj --configuration Release
+      run: make test-aot CONFIGURATION=${{ matrix.configuration }}
 
     - name: 📦 Pack
       if: matrix.configuration == 'Release'
