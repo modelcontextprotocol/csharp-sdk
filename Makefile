@@ -32,7 +32,8 @@ test: build
 
 test-aot:
 	dotnet publish tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj --configuration $(CONFIGURATION) -o $(ARTIFACT_PATH)/aot-publish
-	$(ARTIFACT_PATH)/aot-publish/ModelContextProtocol.AotCompatibility.TestApp
+	$(ARTIFACT_PATH)/aot-publish/ModelContextProtocol.AotCompatibility.TestApp > $(ARTIFACT_PATH)/aot-publish/output.txt 2>&1
+	grep -q "Success!" $(ARTIFACT_PATH)/aot-publish/output.txt
 
 pack: restore
 	dotnet pack --no-restore --configuration $(CONFIGURATION)
