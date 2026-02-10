@@ -454,8 +454,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     /// </summary>
     private static ReadOnlyMemory<byte> GetBase64Utf8Bytes(DataContent dataContent)
     {
-        return MemoryMarshal.TryGetArray(dataContent.Base64Data, out ArraySegment<char> segment)
-            ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count)
-            : Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString());
+        var utf16 = dataContent.Base64Data.Span;
+        byte[] bytes = new byte[Encoding.UTF8.GetByteCount(utf16)];
+        Encoding.UTF8.GetBytes(utf16, bytes);
+        return bytes;
     }
 }
