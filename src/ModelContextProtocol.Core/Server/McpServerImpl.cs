@@ -610,7 +610,9 @@ internal sealed partial class McpServerImpl : McpServer
 
                 try
                 {
-                    return await handler(request, cancellationToken).ConfigureAwait(false);
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+                    ToolCallCompleted(request.Params?.Name ?? string.Empty);
+                    return result;
                 }
                 catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
                 {
@@ -944,6 +946,9 @@ internal sealed partial class McpServerImpl : McpServer
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed successfully.")]
+    private partial void ToolCallCompleted(string toolName);
+
     /// <summary>
     /// Executes a tool call as a task and returns a CallToolTaskResult immediately.
     /// </summary>
@@ -1004,6 +1009,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Invoke the tool with task-specific cancellation token
                 var result = await tool.InvokeAsync(request, taskCancellationToken).ConfigureAwait(false);
+                ToolCallCompleted(request.Params?.Name ?? string.Empty);
 
                 // Determine final status based on whether there was an error
                 var finalStatus = result.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;

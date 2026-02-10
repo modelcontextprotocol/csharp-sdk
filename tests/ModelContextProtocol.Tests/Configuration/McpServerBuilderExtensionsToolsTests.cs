@@ -381,6 +381,23 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task Logs_Tool_Name_On_Successful_Call()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            "echo",
+            new Dictionary<string, object?> { ["message"] = "test" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError is not true);
+        Assert.Equal("hello test", (result.Content[0] as TextContentBlock)?.Text);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"echo\" completed successfully.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
     public async Task Throws_Exception_On_Unknown_Tool()
     {
         await using McpClient client = await CreateMcpClientForServer();
