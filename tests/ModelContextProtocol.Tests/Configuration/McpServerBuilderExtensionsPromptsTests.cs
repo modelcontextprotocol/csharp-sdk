@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -193,6 +194,37 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ThrowsException),
             cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Logs_Prompt_Name_On_Successful_Call()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.GetPromptAsync(
+            "returns_chat_messages",
+            new Dictionary<string, object?> { ["message"] = "hello" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "GetPrompt \"returns_chat_messages\" completed.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task Logs_Prompt_Name_When_Prompt_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync(
+            "throws_exception",
+            new Dictionary<string, object?> { ["message"] = "test" },
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal("GetPrompt \"throws_exception\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<FormatException>(errorLog.Exception);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -237,6 +238,35 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
             $"resource://mcp/{nameof(SimpleResources.ThrowsException)}",
             cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Logs_Resource_Uri_On_Successful_Read()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ReadResourceAsync(
+            "resource://mcp/some_neat_direct_resource",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ReadResource \"resource://mcp/some_neat_direct_resource\" completed.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task Logs_Resource_Uri_When_Resource_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
+            "resource://mcp/throws_exception",
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal("ReadResource \"resource://mcp/throws_exception\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<InvalidOperationException>(errorLog.Exception);
     }
 
     [Fact]

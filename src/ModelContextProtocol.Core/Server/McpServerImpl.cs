@@ -392,7 +392,17 @@ internal sealed partial class McpServerImpl : McpServer
                     }
                 }
 
-                return await handler(request, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+                    ReadResourceCompleted(request.Params?.Uri ?? string.Empty);
+                    return result;
+                }
+                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                {
+                    ReadResourceError(request.Params?.Uri ?? string.Empty, e);
+                    throw;
+                }
             });
         subscribeHandler = BuildFilterPipeline(subscribeHandler, options.Filters.SubscribeToResourcesFilters);
         unsubscribeHandler = BuildFilterPipeline(unsubscribeHandler, options.Filters.UnsubscribeFromResourcesFilters);
@@ -487,7 +497,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         listPromptsHandler = BuildFilterPipeline(listPromptsHandler, options.Filters.ListPromptsFilters);
         getPromptHandler = BuildFilterPipeline(getPromptHandler, options.Filters.GetPromptFilters, handler =>
-            (request, cancellationToken) =>
+            async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
                 if (request.Params?.Name is { } promptName && prompts is not null &&
@@ -496,7 +506,17 @@ internal sealed partial class McpServerImpl : McpServer
                     request.MatchedPrimitive = prompt;
                 }
 
-                return handler(request, cancellationToken);
+                try
+                {
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+                    GetPromptCompleted(request.Params?.Name ?? string.Empty);
+                    return result;
+                }
+                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                {
+                    GetPromptError(request.Params?.Name ?? string.Empty, e);
+                    throw;
+                }
             });
 
         ServerCapabilities.Prompts.ListChanged = listChanged;
@@ -955,6 +975,18 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed. IsError = {IsError}.")]
     private partial void ToolCallCompleted(string toolName, bool isError);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "GetPrompt \"{PromptName}\" threw an unhandled exception.")]
+    private partial void GetPromptError(string promptName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "GetPrompt \"{PromptName}\" completed.")]
+    private partial void GetPromptCompleted(string promptName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "ReadResource \"{ResourceUri}\" threw an unhandled exception.")]
+    private partial void ReadResourceError(string resourceUri, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
+    private partial void ReadResourceCompleted(string resourceUri);
 
     /// <summary>
     /// Executes a tool call as a task and returns a CallToolTaskResult immediately.
