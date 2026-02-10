@@ -127,7 +127,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(16, tools.Count);
+        Assert.Equal(17, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "echo");
         Assert.Equal("Echoes the input back to the client.", echoTool.Description);
@@ -165,7 +165,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 cancellationToken: TestContext.Current.CancellationToken))
             {
                 var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-                Assert.Equal(16, tools.Count);
+                Assert.Equal(17, tools.Count);
 
                 McpClientTool echoTool = tools.First(t => t.Name == "echo");
                 Assert.Equal("Echoes the input back to the client.", echoTool.Description);
@@ -191,7 +191,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(16, tools.Count);
+        Assert.Equal(17, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -212,7 +212,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             await notificationRead;
 
             tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-            Assert.Equal(17, tools.Count);
+            Assert.Equal(18, tools.Count);
             Assert.Contains(tools, t => t.Name == "NewTool");
 
             notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -222,7 +222,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         }
 
         tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(16, tools.Count);
+        Assert.Equal(17, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
@@ -393,7 +393,23 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.True(result.IsError is not true);
         Assert.Equal("hello test", (result.Content[0] as TextContentBlock)?.Text);
 
-        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"echo\" completed successfully.");
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"echo\" completed. IsError = False.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task Logs_Tool_Name_With_IsError_When_Tool_Returns_Error()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            "return_is_error",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Contains("Tool returned an error", (result.Content[0] as TextContentBlock)?.Text);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"return_is_error\" completed. IsError = True.");
         Assert.Equal(LogLevel.Information, infoLog.LogLevel);
     }
 
@@ -804,6 +820,16 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         }
 
         [McpServerTool]
+        public static CallToolResult ReturnIsError()
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = "Tool returned an error" }],
+            };
+        }
+
+        [McpServerTool]
         public static int ReturnCancellationToken(CancellationToken cancellationToken)
         {
             return cancellationToken.GetHashCode();
@@ -885,5 +911,6 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [JsonSerializable(typeof(ComplexObject))]
     [JsonSerializable(typeof(string[]))]
     [JsonSerializable(typeof(JsonElement))]
+    [JsonSerializable(typeof(CallToolResult))]
     partial class BuilderToolsJsonContext : JsonSerializerContext;
 }
