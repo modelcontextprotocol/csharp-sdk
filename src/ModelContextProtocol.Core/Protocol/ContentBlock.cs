@@ -446,6 +446,7 @@ public sealed class ImageContentBlock : ContentBlock
             {
                 _decodedData = Base64Helpers.DecodeFromBase64Utf8(Data);
             }
+
             return _decodedData.Value;
         }
     }
@@ -534,6 +535,7 @@ public sealed class AudioContentBlock : ContentBlock
             {
                 _decodedData = Base64Helpers.DecodeFromBase64Utf8(Data);
             }
+
             return _decodedData.Value;
         }
     }
@@ -765,42 +767,36 @@ internal static class Base64Helpers
     /// Encodes binary data to base64-encoded UTF-8 bytes.
     /// </summary>
     internal static ReadOnlyMemory<byte> EncodeToBase64Utf8(ReadOnlyMemory<byte> data)
+    {
+        int maxLength = Base64.GetMaxEncodedToUtf8Length(data.Length);
+        byte[] buffer = new byte[maxLength];
+        if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
         {
-#if NET
-            int maxLength = Base64.GetMaxEncodedToUtf8Length(data.Length);
-            byte[] buffer = new byte[maxLength];
-            if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
-            {
-                Debug.Assert(bytesWritten == buffer.Length, "Base64 encoding should always produce the same length as the max length");
-                return buffer.AsMemory(0, bytesWritten);
-            }
-            throw new InvalidOperationException("Failed to encode binary data to base64");
-#else
-            byte[] array = MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
-                ? segment.Array 
-                : data.ToArray();
-            return System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(array));
-#endif
+            Debug.Assert(bytesWritten == buffer.Length, "Base64 encoding should always produce the same length as the max length");
+            return buffer.AsMemory(0, bytesWritten);
         }
-
-        /// <summary>
-        /// Decodes base64-encoded UTF-8 bytes to binary data.
-        /// </summary>
-        internal static ReadOnlyMemory<byte> DecodeFromBase64Utf8(ReadOnlyMemory<byte> base64Data)
+        else
         {
-#if NET
-            int maxLength = Base64.GetMaxDecodedFromUtf8Length(base64Data.Length);
-            byte[] buffer = new byte[maxLength];
-            if (Base64.DecodeFromUtf8(base64Data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
-            {
-                return buffer.AsMemory(0, bytesWritten);
-            }
-            throw new FormatException("Invalid base64 data");
-#else
-            byte[] array = MemoryMarshal.TryGetArray(base64Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
-                ? segment.Array 
-                : base64Data.ToArray();
-            return Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
-#endif
+            throw new InvalidOperationException("Failed to encode binary data to base64");
         }
     }
+
+    /// <summary>
+    /// Decodes base64-encoded UTF-8 bytes to binary data.
+    /// </summary>
+    internal static ReadOnlyMemory<byte> DecodeFromBase64Utf8(ReadOnlyMemory<byte> base64Data)
+    {
+        int maxLength = Base64.GetMaxDecodedFromUtf8Length(base64Data.Length);
+        byte[] buffer = new byte[maxLength];
+        if (Base64.DecodeFromUtf8(base64Data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+        {
+            // Base64 decoding may produce fewer bytes than the max length, due to whitespace anywhere in the string or padding.
+            Debug.Assert(bytesWritten <= buffer.Length, "Base64 decoding should never produce more bytes than the max length");
+            return buffer.AsMemory(0, bytesWritten);
+        }
+        else
+        {
+            throw new FormatException("Invalid base64 data");
+        }
+    }
+}

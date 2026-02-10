@@ -90,6 +90,7 @@ public sealed class BlobResourceContents : ResourceContents
             {
                 _decodedData = Base64Helpers.DecodeFromBase64Utf8(Blob);
             }
+
             return _decodedData.Value;
         }
     }
