@@ -99,8 +99,18 @@ public sealed class ElicitRequestParams : RequestParams
     /// When present, indicates that the requestor wants this operation executed as a task.
     /// The receiver must support task augmentation for this specific request type.
     /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public McpTaskMetadata? Task
+    {
+        get => _task as McpTaskMetadata;
+        set => _task = value;
+    }
+
+    [JsonInclude]
     [JsonPropertyName("task")]
-    public McpTaskMetadata? Task { get; set; }
+    [JsonConverter(typeof(ExperimentalJsonConverter<McpTaskMetadata>))]
+    internal object? _task;
 
     /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
     public sealed class RequestSchema
