@@ -564,8 +564,8 @@ public class ToolTaskSupportTests : LoggedTest
 
         Assert.NotNull(mcpTask);
 
-        // Wait briefly for the async task execution to complete
-        await Task.Delay(500, TestContext.Current.CancellationToken);
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
 
         var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"task-success-tool\" completed. IsError = False.");
         Assert.Equal(LogLevel.Information, infoLog.LogLevel);
@@ -607,8 +607,8 @@ public class ToolTaskSupportTests : LoggedTest
 
         Assert.NotNull(mcpTask);
 
-        // Wait briefly for the async task execution to complete
-        await Task.Delay(500, TestContext.Current.CancellationToken);
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
 
         var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"task-error-result-tool\" completed. IsError = True.");
         Assert.Equal(LogLevel.Information, infoLog.LogLevel);
@@ -646,8 +646,8 @@ public class ToolTaskSupportTests : LoggedTest
 
         Assert.NotNull(mcpTask);
 
-        // Wait briefly for the async task execution to complete
-        await Task.Delay(500, TestContext.Current.CancellationToken);
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
 
         var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
         Assert.Equal("\"task-throw-tool\" threw an unhandled exception.", errorLog.Message);
