@@ -1009,10 +1009,14 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Invoke the tool with task-specific cancellation token
                 var result = await tool.InvokeAsync(request, taskCancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty);
 
                 // Determine final status based on whether there was an error
                 var finalStatus = result.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;
+
+                if (finalStatus == McpTaskStatus.Completed)
+                {
+                    ToolCallCompleted(request.Params?.Name ?? string.Empty);
+                }
 
                 // Store the result (serialize to JsonElement)
                 var resultElement = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
