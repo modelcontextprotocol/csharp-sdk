@@ -398,7 +398,7 @@ internal sealed partial class McpServerImpl : McpServer
                     ReadResourceCompleted(request.Params?.Uri ?? string.Empty);
                     return result;
                 }
-                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                catch (Exception e)
                 {
                     ReadResourceError(request.Params?.Uri ?? string.Empty, e);
                     throw;
@@ -512,7 +512,7 @@ internal sealed partial class McpServerImpl : McpServer
                     GetPromptCompleted(request.Params?.Name ?? string.Empty);
                     return result;
                 }
-                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                catch (Exception e)
                 {
                     GetPromptError(request.Params?.Name ?? string.Empty, e);
                     throw;
@@ -654,6 +654,11 @@ internal sealed partial class McpServerImpl : McpServer
                         IsError = true,
                         Content = [new TextContentBlock { Text = errorMessage }],
                     };
+                }
+                catch (Exception e)
+                {
+                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    throw;
                 }
             });
 
