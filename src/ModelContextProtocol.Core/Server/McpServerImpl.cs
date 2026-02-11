@@ -641,6 +641,16 @@ internal sealed partial class McpServerImpl : McpServer
 
                     return result;
                 }
+                catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
+                {
+                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+
+                    return new()
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = $"An error occurred invoking '{request.Params?.Name}'." }],
+                    };
+                }
                 catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
                 {
                     ToolCallError(request.Params?.Name ?? string.Empty, e);

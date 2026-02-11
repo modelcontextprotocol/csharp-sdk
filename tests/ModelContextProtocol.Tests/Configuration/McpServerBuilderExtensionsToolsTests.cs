@@ -418,18 +418,19 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync(
+        var result = await client.CallToolAsync(
             "throw_operation_canceled_exception",
-            cancellationToken: TestContext.Current.CancellationToken));
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.NotNull(result.Content);
+        Assert.NotEmpty(result.Content);
+        Assert.Contains("An error occurred", (result.Content[0] as TextContentBlock)?.Text);
 
         Assert.Contains(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Message == "\"throw_operation_canceled_exception\" threw an unhandled exception." &&
             m.Exception is OperationCanceledException);
-
-        Assert.Contains(MockLoggerProvider.LogMessages, m =>
-            m.LogLevel == LogLevel.Warning &&
-            m.Message.Contains("request handler failed"));
     }
 
     [Fact]
