@@ -641,34 +641,25 @@ internal sealed partial class McpServerImpl : McpServer
 
                     return result;
                 }
-                catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-
-                    return new()
-                    {
-                        IsError = true,
-                        Content = [new TextContentBlock { Text = $"An error occurred invoking '{request.Params?.Name}'." }],
-                    };
-                }
-                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-
-                    string errorMessage = e is McpException ?
-                        $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                        $"An error occurred invoking '{request.Params?.Name}'.";
-
-                    return new()
-                    {
-                        IsError = true,
-                        Content = [new TextContentBlock { Text = errorMessage }],
-                    };
-                }
                 catch (Exception e)
                 {
                     ToolCallError(request.Params?.Name ?? string.Empty, e);
-                    throw;
+
+                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException)
+                    {
+                        throw;
+                    }
+
+                    return new()
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock
+                        {
+                            Text = e is McpException ?
+                                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                                $"An error occurred invoking '{request.Params?.Name}'.",
+                        }],
+                    };
                 }
             });
 
