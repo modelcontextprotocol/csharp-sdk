@@ -17,8 +17,10 @@ public sealed class Program
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
     private static readonly string[] ValidResources = [
+        "http://localhost:5000",
         "http://localhost:5000/",
         "http://localhost:5000/mcp",
+        "http://localhost:7071",
         "http://localhost:7071/"
     ];
 
