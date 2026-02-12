@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Authentication;
@@ -20,6 +21,7 @@ public sealed class ProtectedResourceMetadata
     /// <b>Resource</b> must be explicitly set. Automatic inference only works with the default endpoint pattern.
     /// </remarks>
     [JsonPropertyName("resource")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Resource { get; set; }
 
     /// <summary>
@@ -69,6 +71,7 @@ public sealed class ProtectedResourceMetadata
     /// that the resource server uses to sign resource responses. This URL MUST use the HTTPS scheme.
     /// </remarks>
     [JsonPropertyName("jwks_uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? JwksUri { get; set; }
 
     /// <summary>
@@ -105,6 +108,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_documentation")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? ResourceDocumentation { get; set; }
 
     /// <summary>
@@ -117,6 +121,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_policy_uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? ResourcePolicyUri { get; set; }
 
     /// <summary>
@@ -126,6 +131,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL. The value of this field MAY be internationalized.
     /// </remarks>
     [JsonPropertyName("resource_tos_uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? ResourceTosUri { get; set; }
 
     /// <summary>
