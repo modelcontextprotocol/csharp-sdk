@@ -165,7 +165,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
             throw new InvalidOperationException("ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata or ensure context.ResourceMetadata is set inside McpAuthenticationOptions.Events.OnResourceMetadataRequest.");
         }
 
-        resourceMetadata.Resource ??= derivedResourceUri;
+        resourceMetadata.Resource ??= derivedResourceUri?.ToString();
 
         if (resourceMetadata.Resource is null)
         {

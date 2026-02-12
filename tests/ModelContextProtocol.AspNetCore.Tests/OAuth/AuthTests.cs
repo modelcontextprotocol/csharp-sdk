@@ -9,6 +9,7 @@ using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using Xunit.Sdk;
 
@@ -506,7 +507,7 @@ public class AuthTests : OAuthTestBase
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.Resource = new Uri("http://localhost:5999");
+            options.ResourceMetadata!.Resource = "http://localhost:5999";
         });
 
         await using var app = await StartMcpServerAsync();
@@ -532,7 +533,7 @@ public class AuthTests : OAuthTestBase
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}/tenant1")];
+            options.ResourceMetadata!.AuthorizationServers = [$"{OAuthServerUrl}/tenant1"];
         });
 
         await using var app = await StartMcpServerAsync();
@@ -565,7 +566,7 @@ public class AuthTests : OAuthTestBase
 
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}{issuerPath}")];
+            options.ResourceMetadata!.AuthorizationServers = [$"{OAuthServerUrl}{issuerPath}"];
         });
 
         await using var app = await StartMcpServerAsync();
@@ -606,8 +607,8 @@ public class AuthTests : OAuthTestBase
 
         var metadata = new ProtectedResourceMetadata
         {
-            Resource = new Uri($"{McpServerUrl}{resourcePath}"),
-            AuthorizationServers = { new Uri(OAuthServerUrl) },
+            Resource = $"{McpServerUrl}{resourcePath}",
+            AuthorizationServers = { OAuthServerUrl },
         };
 
         app.Use(async (context, next) =>
@@ -678,8 +679,8 @@ public class AuthTests : OAuthTestBase
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                Resource = new Uri($"{McpServerUrl}{configuredResourcePath}"),
-                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                Resource = $"{McpServerUrl}{configuredResourcePath}",
+                AuthorizationServers = { OAuthServerUrl },
             };
         });
 
@@ -719,8 +720,8 @@ public class AuthTests : OAuthTestBase
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                Resource = new Uri($"{McpServerUrl}"),
-                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                Resource = McpServerUrl,
+                AuthorizationServers = { OAuthServerUrl },
             };
         });
 
@@ -749,5 +750,44 @@ public class AuthTests : OAuthTestBase
         });
 
         Assert.Contains("does not match", ex.Message);
+    }
+
+    [Fact]
+    public async Task ResourceMetadata_DoesNotAddTrailingSlash()
+    {
+        // This test verifies that using string for Resource property avoids URI normalization
+        // that would add a trailing slash to URIs without paths
+        const string resourceWithoutTrailingSlash = "http://localhost:5000";
+        
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = resourceWithoutTrailingSlash,
+                AuthorizationServers = { OAuthServerUrl },
+                ScopesSupported = ["mcp:tools"],
+            };
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        // Make a direct request to the resource metadata endpoint
+        using var response = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var metadata = await response.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.NotNull(metadata);
+        
+        // Verify that the Resource property does NOT have a trailing slash added
+        Assert.Equal(resourceWithoutTrailingSlash, metadata.Resource);
+        Assert.DoesNotContain(resourceWithoutTrailingSlash + "/", metadata.Resource);
     }
 }

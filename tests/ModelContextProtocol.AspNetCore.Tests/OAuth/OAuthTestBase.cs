@@ -55,7 +55,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
             {
                 options.ResourceMetadata = new ProtectedResourceMetadata
                 {
-                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    AuthorizationServers = { OAuthServerUrl },
                     ScopesSupported = ["mcp:tools"]
                 };
             }
