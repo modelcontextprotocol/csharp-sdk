@@ -66,6 +66,14 @@ public sealed class Program
     /// </remarks>
     public bool ClientIdMetadataDocumentSupported { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server requires a resource parameter.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>true</c>.
+    /// </remarks>
+    public bool RequireResource { get; set; } = true;
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
@@ -289,7 +297,7 @@ public sealed class Program
             }
 
             // Validate resource in accordance with RFC 8707
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -337,7 +345,7 @@ public sealed class Program
 
             // Validate resource in accordance with RFC 8707
             var resource = form["resource"].ToString();
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
@@ -525,6 +526,47 @@ public class AuthTests : OAuthTestBase
 
         await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenProtectedResourceMetadataMissingResource()
+    {
+        TestOAuthServer.RequireResource = false;
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.Events.OnResourceMetadataRequest = async context =>
+            {
+                context.HandleResponse();
+
+                var metadata = new ProtectedResourceMetadata
+                {
+                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    ScopesSupported = ["mcp:tools"],
+                };
+
+                await Results.Json(metadata, McpJsonUtilities.DefaultOptions).ExecuteAsync(context.HttpContext);
+            };
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Resource URI in metadata", ex.Message);
     }
 
     [Fact]
