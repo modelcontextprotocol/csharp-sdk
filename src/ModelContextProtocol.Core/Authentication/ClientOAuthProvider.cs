@@ -713,9 +713,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return true;
         }
 
-        var authorizationBaseUri = new Uri(resourceLocation.GetLeftPart(UriPartial.Authority));
-        string normalizedAuthorizationBaseUri = NormalizeUri(authorizationBaseUri);
-        return string.Equals(normalizedMetadataResource, normalizedAuthorizationBaseUri, StringComparison.OrdinalIgnoreCase);
+        var authorityUri = new Uri(resourceLocation.GetLeftPart(UriPartial.Authority));
+        string normalizedAuthorityUri = NormalizeUri(authorityUri);
+        return string.Equals(normalizedMetadataResource, normalizedAuthorityUri, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
