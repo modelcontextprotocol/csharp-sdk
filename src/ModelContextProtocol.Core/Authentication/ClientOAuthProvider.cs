@@ -31,7 +31,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly Func<ProtectedResourceMetadata?, ProtectedResourceMetadata?> _protectedResourceMetadataResponseDelegate;
     private readonly Uri? _clientMetadataDocumentUri;
+    private readonly ITokenCache _tokenCache;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
@@ -45,7 +47,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientId;
     private string? _clientSecret;
     private string? _tokenEndpointAuthMethod;
-    private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
@@ -85,6 +86,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
 
+        // Set up protected resource metadata response delegate
+        _protectedResourceMetadataResponseDelegate = options.ProtectedResourceMetadataResponseDelegate ?? DefaultProtectedResourceMetadataResponseHandler;
+
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
@@ -115,6 +119,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var authorizationCode = Console.ReadLine();
         return Task.FromResult<string?>(authorizationCode);
     }
+
+    /// <summary>
+    /// Default protected resource metadata response handler that simply returns the provided metadata without modification.
+    /// </summary>
+    /// <param name="protectedResourceMetadata">The protected resource metadata.</param>
+    /// <returns>The modified protected resource metadata.</returns>
+    private ProtectedResourceMetadata? DefaultProtectedResourceMetadataResponseHandler(ProtectedResourceMetadata? protectedResourceMetadata) => protectedResourceMetadata;
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
     {
@@ -803,8 +814,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (resourceMetadataUrl is not null)
         {
-            metadata = await FetchProtectedResourceMetadataAsync(new(resourceMetadataUrl), requireSuccess: true, cancellationToken).ConfigureAwait(false)
-                ?? throw new McpException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+            metadata = await FetchProtectedResourceMetadataAsync(new(resourceMetadataUrl), requireSuccess: true, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -818,8 +828,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     break;
                 }
             }
+        }
 
-            if (metadata is null)
+        // Allow delegate to inspect or modify the metadata, and perform a defensive copy at the end.
+        metadata = _protectedResourceMetadataResponseDelegate(metadata)?.Clone();
+
+        if (metadata is null)
+        {
+            if (resourceMetadataUrl is not null)
+            {
+                throw new McpException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+            }
+            else
             {
                 throw new McpException($"Failed to find protected resource metadata at a well-known location for {_serverUrl}");
             }

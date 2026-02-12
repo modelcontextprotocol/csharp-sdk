@@ -853,4 +853,79 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task ResourceMetadata_ProtectedResourceMetadataDelegate_Raised()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        ProtectedResourceMetadata? capturedMetadata = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ProtectedResourceMetadataResponseDelegate = metadata =>
+                {
+                    Assert.NotNull(metadata);
+
+                    return capturedMetadata = metadata;
+                }
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedMetadata);
+        Assert.Contains(capturedMetadata.Resource, TestOAuthServer.ValidResources);
+    }
+
+    [Fact]
+    public async Task ResourceMetadata_ProtectedResourceMetadataDelegate_CanModify()
+    {
+        // Create a scenario where the protected resource is broadcasting an incorrect resource indicator.
+        const string resourceIncorrect = "http://localhost:5001/not-the-right-resource";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = resourceIncorrect,
+                AuthorizationServers = [OAuthServerUrl],
+                ScopesSupported = ["mcp:tools"],
+            };
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ProtectedResourceMetadataResponseDelegate = metadata =>
+                {
+                    Assert.NotNull(metadata);
+
+                    // Modify PRM and provide the right resource indicator.
+                    metadata.Resource = McpServerUrl;
+
+                    return metadata;
+                }
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
 }

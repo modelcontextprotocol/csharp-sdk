@@ -64,6 +64,20 @@ public sealed class ClientOAuthOptions
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
+    /// Gets or sets the delegate for handling protected resource metadata response.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This delegate provides an opportunity to inspect or modify the protected resource metadata received from the protected resource.
+    /// If not specified, the protected resource metadata will be used as-is without any modifications.
+    /// </para>
+    /// <para>
+    /// If the metadata of the protected resource could not be found, the delegate will be invoked with a <see langword="null"/> argument, allowing the consumers to supply defaults.
+    /// </para>
+    /// </remarks>
+    public Func<ProtectedResourceMetadata?, ProtectedResourceMetadata?>? ProtectedResourceMetadataResponseDelegate { get; set; }
+
+    /// <summary>
     /// Gets or sets the authorization server selector function.
     /// </summary>
     /// <remarks>
