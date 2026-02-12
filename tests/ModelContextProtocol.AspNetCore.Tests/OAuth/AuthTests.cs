@@ -666,12 +666,11 @@ public class AuthTests : OAuthTestBase
         // Remove resource_metadata from the WWW-Authenticate header, because we should only fall back at all (even to root) when it's missing.
         //
         // If the protected resource metadata was retrieved from a URL returned by the protected resource via the WWW-Authenticate resource_metadata parameter,
-        // then the resource value returned MUST be identical to the URL that the client used to make the request to the resource server.
-        // If these values are not identical, the data contained in the response MUST NOT be used.
+        // then RFC 9728 requires the resource value to be identical to the request URL. The MCP spec additionally allows
+        // using the authorization base URL with the path removed, so this test validates we still reject non-root parent paths.
         //
         // https://datatracker.ietf.org/doc/html/rfc9728/#section-3.3
         //
-        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fall back to root in this case.
         // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fall back to root when resource_metadata is missing.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
@@ -711,7 +710,7 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
+    public async Task CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
     {
         const string requestedResourcePath = "/mcp/tools";
 
@@ -742,12 +741,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(async () =>
-        {
-            await McpClient.CreateAsync(
-                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-        });
-
-        Assert.Contains("does not match", ex.Message);
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 }

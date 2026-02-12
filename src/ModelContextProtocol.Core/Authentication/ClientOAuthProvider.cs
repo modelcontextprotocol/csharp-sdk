@@ -684,8 +684,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     }
 
     /// <summary>
-    /// Verifies that the resource URI in the metadata exactly matches the original request URL as required by the RFC.
+    /// Verifies that the resource URI in the metadata matches the original request URL or the authorization base URL.
     /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
+    /// The MCP spec allows the resource to identify the authorization base URL with the path removed.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
     /// <param name="resourceLocation">
@@ -707,7 +708,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
 
-        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var authorizationBaseUri = new Uri(resourceLocation.GetLeftPart(UriPartial.Authority));
+        string normalizedAuthorizationBaseUri = NormalizeUri(authorizationBaseUri);
+        return string.Equals(normalizedMetadataResource, normalizedAuthorizationBaseUri, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
