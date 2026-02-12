@@ -244,7 +244,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         // Convert string URIs to Uri objects for the selector
-        List<Uri> authServerUris = new();
+        List<Uri> authServerUris = [];
         foreach (var serverUriString in availableAuthorizationServers)
         {
             if (!Uri.TryCreate(serverUriString, UriKind.Absolute, out var serverUri))
@@ -747,13 +747,17 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// Normalizes a URI string for consistent comparison.
     /// </summary>
     /// <param name="uriString">The URI string to normalize.</param>
-    /// <returns>A normalized string representation of the URI.</returns>
+    /// <returns>
+    /// A normalized string representation of the URI. If the string is a valid absolute URI,
+    /// it is parsed and normalized (scheme, host, port, and path without trailing slash).
+    /// If the string is not a valid absolute URI, only the trailing slash is removed.
+    /// </returns>
     private static string NormalizeUri(string uriString)
     {
         // Parse the string as a URI to normalize it
         if (!Uri.TryCreate(uriString, UriKind.Absolute, out var uri))
         {
-            // If it's not a valid URI, return the string as-is
+            // If it's not a valid URI, return the string with trailing slash removed
             return uriString.TrimEnd('/');
         }
 
