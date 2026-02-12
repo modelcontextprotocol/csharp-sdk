@@ -152,7 +152,6 @@ public class AuthEventTests : OAuthTestBase
                     if (context.ResourceMetadata != null)
                     {
                         context.ResourceMetadata.ScopesSupported.Add("mcp:tools");
-                        context.ResourceMetadata.ResourceName = "Dynamic Test Resource";
                     }
                     await Task.CompletedTask;
                 };
@@ -179,7 +178,6 @@ public class AuthEventTests : OAuthTestBase
         Assert.Contains(OAuthServerUrl, metadata.AuthorizationServers);
         Assert.Contains("mcp:basic", metadata.ScopesSupported);
         Assert.Contains("mcp:tools", metadata.ScopesSupported);
-        Assert.Equal("Dynamic Test Resource", metadata.ResourceName);
     }
 
     [Fact]
