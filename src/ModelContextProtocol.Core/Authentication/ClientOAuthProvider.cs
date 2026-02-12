@@ -244,7 +244,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         // Convert string URIs to Uri objects for the selector
-        var authServerUris = availableAuthorizationServers.Select(s => new Uri(s)).ToList();
+        List<Uri> authServerUris = new();
+        foreach (var serverUriString in availableAuthorizationServers)
+        {
+            if (!Uri.TryCreate(serverUriString, UriKind.Absolute, out var serverUri))
+            {
+                ThrowFailedToHandleUnauthorizedResponse($"Invalid authorization server URI: '{serverUriString}'. Available servers: {string.Join(", ", availableAuthorizationServers)}");
+            }
+            authServerUris.Add(serverUri);
+        }
 
         // Select authorization server using configured strategy
         var selectedAuthServer = _authServerSelector(authServerUris);

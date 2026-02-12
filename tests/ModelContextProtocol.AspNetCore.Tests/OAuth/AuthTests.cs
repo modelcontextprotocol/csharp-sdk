@@ -788,6 +788,5 @@ public class AuthTests : OAuthTestBase
         
         // Verify that the Resource property does NOT have a trailing slash added
         Assert.Equal(resourceWithoutTrailingSlash, metadata.Resource);
-        Assert.DoesNotContain(resourceWithoutTrailingSlash + "/", metadata.Resource);
     }
 }
