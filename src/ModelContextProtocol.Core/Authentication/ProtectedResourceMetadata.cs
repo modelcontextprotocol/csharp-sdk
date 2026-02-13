@@ -207,7 +207,7 @@ public sealed class ProtectedResourceMetadata
     {
         return new ProtectedResourceMetadata
         {
-            Resource = Resource ?? derivedResourceUri?.ToString(),
+            Resource = Resource ?? derivedResourceUri?.ToString().TrimEnd('/'),
             AuthorizationServers = [.. AuthorizationServers],
             BearerMethodsSupported = [.. BearerMethodsSupported],
             ScopesSupported = [.. ScopesSupported],
