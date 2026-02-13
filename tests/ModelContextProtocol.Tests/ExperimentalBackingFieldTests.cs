@@ -91,7 +91,7 @@ public class ExperimentalBackingFieldTests
                 $"{entry.Type.Name} should have a public backing field '{fieldName}' for property '{entry.PropertyName}'.");
 
             // Field must be object?
-            Assert.True(field!.FieldType == typeof(object),
+            Assert.True(field.FieldType == typeof(object),
                 $"{entry.Type.Name}.{fieldName} should be of type 'object?' but is '{field.FieldType.Name}'.");
 
             // Field must have [EditorBrowsable(Never)]
@@ -176,15 +176,15 @@ public class ExperimentalBackingFieldTests
             Assert.True(field is not null,
                 $"{entry.Type.Name} should have a public backing field '{fieldName}' for property '{entry.PropertyName}'.");
 
-            var instance = Activator.CreateInstance(entry.Type)!;
-            var testValue = Activator.CreateInstance(property!.PropertyType)!;
+            var instance = Activator.CreateInstance(entry.Type);
+            var testValue = Activator.CreateInstance(property.PropertyType);
 
             // Setting the property should write to the backing field
             property.SetValue(instance, testValue);
-            Assert.Same(testValue, field!.GetValue(instance));
+            Assert.Same(testValue, field.GetValue(instance));
 
             // Setting the backing field should be readable via the property getter
-            var anotherValue = Activator.CreateInstance(property.PropertyType)!;
+            var anotherValue = Activator.CreateInstance(property.PropertyType);
             field.SetValue(instance, anotherValue);
             Assert.Same(anotherValue, property.GetValue(instance));
 
