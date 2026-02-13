@@ -374,12 +374,44 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
         // For now, the important thing is that request completes without indicating success.
-        await Task.WhenAll(longRunningToolTasks);
         foreach (var task in longRunningToolTasks)
         {
-            var response = await task;
-            Assert.False(response.IsSuccessStatusCode);
+            try
+            {
+                var response = await task;
+                Assert.False(response.IsSuccessStatusCode);
+            }
+            catch (HttpRequestException)
+            {
+            }
         }
+    }
+
+    [Fact]
+    public async Task LongRunningToolCall_ResponseHeaders_AreFlushedImmediately()
+    {
+        await StartAsync();
+        var sessionId = await CallInitializeAndValidateAsync();
+
+        using var timeoutHttpClient = new HttpClient(SocketsHttpHandler, disposeHandler: false);
+        ConfigureHttpClient(timeoutHttpClient);
+        timeoutHttpClient.Timeout = TimeSpan.FromSeconds(2);
+        timeoutHttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        timeoutHttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+        timeoutHttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "")
+        {
+            Content = JsonContent(CallTool("long-running")),
+        };
+
+        using var response = await timeoutHttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]

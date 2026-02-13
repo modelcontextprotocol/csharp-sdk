@@ -62,13 +62,24 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        InitializeSseResponse(context);
+        if (message is JsonRpcRequest { Id.Id: not null })
+        {
+            InitializeSseResponse(context);
+            await context.Response.StartAsync(context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+        }
+
         var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
-            // We wound up writing nothing, so there should be no Content-Type response header.
-            context.Response.Headers.ContentType = (string?)null;
-            context.Response.StatusCode = StatusCodes.Status202Accepted;
+            if (!context.Response.HasStarted)
+            {
+                // We wound up writing nothing, so there should be no Content-Type response header.
+                context.Response.Headers.ContentType = (string?)null;
+                context.Response.StatusCode = StatusCodes.Status202Accepted;
+                await context.Response.StartAsync(context.RequestAborted);
+                await context.Response.Body.FlushAsync(context.RequestAborted);
+            }
         }
     }
 
