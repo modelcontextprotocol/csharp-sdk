@@ -77,7 +77,8 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
 
     private static bool IsDefaultPort(string scheme, int port)
     {
-        return (scheme == "http" && port == 80) || (scheme == "https" && port == 443);
+        return (scheme.Equals("http", StringComparison.OrdinalIgnoreCase) && port == 80) || 
+               (scheme.Equals("https", StringComparison.OrdinalIgnoreCase) && port == 443);
     }
 
     /// <summary>
