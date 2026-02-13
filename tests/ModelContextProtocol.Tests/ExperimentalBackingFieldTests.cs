@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Tests;
 /// </list>
 /// <para>
 /// <strong>Stabilization lifecycle:</strong> When an experimental API becomes stable, do NOT
-/// remove the backing field immediately. Follow these steps across multiple releases:
+/// remove the backing field immediately. Follow these steps:
 /// </para>
 /// <list type="number">
 ///   <item>
@@ -32,9 +32,9 @@ namespace ModelContextProtocol.Tests;
 ///     <see cref="ExperimentalProperty"/> to <see cref="StabilizedProperty"/>.
 ///   </item>
 ///   <item>
-///     <strong>Cleanup (after 2+ releases):</strong> Remove the backing field and the entry from
-///     <see cref="ExperimentalPropertyRegistry"/>. Consumers who compiled against the
-///     stabilized version will have generated code that no longer references the backing field.
+///     <strong>Cleanup (at maintainers' discretion):</strong> Remove the backing field and the
+///     entry from <see cref="ExperimentalPropertyRegistry"/>. This is safe once consumers have
+///     had sufficient opportunity to recompile against the stabilized version.
 ///   </item>
 /// </list>
 /// </remarks>
@@ -47,8 +47,8 @@ public class ExperimentalBackingFieldTests
     /// <para>
     /// Every experimental property that participates in JSON serialization must be in this list.
     /// When stabilizing, change the entry from <see cref="ExperimentalProperty"/> to
-    /// <see cref="StabilizedProperty"/> — do NOT remove it. Only remove after 2+ releases
-    /// when consumers have recompiled.
+    /// <see cref="StabilizedProperty"/>; do NOT remove it. Only remove once consumers have
+    /// had sufficient opportunity to recompile.
     /// </para>
     /// </remarks>
     private static readonly ExperimentalPropertyEntry[] ExperimentalPropertyRegistry =
