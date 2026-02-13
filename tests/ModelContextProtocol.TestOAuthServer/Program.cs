@@ -17,7 +17,7 @@ public sealed class Program
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
     // Per MCP spec, URIs should not have trailing slashes unless semantically significant
-    public static string[] ValidResources { get; set; } = [
+    public string[] ValidResources { get; set; } = [
         "http://localhost:5000",
         "http://localhost:5000/mcp",
         "http://localhost:7071"

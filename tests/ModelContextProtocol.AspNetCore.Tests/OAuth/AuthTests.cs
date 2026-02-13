@@ -761,7 +761,24 @@ public class AuthTests : OAuthTestBase
         // Don't explicitly set Resource - let it be derived from the request
         await using var app = await StartMcpServerAsync();
 
-        // Authenticate with the client - this will derive the resource URI from the server URL
+        // First, manually check the PRM document doesn't contain a trailing slash
+        using var metadataResponse = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.NotNull(metadata);
+        Assert.Equal("http://localhost:5000", metadata.Resource);
+        Assert.DoesNotMatch(@"/$", metadata.Resource); // No trailing slash
+
+        // Then authenticate with the client - this will use the derived resource URI
         await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
@@ -786,46 +803,54 @@ public class AuthTests : OAuthTestBase
         // This test verifies that explicitly configured trailing slashes are preserved
         const string resourceWithTrailingSlash = "http://localhost:5000/";
         
-        // Explicitly configure ValidResources to accept the trailing slash version
-        var originalValidResources = ModelContextProtocol.TestOAuthServer.Program.ValidResources;
-        try
+        // Configure ValidResources to accept the trailing slash version for this test
+        TestOAuthServer.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
+        
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            ModelContextProtocol.TestOAuthServer.Program.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
-            
-            Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+            options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                options.ResourceMetadata = new ProtectedResourceMetadata
-                {
-                    Resource = resourceWithTrailingSlash,
-                    AuthorizationServers = { OAuthServerUrl },
-                    ScopesSupported = ["mcp:tools"],
-                };
-            });
+                Resource = resourceWithTrailingSlash,
+                AuthorizationServers = { OAuthServerUrl },
+                ScopesSupported = ["mcp:tools"],
+            };
+        });
 
-            await using var app = await StartMcpServerAsync();
+        await using var app = await StartMcpServerAsync();
 
-            // Authenticate with the client
-            await using var transport = new HttpClientTransport(new()
-            {
-                Endpoint = new(McpServerUrl),
-                OAuth = new()
-                {
-                    ClientId = "demo-client",
-                    ClientSecret = "demo-secret",
-                    RedirectUri = new Uri("http://localhost:1179/callback"),
-                    AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
-                },
-            }, HttpClient, LoggerFactory);
+        // First, manually check the PRM document contains the trailing slash
+        using var metadataResponse = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
 
-            // This should succeed with the explicitly configured trailing slash
-            // If the client incorrectly trimmed the slash, ValidResources would reject it
-            await using var client = await McpClient.CreateAsync(
-                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-        }
-        finally
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.NotNull(metadata);
+        Assert.Equal(resourceWithTrailingSlash, metadata.Resource);
+        Assert.Matches(@"/$", metadata.Resource); // Has trailing slash
+
+        // Then authenticate with the client
+        await using var transport = new HttpClientTransport(new()
         {
-            // Restore original ValidResources
-            ModelContextProtocol.TestOAuthServer.Program.ValidResources = originalValidResources;
-        }
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should succeed with the explicitly configured trailing slash
+        // If the client incorrectly trimmed the slash, ValidResources would reject it
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 }

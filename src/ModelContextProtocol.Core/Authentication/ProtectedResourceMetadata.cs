@@ -201,13 +201,13 @@ public sealed class ProtectedResourceMetadata
     /// <summary>
     /// Creates a deep copy of this <see cref="ProtectedResourceMetadata"/> instance, optionally overriding the Resource property.
     /// </summary>
-    /// <param name="derivedResourceUri">Optional URI to use for the Resource property if the original Resource is null.</param>
+    /// <param name="derivedResource">Optional resource URI string to use for the Resource property if the original Resource is null.</param>
     /// <returns>A new instance of <see cref="ProtectedResourceMetadata"/> with cloned values.</returns>
-    public ProtectedResourceMetadata Clone(Uri? derivedResourceUri = null)
+    public ProtectedResourceMetadata Clone(string? derivedResource = null)
     {
         return new ProtectedResourceMetadata
         {
-            Resource = Resource ?? derivedResourceUri?.ToString().TrimEnd('/'),
+            Resource = Resource ?? derivedResource,
             AuthorizationServers = [.. AuthorizationServers],
             BearerMethodsSupported = [.. BearerMethodsSupported],
             ScopesSupported = [.. ScopesSupported],

@@ -56,17 +56,28 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
             return false;
         }
 
-        var deriveResourceUriBuilder = new UriBuilder(Request.Scheme, Request.Host.Host)
+        // Build the derived resource string directly without trailing slash
+        var scheme = Request.Scheme;
+        var host = Request.Host.Host;
+        var port = Request.Host.Port;
+        var path = $"{Request.PathBase}{resourceSuffix}".TrimEnd('/');
+        
+        string derivedResource;
+        if (port.HasValue && !IsDefaultPort(scheme, port.Value))
         {
-            Path = $"{Request.PathBase}{resourceSuffix}",
-        };
-
-        if (Request.Host.Port is not null)
+            derivedResource = $"{scheme}://{host}:{port.Value}{path}";
+        }
+        else
         {
-            deriveResourceUriBuilder.Port = Request.Host.Port.Value;
+            derivedResource = $"{scheme}://{host}{path}";
         }
 
-        return await HandleResourceMetadataRequestAsync(deriveResourceUriBuilder.Uri);
+        return await HandleResourceMetadataRequestAsync(derivedResource);
+    }
+
+    private static bool IsDefaultPort(string scheme, int port)
+    {
+        return (scheme == "http" && port == 80) || (scheme == "https" && port == 443);
     }
 
     /// <summary>
@@ -128,9 +139,9 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         return path.StartsWith('/') ? path : $"/{path}";
     }
 
-    private async Task<bool> HandleResourceMetadataRequestAsync(Uri? derivedResourceUri = null)
+    private async Task<bool> HandleResourceMetadataRequestAsync(string? derivedResource = null)
     {
-        var resourceMetadata = Options.ResourceMetadata?.Clone(derivedResourceUri);
+        var resourceMetadata = Options.ResourceMetadata?.Clone(derivedResource);
 
         if (Options.Events.OnResourceMetadataRequest is not null)
         {
@@ -165,7 +176,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
             throw new InvalidOperationException("ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata or ensure context.ResourceMetadata is set inside McpAuthenticationOptions.Events.OnResourceMetadataRequest.");
         }
 
-        resourceMetadata.Resource ??= derivedResourceUri?.ToString().TrimEnd('/');
+        resourceMetadata.Resource ??= derivedResource;
 
         if (resourceMetadata.Resource is null)
         {
