@@ -87,6 +87,8 @@ internal sealed partial class StreamableHttpPostTransport(
                 {
                     // The session was canceled before we could flush. This is expected during session disposal.
                     // Don't propagate the exception - let the request handling continue and fail naturally.
+                    // Log at debug level to aid troubleshooting.
+                    logger.LogDebug("Session canceled before response could be flushed.");
                 }
             }
 
