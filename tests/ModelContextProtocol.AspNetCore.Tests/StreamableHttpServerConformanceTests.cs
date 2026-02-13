@@ -383,6 +383,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             }
             catch (HttpRequestException)
             {
+                // Once headers are flushed immediately, aborted long-running responses can surface as a
+                // transport-level failure while reading the SSE body instead of an HTTP error status code.
             }
         }
     }
@@ -390,12 +392,14 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [Fact]
     public async Task LongRunningToolCall_ResponseHeaders_AreFlushedImmediately()
     {
+        var shortTimeout = TimeSpan.FromSeconds(2);
+
         await StartAsync();
         var sessionId = await CallInitializeAndValidateAsync();
 
         using var timeoutHttpClient = new HttpClient(SocketsHttpHandler, disposeHandler: false);
         ConfigureHttpClient(timeoutHttpClient);
-        timeoutHttpClient.Timeout = TimeSpan.FromSeconds(2);
+        timeoutHttpClient.Timeout = shortTimeout;
         timeoutHttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         timeoutHttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
         timeoutHttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
