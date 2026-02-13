@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
@@ -8,10 +9,12 @@ using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
@@ -211,32 +214,66 @@ public class AuthTests : OAuthTestBase
     {
         var hasForcedRefresh = false;
 
-        Builder.Services.AddHttpContextAccessor();
         Builder.Services.AddMcpServer(options =>
+        {
+            options.ToolCollection = new();
+        });
+
+        // Wait for the OAuth server to be ready
+        await TestOAuthServer.ServerStarted.WaitAsync(TestContext.Current.CancellationToken);
+
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidAudience = McpServerUrl;
+        });
+
+        var app = Builder.Build();
+
+        // Add middleware to intercept list tools requests and force a token refresh on the first call
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/" && !hasForcedRefresh)
             {
-                options.ToolCollection = new();
-            })
-            .AddListToolsFilter(next =>
-            {
-                return async (mcpContext, cancellationToken) =>
+                // Enable buffering so we can read the request body multiple times
+                context.Request.EnableBuffering();
+
+                try
                 {
-                    if (!hasForcedRefresh)
+                    // Read the request body to check if it's calling tools/list
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    // Reset the request body position so MapMcp can read it
+                    context.Request.Body.Position = 0;
+
+                    // Check if this is a tools/list request
+                    if (message is JsonRpcRequest request && request.Method == "tools/list")
                     {
                         hasForcedRefresh = true;
 
-                        var httpContext = mcpContext.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext!;
-                        await httpContext.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
-                        await httpContext.Response.CompleteAsync();
-                        throw new Exception("This exception will not impact the client because the response has already been completed.");
+                        // Return 401 to force token refresh
+                        await context.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
+                        await context.Response.StartAsync(context.RequestAborted);
+                        await context.Response.Body.FlushAsync(context.RequestAborted);
+                        return; // Short-circuit, don't call next()
                     }
-                    else
-                    {
-                        return await next(mcpContext, cancellationToken);
-                    }
-                };
-            });
+                }
+                catch (JsonException)
+                {
+                    // If we can't deserialize, let MapMcp handle it
+                    context.Request.Body.Position = 0;
+                }
+            }
 
-        await using var app = await StartMcpServerAsync();
+            await next(context);
+        });
+
+        app.MapMcp().RequireAuthorization(new AuthorizeAttribute());
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var _ = app;
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -451,29 +488,86 @@ public class AuthTests : OAuthTestBase
     {
         var adminScopes = "admin:read admin:write";
 
-        Builder.Services.AddHttpContextAccessor();
         Builder.Services.AddMcpServer()
             .WithTools([
                 McpServerTool.Create([McpServerTool(Name = "admin-tool")]
-                async (IServiceProvider serviceProvider, ClaimsPrincipal user) =>
+                (ClaimsPrincipal user) =>
                 {
-                    if (!user.HasClaim("scope", adminScopes))
-                    {
-                        var httpContext = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext!;
-                        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        httpContext.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{adminScopes}\"";
-                        await httpContext.Response.CompleteAsync();
-
-                        throw new Exception("This exception will not impact the client because the response has already been completed.");
-                    }
-
+                    // Tool now just checks if user has the required scopes
+                    // If they don't, it shouldn't get here due to middleware
+                    Assert.True(user.HasClaim("scope", adminScopes), "User should have admin scopes when tool executes");
                     return "Admin tool executed.";
                 }),
             ]);
 
         string? requestedScope = null;
 
-        await using var app = await StartMcpServerAsync();
+        // Wait for the OAuth server to be ready
+        await TestOAuthServer.ServerStarted.WaitAsync(TestContext.Current.CancellationToken);
+
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidAudience = McpServerUrl;
+        });
+
+        var app = Builder.Build();
+
+        // Add middleware to intercept requests and check for admin-tool calls
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+            {
+                // Enable buffering so we can read the request body multiple times
+                context.Request.EnableBuffering();
+
+                try
+                {
+                    // Read the request body to check if it's calling admin-tool
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    // Reset the request body position so MapMcp can read it
+                    context.Request.Body.Position = 0;
+
+                    // Check if this is a tools/call request for admin-tool
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        if (toolCallParams?.Name == "admin-tool")
+                        {
+                            // Check if user has required scopes
+                            var user = context.User;
+                            if (!user.HasClaim("scope", adminScopes))
+                            {
+                                // User lacks required scopes, return 403 before MapMcp processes the request
+                                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                                context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{adminScopes}\"";
+                                await context.Response.StartAsync(context.RequestAborted);
+                                await context.Response.Body.FlushAsync(context.RequestAborted);
+                                return; // Short-circuit, don't call next()
+                            }
+                        }
+                    }
+                }
+                catch (JsonException)
+                {
+                    // If we can't deserialize, let MapMcp handle it
+                    context.Request.Body.Position = 0;
+                }
+            }
+
+            await next(context);
+        });
+
+        app.MapMcp().RequireAuthorization(new AuthorizeAttribute());
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var _ = app;
 
         await using var transport = new HttpClientTransport(new()
         {
