@@ -371,14 +371,14 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var sseResponseBody = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Empty(sseResponseBody);
 
-        // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
+        // Currently, responses are flushed immediately to prevent HttpClient timeouts for long-running requests.
+        // This means the response starts with a 200 status code. When the session is canceled, the connection
+        // is closed abruptly, causing HttpClient errors.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
-        // For now, the important thing is that request completes without indicating success.
-        await Task.WhenAll(longRunningToolTasks);
+        // For now, the important thing is that requests fail to complete successfully.
         foreach (var task in longRunningToolTasks)
         {
-            var response = await task;
-            Assert.False(response.IsSuccessStatusCode);
+            await Assert.ThrowsAnyAsync<HttpRequestException>(async () => await task);
         }
     }
 
