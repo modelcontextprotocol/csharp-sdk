@@ -7,6 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -546,5 +547,59 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         // Dispose should still not hang
         await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task LongRunningToolCall_DoesNotTimeout_WhenNoEventStreamStore()
+    {
+        // Regression test for: Tool calls that last over HttpClient timeout without producing
+        // intermediate notifications will timeout because HttpClient doesn't see the 200 response
+        // until the first message is written. When primingItem is null (no ISseEventStreamStore),
+        // we should flush the response stream so HttpClient sees the 200 immediately.
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<LongRunningTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Create a custom HttpClient with a very short timeout (1 second)
+        // The tool will take 2 seconds to complete
+        using var shortTimeoutClient = new HttpClient(SocketsHttpHandler)
+        {
+            BaseAddress = new Uri("http://localhost:5000/"),
+            Timeout = TimeSpan.FromSeconds(1)
+        };
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, shortTimeoutClient, LoggerFactory);
+
+        await using var mcpClient = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Call a tool that takes 2 seconds - this should succeed despite the 1 second HttpClient timeout
+        // because the response stream is flushed immediately after receiving the request
+        var response = await mcpClient.CallToolAsync(
+            "long_running_operation",
+            new Dictionary<string, object?>() { ["durationMs"] = 2000 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(response.Content.OfType<TextContentBlock>());
+        Assert.Equal("Operation completed after 2000ms", content.Text);
+    }
+
+    [McpServerToolType]
+    private sealed class LongRunningTools
+    {
+        [McpServerTool, Description("Simulates a long-running operation")]
+        public static async Task<string> LongRunningOperation(
+            [Description("Duration of the operation in milliseconds")] int durationMs,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(durationMs, cancellationToken);
+            return $"Operation completed after {durationMs}ms";
+        }
     }
 }
