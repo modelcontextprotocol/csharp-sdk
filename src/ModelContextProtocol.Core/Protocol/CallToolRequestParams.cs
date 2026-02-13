@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -42,8 +43,10 @@ public sealed class CallToolRequestParams : RequestParams
         set => _task = value;
     }
 
+    /// <summary>Backing field for <see cref="Task"/>. This field is not intended to be used directly.</summary>
     [JsonInclude]
     [JsonPropertyName("task")]
     [JsonConverter(typeof(ExperimentalJsonConverter<McpTaskMetadata>))]
-    internal object? _task;
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public object? _task;
 }

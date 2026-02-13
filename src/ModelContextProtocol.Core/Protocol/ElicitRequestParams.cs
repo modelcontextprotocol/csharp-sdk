@@ -107,10 +107,12 @@ public sealed class ElicitRequestParams : RequestParams
         set => _task = value;
     }
 
+    /// <summary>Backing field for <see cref="Task"/>. This field is not intended to be used directly.</summary>
     [JsonInclude]
     [JsonPropertyName("task")]
     [JsonConverter(typeof(ExperimentalJsonConverter<McpTaskMetadata>))]
-    internal object? _task;
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public object? _task;
 
     /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
     public sealed class RequestSchema

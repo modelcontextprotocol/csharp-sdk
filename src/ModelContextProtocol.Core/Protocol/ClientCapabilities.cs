@@ -89,8 +89,10 @@ public sealed class ClientCapabilities
         set => _tasks = value;
     }
 
+    /// <summary>Backing field for <see cref="Tasks"/>. This field is not intended to be used directly.</summary>
     [JsonInclude]
     [JsonPropertyName("tasks")]
     [JsonConverter(typeof(ExperimentalJsonConverter<McpTasksCapability>))]
-    internal object? _tasks;
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public object? _tasks;
 }

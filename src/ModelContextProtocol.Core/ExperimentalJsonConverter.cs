@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -11,20 +12,24 @@ namespace ModelContextProtocol;
 /// <typeparam name="T">The experimental type to serialize/deserialize.</typeparam>
 /// <remarks>
 /// <para>
-/// This converter is used on internal <c>object?</c> backing fields that shadow public experimental properties
+/// This converter is used on <c>object?</c> backing fields that shadow public experimental properties
 /// marked with <see cref="ExperimentalAttribute"/>. By declaring the backing field
-/// as <c>object?</c>, the System.Text.Json source generator does not walk the experimental type graph, preventing
-/// MCPEXP diagnostics from being emitted in generated code in consuming projects.
+/// as <c>object?</c>, the System.Text.Json source generator does not walk the experimental type graph.
 /// </para>
 /// <para>
 /// Serialization delegates to <see cref="McpJsonUtilities.DefaultOptions"/>, which already contains source-generated
 /// contracts for all experimental types.
 /// </para>
+/// <para>
+/// This type is not intended to be used directly. It supports the MCP infrastructure and is subject to change.
+/// </para>
 /// </remarks>
-internal sealed class ExperimentalJsonConverter<T> : JsonConverter<object?> where T : class
+[EditorBrowsable(EditorBrowsableState.Never)]
+public class ExperimentalJsonConverter<T> : JsonConverter<object?> where T : class
 {
     private static JsonTypeInfo<T> TypeInfo => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
+    /// <inheritdoc/>
     public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -35,6 +40,7 @@ internal sealed class ExperimentalJsonConverter<T> : JsonConverter<object?> wher
         return JsonSerializer.Deserialize(ref reader, TypeInfo);
     }
 
+    /// <inheritdoc/>
     public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
     {
         if (value is null)

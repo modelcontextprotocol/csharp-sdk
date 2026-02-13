@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -127,10 +128,12 @@ public sealed class Tool : IBaseMetadata
         set => _execution = value;
     }
 
+    /// <summary>Backing field for <see cref="Execution"/>. This field is not intended to be used directly.</summary>
     [JsonInclude]
     [JsonPropertyName("execution")]
     [JsonConverter(typeof(ExperimentalJsonConverter<ToolExecution>))]
-    internal object? _execution;
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public object? _execution;
 
     /// <summary>
     /// Gets or sets an optional list of icons for this tool.

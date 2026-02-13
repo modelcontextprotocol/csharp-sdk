@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -74,8 +75,10 @@ public sealed class CallToolResult : Result
         set => _task = value;
     }
 
+    /// <summary>Backing field for <see cref="Task"/>. This field is not intended to be used directly.</summary>
     [JsonInclude]
     [JsonPropertyName("task")]
     [JsonConverter(typeof(ExperimentalJsonConverter<McpTask>))]
-    internal object? _task;
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public object? _task;
 }
