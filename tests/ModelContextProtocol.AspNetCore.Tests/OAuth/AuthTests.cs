@@ -542,7 +542,7 @@ public class AuthTests : OAuthTestBase
 
                 var metadata = new ProtectedResourceMetadata
                 {
-                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    AuthorizationServers = { OAuthServerUrl },
                     ScopesSupported = ["mcp:tools"],
                 };
 
