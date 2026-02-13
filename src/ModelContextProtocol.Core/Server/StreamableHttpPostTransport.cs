@@ -79,17 +79,7 @@ internal sealed partial class StreamableHttpPostTransport(
                 // If there's no priming write, flush the stream to ensure HTTP response headers are
                 // sent to the client now that the server is ready to process the request.
                 // This prevents HttpClient timeout for long-running requests.
-                try
-                {
-                    await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    // The session was canceled before we could flush. This is expected during session disposal.
-                    // Don't propagate the exception - let the request handling continue and fail naturally.
-                    // Log at debug level to aid troubleshooting.
-                    logger.LogDebug("Session canceled before response could be flushed.");
-                }
+                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
