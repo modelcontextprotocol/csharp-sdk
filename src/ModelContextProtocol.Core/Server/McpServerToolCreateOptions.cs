@@ -124,10 +124,35 @@ public sealed class McpServerToolCreateOptions
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
+    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </para>
+    /// <para>
+    /// Setting <see cref="OutputSchema"/> will automatically enable structured content.
+    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets a JSON Schema object to use as the tool's output schema.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this schema is used directly as the <see cref="Tool.OutputSchema"/> instead of
+    /// inferring it from the method's return type. This is particularly useful when the method
+    /// returns <see cref="CallToolResult"/> directly (for example, to control
+    /// <see cref="CallToolResult.IsError"/>), but the tool should still advertise a meaningful
+    /// output schema describing the shape of <see cref="CallToolResult.StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// Setting this property automatically enables <see cref="UseStructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// The schema must be a valid JSON Schema object with the "type" property set to "object".
+    /// </para>
+    /// </remarks>
+    public JsonElement? OutputSchema { get; set; }
 
     /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
@@ -209,6 +234,7 @@ public sealed class McpServerToolCreateOptions
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
             UseStructuredContent = UseStructuredContent,
+            OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,

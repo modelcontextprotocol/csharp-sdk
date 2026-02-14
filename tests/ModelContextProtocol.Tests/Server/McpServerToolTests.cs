@@ -533,6 +533,146 @@ public partial class McpServerToolTests
         Assert.Null(result.StructuredContent);
     }
 
+    [Fact]
+    public void OutputSchema_ViaOptions_SetsSchemaDirectly()
+    {
+        var schemaDoc = JsonDocument.Parse("""{"type":"object","properties":{"result":{"type":"string"}}}""");
+        McpServerTool tool = McpServerTool.Create(() => new CallToolResult() { Content = [] }, new()
+        {
+            OutputSchema = schemaDoc.RootElement,
+        });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(schemaDoc.RootElement, tool.ProtocolTool.OutputSchema.Value));
+    }
+
+    [Fact]
+    public void OutputSchema_ViaOptions_ForcesStructuredContentEvenIfDisabled()
+    {
+        var schemaDoc = JsonDocument.Parse("""{"type":"object","properties":{"n":{"type":"string"},"a":{"type":"integer"}},"required":["n","a"]}""");
+        McpServerTool tool = McpServerTool.Create((string input) => new CallToolResult() { Content = [] }, new()
+        {
+            UseStructuredContent = false,
+            OutputSchema = schemaDoc.RootElement,
+        });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(schemaDoc.RootElement, tool.ProtocolTool.OutputSchema.Value));
+    }
+
+    [Fact]
+    public void OutputSchema_ViaOptions_TakesPrecedenceOverReturnTypeSchema()
+    {
+        var overrideDoc = JsonDocument.Parse("""{"type":"object","properties":{"custom":{"type":"boolean"}}}""");
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => new Person("Alice", 30), new()
+        {
+            UseStructuredContent = true,
+            OutputSchema = overrideDoc.RootElement,
+            SerializerOptions = serOpts,
+        });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(overrideDoc.RootElement, tool.ProtocolTool.OutputSchema.Value));
+    }
+
+    [Fact]
+    public void OutputSchemaType_ViaAttribute_ProducesExpectedSchema()
+    {
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(
+            typeof(OutputSchemaTypeTools).GetMethod(nameof(OutputSchemaTypeTools.ToolReturningCallToolResultWithSchemaType))!,
+            target: null,
+            new() { SerializerOptions = serOpts });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var props));
+        Assert.True(props.TryGetProperty("Name", out _));
+        Assert.True(props.TryGetProperty("Age", out _));
+    }
+
+    [Fact]
+    public async Task OutputSchemaType_ViaAttribute_ReturningCallToolResult_WorksCorrectly()
+    {
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(
+            typeof(OutputSchemaTypeTools).GetMethod(nameof(OutputSchemaTypeTools.ToolReturningCallToolResultWithSchemaType))!,
+            target: null,
+            new() { SerializerOptions = serOpts });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+
+        Mock<McpServer> srv = new();
+        var ctx = new RequestContext<CallToolRequestParams>(srv.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool_returning_call_tool_result_with_schema_type" },
+        };
+
+        var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
+        Assert.Equal("hello", Assert.IsType<TextContentBlock>(toolResult.Content[0]).Text);
+    }
+
+    [Fact]
+    public void OutputSchemaType_ViaAttribute_WithUseStructuredContent_ProducesExpectedSchema()
+    {
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(
+            typeof(OutputSchemaTypeTools).GetMethod(nameof(OutputSchemaTypeTools.ToolWithBothOutputSchemaTypeAndStructuredContent))!,
+            target: null,
+            new() { SerializerOptions = serOpts });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var props));
+        Assert.True(props.TryGetProperty("Name", out _));
+    }
+
+    [Fact]
+    public void OutputSchema_ViaOptions_OverridesAttributeOutputSchemaType()
+    {
+        var customDoc = JsonDocument.Parse("""{"type":"object","properties":{"overridden":{"type":"string"}}}""");
+        McpServerTool tool = McpServerTool.Create(
+            typeof(OutputSchemaTypeTools).GetMethod(nameof(OutputSchemaTypeTools.ToolReturningCallToolResultWithSchemaType))!,
+            target: null,
+            new() { OutputSchema = customDoc.RootElement });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(customDoc.RootElement, tool.ProtocolTool.OutputSchema.Value));
+    }
+
+    [Fact]
+    public void OutputSchema_IsPreservedWhenCopyingOptions()
+    {
+        var schemaDoc = JsonDocument.Parse("""{"type":"object","properties":{"x":{"type":"integer"}}}""");
+
+        // Verify OutputSchema works correctly when used via tool creation (which clones internally)
+        McpServerTool tool1 = McpServerTool.Create(() => new CallToolResult() { Content = [] }, new()
+        {
+            OutputSchema = schemaDoc.RootElement,
+        });
+        McpServerTool tool2 = McpServerTool.Create(() => new CallToolResult() { Content = [] }, new()
+        {
+            OutputSchema = schemaDoc.RootElement,
+        });
+
+        Assert.NotNull(tool1.ProtocolTool.OutputSchema);
+        Assert.NotNull(tool2.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(tool1.ProtocolTool.OutputSchema.Value, tool2.ProtocolTool.OutputSchema.Value));
+    }
+
+    private class OutputSchemaTypeTools
+    {
+        [McpServerTool(OutputSchemaType = typeof(Person))]
+        public static CallToolResult ToolReturningCallToolResultWithSchemaType()
+            => new() { Content = [new TextContentBlock { Text = "hello" }] };
+
+        [McpServerTool(UseStructuredContent = true, OutputSchemaType = typeof(Person))]
+        public static CallToolResult ToolWithBothOutputSchemaTypeAndStructuredContent()
+            => new() { Content = [new TextContentBlock { Text = "world" }] };
+    }
+
+
     [Theory]
     [InlineData(JsonNumberHandling.Strict)]
     [InlineData(JsonNumberHandling.AllowReadingFromString)]
