@@ -240,10 +240,33 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
+    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </para>
+    /// <para>
+    /// Setting <see cref="OutputSchemaType"/> will automatically enable structured content.
+    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the type to use for generating the tool's output schema.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, the SDK generates the <see cref="Tool.OutputSchema"/> from this type instead of
+    /// inferring it from the method's return type. This is particularly useful when the method
+    /// returns <see cref="CallToolResult"/> directly (for example, to control
+    /// <see cref="CallToolResult.IsError"/>), but the tool should still advertise a meaningful
+    /// output schema describing the shape of <see cref="CallToolResult.StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// Setting this property automatically enables <see cref="UseStructuredContent"/>.
+    /// </para>
+    /// </remarks>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+    public Type? OutputSchemaType { get; set; }
 
     /// <summary>
     /// Gets or sets the source URI for the tool's icon.
