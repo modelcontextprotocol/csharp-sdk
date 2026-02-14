@@ -373,7 +373,6 @@ internal sealed class StreamableHttpHandler(
         };
 
         // Initialize the transport with the migrated session's init params.
-        // This sets NegotiatedProtocolVersion for resumability support.
         await transport.HandleInitRequestAsync(initializeParams, context.User);
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;

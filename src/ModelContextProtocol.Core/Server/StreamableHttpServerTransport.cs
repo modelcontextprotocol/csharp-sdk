@@ -87,12 +87,6 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// When set, the handler is notified after initialization completes so that session data can be persisted.
     /// </summary>
     /// <remarks>
-    /// This is similar to <see cref="EventStreamStore"/> in that it provides an extensibility point
-    /// on the transport. The <see cref="ISessionMigrationHandler.OnSessionInitializedAsync"/> method
-    /// is called automatically when the initialization handshake completes. The
-    /// <see cref="ISessionMigrationHandler.AllowSessionMigrationAsync"/> method is called by the
-    /// HTTP handler when a request arrives with an unrecognized session ID.
-    /// </remarks>
     public ISessionMigrationHandler? SessionMigrationHandler { get; init; }
 
     /// <inheritdoc/>
