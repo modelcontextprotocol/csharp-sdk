@@ -547,4 +547,29 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         // Dispose should still not hang
         await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task PostWithoutSessionId_NonInitializeRequest_Returns400()
+    {
+        Assert.SkipWhen(Stateless, "Stateless mode allows any request without a session ID.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Send a tools/call without a session ID. This should be rejected.
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        var content = new StringContent(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}""",
+            System.Text.Encoding.UTF8,
+            "application/json");
+
+        using var response = await HttpClient.PostAsync("http://localhost:5000/", content, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }
