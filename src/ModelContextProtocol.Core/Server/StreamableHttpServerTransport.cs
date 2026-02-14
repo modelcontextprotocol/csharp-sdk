@@ -86,7 +86,6 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// Gets or sets an optional handler for session migration across server instances.
     /// When set, the handler is notified after initialization completes so that session data can be persisted.
     /// </summary>
-    /// <remarks>
     public ISessionMigrationHandler? SessionMigrationHandler { get; init; }
 
     /// <inheritdoc/>
