@@ -265,7 +265,6 @@ public sealed class McpServerToolAttribute : Attribute
     /// Setting this property automatically enables <see cref="UseStructuredContent"/>.
     /// </para>
     /// </remarks>
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
     public Type? OutputSchemaType { get; set; }
 
     /// <summary>

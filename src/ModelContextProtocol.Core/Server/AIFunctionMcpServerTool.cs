@@ -208,6 +208,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             if (toolAttr.OutputSchemaType is { } outputSchemaType)
             {
+                newOptions.UseStructuredContent = true;
                 newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
                     serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
                     inferenceOptions: newOptions.SchemaCreateOptions);
@@ -448,7 +449,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         string? description = options?.Description ?? function.Description;
 
         // If structured content is enabled, the return description will be in the output schema
-        if (options?.UseStructuredContent is true || options?.OutputSchema is not null)
+        if (options?.UseStructuredContent is true)
         {
             return description;
         }
@@ -490,7 +491,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         structuredOutputRequiresWrapping = false;
 
-        // If an explicit OutputSchema is provided, use it directly and force UseStructuredContent.
+        // If an explicit OutputSchema is provided, use it directly.
         if (toolCreateOptions?.OutputSchema is JsonElement explicitSchema)
         {
             return explicitSchema;
