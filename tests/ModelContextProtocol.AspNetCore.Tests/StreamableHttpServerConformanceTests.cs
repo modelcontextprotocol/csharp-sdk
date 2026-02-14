@@ -367,8 +367,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
 
         // Wait for all long-running tool calls to receive 200 response headers before sending DELETE
-        var longRunningToolResponses = await Task.WhenAll(longRunningToolTasks);
-        foreach (var response in longRunningToolResponses)
+        var responseHeaders = await Task.WhenAll(longRunningToolTasks);
+        foreach (var response in responseHeaders)
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
@@ -385,9 +385,9 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // the connection without writing the chunk terminator, causing an HttpRequestException when reading the response body.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
         // For now, the important thing is that reading the response body fails.
-        foreach (var response in longRunningToolResponses)
+        foreach (var response in responseHeaders)
         {
-            await Assert.ThrowsAsync<HttpRequestException>(async () => await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<HttpRequestException>(async () => await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
         }
     }
 
