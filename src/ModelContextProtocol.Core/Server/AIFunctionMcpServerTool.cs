@@ -206,9 +206,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
 
-            if (newOptions.OutputSchema is null && toolAttr.OutputSchemaType is { } outputSchemaType)
+            if (toolAttr.OutputSchemaType is { } outputSchemaType)
             {
-                newOptions.OutputSchema = AIJsonUtilities.CreateJsonSchema(outputSchemaType,
+                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
                     serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
                     inferenceOptions: newOptions.SchemaCreateOptions);
             }
