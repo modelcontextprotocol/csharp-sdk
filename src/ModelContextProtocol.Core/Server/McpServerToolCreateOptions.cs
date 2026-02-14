@@ -129,7 +129,7 @@ public sealed class McpServerToolCreateOptions
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
     /// </para>
     /// <para>
-    /// Setting <see cref="OutputSchema"/> will automatically enable structured content.
+    /// Setting <see cref="OutputSchema"/> to a non-<see langword="null"/> value will automatically enable structured content.
     /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
@@ -146,7 +146,7 @@ public sealed class McpServerToolCreateOptions
     /// output schema describing the shape of <see cref="CallToolResult.StructuredContent"/>.
     /// </para>
     /// <para>
-    /// Setting this property automatically enables <see cref="UseStructuredContent"/>.
+    /// Setting this property to a non-<see langword="null"/> value will automatically enable <see cref="UseStructuredContent"/>.
     /// </para>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".

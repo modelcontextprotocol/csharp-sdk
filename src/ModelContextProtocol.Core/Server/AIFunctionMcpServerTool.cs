@@ -229,6 +229,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Set metadata if not already provided
         newOptions.Metadata ??= CreateMetadata(method);
 
+        // Force UseStructuredContent when OutputSchema is explicitly provided
+        if (newOptions.OutputSchema is not null)
+        {
+            newOptions.UseStructuredContent = true;
+        }
+
         return newOptions;
     }
 
@@ -494,6 +500,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // If an explicit OutputSchema is provided, use it directly.
         if (toolCreateOptions?.OutputSchema is JsonElement explicitSchema)
         {
+            Debug.Assert(toolCreateOptions.UseStructuredContent, "UseStructuredContent should be true when OutputSchema is set.");
             return explicitSchema;
         }
 
