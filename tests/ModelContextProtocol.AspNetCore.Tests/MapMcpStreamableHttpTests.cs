@@ -7,7 +7,6 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 

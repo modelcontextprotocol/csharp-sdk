@@ -219,26 +219,16 @@ public class AuthTests : OAuthTestBase
             options.ToolCollection = new();
         });
 
-        // Wait for the OAuth server to be ready
-        await TestOAuthServer.ServerStarted.WaitAsync(TestContext.Current.CancellationToken);
-
-        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
         {
-            options.TokenValidationParameters.ValidAudience = McpServerUrl;
-        });
-
-        var app = Builder.Build();
-
-        // Add middleware to intercept list tools requests and force a token refresh on the first call
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/" && !hasForcedRefresh)
+            // Add middleware to intercept list tools requests and force a token refresh on the first call
+            app.Use(async (context, next) =>
             {
-                // Enable buffering so we can read the request body multiple times
-                context.Request.EnableBuffering();
-
-                try
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/" && !hasForcedRefresh)
                 {
+                    // Enable buffering so we can read the request body multiple times
+                    context.Request.EnableBuffering();
+
                     // Read the request body to check if it's calling tools/list
                     var message = await JsonSerializer.DeserializeAsync(
                         context.Request.Body,
@@ -260,20 +250,10 @@ public class AuthTests : OAuthTestBase
                         return; // Short-circuit, don't call next()
                     }
                 }
-                catch (JsonException)
-                {
-                    // If we can't deserialize, let MapMcp handle it
-                    context.Request.Body.Position = 0;
-                }
-            }
 
-            await next(context);
+                await next(context);
+            });
         });
-
-        app.MapMcp().RequireAuthorization(new AuthorizeAttribute());
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var _ = app;
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -502,26 +482,16 @@ public class AuthTests : OAuthTestBase
 
         string? requestedScope = null;
 
-        // Wait for the OAuth server to be ready
-        await TestOAuthServer.ServerStarted.WaitAsync(TestContext.Current.CancellationToken);
-
-        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
         {
-            options.TokenValidationParameters.ValidAudience = McpServerUrl;
-        });
-
-        var app = Builder.Build();
-
-        // Add middleware to intercept requests and check for admin-tool calls
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+            // Add middleware to intercept requests and check for admin-tool calls
+            app.Use(async (context, next) =>
             {
-                // Enable buffering so we can read the request body multiple times
-                context.Request.EnableBuffering();
-
-                try
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
                 {
+                    // Enable buffering so we can read the request body multiple times
+                    context.Request.EnableBuffering();
+
                     // Read the request body to check if it's calling admin-tool
                     var message = await JsonSerializer.DeserializeAsync(
                         context.Request.Body,
@@ -554,20 +524,10 @@ public class AuthTests : OAuthTestBase
                         }
                     }
                 }
-                catch (JsonException)
-                {
-                    // If we can't deserialize, let MapMcp handle it
-                    context.Request.Body.Position = 0;
-                }
-            }
 
-            await next(context);
+                await next(context);
+            });
         });
-
-        app.MapMcp().RequireAuthorization(new AuthorizeAttribute());
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var _ = app;
 
         await using var transport = new HttpClientTransport(new()
         {
