@@ -2,13 +2,15 @@ namespace ModelContextProtocol.Tests;
 
 public class ExecutionContextAsyncLocalLeakTests
 {
+    // Use a non-trivial count to model repeated captures and avoid relying on a single snapshot edge case.
+    private const int ExecutionContextCaptureCount = 128;
     private static readonly AsyncLocal<object?> s_staticAsyncLocal = new();
     private static ExecutionContext[]? s_keptExecutionContexts;
 
     [Fact]
     public void CapturedExecutionContexts_KeepStaticAsyncLocalValueAlive_UntilContextsAreReleased()
     {
-        var weakReference = CreateWeakReferenceAndKeepCapturedExecutionContexts(useStaticAsyncLocal: true);
+        var weakReference = SetupAsyncLocalAndCaptureContexts(useStaticAsyncLocal: true);
 
         ForceFullGc();
         GC.KeepAlive(s_keptExecutionContexts);
@@ -25,7 +27,7 @@ public class ExecutionContextAsyncLocalLeakTests
     [Fact]
     public void CapturedExecutionContexts_KeepNonStaticAsyncLocalValueAlive_UntilContextsAreReleased()
     {
-        var weakReference = CreateWeakReferenceAndKeepCapturedExecutionContexts(useStaticAsyncLocal: false);
+        var weakReference = SetupAsyncLocalAndCaptureContexts(useStaticAsyncLocal: false);
 
         ForceFullGc();
         GC.KeepAlive(s_keptExecutionContexts);
@@ -38,7 +40,7 @@ public class ExecutionContextAsyncLocalLeakTests
         Assert.False(weakReference.IsAlive);
     }
 
-    private static WeakReference CreateWeakReferenceAndKeepCapturedExecutionContexts(bool useStaticAsyncLocal)
+    private static WeakReference SetupAsyncLocalAndCaptureContexts(bool useStaticAsyncLocal)
     {
         WeakReference? weakReference = null;
 
@@ -46,10 +48,10 @@ public class ExecutionContextAsyncLocalLeakTests
         {
             var asyncLocal = useStaticAsyncLocal ? s_staticAsyncLocal : new AsyncLocal<object?>();
 
-            object value = new();
-            weakReference = new(value);
+            object asyncLocalValue = new();
+            weakReference = new(asyncLocalValue);
 
-            asyncLocal.Value = value;
+            asyncLocal.Value = asyncLocalValue;
             s_keptExecutionContexts = CaptureExecutionContexts();
             asyncLocal.Value = null;
         });
@@ -63,10 +65,11 @@ public class ExecutionContextAsyncLocalLeakTests
 
     private static ExecutionContext[] CaptureExecutionContexts()
     {
-        const int contextCount = 128;
-        var executionContexts = new ExecutionContext[contextCount];
+        // Capture multiple contexts to simulate code that snapshots ExecutionContext repeatedly
+        // before invoking work.
+        var executionContexts = new ExecutionContext[ExecutionContextCaptureCount];
 
-        for (var i = 0; i < contextCount; i++)
+        for (var i = 0; i < ExecutionContextCaptureCount; i++)
         {
             executionContexts[i] = ExecutionContext.Capture()!;
         }
