@@ -350,7 +350,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await CallInitializeAndValidateAsync();
 
         Task<HttpResponseMessage> CallLongRunningToolAsync() =>
-            HttpClient.PostAsync("", JsonContent(CallTool("long-running")), TestContext.Current.CancellationToken);
+            HttpClient.SendAsync(
+                new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = JsonContent(CallTool("long-running"))
+                },
+                HttpCompletionOption.ResponseHeadersRead,
+                TestContext.Current.CancellationToken);
 
         var longRunningToolTasks = new Task<HttpResponseMessage>[10];
         for (int i = 0; i < longRunningToolTasks.Length; i++)
@@ -360,25 +366,28 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
 
-        for (int i = 0; i < longRunningToolTasks.Length; i++)
+        // Wait for all long-running tool calls to receive 200 response headers before sending DELETE
+        var responseHeaders = await Task.WhenAll(longRunningToolTasks);
+        foreach (var response in responseHeaders)
         {
-            Assert.False(longRunningToolTasks[i].IsCompleted);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
+        // Now send DELETE to cancel the session
         await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
         // Get request should complete gracefully.
         var sseResponseBody = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Empty(sseResponseBody);
 
-        // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
+        // Currently, responses are flushed immediately to prevent HttpClient timeouts for long-running requests.
+        // This means the response starts with a 200 status code. When the session is canceled, Kestrel closes
+        // the connection without writing the chunk terminator, causing an HttpRequestException when reading the response body.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
-        // For now, the important thing is that request completes without indicating success.
-        await Task.WhenAll(longRunningToolTasks);
-        foreach (var task in longRunningToolTasks)
+        // For now, the important thing is that reading the response body fails.
+        foreach (var response in responseHeaders)
         {
-            var response = await task;
-            Assert.False(response.IsSuccessStatusCode);
+            await Assert.ThrowsAsync<HttpRequestException>(async () => await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
         }
     }
 
