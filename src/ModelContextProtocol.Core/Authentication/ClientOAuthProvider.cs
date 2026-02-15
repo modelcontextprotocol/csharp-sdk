@@ -620,7 +620,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
         using var requestContent = new ByteArrayContent(requestBytes);
-        requestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        requestContent.Headers.ContentType = McpHttpClient.s_applicationJsonContentType;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.RegistrationEndpoint)
         {
