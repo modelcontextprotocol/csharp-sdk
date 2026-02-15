@@ -185,7 +185,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (sessionManager.TryRemove(sessionId, out var session))
+        if (sessionManager.TryGetValue(sessionId, out var session))
         {
             if (!ValidateProtocolVersionHeader(context, session.Server, out var errorMessage))
             {
@@ -193,7 +193,10 @@ internal sealed class StreamableHttpHandler(
                 return;
             }
 
-            await session.DisposeAsync();
+            if (sessionManager.TryRemove(sessionId, out session))
+            {
+                await session.DisposeAsync();
+            }
         }
     }
 
