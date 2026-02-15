@@ -578,7 +578,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         if (clientId == "everything")
         {
             // The everything server requires calling the toggle-simulated-logging tool to start sending log messages
-            await client.CallToolAsync("toggle-simulated-logging", cancellationToken: TestContext.Current.CancellationToken);
+            await client.CallToolAsync("toggle-simulated-logging", new Dictionary<string, object?>(), cancellationToken: TestContext.Current.CancellationToken);
         }
 
         // assert
