@@ -31,7 +31,15 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// <para>
     /// The description is typically presented to AI models to help them determine when
-    /// and how to use the tool based on user requests.
+    /// and how to use the tool based on user requests. A well-written description significantly
+    /// reduces incorrect tool invocations. Include information about what the tool does, any
+    /// constraints or prerequisites, and what it returns.
+    /// </para>
+    /// <para>
+    /// Similarly, individual parameter descriptions (provided via <see cref="System.ComponentModel.DescriptionAttribute"/>
+    /// on tool method parameters) are important for guiding the model to supply correct argument values.
+    /// Descriptions should document expected formats, valid value ranges, and any other constraints
+    /// the model should be aware of.
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
