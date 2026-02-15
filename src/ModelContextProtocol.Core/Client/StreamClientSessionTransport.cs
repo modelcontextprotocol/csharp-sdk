@@ -8,54 +8,15 @@ namespace ModelContextProtocol.Client;
 /// <summary>Provides the client side of a stream-based session transport.</summary>
 internal class StreamClientSessionTransport : TransportBase
 {
+    private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
+
     internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly TextReader _serverOutput;
-    private readonly TextWriter _serverInput;
+    private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private CancellationTokenSource? _shutdownCts = new();
     private Task? _readTask;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
-    /// </summary>
-    /// <param name="serverInput">
-    /// The text writer connected to the server's input stream.
-    /// Messages written to this writer will be sent to the server.
-    /// </param>
-    /// <param name="serverOutput">
-    /// The text reader connected to the server's output stream.
-    /// Messages read from this reader will be received from the server.
-    /// </param>
-    /// <param name="endpointName">
-    /// A name that identifies this transport endpoint in logs.
-    /// </param>
-    /// <param name="loggerFactory">
-    /// Optional factory for creating loggers. If null, a NullLogger is used.
-    /// </param>
-    /// <remarks>
-    /// This constructor starts a background task to read messages from the server output stream.
-    /// The transport will be marked as connected once initialized.
-    /// </remarks>
-    public StreamClientSessionTransport(
-        TextWriter serverInput, TextReader serverOutput, string endpointName, ILoggerFactory? loggerFactory)
-        : base(endpointName, loggerFactory)
-    {
-        _serverOutput = serverOutput;
-        _serverInput = serverInput;
-
-        SetConnected();
-
-        // Start reading messages in the background. We use the rarer pattern of new Task + Start
-        // in order to ensure that the body of the task will always see _readTask initialized.
-        // It is then able to reliably null it out on completion.
-        var readTask = new Task<Task>(
-            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token),
-            this,
-            TaskCreationOptions.DenyChildAttach);
-        _readTask = readTask.Unwrap();
-        readTask.Start();
-    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
@@ -80,18 +41,29 @@ internal class StreamClientSessionTransport : TransportBase
     /// The transport will be marked as connected once initialized.
     /// </remarks>
     public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
-        : this(
-            new StreamWriter(serverInput, encoding ?? NoBomUtf8Encoding),
-#if NET
-            new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding),
-#else
-            new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding),
-#endif
-            endpointName,
-            loggerFactory)
+        : base(endpointName, loggerFactory)
     {
         Throw.IfNull(serverInput);
         Throw.IfNull(serverOutput);
+
+        _serverInputStream = serverInput;
+#if NET
+        _serverOutput = new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
+#else
+        _serverOutput = new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
+#endif
+
+        SetConnected();
+
+        // Start reading messages in the background. We use the rarer pattern of new Task + Start
+        // in order to ensure that the body of the task will always see _readTask initialized.
+        // It is then able to reliably null it out on completion.
+        var readTask = new Task<Task>(
+            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token),
+            this,
+            TaskCreationOptions.DenyChildAttach);
+        _readTask = readTask.Unwrap();
+        readTask.Start();
     }
 
     /// <inheritdoc/>
@@ -105,14 +77,13 @@ internal class StreamClientSessionTransport : TransportBase
 
         LogTransportSendingMessageSensitive(message);
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
-
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Write the message followed by a newline using our UTF-8 writer
-            await _serverInput.WriteLineAsync(json).ConfigureAwait(false);
-            await _serverInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            var json = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+            await _serverInputStream.WriteAsync(json, cancellationToken).ConfigureAwait(false);
+            await _serverInputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
+            await _serverInputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
