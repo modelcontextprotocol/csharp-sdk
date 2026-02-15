@@ -417,7 +417,7 @@ internal sealed class StreamableHttpHandler(
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
-            !ProtocolVersions.SupportedVersions.Contains(protocolVersionHeader))
+            !McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersionHeader))
         {
             errorMessage = $"Bad Request: The MCP-Protocol-Version header value '{protocolVersionHeader}' is not supported.";
             return false;
