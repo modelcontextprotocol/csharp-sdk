@@ -12,6 +12,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
+    public override ICollection<string> SupportedProtocolVersions => server.SupportedProtocolVersions;
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 

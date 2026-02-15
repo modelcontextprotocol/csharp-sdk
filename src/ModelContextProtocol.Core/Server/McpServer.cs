@@ -56,6 +56,11 @@ public abstract partial class McpServer : McpSession
     public abstract LoggingLevel? LoggingLevel { get; }
 
     /// <summary>
+    /// Gets the protocol versions supported by this server implementation.
+    /// </summary>
+    public abstract ICollection<string> SupportedProtocolVersions { get; }
+
+    /// <summary>
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     public abstract Task RunAsync(CancellationToken cancellationToken = default);
