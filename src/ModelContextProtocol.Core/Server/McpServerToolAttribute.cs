@@ -86,7 +86,6 @@ namespace ModelContextProtocol.Server;
 /// any other business rules). Data annotations such as <c>RequiredAttribute</c> and
 /// <c>MaxLengthAttribute</c> on parameter types influence the generated JSON schema exposed
 /// to clients, but they are not enforced at runtime by the SDK. Validation should be performed explicitly within the tool method.
-/// Any validation framework (e.g., FluentValidation, manual checks) may be used inside the tool.
 /// </para>
 /// <para>
 /// To signal an error (including validation failures) back to the client, either throw an <see cref="McpException"/>
