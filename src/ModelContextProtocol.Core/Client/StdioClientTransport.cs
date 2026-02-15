@@ -227,13 +227,11 @@ public sealed partial class StdioClientTransport : IClientTransport
                     // and Node.js does not kill its children when it exits properly.
                     process.KillTree(shutdownTimeout);
                 }
-                else
-                {
-                    // The process has already exited. Call WaitForExit() (no arguments)
-                    // to ensure all redirected stderr/stdout events have been dispatched
-                    // before disposing.
-                    process.WaitForExit();
-                }
+
+                // Ensure all redirected stderr/stdout events have been dispatched
+                // before disposing. Only the no-arg WaitForExit() guarantees this;
+                // WaitForExit(int) (used by KillTree) does not.
+                process.WaitForExit();
             }
             finally
             {
