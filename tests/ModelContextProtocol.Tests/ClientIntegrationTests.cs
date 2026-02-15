@@ -233,7 +233,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         await using var client = await _fixture.CreateClientAsync(clientId);
         // Get available resources and read one that is text
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var textResource = resources.First(r => r.MimeType is "text/plain" or "text/markdown");
+        var textResource = resources.First(r => r.MimeType?.StartsWith("text/", StringComparison.Ordinal) is true);
         var result = await client.ReadResourceAsync(textResource.Uri, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
@@ -243,7 +243,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.NotNull(textContent.Text);
     }
 
-    // Not supported by "everything" server version on npx
+    // The latest "everything" server only exposes text-based file resources in its resource list;
+    // binary resources are available via resource templates but not in the listed resources.
     [Fact]
     public async Task ReadResource_Stdio_BinaryResource()
     {
@@ -649,8 +650,9 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
-        // Low-level API returns only one page
+        // Low-level API returns only one page; the server provides resources but paginates
         Assert.NotEmpty(result.Resources);
+        Assert.True(result.Resources.Count <= 100);
     }
 
     [Theory]
