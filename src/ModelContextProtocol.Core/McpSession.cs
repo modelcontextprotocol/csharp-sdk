@@ -28,6 +28,11 @@ namespace ModelContextProtocol;
 /// </remarks>
 public abstract partial class McpSession : IAsyncDisposable
 {
+    /// <summary>
+    /// Gets the protocol versions supported by this implementation of MCP.
+    /// </summary>
+    public static IReadOnlyList<string> SupportedProtocolVersions { get; } = McpSessionHandler.SupportedProtocolVersions;
+
     /// <summary>Gets an identifier associated with the current MCP session.</summary>
     /// <remarks>
     /// Typically populated in transports supporting multiple sessions, such as Streamable HTTP or SSE.

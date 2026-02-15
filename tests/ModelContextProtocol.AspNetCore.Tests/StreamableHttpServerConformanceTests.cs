@@ -158,6 +158,54 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("invalid-version")]
+    [InlineData("9999-01-01")]
+    [InlineData("not-a-date")]
+    public async Task PostRequest_IsBadRequest_WithInvalidProtocolVersionHeader(string invalidVersion)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", invalidVersion);
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithoutProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        // No MCP-Protocol-Version header is set - this should be accepted for backwards compatibility
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithValidProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2025-03-26");
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRequest_IsBadRequest_WithInvalidProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "invalid-version");
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task PostRequest_IsNotFound_WithUnrecognizedSessionId()
     {

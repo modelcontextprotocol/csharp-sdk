@@ -23,6 +23,7 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+    private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const string LastEventIdHeaderName = "Last-Event-ID";
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
@@ -32,6 +33,12 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest);
+            return;
+        }
+
         // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
         // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
@@ -74,6 +81,12 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest);
+            return;
+        }
+
         if (!context.Request.GetTypedHeaders().Accept.Any(MatchesTextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
@@ -171,6 +184,12 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest);
+            return;
+        }
+
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
         if (sessionManager.TryRemove(sessionId, out var session))
         {
@@ -389,6 +408,24 @@ internal sealed class StreamableHttpHandler(
     }
 
     internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    /// <summary>
+    /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,
+    /// but an invalid or unsupported value must be rejected with 400 Bad Request per the MCP spec.
+    /// </summary>
+    private static bool ValidateProtocolVersionHeader(HttpContext context, out string errorMessage)
+    {
+        var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+        if (!string.IsNullOrEmpty(protocolVersionHeader) &&
+            !McpSession.SupportedProtocolVersions.Contains(protocolVersionHeader))
+        {
+            errorMessage = $"Bad Request: The MCP-Protocol-Version header value '{protocolVersionHeader}' is not supported.";
+            return false;
+        }
+
+        errorMessage = "";
+        return true;
+    }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("application/json");
