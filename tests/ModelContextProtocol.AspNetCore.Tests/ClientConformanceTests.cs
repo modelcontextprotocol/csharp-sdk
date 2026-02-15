@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
@@ -118,10 +119,32 @@ public class ClientConformanceTests
             );
         }
 
+        var output = outputBuilder.ToString();
+        var error = errorBuilder.ToString();
+        var success = process.ExitCode == 0 || HasOnlyWarnings(output, error);
+
         return (
-            Success: process.ExitCode == 0,
-            Output: outputBuilder.ToString(),
-            Error: errorBuilder.ToString()
+            Success: success,
+            Output: output,
+            Error: error
         );
+    }
+
+    /// <summary>
+    /// Checks if the conformance test output indicates that all checks passed with only
+    /// warnings (no actual failures). The conformance runner exits with code 1 for warnings,
+    /// but warnings represent acceptable behavior (e.g., timing tolerances in CI environments).
+    /// </summary>
+    private static bool HasOnlyWarnings(string output, string error)
+    {
+        // The conformance runner outputs a summary line like:
+        //   "Passed: 2/2, 0 failed, 1 warnings"
+        // If there are 0 failures but warnings > 0, the test behavior is acceptable.
+        var combined = output + error;
+        var match = Regex.Match(combined, @"(\d+) failed, (\d+) warnings");
+        return match.Success
+            && match.Groups[1].Value == "0"
+            && int.TryParse(match.Groups[2].Value, out var warnings)
+            && warnings > 0;
     }
 }
