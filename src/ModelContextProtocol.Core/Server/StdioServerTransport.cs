@@ -59,6 +59,16 @@ public sealed class StdioServerTransport : StreamServerTransport
         }
 #endif
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                stdinStream.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
         // The McpServer shouldn't call flush on the stdin Stream, but it doesn't need to throw just in case.
         public override void Flush() { }
 
