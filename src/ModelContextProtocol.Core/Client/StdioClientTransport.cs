@@ -230,9 +230,12 @@ public sealed partial class StdioClientTransport : IClientTransport
 
                 // Ensure all redirected stderr/stdout events have been dispatched
                 // before disposing. Only the no-arg WaitForExit() guarantees this;
-                // WaitForExit(int) (used by KillTree) does not. Guard with HasExited
-                // to avoid hanging indefinitely if the process couldn't be killed.
-                if (HasExited(process))
+                // WaitForExit(int) (as used by KillTree) does not.
+                // This should not hang: either the process already exited on its own
+                // (no child processes holding handles), or KillTree killed the entire
+                // process tree. If it does take too long, the test infrastructure's
+                // own timeout will catch it.
+                if (!processRunning && HasExited(process))
                 {
                     process.WaitForExit();
                 }
