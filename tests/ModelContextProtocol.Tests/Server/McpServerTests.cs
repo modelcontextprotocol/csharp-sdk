@@ -938,7 +938,7 @@ public class McpServerTests : LoggedTest
         public override Implementation? ClientInfo => throw new NotImplementedException();
         public override IServiceProvider? Services => throw new NotImplementedException();
         public override LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public override ICollection<string> SupportedProtocolVersions => throw new NotImplementedException();
+        public override IReadOnlyList<string> SupportedProtocolVersions => throw new NotImplementedException();
         public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public override Task RunAsync(CancellationToken cancellationToken = default) =>

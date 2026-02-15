@@ -58,7 +58,7 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Gets the protocol versions supported by this server implementation.
     /// </summary>
-    public abstract ICollection<string> SupportedProtocolVersions { get; }
+    public abstract IReadOnlyList<string> SupportedProtocolVersions { get; }
 
     /// <summary>
     /// Runs the server, listening for and handling client requests.

@@ -156,7 +156,7 @@ internal sealed partial class McpServerImpl : McpServer
     public override LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
-    public override ICollection<string> SupportedProtocolVersions => McpSessionHandler.SupportedProtocolVersions;
+    public override IReadOnlyList<string> SupportedProtocolVersions => McpSessionHandler.SupportedProtocolVersions;
 
     /// <inheritdoc />
     public override async Task RunAsync(CancellationToken cancellationToken = default)
