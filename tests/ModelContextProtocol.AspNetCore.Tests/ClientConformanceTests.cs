@@ -141,10 +141,10 @@ public class ClientConformanceTests
         //   "Passed: 2/2, 0 failed, 1 warnings"
         // If there are 0 failures but warnings > 0, the test behavior is acceptable.
         var combined = output + error;
-        var match = Regex.Match(combined, @"(\d+) failed, (\d+) warnings");
+        var match = Regex.Match(combined, @"(?<failed>\d+) failed, (?<warnings>\d+) warnings");
         return match.Success
-            && match.Groups[1].Value == "0"
-            && int.TryParse(match.Groups[2].Value, out var warnings)
+            && match.Groups["failed"].Value == "0"
+            && int.TryParse(match.Groups["warnings"].Value, out var warnings)
             && warnings > 0;
     }
 }
