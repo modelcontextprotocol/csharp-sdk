@@ -26,6 +26,15 @@ internal sealed class StreamableHttpHandler(
     private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const string LastEventIdHeaderName = "Last-Event-ID";
 
+    /// <summary>All protocol versions supported by this implementation.</summary>
+    private static readonly HashSet<string> s_supportedProtocolVersions =
+    [
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+    ];
+
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
@@ -417,7 +426,7 @@ internal sealed class StreamableHttpHandler(
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
-            !McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersionHeader))
+            !s_supportedProtocolVersions.Contains(protocolVersionHeader))
         {
             errorMessage = $"Bad Request: The MCP-Protocol-Version header value '{protocolVersionHeader}' is not supported.";
             return false;
