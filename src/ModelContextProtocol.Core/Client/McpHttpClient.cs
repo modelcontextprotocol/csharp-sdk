@@ -4,7 +4,6 @@ using System.Diagnostics;
 #if NET
 using System.Net.Http.Json;
 #else
-using System.Text;
 using System.Text.Json;
 #endif
 
@@ -32,11 +31,10 @@ internal class McpHttpClient(HttpClient httpClient)
 #if NET
         return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 #else
-        return new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
-            Encoding.UTF8,
-            "application/json"
-        );
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return content;
 #endif
     }
 }
