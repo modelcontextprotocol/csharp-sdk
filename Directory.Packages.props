@@ -4,7 +4,7 @@
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.3</System10Version>
-    <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
+    <MicrosoftExtensionsVersion>10.3.0</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
