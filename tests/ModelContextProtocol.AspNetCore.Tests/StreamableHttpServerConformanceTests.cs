@@ -249,7 +249,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await Task.WhenAll(echoTasks);
     }
 
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/1211")]
+    [Fact]
     public async Task GetRequest_Receives_UnsolicitedNotifications()
     {
         McpServer? server = null;
