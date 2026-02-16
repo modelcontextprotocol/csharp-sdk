@@ -62,7 +62,7 @@
 
   <!-- Testing dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Anthropic" Version="12.3.0" />
+    <PackageVersion Include="Anthropic" Version="12.5.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
