@@ -164,6 +164,7 @@ public class CreateMessageResultTests
         Assert.Equal(2, deserialized.Content.Count);
         Assert.Equal("toolUse", deserialized.StopReason);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("metadata", (string)deserialized.Meta["custom"]!);
     }
 
     [Fact]

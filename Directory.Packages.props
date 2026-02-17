@@ -4,7 +4,7 @@
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.3</System10Version>
-    <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
+    <MicrosoftExtensionsVersion>10.3.0</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
@@ -87,7 +87,7 @@
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageVersion Include="Serilog" Version="4.3.0" />
+    <PackageVersion Include="Serilog" Version="4.3.1" />
     <PackageVersion Include="System.Linq.AsyncEnumerable" Version="$(System10Version)" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />

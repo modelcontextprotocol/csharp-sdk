@@ -65,9 +65,10 @@ public sealed class InitializeResult : Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These instructions provide guidance to clients on how to effectively use the server's capabilities.
-    /// They can include details about available tools, expected input formats, limitations,
-    /// or any other information that helps clients interact with the server properly.
+    /// These instructions should focus on guidance that helps a model use the server effectively,
+    /// such as workflow tips, capability relationships, and server-specific conventions.
+    /// They should avoid repeating tool descriptions, prompt descriptions, or resource descriptions
+    /// that are already available through other protocol responses.
     /// </para>
     /// <para>
     /// Client applications often use these instructions as system messages for LLM interactions
