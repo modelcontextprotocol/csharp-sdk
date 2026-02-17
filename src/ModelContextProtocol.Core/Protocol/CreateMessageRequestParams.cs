@@ -35,10 +35,10 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// <remarks>
     /// <para>
     /// A token is generally a word or part of a word in the text. Setting this value helps control
-    /// response length and computation time.
+    /// response length and computation time. The client can choose to sample fewer tokens than requested.
     /// </para>
     /// <para>
-    /// The client MUST respect the <see cref="MaxTokens"/> parameter.
+    /// The client must respect the <see cref="MaxTokens"/> parameter.
     /// </para>
     /// </remarks>
     [JsonPropertyName("maxTokens")]
@@ -48,7 +48,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// Gets or sets the messages requested by the server to be included in the prompt.
     /// </summary>
     /// <remarks>
-    /// The list of messages in a sampling request SHOULD NOT be retained between separate requests.
+    /// The list of messages in a sampling request should not be retained between separate requests.
     /// </remarks>
     [JsonPropertyName("messages")]
     public IList<SamplingMessage> Messages { get; set; } = [];
@@ -63,7 +63,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// that are specific to certain AI models or providers.
     /// </para>
     /// <para>
-    /// The client MAY modify or ignore metadata.
+    /// The client may modify or ignore metadata.
     /// </para>
     /// </remarks>
     [JsonPropertyName("metadata")]
@@ -104,7 +104,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// like ".", or special delimiter sequences like "###".
     /// </para>
     /// <para>
-    /// The client MAY modify or ignore stop sequences.
+    /// The client may modify or ignore stop sequences.
     /// </para>
     /// </remarks>
     [JsonPropertyName("stopSequences")]
@@ -128,7 +128,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// and lower values produce more stable output. The valid range depends on the model provider.
     /// </para>
     /// <para>
-    /// The client MAY modify or ignore this value.
+    /// The client may modify or ignore this value.
     /// </para>
     /// </remarks>
     [JsonPropertyName("temperature")]
