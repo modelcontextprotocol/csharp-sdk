@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -65,6 +66,16 @@ public sealed class CallToolResult : Result
     /// (<see cref="Content"/>, <see cref="StructuredContent"/>, <see cref="IsError"/>) may not be populated.
     /// The actual tool result can be retrieved later via <c>tasks/result</c>.
     /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public McpTask? Task
+    {
+        get => TaskCore;
+        set => TaskCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("task")]
-    public McpTask? Task { get; set; }
+    internal McpTask? TaskCore { get; set; }
 }

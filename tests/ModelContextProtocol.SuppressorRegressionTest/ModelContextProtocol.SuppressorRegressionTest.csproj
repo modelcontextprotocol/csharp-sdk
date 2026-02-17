@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      This project validates the MCPEXP001 diagnostic suppressor.
+      tests/Directory.Build.props suppresses MCPEXP001 globally for all test projects,
+      but this project must NOT suppress it: its successful compilation IS the test.
+      If the suppressor breaks, this project will fail to build with MCPEXP001 errors
+      from the source-generated code that references experimental types.
+    -->
+    <NoWarn>$(NoWarn.Replace('MCPEXP001',''))</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Analyzers\ModelContextProtocol.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
