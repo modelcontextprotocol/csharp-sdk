@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -81,4 +82,23 @@ public sealed class ServerCapabilities
     /// </remarks>
     [JsonPropertyName("tasks")]
     public McpTasksCapability? Tasks { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional MCP extensions that the server supports.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keys are extension identifiers in reverse domain notation with an extension name
+    /// (e.g., <c>"io.modelcontextprotocol/apps"</c>), and values are per-extension settings
+    /// objects. An empty object indicates support with no additional settings.
+    /// </para>
+    /// <para>
+    /// Extensions provide a framework for extending the Model Context Protocol while maintaining
+    /// interoperability. Both clients and servers advertise extension support via this field during
+    /// the initialization handshake.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("extensions")]
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)] // SEP-2133: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133
+    public IDictionary<string, object>? Extensions { get; set; }
 }
