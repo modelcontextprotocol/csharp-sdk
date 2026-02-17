@@ -160,10 +160,19 @@ public class ServerConformanceTests : IAsyncLifetime
 
         await process.WaitForExitAsync();
 
+        var stdOut = outputBuilder.ToString();
+        var stdErr = errorBuilder.ToString();
+
+        // On Windows, the Node.js conformance runner can crash during shutdown due to a libuv assertion
+        // (UV_HANDLE_CLOSING), producing a non-zero exit code even when all tests pass. Fall back to
+        // checking the output for "0 failed" when the exit code is non-zero.
+        bool success = process.ExitCode == 0 ||
+            (stdOut.Contains("0 failed") && !stdOut.Contains("FAILURE"));
+
         return (
-            Success: process.ExitCode == 0,
-            Output: outputBuilder.ToString(),
-            Error: errorBuilder.ToString()
+            Success: success,
+            Output: stdOut,
+            Error: stdErr
         );
     }
 }

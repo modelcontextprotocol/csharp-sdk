@@ -103,7 +103,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
                 (true, _) => "mono",
-                (_, true) => "TestServer.exe",
+                (_, true) => Path.Combine(AppContext.BaseDirectory, "TestServer.exe"),
                 _ => "dotnet",
             },
             Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
@@ -112,6 +112,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
                 (_, true) => [cliArgument],
                 _ => ["TestServer.dll", cliArgument],
             },
+            WorkingDirectory = AppContext.BaseDirectory,
         };
 
         var transport = new StdioClientTransport(options, LoggerFactory);
