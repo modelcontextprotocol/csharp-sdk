@@ -112,12 +112,19 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// <summary>
     /// Gets or sets tools that the model can use during generation.
     /// </summary>
+    /// <remarks>
+    /// The tool definitions in this array are scoped to this sampling request.
+    /// They do not need to correspond to tools registered on the server via <see cref="RequestMethods.ToolsList"/>.
+    /// </remarks>
     [JsonPropertyName("tools")]
     public IList<Tool>? Tools { get; set; }
 
     /// <summary>
     /// Gets or sets controls for how the model uses tools.
     /// </summary>
+    /// <remarks>
+    /// This controls whether and how the model uses the request-scoped <see cref="Tools"/> during sampling.
+    /// </remarks>
     [JsonPropertyName("toolChoice")]
     public ToolChoice? ToolChoice { get; set; }
 
