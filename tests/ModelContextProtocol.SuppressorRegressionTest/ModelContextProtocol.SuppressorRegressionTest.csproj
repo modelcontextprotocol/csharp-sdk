@@ -14,6 +14,13 @@
       from the source-generated code that references experimental types.
     -->
     <NoWarn>$(NoWarn.Replace('MCPEXP001',''))</NoWarn>
+
+    <!--
+      [JsonInclude] internal members trigger this warning only because the MCP C# SDK
+      is a project reference here. NuGet consumers won't see it since Roslyn doesn't import
+      internal members from metadata.
+    -->
+    <NoWarn>$(NoWarn);SYSLIB1038</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
