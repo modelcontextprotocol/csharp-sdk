@@ -17,6 +17,7 @@ internal sealed partial class StreamableHttpPostTransport(
     CancellationToken sessionCancellationToken,
     ILogger logger) : ITransport
 {
+    private readonly ILogger _logger = logger;
     private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SseEventWriter _httpSseWriter = new(responseStream);

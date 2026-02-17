@@ -2,7 +2,9 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
+#if !NET8_0
 using OpenAI;
+#endif
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,9 +12,11 @@ namespace ModelContextProtocol.Tests;
 
 public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
 {
+#if !NET8_0
     private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey");
 
     public static bool NoOpenAIKeySet => string.IsNullOrWhiteSpace(s_openAIKey);
+#endif
 
     private readonly ClientIntegrationTestFixture _fixture;
 
@@ -492,6 +496,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         await client.DisposeAsync();
     }
 
+#if !NET8_0
     [Fact(Skip = "Requires OpenAI API Key", SkipWhen = nameof(NoOpenAIKeySet))]
     public async Task ListToolsAsync_UsingEverythingServer_ToolsAreProperlyCalled()
     {
@@ -547,6 +552,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Contains("LLM sampling result:", content.Text);
         Assert.Contains("Eiffel", content.Text);
     }
+#endif
 
     [Theory]
     [MemberData(nameof(GetClients))]

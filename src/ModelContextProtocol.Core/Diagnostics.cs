@@ -14,6 +14,9 @@ internal static class Diagnostics
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
     internal static Histogram<double> CreateDurationHistogram(string name, string description) =>
+#if NET8_0
+        Meter.CreateHistogram<double>(name, "s", description);
+#else
         Meter.CreateHistogram(name, "s", description, advice: ExplicitBucketBoundaries);
 
     /// <summary>
@@ -24,6 +27,7 @@ internal static class Diagnostics
     {
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
+#endif
 
     internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, JsonRpcMessage message)
     {
