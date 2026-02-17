@@ -27,6 +27,13 @@ For more information about MCP:
 - [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
+## Prerequisites
+
+The SDK targets .NET Standard 2.0, .NET 8.0, .NET 9.0, and .NET 10.0. When targeting .NET 8.0, the SDK uses 8.x versions of `Microsoft.Extensions.*` dependencies for runtime compatibility.
+
+> [!IMPORTANT]
+> The SDK depends on `System.Text.Json` 10.x on all target frameworks, including .NET 8.0. If your application pins `System.Text.Json` to an 8.x version, you will need to allow the upgrade to 10.x for the SDK to function correctly.
+
 ## Installation
 
 To get started, install the package from NuGet
