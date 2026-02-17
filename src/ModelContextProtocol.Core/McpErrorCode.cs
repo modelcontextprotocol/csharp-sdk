@@ -60,11 +60,11 @@ public enum McpErrorCode
     /// </summary>
     /// <remarks>
     /// <para>
-    /// In MCP, this error is returned in various contexts when request parameters fail validation:
+    /// In MCP, this error is returned for protocol-level parameter validation failures in various contexts:
     /// </para>
     /// <list type="bullet">
-    /// <item><description><b>Tools</b>: Unknown tool name or invalid tool arguments.</description></item>
-    /// <item><description><b>Prompts</b>: Unknown prompt name or missing required arguments.</description></item>
+    /// <item><description><b>Tools</b>: Unknown tool name or invalid protocol-level tool arguments.</description></item>
+    /// <item><description><b>Prompts</b>: Unknown prompt name or missing required protocol-level arguments.</description></item>
     /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
     /// <item><description><b>Logging</b>: Invalid log level.</description></item>
     /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
@@ -72,7 +72,7 @@ public enum McpErrorCode
     /// <item><description><b>Sampling</b>: Missing tool result or tool results mixed with other content.</description></item>
     /// </list>
     /// <para>
-    /// Note: Input validation errors within tool/prompt/resource arguments should be reported as execution errors
+    /// Note: Application-layer validation errors within tool/prompt/resource arguments should be reported as execution errors
     /// (for example, via <see cref="Protocol.CallToolResult.IsError"/>) rather than as protocol errors, allowing language
     /// models to receive error feedback and self-correct.
     /// </para>
