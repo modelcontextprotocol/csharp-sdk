@@ -5,16 +5,27 @@
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.3</System10Version>
     <MicrosoftExtensionsVersion>10.3.0</MicrosoftExtensionsVersion>
+    <MicrosoftExtensionsAI9Version>9.10.2</MicrosoftExtensionsAI9Version>
   </PropertyGroup>
 
-  <!-- Product dependencies shared -->
-  <ItemGroup>
+  <!-- Product dependencies shared (non-net8.0) -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0'">
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System10Version)" />
+  </ItemGroup>
+
+  <!-- Product dependencies shared (net8.0) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsAI9Version)" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsAI9Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
   </ItemGroup>
 
   <!-- Product dependencies < .NET 10 -->
@@ -34,6 +45,7 @@
   <!-- Product dependencies .NET 8 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <PackageVersion Include="System.IO.Pipelines" Version="$(System10Version)" />
+    <PackageVersion Include="System.Text.Json" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System8Version)" />
   </ItemGroup>
 
@@ -67,13 +79,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.2.0-preview.1.26063.2" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.1.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="OpenTelemetry" Version="1.15.0" />
@@ -82,8 +87,10 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.0" />
-    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
-    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" Condition="'$(TargetFramework)' != 'net8.0'" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="8.0.0" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" Condition="'$(TargetFramework)' != 'net8.0'" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="8.0.0" Condition="'$(TargetFramework)' == 'net8.0'" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.Debug" Version="3.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
@@ -93,5 +100,26 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
     <PackageVersion Include="JsonSchema.Net" Version="9.1.0" />
+  </ItemGroup>
+
+  <!-- Testing Microsoft.Extensions dependencies (non-net8.0) -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0'">
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.2.0-preview.1.26063.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.1.0" />
+  </ItemGroup>
+
+  <!-- Testing Microsoft.Extensions dependencies (net8.0) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.1.0" />
   </ItemGroup>
 </Project>
