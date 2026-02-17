@@ -26,6 +26,7 @@ public static class LoggingMessageNotificationParamsTests
         Assert.NotNull(deserialized.Data);
         Assert.Equal("Something went wrong", deserialized.Data.Value.GetString());
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

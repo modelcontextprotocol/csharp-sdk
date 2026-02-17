@@ -37,6 +37,7 @@ public static class CallToolResultTests
         Assert.NotNull(deserialized.Task);
         Assert.Equal("task-1", deserialized.Task.TaskId);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

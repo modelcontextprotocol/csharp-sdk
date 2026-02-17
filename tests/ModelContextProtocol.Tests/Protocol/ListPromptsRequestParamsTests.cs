@@ -21,6 +21,7 @@ public static class ListPromptsRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("page-2-cursor", deserialized.Cursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

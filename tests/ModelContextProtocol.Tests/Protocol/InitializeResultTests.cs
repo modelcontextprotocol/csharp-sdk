@@ -39,6 +39,7 @@ public static class InitializeResultTests
         Assert.Equal("2.0.0", deserialized.ServerInfo.Version);
         Assert.Equal("Use this server for testing", deserialized.Instructions);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

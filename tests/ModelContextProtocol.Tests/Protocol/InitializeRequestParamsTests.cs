@@ -37,5 +37,6 @@ public static class InitializeRequestParamsTests
         Assert.Equal("test-client", deserialized.ClientInfo.Name);
         Assert.Equal("1.0.0", deserialized.ClientInfo.Version);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 }

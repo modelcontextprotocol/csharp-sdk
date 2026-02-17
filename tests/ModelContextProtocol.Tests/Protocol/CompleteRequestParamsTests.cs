@@ -32,6 +32,7 @@ public static class CompleteRequestParamsTests
         Assert.NotNull(deserialized.Context.Arguments);
         Assert.Equal("en", deserialized.Context.Arguments["language"]);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

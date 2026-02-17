@@ -19,6 +19,7 @@ public static class ToolListChangedNotificationParamsTests
 
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

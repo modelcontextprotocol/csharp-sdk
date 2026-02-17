@@ -19,6 +19,7 @@ public static class PromptListChangedNotificationParamsTests
 
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

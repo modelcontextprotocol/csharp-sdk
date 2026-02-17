@@ -31,6 +31,7 @@ public static class ElicitResultTests
         Assert.Equal("John", deserialized.Content["name"].GetString());
         Assert.Equal(30, deserialized.Content["age"].GetInt32());
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

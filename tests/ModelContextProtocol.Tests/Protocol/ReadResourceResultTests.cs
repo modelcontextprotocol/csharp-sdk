@@ -46,6 +46,7 @@ public static class ReadResourceResultTests
         Assert.Equal("base64data", blobContent.Blob);
 
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

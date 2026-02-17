@@ -21,6 +21,7 @@ public static class ListToolsRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("tools-cursor", deserialized.Cursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

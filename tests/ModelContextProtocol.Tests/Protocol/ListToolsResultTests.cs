@@ -31,6 +31,7 @@ public static class ListToolsResultTests
         Assert.Equal("Search Tool", deserialized.Tools[1].Title);
         Assert.Equal("next-token", deserialized.NextCursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

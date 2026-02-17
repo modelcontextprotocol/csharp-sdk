@@ -32,6 +32,7 @@ public static class CompleteResultTests
         Assert.Equal(10, deserialized.Completion.Total);
         Assert.True(deserialized.Completion.HasMore);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

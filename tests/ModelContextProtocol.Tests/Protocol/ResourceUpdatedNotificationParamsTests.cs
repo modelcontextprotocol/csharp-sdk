@@ -21,6 +21,7 @@ public static class ResourceUpdatedNotificationParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("file:///home/user/data.json", deserialized.Uri);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

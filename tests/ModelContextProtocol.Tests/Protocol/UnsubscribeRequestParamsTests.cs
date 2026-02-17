@@ -21,6 +21,7 @@ public static class UnsubscribeRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("file:///home/user/data.json", deserialized.Uri);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

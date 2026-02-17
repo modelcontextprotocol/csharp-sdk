@@ -21,6 +21,7 @@ public static class ListResourcesRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("cursor-abc", deserialized.Cursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

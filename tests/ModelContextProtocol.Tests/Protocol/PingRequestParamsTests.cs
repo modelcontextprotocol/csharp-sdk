@@ -19,6 +19,7 @@ public static class PingRequestParamsTests
 
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

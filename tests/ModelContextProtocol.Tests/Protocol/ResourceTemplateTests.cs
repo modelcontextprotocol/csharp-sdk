@@ -45,6 +45,7 @@ public static class ResourceTemplateTests
         Assert.Single(deserialized.Icons);
         Assert.Equal("https://example.com/doc.png", deserialized.Icons[0].Source);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
         Assert.True(deserialized.IsTemplated);
     }
 

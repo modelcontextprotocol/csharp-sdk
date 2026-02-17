@@ -21,6 +21,7 @@ public static class ElicitationCompleteNotificationParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("elicit-abc-123", deserialized.ElicitationId);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

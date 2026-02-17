@@ -29,5 +29,6 @@ public static class ListRootsResultTests
         Assert.Equal("file:///home/user/docs", deserialized.Roots[1].Uri);
         Assert.Equal("Docs", deserialized.Roots[1].Name);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 }

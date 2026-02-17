@@ -21,6 +21,7 @@ public static class SetLevelRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal(LoggingLevel.Debug, deserialized.Level);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

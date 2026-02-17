@@ -23,6 +23,7 @@ public static class CancelledNotificationParamsTests
         Assert.Equal(original.RequestId, deserialized.RequestId);
         Assert.Equal(original.Reason, deserialized.Reason);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

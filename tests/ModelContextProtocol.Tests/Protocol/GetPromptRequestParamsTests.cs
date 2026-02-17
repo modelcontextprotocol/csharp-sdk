@@ -27,6 +27,7 @@ public static class GetPromptRequestParamsTests
         Assert.NotNull(deserialized.Arguments);
         Assert.Equal("csharp", deserialized.Arguments["language"].GetString());
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

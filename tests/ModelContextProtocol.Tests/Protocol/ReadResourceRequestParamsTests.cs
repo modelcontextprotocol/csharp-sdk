@@ -21,6 +21,7 @@ public static class ReadResourceRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal("file:///home/user/document.txt", deserialized.Uri);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

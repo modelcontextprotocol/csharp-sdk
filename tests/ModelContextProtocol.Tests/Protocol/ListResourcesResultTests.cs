@@ -34,6 +34,7 @@ public static class ListResourcesResultTests
         Assert.Equal("text/markdown", deserialized.Resources[0].MimeType);
         Assert.Equal("next-page", deserialized.NextCursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

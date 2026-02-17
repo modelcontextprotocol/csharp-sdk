@@ -39,6 +39,7 @@ public static class ListPromptsResultTests
         Assert.Equal("summarize", deserialized.Prompts[1].Name);
         Assert.Equal("page-2-token", deserialized.NextCursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

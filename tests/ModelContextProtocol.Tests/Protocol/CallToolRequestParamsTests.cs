@@ -33,6 +33,7 @@ public static class CallToolRequestParamsTests
         Assert.NotNull(deserialized.Task);
         Assert.Equal(original.Task.TimeToLive, deserialized.Task.TimeToLive);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("token-123", (string)deserialized.Meta["progressToken"]!);
     }
 
     [Fact]

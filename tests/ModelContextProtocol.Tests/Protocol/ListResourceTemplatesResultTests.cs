@@ -36,6 +36,7 @@ public static class ListResourceTemplatesResultTests
         Assert.Equal("text/plain", deserialized.ResourceTemplates[0].MimeType);
         Assert.Equal("cursor-abc", deserialized.NextCursor);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

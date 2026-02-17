@@ -41,6 +41,7 @@ public static class GetPromptResultTests
         var textBlock1 = Assert.IsType<TextContentBlock>(deserialized.Messages[1].Content);
         Assert.Equal("I'll review it", textBlock1.Text);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 
     [Fact]

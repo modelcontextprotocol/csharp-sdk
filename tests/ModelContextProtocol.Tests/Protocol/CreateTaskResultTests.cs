@@ -36,5 +36,6 @@ public static class CreateTaskResultTests
         Assert.Equal(original.Task.TimeToLive, deserialized.Task.TimeToLive);
         Assert.Equal(original.Task.PollInterval, deserialized.Task.PollInterval);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
 }
