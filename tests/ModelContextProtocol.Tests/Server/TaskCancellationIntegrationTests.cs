@@ -460,13 +460,14 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
 
-        // Act - Try to cancel a completed task
-        var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+        // Act & Assert - Try to cancel a completed task should throw InvalidParams
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken));
 
-        // Assert - Status should still be completed (not cancelled)
-        Assert.Equal(McpTaskStatus.Completed, cancelResult.Status);
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
+        Assert.Contains("terminal status", exception.Message, StringComparison.OrdinalIgnoreCase);
 
-        // Verify via get
+        // Verify task status unchanged
         var verifyStatus = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(McpTaskStatus.Completed, verifyStatus.Status);
     }
@@ -500,10 +501,11 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Failed, taskStatus.Status);
 
-        // Act - Try to cancel a failed task
-        var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+        // Act & Assert - Try to cancel a failed task should throw InvalidParams
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken));
 
-        // Assert - Status should still be failed
-        Assert.Equal(McpTaskStatus.Failed, cancelResult.Status);
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
+        Assert.Contains("terminal status", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -591,7 +591,7 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             throw new McpProtocolException(
                                 $"Tool '{tool.ProtocolTool.Name}' does not support task-augmented execution.",
-                                McpErrorCode.MethodNotFound);
+                                McpErrorCode.InvalidParams);
                         }
 
                         // Task augmentation requested - return CreateTaskResult
@@ -604,7 +604,7 @@ internal sealed partial class McpServerImpl : McpServer
                         throw new McpProtocolException(
                             $"Tool '{tool.ProtocolTool.Name}' requires task-augmented execution. " +
                             "Include a 'task' parameter with the request.",
-                            McpErrorCode.MethodNotFound);
+                            McpErrorCode.InvalidParams);
                     }
 
                     // Normal synchronous execution
@@ -769,6 +769,21 @@ internal sealed partial class McpServerImpl : McpServer
             if (request.Params?.TaskId is not { } taskId)
             {
                 throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
+            }
+
+            // Get current task status
+            var currentTask = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
+            if (currentTask is null)
+            {
+                throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
+            }
+
+            // Validate not already in terminal status
+            if (currentTask.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
+            {
+                throw new McpProtocolException(
+                    $"Cannot cancel task '{taskId}' in terminal status '{currentTask.Status}'.",
+                    McpErrorCode.InvalidParams);
             }
 
             // Signal cancellation if task is still running
