@@ -27,8 +27,9 @@ public class ClientIntegrationTestFixture
 
         TestServerTransportOptions = new()
         {
-            Command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "TestServer.exe" : PlatformDetection.IsMonoRuntime ? "mono" : "dotnet",
+            Command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? Path.Combine(AppContext.BaseDirectory, "TestServer.exe") : PlatformDetection.IsMonoRuntime ? "mono" : "dotnet",
             Name = "TestServer",
+            WorkingDirectory = AppContext.BaseDirectory,
         };
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
