@@ -461,21 +461,6 @@ internal sealed partial class McpClientImpl : McpClient
                     throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
                 }
 
-                // Get current task status
-                var currentTask = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-                if (currentTask is null)
-                {
-                    throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-                }
-
-                // Validate not already in terminal status
-                if (currentTask.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
-                {
-                    throw new McpProtocolException(
-                        $"Cannot cancel task '{taskId}' in terminal status '{currentTask.Status}'.",
-                        McpErrorCode.InvalidParams);
-                }
-
                 // Signal cancellation if task is still running
                 _taskCancellationTokenProvider!.Cancel(taskId);
 

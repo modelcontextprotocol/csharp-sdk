@@ -67,7 +67,7 @@ public enum McpErrorCode
     /// <item><description><b>Prompts</b>: Unknown prompt name or missing required arguments.</description></item>
     /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
     /// <item><description><b>Logging</b>: Invalid log level.</description></item>
-    /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID, invalid cursor, or attempting to cancel a task already in a terminal status.</description></item>
+    /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
     /// <item><description><b>Elicitation</b>: Server requests an elicitation mode not declared in client capabilities.</description></item>
     /// <item><description><b>Sampling</b>: Missing tool result or tool results mixed with other content.</description></item>
     /// </list>
