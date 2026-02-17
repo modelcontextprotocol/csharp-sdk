@@ -39,6 +39,12 @@ internal static class Experimentals
     /// <summary>
     /// Diagnostic ID for the experimental MCP Extensions feature.
     /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Tasks_DiagnosticId"/> because both
+    /// Tasks and Extensions are covered by the same MCPEXP001 diagnostic for experimental
+    /// MCP features. Having separate constants improves code clarity while maintaining a
+    /// single diagnostic suppression point.
+    /// </remarks>
     public const string Extensions_DiagnosticId = "MCPEXP001";
 
     /// <summary>
