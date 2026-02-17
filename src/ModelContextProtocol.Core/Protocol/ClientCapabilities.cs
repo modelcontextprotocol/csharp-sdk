@@ -100,6 +100,6 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonPropertyName("extensions")]
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)] // SEP-2133: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133
+    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)] // SEP-2133: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133
     public IDictionary<string, object>? Extensions { get; set; }
 }
