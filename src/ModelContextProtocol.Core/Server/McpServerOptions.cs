@@ -54,8 +54,9 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// These instructions are sent to clients during the initialization handshake and provide
-    /// guidance on how to effectively use the server's capabilities. They can include details
-    /// about available tools, expected input formats, limitations, or other helpful information.
+    /// guidance on how to effectively use the server's capabilities. They should focus on
+    /// information that helps models use the server effectively and should not duplicate
+    /// tool, prompt, or resource descriptions already exposed elsewhere.
     /// Client applications typically use these instructions as system messages for LLM interactions
     /// to provide context about available functionality.
     /// </remarks>
