@@ -50,7 +50,7 @@ internal static class Experimentals
     /// <summary>
     /// Message for the experimental MCP Extensions feature.
     /// </summary>
-    public const string Extensions_Message = "The Extensions feature is experimental per the MCP specification and is subject to change.";
+    public const string Extensions_Message = "The Extensions feature is part of a future MCP specification version that has not yet been ratified and is subject to change.";
 
     /// <summary>
     /// URL for the experimental MCP Extensions feature.
