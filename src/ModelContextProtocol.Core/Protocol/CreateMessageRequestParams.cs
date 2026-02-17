@@ -33,8 +33,13 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// Gets or sets the maximum number of tokens to generate in the LLM response, as requested by the server.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A token is generally a word or part of a word in the text. Setting this value helps control
-    /// response length and computation time. The client can choose to sample fewer tokens than requested.
+    /// response length and computation time.
+    /// </para>
+    /// <para>
+    /// The client MUST respect the <see cref="MaxTokens"/> parameter.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("maxTokens")]
     public required int MaxTokens { get; set; }
@@ -42,6 +47,9 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// <summary>
     /// Gets or sets the messages requested by the server to be included in the prompt.
     /// </summary>
+    /// <remarks>
+    /// The list of messages in a sampling request SHOULD NOT be retained between separate requests.
+    /// </remarks>
     [JsonPropertyName("messages")]
     public IList<SamplingMessage> Messages { get; set; } = [];
 
@@ -49,9 +57,14 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// Gets or sets optional metadata to pass through to the LLM provider.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The format of this metadata is provider-specific and can include model-specific settings or
     /// configuration that isn't covered by standard parameters. This allows for passing custom parameters
     /// that are specific to certain AI models or providers.
+    /// </para>
+    /// <para>
+    /// The client MAY modify or ignore metadata.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("metadata")]
     public JsonElement? Metadata { get; set; }
@@ -90,6 +103,9 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// sequence exactly matches one of the provided sequences. Common uses include ending markers like "END", punctuation
     /// like ".", or special delimiter sequences like "###".
     /// </para>
+    /// <para>
+    /// The client MAY modify or ignore stop sequences.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("stopSequences")]
     public IList<string>? StopSequences { get; set; }
@@ -106,6 +122,15 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// <summary>
     /// Gets or sets the temperature to use for sampling, as requested by the server.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Temperature controls randomness in model responses. Higher values produce higher randomness,
+    /// and lower values produce more stable output. The valid range depends on the model provider.
+    /// </para>
+    /// <para>
+    /// The client MAY modify or ignore this value.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("temperature")]
     public float? Temperature { get; set; }
 
