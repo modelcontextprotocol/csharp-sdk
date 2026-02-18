@@ -577,11 +577,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public void OutputSchemaType_ViaAttribute_ProducesExpectedSchema()
+    public void CallToolResultOfT_ProducesExpectedOutputSchema()
     {
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(
-            [McpServerTool(OutputSchemaType = typeof(Person))] () => new CallToolResult() { Content = [] },
+            () => new CallToolResult<Person> { Content = new Person("Alice", 30) },
             new() { SerializerOptions = serOpts });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
@@ -592,11 +592,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task OutputSchemaType_ViaAttribute_ReturningCallToolResult_WorksCorrectly()
+    public async Task CallToolResultOfT_SerializesContentCorrectly()
     {
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(
-            [McpServerTool(OutputSchemaType = typeof(Person))] () => new CallToolResult() { Content = [new TextContentBlock { Text = "hello" }] },
+            () => new CallToolResult<Person> { Content = new Person("Alice", 30) },
             new() { SerializerOptions = serOpts });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
@@ -608,49 +608,115 @@ public partial class McpServerToolTests
         };
 
         var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
-        Assert.Equal("hello", Assert.IsType<TextContentBlock>(toolResult.Content[0]).Text);
+
+        // Content should be serialized as text content block
+        Assert.Single(toolResult.Content);
+        var textBlock = Assert.IsType<TextContentBlock>(toolResult.Content[0]);
+        Assert.Contains("Alice", textBlock.Text);
+        Assert.Contains("30", textBlock.Text);
+
+        // StructuredContent should be populated
+        Assert.NotNull(toolResult.StructuredContent);
     }
 
     [Fact]
-    public void OutputSchemaType_ViaAttribute_WithUseStructuredContent_ProducesExpectedSchema()
+    public async Task CallToolResultOfT_PropagatesIsError()
     {
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(
-            [McpServerTool(UseStructuredContent = true, OutputSchemaType = typeof(Person))] () => new CallToolResult() { Content = [] },
+            () => new CallToolResult<string> { Content = "something went wrong", IsError = true },
             new() { SerializerOptions = serOpts });
 
-        Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var props));
-        Assert.True(props.TryGetProperty("Name", out _));
+        Mock<McpServer> srv = new();
+        var ctx = new RequestContext<CallToolRequestParams>(srv.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
+        Assert.True(toolResult.IsError);
     }
 
     [Fact]
-    public void OutputSchemaType_ViaAttribute_WithUseStructuredContentFalse_StillProducesSchema()
+    public async Task CallToolResultOfT_PropagatesMeta()
+    {
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        var meta = new JsonObject { ["traceId"] = "abc-123" };
+        McpServerTool tool = McpServerTool.Create(
+            () => new CallToolResult<Person> { Content = new Person("Bob", 25), Meta = meta },
+            new() { SerializerOptions = serOpts });
+
+        Mock<McpServer> srv = new();
+        var ctx = new RequestContext<CallToolRequestParams>(srv.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
+        Assert.NotNull(toolResult.Meta);
+        Assert.Equal("abc-123", toolResult.Meta["traceId"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task CallToolResultOfT_AsyncMethod_ProducesExpectedSchema()
     {
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(
-            [McpServerTool(UseStructuredContent = false, OutputSchemaType = typeof(Person))] () => new CallToolResult() { Content = [] },
+            async () =>
+            {
+                await Task.CompletedTask;
+                return new CallToolResult<Person> { Content = new Person("Charlie", 35) };
+            },
             new() { SerializerOptions = serOpts });
 
-        // OutputSchemaType forces UseStructuredContent to true even if explicitly set to false
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
         Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var props));
         Assert.True(props.TryGetProperty("Name", out _));
         Assert.True(props.TryGetProperty("Age", out _));
+
+        Mock<McpServer> srv = new();
+        var ctx = new RequestContext<CallToolRequestParams>(srv.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
+        Assert.NotNull(toolResult.StructuredContent);
+        Assert.Single(toolResult.Content);
     }
 
     [Fact]
-    public void OutputSchema_ViaOptions_OverridesAttributeOutputSchemaType()
+    public void CallToolResultOfT_ExplicitOutputSchemaOverrides()
     {
         using var customDoc = JsonDocument.Parse("""{"type":"object","properties":{"overridden":{"type":"string"}}}""");
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(
-            [McpServerTool(OutputSchemaType = typeof(Person))] () => new CallToolResult() { Content = [] },
-            new() { OutputSchema = customDoc.RootElement });
+            () => new CallToolResult<Person> { Content = new Person("Alice", 30) },
+            new() { OutputSchema = customDoc.RootElement, SerializerOptions = serOpts });
 
+        // Explicit OutputSchema from options should override the inferred one from T
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.True(JsonElement.DeepEquals(customDoc.RootElement, tool.ProtocolTool.OutputSchema.Value));
+    }
+
+    [Fact]
+    public async Task CallToolResultOfT_NullContent_HandledGracefully()
+    {
+        JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(
+            () => new CallToolResult<Person> { Content = null },
+            new() { SerializerOptions = serOpts });
+
+        Mock<McpServer> srv = new();
+        var ctx = new RequestContext<CallToolRequestParams>(srv.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var toolResult = await tool.InvokeAsync(ctx, TestContext.Current.CancellationToken);
+        Assert.Single(toolResult.Content);
+        Assert.Equal("null", Assert.IsType<TextContentBlock>(toolResult.Content[0]).Text);
     }
 
     [Fact]

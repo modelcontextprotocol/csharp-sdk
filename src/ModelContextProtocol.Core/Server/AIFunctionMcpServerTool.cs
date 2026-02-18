@@ -527,58 +527,71 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         structuredOutputRequiresWrapping = false;
 
-        // If an explicit OutputSchema is provided, use it directly.
+        // Determine the raw output schema to use.
+        JsonElement? rawSchema = null;
+
         if (toolCreateOptions?.OutputSchema is JsonElement explicitSchema)
         {
             Debug.Assert(toolCreateOptions.UseStructuredContent, "UseStructuredContent should be true when OutputSchema is set.");
-            return explicitSchema;
+            rawSchema = explicitSchema;
+        }
+        else if (toolCreateOptions?.UseStructuredContent is not true)
+        {
+            return null;
+        }
+        else
+        {
+            rawSchema = function.ReturnJsonSchema;
         }
 
-        if (toolCreateOptions?.UseStructuredContent is not true)
+        if (rawSchema is not JsonElement outputSchema)
         {
             return null;
         }
 
-        if (function.ReturnJsonSchema is not JsonElement outputSchema)
+        return EnsureObjectSchema(outputSchema, ref structuredOutputRequiresWrapping);
+    }
+
+    /// <summary>
+    /// Ensures the schema is a valid MCP output schema (type "object"). Wraps non-object schemas in an envelope.
+    /// </summary>
+    private static JsonElement EnsureObjectSchema(JsonElement outputSchema, ref bool structuredOutputRequiresWrapping)
+    {
+        if (outputSchema.ValueKind is JsonValueKind.Object &&
+            outputSchema.TryGetProperty("type", out JsonElement typeProperty) &&
+            typeProperty.ValueKind is JsonValueKind.String &&
+            typeProperty.GetString() is "object")
         {
-            return null;
+            return outputSchema;
         }
 
-        if (outputSchema.ValueKind is not JsonValueKind.Object ||
-            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
-            typeProperty.ValueKind is not JsonValueKind.String ||
-            typeProperty.GetString() is not "object")
-        {
-            // If the output schema is not an object, need to modify to be a valid MCP output schema.
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+        // If the output schema is not an object, need to modify to be a valid MCP output schema.
+        JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
 
-            if (schemaNode is JsonObject objSchema &&
-                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
+        if (schemaNode is JsonObject objSchema &&
+            objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
+            typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
+        {
+            // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
+            objSchema["type"] = "object";
+        }
+        else
+        {
+            // For anything else, wrap the schema in an envelope with a "result" property.
+            schemaNode = new JsonObject
             {
-                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
-                objSchema["type"] = "object";
-            }
-            else
-            {
-                // For anything else, wrap the schema in an envelope with a "result" property.
-                schemaNode = new JsonObject
+                ["type"] = "object",
+                ["properties"] = new JsonObject
                 {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["result"] = schemaNode
-                    },
-                    ["required"] = new JsonArray { (JsonNode)"result" }
-                };
+                    ["result"] = schemaNode
+                },
+                ["required"] = new JsonArray { (JsonNode)"result" }
+            };
 
-                structuredOutputRequiresWrapping = true;
-            }
-
-            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+            structuredOutputRequiresWrapping = true;
         }
 
-        return outputSchema;
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
     }
 
     private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
