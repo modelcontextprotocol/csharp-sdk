@@ -933,7 +933,7 @@ public abstract partial class McpClient : McpSession
     /// <para>
     /// This method calls the existing <see cref="CallToolAsync(string, IReadOnlyDictionary{string, object?}?, IProgress{ProgressNotificationValue}?, RequestOptions?, CancellationToken)"/>
     /// and then deserializes the result. If the result has <see cref="CallToolResult.StructuredContent"/>, that is deserialized
-    /// as <typeparamref name="T"/>. Otherwise, if the result has text content, the text of the first <see cref="TextContentBlock"/>
+    /// as <typeparamref name="T"/>. Otherwise, if the result has text content, the text of the last <see cref="TextContentBlock"/>
     /// is deserialized as <typeparamref name="T"/>.
     /// </para>
     /// <para>
@@ -952,7 +952,7 @@ public abstract partial class McpClient : McpSession
 
         if (result.IsError is true)
         {
-            string errorMessage = result.Content.Count > 0 && result.Content[0] is TextContentBlock textBlock
+            string errorMessage = result.Content.Count > 0 && result.Content[^1] is TextContentBlock textBlock
                 ? textBlock.Text
                 : "The tool call returned an error.";
             throw new McpException(errorMessage);
@@ -967,7 +967,7 @@ public abstract partial class McpClient : McpSession
             return JsonSerializer.Deserialize(structuredContent, typeInfo)!;
         }
 
-        if (result.Content.Count > 0 && result.Content[0] is TextContentBlock textContent)
+        if (result.Content.Count > 0 && result.Content[^1] is TextContentBlock textContent)
         {
             return JsonSerializer.Deserialize(textContent.Text, typeInfo)!;
         }
