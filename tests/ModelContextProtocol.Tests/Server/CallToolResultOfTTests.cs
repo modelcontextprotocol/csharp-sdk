@@ -73,7 +73,7 @@ public class CallToolResultOfTTests : ClientServerTestBase
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         _toolCollection.Add(McpServerTool.Create(
             () => new PersonData { Name = "Bob", Age = 25 },
-            new() { Name = "text_tool", UseStructuredContent = true, SerializerOptions = serOpts }));
+            new() { Name = "text_tool", SerializerOptions = serOpts }));
 
         StartServer();
         var client = await CreateMcpClientForServer();

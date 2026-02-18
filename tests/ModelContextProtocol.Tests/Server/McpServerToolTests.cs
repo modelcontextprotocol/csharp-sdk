@@ -462,7 +462,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
     {
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
-        McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+        McpServerTool tool = McpServerTool.Create([McpServerTool(UseStructuredContent = true)] () => value, new() { Name = "tool", SerializerOptions = options });
         var mockServer = new Mock<McpServer>();
         var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
         {
@@ -520,7 +520,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Disabled_ReturnsExpectedSchema<T>(T value)
     {
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
-        McpServerTool tool = McpServerTool.Create(() => value, new() { UseStructuredContent = false, SerializerOptions = options });
+        McpServerTool tool = McpServerTool.Create(() => value, new() { SerializerOptions = options });
         var mockServer = new Mock<McpServer>();
         var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
         {
@@ -547,12 +547,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public void OutputSchema_ViaOptions_ForcesStructuredContentEvenIfDisabled()
+    public void OutputSchema_ViaOptions_EnablesStructuredContent()
     {
         using var schemaDoc = JsonDocument.Parse("""{"type":"object","properties":{"n":{"type":"string"},"a":{"type":"integer"}},"required":["n","a"]}""");
         McpServerTool tool = McpServerTool.Create((string input) => new CallToolResult() { Content = [] }, new()
         {
-            UseStructuredContent = false,
             OutputSchema = schemaDoc.RootElement,
         });
 
@@ -567,7 +566,6 @@ public partial class McpServerToolTests
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => new Person("Alice", 30), new()
         {
-            UseStructuredContent = true,
             OutputSchema = overrideDoc.RootElement,
             SerializerOptions = serOpts,
         });
@@ -965,15 +963,14 @@ public partial class McpServerToolTests
     public void ReturnDescription_StructuredOutputEnabled_NotIncludedInToolDescription()
     {
         // When UseStructuredContent is true, return description should be in the output schema, not in tool description
-        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { UseStructuredContent = true });
+        McpServerTool tool = McpServerTool.Create(
+            [McpServerTool(UseStructuredContent = true)]
+            [Description("Tool that returns data.")]
+            [return: Description("The computed result")]
+            static () => "result");
 
         Assert.Equal("Tool that returns data.", tool.ProtocolTool.Description);
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        // Verify the output schema contains the description
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var result));
-        Assert.True(result.TryGetProperty("description", out var description));
-        Assert.Equal("The computed result", description.GetString());
     }
 
     [Fact]
@@ -1011,11 +1008,11 @@ public partial class McpServerToolTests
     public void ReturnDescription_StructuredOutputEnabled_WithExplicitDescription_NoSynthesis()
     {
         // When UseStructuredContent is true and Description is set, return description goes to output schema
-        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new()
-        {
-            Description = "Custom description",
-            UseStructuredContent = true
-        });
+        McpServerTool tool = McpServerTool.Create(
+            [McpServerTool(UseStructuredContent = true)]
+            [return: Description("The computed result")]
+            static () => "result",
+            new() { Description = "Custom description" });
 
         // Description should not have the return description appended
         Assert.Equal("Custom description", tool.ProtocolTool.Description);

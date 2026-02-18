@@ -118,23 +118,6 @@ public sealed class McpServerToolCreateOptions
     public bool? ReadOnly { get; set; }
 
     /// <summary>
-    /// Gets or sets a value that indicates whether the tool should report an output schema for structured content.
-    /// </summary>
-    /// <value>
-    /// The default is <see langword="false"/>.
-    /// </value>
-    /// <remarks>
-    /// <para>
-    /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
-    /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
-    /// </para>
-    /// <para>
-    /// Setting <see cref="OutputSchema"/> to a non-<see langword="null"/> value will automatically enable structured content.
-    /// </para>
-    /// </remarks>
-    public bool UseStructuredContent { get; set; }
-
-    /// <summary>
     /// Gets or sets a JSON Schema object to use as the tool's output schema.
     /// </summary>
     /// <remarks>
@@ -146,7 +129,9 @@ public sealed class McpServerToolCreateOptions
     /// output schema describing the shape of <see cref="CallToolResult.StructuredContent"/>.
     /// </para>
     /// <para>
-    /// Setting this property to a non-<see langword="null"/> value will automatically enable <see cref="UseStructuredContent"/>.
+    /// Setting this property to a non-<see langword="null"/> value will enable structured content
+    /// for the tool, causing the tool to populate both <see cref="Tool.OutputSchema"/> and
+    /// <see cref="CallToolResult.StructuredContent"/>.
     /// </para>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".
@@ -233,7 +218,6 @@ public sealed class McpServerToolCreateOptions
             Idempotent = Idempotent,
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
-            UseStructuredContent = UseStructuredContent,
             OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
