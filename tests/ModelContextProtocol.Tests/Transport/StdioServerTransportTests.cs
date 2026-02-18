@@ -11,6 +11,8 @@ namespace ModelContextProtocol.Tests.Transport;
 
 public class StdioServerTransportTests : LoggedTest
 {
+    public static bool IsWindows => PlatformDetection.IsWindows;
+
     private readonly McpServerOptions _serverOptions;
 
     public StdioServerTransportTests(ITestOutputHelper testOutputHelper)
@@ -248,8 +250,6 @@ public class StdioServerTransportTests : LoggedTest
         Assert.Equal((byte)'\n', bytes[^1]);
         Assert.NotEqual((byte)'\r', bytes[^2]);
     }
-
-    public static bool IsWindows => PlatformDetection.IsWindows;
 
     [Fact(Skip = "Non-Windows platform", SkipUnless = nameof(IsWindows))]
     public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
