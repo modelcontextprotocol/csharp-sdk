@@ -915,7 +915,7 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Invokes a tool on the server and deserializes the result as a strongly-typed <see cref="CallToolResult{T}"/>.
+    /// Invokes a tool on the server and deserializes the result as <typeparamref name="T"/>.
     /// </summary>
     /// <typeparam name="T">The type to deserialize the tool's structured content or text content into.</typeparam>
     /// <param name="toolName">The name of the tool to call on the server.</param>
@@ -923,9 +923,9 @@ public abstract partial class McpClient : McpSession
     /// <param name="progress">An optional progress reporter for server notifications.</param>
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A <see cref="CallToolResult{T}"/> containing the deserialized content, error state, and metadata.</returns>
+    /// <returns>The deserialized content of the tool result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
-    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <exception cref="McpException">The request failed, the server returned an error response, or <see cref="CallToolResult.IsError"/> is <see langword="true"/>.</exception>
     /// <exception cref="JsonException">The result content could not be deserialized as <typeparamref name="T"/>.</exception>
     /// <remarks>
     /// <para>
@@ -934,8 +934,12 @@ public abstract partial class McpClient : McpSession
     /// as <typeparamref name="T"/>. Otherwise, if the result has text content, the text of the first <see cref="TextContentBlock"/>
     /// is deserialized as <typeparamref name="T"/>.
     /// </para>
+    /// <para>
+    /// If <see cref="CallToolResult.IsError"/> is <see langword="true"/>, an <see cref="McpException"/> is thrown. To inspect
+    /// error details without an exception, use the non-generic <see cref="CallToolAsync(string, IReadOnlyDictionary{string, object?}?, IProgress{ProgressNotificationValue}?, RequestOptions?, CancellationToken)"/> overload instead.
+    /// </para>
     /// </remarks>
-    public async ValueTask<CallToolResult<T>> CallToolAsync<T>(
+    public async ValueTask<T?> CallToolAsync<T>(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
@@ -944,30 +948,27 @@ public abstract partial class McpClient : McpSession
     {
         CallToolResult result = await CallToolAsync(toolName, arguments, progress, options, cancellationToken).ConfigureAwait(false);
 
-        T? content = default;
-
-        if (result.IsError is not true)
+        if (result.IsError is true)
         {
-            var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
-            JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
-
-            // Prefer StructuredContent if available, otherwise fall back to text content
-            if (result.StructuredContent is { } structuredContent)
-            {
-                content = JsonSerializer.Deserialize(structuredContent, typeInfo);
-            }
-            else if (result.Content.OfType<TextContentBlock>().FirstOrDefault() is { } textContent)
-            {
-                content = JsonSerializer.Deserialize(textContent.Text, typeInfo);
-            }
+            string errorMessage = result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "Tool call failed.";
+            throw new McpException(errorMessage);
         }
 
-        return new()
+        var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
+        JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)serializerOptions.GetTypeInfo(typeof(T));
+
+        // Prefer StructuredContent if available, otherwise fall back to text content
+        if (result.StructuredContent is { } structuredContent)
         {
-            Content = content,
-            IsError = result.IsError,
-            Meta = result.Meta,
-        };
+            return JsonSerializer.Deserialize(structuredContent, typeInfo);
+        }
+
+        if (result.Content.OfType<TextContentBlock>().FirstOrDefault() is { } textContent)
+        {
+            return JsonSerializer.Deserialize(textContent.Text, typeInfo);
+        }
+
+        return default;
     }
 
     /// <summary>

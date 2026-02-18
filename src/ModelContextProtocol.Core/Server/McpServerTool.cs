@@ -126,7 +126,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///     The <c>T</c> content is serialized to JSON and used as both a <see cref="TextContentBlock"/>
 ///     and as the <see cref="CallToolResult.StructuredContent"/>. The <see cref="CallToolResult{T}.IsError"/>
-///     and <see cref="CallToolResult{T}.Meta"/> properties are propagated to the resulting <see cref="CallToolResult"/>.
+///     and <see cref="Result.Meta"/> properties are propagated to the resulting <see cref="CallToolResult"/>.
 ///     The <c>T</c> type argument is also used to infer the <see cref="Tool.OutputSchema"/>.
 ///     </description>
 ///   </item>

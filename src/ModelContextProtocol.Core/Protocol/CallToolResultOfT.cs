@@ -23,7 +23,7 @@ namespace ModelContextProtocol.Protocol;
 /// the SDK to handle serialization of a strongly-typed result.
 /// </para>
 /// </remarks>
-public sealed class CallToolResult<T> : ICallToolResultTyped
+public sealed class CallToolResult<T> : Result, ICallToolResultTyped
 {
     /// <summary>
     /// Gets or sets the typed content returned by the tool.
@@ -48,14 +48,6 @@ public sealed class CallToolResult<T> : ICallToolResultTyped
     /// </para>
     /// </remarks>
     public bool? IsError { get; set; }
-
-    /// <summary>
-    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
-    /// </summary>
-    /// <remarks>
-    /// Implementations must not make assumptions about its contents.
-    /// </remarks>
-    public JsonObject? Meta { get; set; }
 
     /// <inheritdoc/>
     CallToolResult ICallToolResultTyped.ToCallToolResult(JsonSerializerOptions serializerOptions)
