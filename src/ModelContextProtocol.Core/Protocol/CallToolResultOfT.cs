@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Protocol;
@@ -22,7 +23,7 @@ namespace ModelContextProtocol.Protocol;
 /// the SDK to handle serialization of a strongly-typed result.
 /// </para>
 /// </remarks>
-public sealed class CallToolResult<T> : ICallToolResultTypedContent
+public sealed class CallToolResult<T> : ICallToolResultTyped
 {
     /// <summary>
     /// Gets or sets the typed content returned by the tool.
@@ -57,15 +58,30 @@ public sealed class CallToolResult<T> : ICallToolResultTypedContent
     public JsonObject? Meta { get; set; }
 
     /// <inheritdoc/>
-    (object? Content, Type ContentType, bool? IsError, JsonObject? Meta) ICallToolResultTypedContent.GetContent() =>
-        (Content, typeof(T), IsError, Meta);
+    CallToolResult ICallToolResultTyped.ToCallToolResult(JsonSerializerOptions serializerOptions)
+    {
+        var typeInfo = serializerOptions.GetTypeInfo(typeof(T));
+
+        string json = JsonSerializer.Serialize(Content, typeInfo);
+        JsonNode? structuredContent = JsonSerializer.SerializeToNode(Content, typeInfo);
+
+        return new()
+        {
+            Content = [new TextContentBlock { Text = json }],
+            StructuredContent = structuredContent,
+            IsError = IsError,
+            Meta = Meta,
+        };
+    }
 }
 
 /// <summary>
-/// Internal interface for accessing the content of a <see cref="CallToolResult{T}"/> without reflection.
+/// Internal interface for converting strongly-typed tool results to <see cref="CallToolResult"/>.
 /// </summary>
-internal interface ICallToolResultTypedContent
+internal interface ICallToolResultTyped
 {
-    /// <summary>Gets the content, its type, the error flag, and metadata.</summary>
-    (object? Content, Type ContentType, bool? IsError, JsonObject? Meta) GetContent();
+    /// <summary>
+    /// Converts the strongly-typed result to a <see cref="CallToolResult"/>.
+    /// </summary>
+    CallToolResult ToCallToolResult(JsonSerializerOptions serializerOptions);
 }
