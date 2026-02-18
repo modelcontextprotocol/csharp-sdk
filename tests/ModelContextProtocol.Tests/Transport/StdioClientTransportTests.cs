@@ -11,7 +11,6 @@ namespace ModelContextProtocol.Tests.Transport;
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
-    public static bool IsWindows => PlatformDetection.IsWindows;
 
     [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
@@ -166,7 +165,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Equal(expected, json);
     }
 
-    [Fact(Skip = "Non-Windows platform", SkipUnless = nameof(IsWindows))]
+    [Fact]
     public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
     {
         Pipe serverInputPipe = new();
