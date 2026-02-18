@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Protocol;
@@ -23,7 +22,7 @@ namespace ModelContextProtocol.Protocol;
 /// the SDK to handle serialization of a strongly-typed result.
 /// </para>
 /// </remarks>
-public sealed class CallToolResult<T> : ICallToolResultTyped
+public sealed class CallToolResult<T> : ICallToolResultTypedContent
 {
     /// <summary>
     /// Gets or sets the typed content returned by the tool.
@@ -58,30 +57,15 @@ public sealed class CallToolResult<T> : ICallToolResultTyped
     public JsonObject? Meta { get; set; }
 
     /// <inheritdoc/>
-    CallToolResult ICallToolResultTyped.ToCallToolResult(JsonSerializerOptions serializerOptions)
-    {
-        var typeInfo = serializerOptions.GetTypeInfo(typeof(T));
-
-        string json = JsonSerializer.Serialize(Content, typeInfo);
-        JsonNode? structuredContent = JsonSerializer.SerializeToNode(Content, typeInfo);
-
-        return new()
-        {
-            Content = [new TextContentBlock { Text = json }],
-            StructuredContent = structuredContent,
-            IsError = IsError,
-            Meta = Meta,
-        };
-    }
+    (object? Content, Type ContentType, bool? IsError, JsonObject? Meta) ICallToolResultTypedContent.GetContent() =>
+        (Content, typeof(T), IsError, Meta);
 }
 
 /// <summary>
-/// Internal interface for converting strongly-typed tool results to <see cref="CallToolResult"/>.
+/// Internal interface for accessing the content of a <see cref="CallToolResult{T}"/> without reflection.
 /// </summary>
-internal interface ICallToolResultTyped
+internal interface ICallToolResultTypedContent
 {
-    /// <summary>
-    /// Converts the strongly-typed result to a <see cref="CallToolResult"/>.
-    /// </summary>
-    CallToolResult ToCallToolResult(JsonSerializerOptions serializerOptions);
+    /// <summary>Gets the content, its type, the error flag, and metadata.</summary>
+    (object? Content, Type ContentType, bool? IsError, JsonObject? Meta) GetContent();
 }
