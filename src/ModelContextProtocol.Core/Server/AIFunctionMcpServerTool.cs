@@ -206,14 +206,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
 
-            if (toolAttr.OutputSchemaType is { } outputSchemaType)
-            {
-                newOptions.UseStructuredContent = true;
-                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
-                    serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-                    inferenceOptions: newOptions.SchemaCreateOptions);
-            }
-
             if (toolAttr._taskSupport is { } taskSupport)
             {
                 newOptions.Execution ??= new ToolExecution();
@@ -233,6 +225,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         if (newOptions.OutputSchema is not null)
         {
             newOptions.UseStructuredContent = true;
+        }
+
+        // If the method returns CallToolResult<T>, automatically use T for the output schema
+        if (GetCallToolResultContentType(method) is { } contentType)
+        {
+            newOptions.UseStructuredContent = true;
+            newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(contentType,
+                serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+                inferenceOptions: newOptions.SchemaCreateOptions);
         }
 
         return newOptions;
@@ -319,6 +320,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             CallToolResult callToolResponse => callToolResponse,
 
+            ICallToolResultTyped typedResult => typedResult.ToCallToolResult(AIFunction.JsonSerializerOptions),
+
             _ => new()
             {
                 Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
@@ -373,6 +376,33 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// If the method's return type is <see cref="CallToolResult{T}"/> (possibly wrapped in <see cref="Task{TResult}"/>
+    /// or <see cref="ValueTask{TResult}"/>), returns the <c>T</c> type argument. Otherwise, returns <see langword="null"/>.
+    /// </summary>
+    private static Type? GetCallToolResultContentType(MethodInfo method)
+    {
+        Type t = method.ReturnType;
+
+        // Unwrap Task<T> or ValueTask<T>
+        if (t.IsGenericType)
+        {
+            Type genericDef = t.GetGenericTypeDefinition();
+            if (genericDef == typeof(Task<>) || genericDef == typeof(ValueTask<>))
+            {
+                t = t.GetGenericArguments()[0];
+            }
+        }
+
+        // Check if the unwrapped type is CallToolResult<T>
+        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(CallToolResult<>))
+        {
+            return t.GetGenericArguments()[0];
+        }
+
+        return null;
     }
 
     /// <summary>Creates metadata from attributes on the specified method and its declaring class, with the MethodInfo as the first item.</summary>
