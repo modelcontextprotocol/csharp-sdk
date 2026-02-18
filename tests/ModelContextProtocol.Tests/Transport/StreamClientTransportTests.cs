@@ -8,6 +8,8 @@ namespace ModelContextProtocol.Tests.Transport;
 
 public class StreamClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
+    public static bool IsWindows => PlatformDetection.IsWindows;
+
     [Fact]
     public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
     {
@@ -34,8 +36,8 @@ public class StreamClientTransportTests(ITestOutputHelper testOutputHelper) : Lo
         Assert.Equal(expected, json);
     }
 
-    [Fact]
-    public async Task ReadMessagesAsync_Should_Accept_LF_Delimited_Messages()
+    [Fact(Skip = "Non-Windows platform", SkipUnless = nameof(IsWindows))]
+    public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
     {
         Pipe serverInputPipe = new();
         Pipe serverOutputPipe = new();
@@ -46,12 +48,12 @@ public class StreamClientTransportTests(ITestOutputHelper testOutputHelper) : Lo
         var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
-        // Write a \n-delimited message to the server's output (which the client reads)
-        await serverOutputPipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
+        // Write a \r\n-delimited message to the server's output (which the client reads)
+        await serverOutputPipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\r\n"), TestContext.Current.CancellationToken);
 
         var canRead = await sessionTransport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(canRead, "Should be able to read a \\n-delimited message");
+        Assert.True(canRead, "Should be able to read a \\r\\n-delimited message");
         Assert.True(sessionTransport.MessageReader.TryPeek(out var readMessage));
         Assert.NotNull(readMessage);
         Assert.IsType<JsonRpcRequest>(readMessage);

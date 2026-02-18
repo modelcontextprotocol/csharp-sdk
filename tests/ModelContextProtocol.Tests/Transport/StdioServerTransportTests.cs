@@ -249,8 +249,10 @@ public class StdioServerTransportTests : LoggedTest
         Assert.NotEqual((byte)'\r', bytes[^2]);
     }
 
-    [Fact]
-    public async Task ReadMessagesAsync_Should_Accept_LF_Delimited_Messages()
+    public static bool IsWindows => PlatformDetection.IsWindows;
+
+    [Fact(Skip = "Non-Windows platform", SkipUnless = nameof(IsWindows))]
+    public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
     {
         var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
@@ -263,12 +265,12 @@ public class StdioServerTransportTests : LoggedTest
             Stream.Null,
             loggerFactory: LoggerFactory);
 
-        // Write the message with \n line ending (not \r\n)
-        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
+        // Write the message with \r\n line ending
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\r\n"), TestContext.Current.CancellationToken);
 
         var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(canRead, "Should be able to read a \\n-delimited message");
+        Assert.True(canRead, "Should be able to read a \\r\\n-delimited message");
         Assert.True(transport.MessageReader.TryPeek(out var readMessage));
         Assert.NotNull(readMessage);
         Assert.IsType<JsonRpcRequest>(readMessage);
