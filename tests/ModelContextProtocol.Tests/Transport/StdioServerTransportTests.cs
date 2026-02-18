@@ -24,7 +24,7 @@ public class StdioServerTransportTests : LoggedTest
         };
     }
 
-    [Fact(Skip="https://github.com/modelcontextprotocol/csharp-sdk/issues/143")]
+    [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
         // Act

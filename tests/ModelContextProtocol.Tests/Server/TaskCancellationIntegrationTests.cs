@@ -460,7 +460,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
 
-        // Act - Try to cancel a completed task
+        // Act - Try to cancel a completed task (should be idempotent)
         var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Status should still be completed (not cancelled)
@@ -500,7 +500,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Failed, taskStatus.Status);
 
-        // Act - Try to cancel a failed task
+        // Act - Try to cancel a failed task (should be idempotent)
         var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Status should still be failed

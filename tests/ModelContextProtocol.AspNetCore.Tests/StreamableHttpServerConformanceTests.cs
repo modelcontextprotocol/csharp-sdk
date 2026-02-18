@@ -93,6 +93,17 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task SseResponse_Includes_XAccelBufferingHeader()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("no", Assert.Single(response.Headers.GetValues("X-Accel-Buffering")));
+    }
+
+    [Fact]
     public async Task PostRequest_IsUnsupportedMediaType_WithoutJsonContentType()
     {
         await StartAsync();
@@ -249,7 +260,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await Task.WhenAll(echoTasks);
     }
 
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/1211")]
+    [Fact]
     public async Task GetRequest_Receives_UnsolicitedNotifications()
     {
         McpServer? server = null;

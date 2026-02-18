@@ -424,8 +424,8 @@ Task operations may throw <xref:ModelContextProtocol.McpException> with these er
 
 | Error Code | Scenario |
 |------------|----------|
-| `InvalidParams` | Invalid or nonexistent task ID |
-| `InvalidRequest` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
+| `InvalidParams` | Invalid or nonexistent task ID or invalid cursor |
+| `InvalidParams` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
 | `InternalError` | Task execution failure or result unavailable |
 
 Example error handling:
