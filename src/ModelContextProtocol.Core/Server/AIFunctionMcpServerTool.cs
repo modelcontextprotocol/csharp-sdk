@@ -319,7 +319,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             CallToolResult callToolResponse => callToolResponse,
 
-            _ when ConvertCallToolResultOfT(result, AIFunction.JsonSerializerOptions) is { } converted => converted,
+            _ when result is ICallToolResultTyped typed => typed.ToCallToolResult(AIFunction.JsonSerializerOptions),
 
             _ => new()
             {
@@ -624,35 +624,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Content = contentList,
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
-        };
-    }
-
-    /// <summary>
-    /// If <paramref name="result"/> is a <see cref="CallToolResult{T}"/>, converts it to a <see cref="CallToolResult"/>.
-    /// </summary>
-    private static CallToolResult? ConvertCallToolResultOfT(object result, JsonSerializerOptions serializerOptions)
-    {
-        Type type = result.GetType();
-        if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(CallToolResult<>))
-        {
-            return null;
-        }
-
-        // Use the internal accessor to get the untyped content, IsError, and Meta
-        // without reflection, avoiding trimming warnings.
-        var (content, contentType, isError, meta) = ((ICallToolResultTypedContent)result).GetContent();
-
-        var typeInfo = serializerOptions.GetTypeInfo(contentType);
-
-        string json = JsonSerializer.Serialize(content, typeInfo);
-        JsonNode? structuredContent = JsonSerializer.SerializeToNode(content, typeInfo);
-
-        return new()
-        {
-            Content = [new TextContentBlock { Text = json }],
-            StructuredContent = structuredContent,
-            IsError = isError,
-            Meta = meta,
         };
     }
 }
