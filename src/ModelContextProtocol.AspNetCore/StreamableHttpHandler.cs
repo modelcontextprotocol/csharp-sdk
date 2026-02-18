@@ -236,7 +236,7 @@ internal sealed class StreamableHttpHandler(
                 return session;
             }
 
-            var initParams = await handler.AllowSessionMigrationAsync(sessionId, context.User, context.RequestAborted);
+            var initParams = await handler.AllowSessionMigrationAsync(context, sessionId, context.RequestAborted);
             if (initParams is null)
             {
                 return null;
@@ -301,7 +301,9 @@ internal sealed class StreamableHttpHandler(
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
                 EventStreamStore = HttpServerTransportOptions.EventStreamStore,
-                SessionMigrationHandler = sessionMigrationHandler,
+                OnSessionInitialized = sessionMigrationHandler is { } handler
+                    ? (initParams, ct) => handler.OnSessionInitializedAsync(context, sessionId, initParams, ct)
+                    : null,
             };
 
             context.Response.Headers[McpSessionIdHeaderName] = sessionId;
@@ -373,7 +375,7 @@ internal sealed class StreamableHttpHandler(
         };
 
         // Initialize the transport with the migrated session's init params.
-        await transport.HandleInitRequestAsync(initializeParams, context.User);
+        await transport.HandleInitRequestAsync(initializeParams);
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;
 

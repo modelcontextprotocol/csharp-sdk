@@ -1,7 +1,7 @@
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Protocol;
-using System.Security.Claims;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Provides hooks for persisting and restoring MCP session initialization data,
@@ -31,12 +31,12 @@ public interface ISessionMigrationHandler
     /// client info, and protocol version) to an external store so the session can be migrated to
     /// another server instance later via <see cref="AllowSessionMigrationAsync"/>.
     /// </remarks>
+    /// <param name="context">The <see cref="HttpContext"/> for the initialization request.</param>
     /// <param name="sessionId">The unique identifier for the session.</param>
-    /// <param name="user">The authenticated user associated with the session, if any. Implementations should validate this value.</param>
     /// <param name="initializeParams">The initialization parameters sent by the client during the handshake.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
-    ValueTask OnSessionInitializedAsync(string sessionId, ClaimsPrincipal user, InitializeRequestParams initializeParams, CancellationToken cancellationToken);
+    ValueTask OnSessionInitializedAsync(HttpContext context, string sessionId, InitializeRequestParams initializeParams, CancellationToken cancellationToken);
 
     /// <summary>
     /// Called when a request arrives with an <c>Mcp-Session-Id</c> that the current server doesn't recognize.
@@ -47,16 +47,16 @@ public interface ISessionMigrationHandler
     /// to this server instance, or <see langword="null"/> to reject the request (returning a 404 to the client).
     /// </para>
     /// <para>
-    /// Implementations should validate the <paramref name="user"/> to ensure the authenticated user
-    /// matches the user who originally created the session.
+    /// Implementations should validate that the request is authorized, for example by checking
+    /// <see cref="HttpContext.User"/>, to ensure the caller is permitted to migrate the session.
     /// </para>
     /// </remarks>
+    /// <param name="context">The <see cref="HttpContext"/> for the request with the unrecognized session ID.</param>
     /// <param name="sessionId">The session ID from the request that was not found on this server.</param>
-    /// <param name="user">The authenticated user making the request. Implementations should validate this value.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>
     /// The original <see cref="InitializeRequestParams"/> if migration is allowed,
     /// or <see langword="null"/> to reject the request.
     /// </returns>
-    ValueTask<InitializeRequestParams?> AllowSessionMigrationAsync(string sessionId, ClaimsPrincipal user, CancellationToken cancellationToken);
+    ValueTask<InitializeRequestParams?> AllowSessionMigrationAsync(HttpContext context, string sessionId, CancellationToken cancellationToken);
 }

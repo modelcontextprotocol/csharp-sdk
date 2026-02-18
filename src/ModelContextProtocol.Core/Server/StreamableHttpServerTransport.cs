@@ -4,7 +4,6 @@ using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.ServerSentEvents;
-using System.Security.Claims;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
@@ -83,10 +82,13 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     public ISseEventStreamStore? EventStreamStore { get; init; }
 
     /// <summary>
-    /// Gets or sets an optional handler for session migration across server instances.
-    /// When set, the handler is notified after initialization completes so that session data can be persisted.
+    /// Gets or sets an optional callback invoked after the initialization handshake completes.
     /// </summary>
-    public ISessionMigrationHandler? SessionMigrationHandler { get; init; }
+    /// <remarks>
+    /// When set, this callback is invoked with the <see cref="InitializeRequestParams"/> after a successful
+    /// initialization handshake. This can be used to persist session data for cross-instance migration.
+    /// </remarks>
+    public Func<InitializeRequestParams, CancellationToken, ValueTask>? OnSessionInitialized { get; init; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
@@ -94,8 +96,8 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
 
     /// <summary>
-    /// Handles initialization by capturing the negotiated protocol version and optionally notifying the
-    /// <see cref="SessionMigrationHandler"/> so it can persist the session state.
+    /// Handles initialization by capturing the negotiated protocol version and optionally invoking
+    /// <see cref="OnSessionInitialized"/> so session data can be persisted.
     /// </summary>
     /// <remarks>
     /// This is called automatically when an <c>initialize</c> request is processed via
@@ -103,15 +105,13 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// directly when restoring a migrated session with known <see cref="InitializeRequestParams"/>.
     /// </remarks>
     /// <param name="initParams">The initialization parameters from the client, or <see langword="null"/> if unavailable.</param>
-    /// <param name="user">The authenticated user associated with the session, if any.</param>
-    public async ValueTask HandleInitRequestAsync(InitializeRequestParams? initParams, ClaimsPrincipal? user)
+    public async ValueTask HandleInitRequestAsync(InitializeRequestParams? initParams)
     {
-        // Capture the negotiated protocol version for resumability checks
         _negotiatedProtocolVersion = initParams?.ProtocolVersion;
 
-        if (initParams is not null && SessionMigrationHandler is { } handler && SessionId is { } sessionId)
+        if (initParams is not null && OnSessionInitialized is { } callback)
         {
-            await handler.OnSessionInitializedAsync(sessionId, user ?? new ClaimsPrincipal(), initParams, _transportDisposedCts.Token).ConfigureAwait(false);
+            await callback(initParams, _transportDisposedCts.Token).ConfigureAwait(false);
         }
     }
 
@@ -180,7 +180,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
+    /// If an authenticated user sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
     /// </remarks>
     public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)

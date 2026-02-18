@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
 using System.Net.ServerSentEvents;
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -39,7 +39,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
 
         var handler = new TestMigrationHandler
         {
-            OnInitialized = (sessionId, user, initParams, ct) =>
+            OnInitialized = (context, sessionId, initParams, ct) =>
             {
                 capturedSessionId = sessionId;
                 capturedParams = initParams;
@@ -66,7 +66,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var handler = new TestMigrationHandler
         {
             OnInitialized = (_, _, _, _) => default,
-            OnMigration = (sessionId, user, ct) =>
+            OnMigration = (context, sessionId, ct) =>
             {
                 requestedSessionId = sessionId;
                 return new ValueTask<InitializeRequestParams?>(new InitializeRequestParams
@@ -99,7 +99,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var handler = new TestMigrationHandler
         {
             OnInitialized = (_, _, _, _) => default,
-            OnMigration = (sessionId, user, ct) =>
+            OnMigration = (context, sessionId, ct) =>
             {
                 return new ValueTask<InitializeRequestParams?>(new InitializeRequestParams
                 {
@@ -130,7 +130,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var handler = new TestMigrationHandler
         {
             OnInitialized = (_, _, _, _) => default,
-            OnMigration = (sessionId, user, ct) =>
+            OnMigration = (context, sessionId, ct) =>
             {
                 Interlocked.Increment(ref migrationCount);
                 return new ValueTask<InitializeRequestParams?>(new InitializeRequestParams
@@ -161,7 +161,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var handler = new TestMigrationHandler
         {
             OnInitialized = (_, _, _, _) => default,
-            OnMigration = (sessionId, user, ct) =>
+            OnMigration = (context, sessionId, ct) =>
                 new ValueTask<InitializeRequestParams?>((InitializeRequestParams?)null),
         };
 
@@ -191,7 +191,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var handler = new TestMigrationHandler
         {
             OnInitialized = (_, _, _, _) => default,
-            OnMigration = (sessionId, user, ct) =>
+            OnMigration = (context, sessionId, ct) =>
             {
                 return new ValueTask<InitializeRequestParams?>(new InitializeRequestParams
                 {
@@ -329,13 +329,13 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
 
     private sealed class TestMigrationHandler : ISessionMigrationHandler
     {
-        public Func<string, ClaimsPrincipal, InitializeRequestParams, CancellationToken, ValueTask>? OnInitialized { get; set; }
-        public Func<string, ClaimsPrincipal, CancellationToken, ValueTask<InitializeRequestParams?>>? OnMigration { get; set; }
+        public Func<HttpContext, string, InitializeRequestParams, CancellationToken, ValueTask>? OnInitialized { get; set; }
+        public Func<HttpContext, string, CancellationToken, ValueTask<InitializeRequestParams?>>? OnMigration { get; set; }
 
-        public ValueTask OnSessionInitializedAsync(string sessionId, ClaimsPrincipal user, InitializeRequestParams initializeParams, CancellationToken cancellationToken)
-            => OnInitialized?.Invoke(sessionId, user, initializeParams, cancellationToken) ?? default;
+        public ValueTask OnSessionInitializedAsync(HttpContext context, string sessionId, InitializeRequestParams initializeParams, CancellationToken cancellationToken)
+            => OnInitialized?.Invoke(context, sessionId, initializeParams, cancellationToken) ?? default;
 
-        public ValueTask<InitializeRequestParams?> AllowSessionMigrationAsync(string sessionId, ClaimsPrincipal user, CancellationToken cancellationToken)
-            => OnMigration?.Invoke(sessionId, user, cancellationToken) ?? new ValueTask<InitializeRequestParams?>((InitializeRequestParams?)null);
+        public ValueTask<InitializeRequestParams?> AllowSessionMigrationAsync(HttpContext context, string sessionId, CancellationToken cancellationToken)
+            => OnMigration?.Invoke(context, sessionId, cancellationToken) ?? new ValueTask<InitializeRequestParams?>((InitializeRequestParams?)null);
     }
 }
