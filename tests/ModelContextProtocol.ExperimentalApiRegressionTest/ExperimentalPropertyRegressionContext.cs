@@ -1,14 +1,11 @@
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 
-namespace ModelContextProtocol.SuppressorRegressionTest;
+namespace ModelContextProtocol.ExperimentalApiRegressionTest;
 
 /// <summary>
-/// This file validates that the MCPEXP001 diagnostic suppressor works correctly.
-/// By including MCP protocol types that have experimental properties in a
-/// <see cref="JsonSerializerContext"/>, we verify that the source generator does
-/// not produce unsuppressed MCPEXP001 diagnostics. If the suppressor is removed
-/// or broken, this project will fail to build.
+/// This file validates that the System.Text.Json source generator does not produce
+/// MCPEXP001 diagnostics for MCP protocol types with experimental properties.
 /// </summary>
 [JsonSerializable(typeof(Tool))]
 [JsonSerializable(typeof(ServerCapabilities))]

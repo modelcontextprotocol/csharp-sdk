@@ -7,11 +7,10 @@
     <IsPackable>false</IsPackable>
 
     <!--
-      This project validates the MCPEXP001 diagnostic suppressor.
+      This project validates that MCPEXP001 diagnostics are NOT emitted by the
+      System.Text.Json source generator for types with experimental properties.
       tests/Directory.Build.props suppresses MCPEXP001 globally for all test projects,
       but this project must NOT suppress it: its successful compilation IS the test.
-      If the suppressor breaks, this project will fail to build with MCPEXP001 errors
-      from the source-generated code that references experimental types.
     -->
     <NoWarn>$(NoWarn.Replace('MCPEXP001',''))</NoWarn>
 
@@ -25,9 +24,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
-    <ProjectReference Include="..\..\src\ModelContextProtocol.Analyzers\ModelContextProtocol.Analyzers.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>
