@@ -254,7 +254,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             {
                 // Create a custom HttpClient with a very short timeout (1 second)
                 // The tool will take 2 seconds to complete
-                using var shortTimeoutClient = new HttpClient(SocketsHttpHandler)
+                using var shortTimeoutClient = new HttpClient(SocketsHttpHandler, disposeHandler: false)
                 {
                     BaseAddress = new Uri("http://localhost:5000/"),
                     Timeout = TimeSpan.FromSeconds(1)
@@ -282,9 +282,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                 Assert.Equal("Operation completed after 2000ms", content.Text);
                 return;
             }
-            catch (TaskCanceledException ex) when (
-                attempt < 2 &&
-                ex.ToString().Contains("HttpClient.Timeout", StringComparison.Ordinal))
+            catch (OperationCanceledException) when (attempt < 2)
             {
                 // Retry intermittent timeout-related failures on slow CI machines.
             }
