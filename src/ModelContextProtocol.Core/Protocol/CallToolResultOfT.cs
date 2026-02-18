@@ -60,14 +60,11 @@ public sealed class CallToolResult<T> : ICallToolResultTyped
     /// <inheritdoc/>
     CallToolResult ICallToolResultTyped.ToCallToolResult(JsonSerializerOptions serializerOptions)
     {
-        var typeInfo = serializerOptions.GetTypeInfo(typeof(T));
-
-        string json = JsonSerializer.Serialize(Content, typeInfo);
-        JsonNode? structuredContent = JsonSerializer.SerializeToNode(Content, typeInfo);
+        JsonNode? structuredContent = JsonSerializer.SerializeToNode(Content, serializerOptions.GetTypeInfo(typeof(T)));
 
         return new()
         {
-            Content = [new TextContentBlock { Text = json }],
+            Content = [new TextContentBlock { Text = structuredContent?.ToJsonString(serializerOptions) ?? "null" }],
             StructuredContent = structuredContent,
             IsError = IsError,
             Meta = Meta,

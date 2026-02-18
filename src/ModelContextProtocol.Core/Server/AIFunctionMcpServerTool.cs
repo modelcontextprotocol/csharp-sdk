@@ -210,10 +210,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Execution.TaskSupport ??= taskSupport;
             }
 
-            // When the attribute enables structured content, generate the output schema from the return type
+            // When the attribute enables structured content, generate the output schema from the return type.
+            // If the return type is CallToolResult<T>, use T rather than the full return type.
             if (toolAttr.UseStructuredContent)
             {
-                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(method.ReturnType,
+                Type outputType = GetCallToolResultContentType(method.ReturnType) ?? method.ReturnType;
+                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputType,
                     serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
                     inferenceOptions: newOptions.SchemaCreateOptions);
             }
@@ -228,7 +230,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         newOptions.Metadata ??= CreateMetadata(method);
 
         // If the method returns CallToolResult<T>, automatically use T for the output schema
-        if (GetCallToolResultContentType(method) is { } contentType)
+        if (GetCallToolResultContentType(method.ReturnType) is { } contentType)
         {
             newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(contentType,
                 serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
@@ -319,7 +321,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             CallToolResult callToolResponse => callToolResponse,
 
-            _ when result is ICallToolResultTyped typed => typed.ToCallToolResult(AIFunction.JsonSerializerOptions),
+            ICallToolResultTyped typed => typed.ToCallToolResult(AIFunction.JsonSerializerOptions),
 
             _ => new()
             {
@@ -378,27 +380,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>
-    /// If the method's return type is <see cref="CallToolResult{T}"/> (possibly wrapped in <see cref="Task{TResult}"/>
+    /// If the specified type is <see cref="CallToolResult{T}"/> (possibly wrapped in <see cref="Task{TResult}"/>
     /// or <see cref="ValueTask{TResult}"/>), returns the <c>T</c> type argument. Otherwise, returns <see langword="null"/>.
     /// </summary>
-    private static Type? GetCallToolResultContentType(MethodInfo method)
+    private static Type? GetCallToolResultContentType(Type returnType)
     {
-        Type t = method.ReturnType;
-
-        // Unwrap Task<T> or ValueTask<T>
-        if (t.IsGenericType)
+        if (returnType.IsGenericType)
         {
-            Type genericDef = t.GetGenericTypeDefinition();
+            Type genericDef = returnType.GetGenericTypeDefinition();
             if (genericDef == typeof(Task<>) || genericDef == typeof(ValueTask<>))
             {
-                t = t.GetGenericArguments()[0];
+                returnType = returnType.GetGenericArguments()[0];
             }
         }
 
-        // Check if the unwrapped type is CallToolResult<T>
-        if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(CallToolResult<>))
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(CallToolResult<>))
         {
-            return t.GetGenericArguments()[0];
+            return returnType.GetGenericArguments()[0];
         }
 
         return null;
@@ -531,49 +529,41 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        return EnsureObjectSchema(outputSchema, ref structuredOutputRequiresWrapping);
-    }
-
-    /// <summary>
-    /// Ensures the schema is a valid MCP output schema (type "object"). Wraps non-object schemas in an envelope.
-    /// </summary>
-    private static JsonElement EnsureObjectSchema(JsonElement outputSchema, ref bool structuredOutputRequiresWrapping)
-    {
-        if (outputSchema.ValueKind is JsonValueKind.Object &&
-            outputSchema.TryGetProperty("type", out JsonElement typeProperty) &&
-            typeProperty.ValueKind is JsonValueKind.String &&
-            typeProperty.GetString() is "object")
+        if (outputSchema.ValueKind is not JsonValueKind.Object ||
+            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+            typeProperty.ValueKind is not JsonValueKind.String ||
+            typeProperty.GetString() is not "object")
         {
-            return outputSchema;
-        }
+            // If the output schema is not an object, need to modify to be a valid MCP output schema.
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
 
-        // If the output schema is not an object, need to modify to be a valid MCP output schema.
-        JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-
-        if (schemaNode is JsonObject objSchema &&
-            objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-            typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
-        {
-            // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
-            objSchema["type"] = "object";
-        }
-        else
-        {
-            // For anything else, wrap the schema in an envelope with a "result" property.
-            schemaNode = new JsonObject
+            if (schemaNode is JsonObject objSchema &&
+                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
+                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
             {
-                ["type"] = "object",
-                ["properties"] = new JsonObject
+                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
+                objSchema["type"] = "object";
+            }
+            else
+            {
+                // For anything else, wrap the schema in an envelope with a "result" property.
+                schemaNode = new JsonObject
                 {
-                    ["result"] = schemaNode
-                },
-                ["required"] = new JsonArray { (JsonNode)"result" }
-            };
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["result"] = schemaNode
+                    },
+                    ["required"] = new JsonArray { (JsonNode)"result" }
+                };
 
-            structuredOutputRequiresWrapping = true;
+                structuredOutputRequiresWrapping = true;
+            }
+
+            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
         }
 
-        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+        return outputSchema;
     }
 
     private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
