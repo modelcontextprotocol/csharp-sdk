@@ -174,6 +174,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         McpServerToolCreateOptions newOptions = options?.Clone() ?? new();
 
+        bool useStructuredContent = false;
         if (method.GetCustomAttribute<McpServerToolAttribute>() is { } toolAttr)
         {
             newOptions.Name ??= toolAttr.Name;
@@ -210,15 +211,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Execution.TaskSupport ??= taskSupport;
             }
 
-            // When the attribute enables structured content, generate the output schema from the return type.
-            // If the return type is CallToolResult<T>, use T rather than the full return type.
-            if (toolAttr.UseStructuredContent)
-            {
-                Type outputType = GetCallToolResultContentType(method.ReturnType) ?? method.ReturnType;
-                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputType,
-                    serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-                    inferenceOptions: newOptions.SchemaCreateOptions);
-            }
+            useStructuredContent = toolAttr.UseStructuredContent;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -229,10 +222,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Set metadata if not already provided
         newOptions.Metadata ??= CreateMetadata(method);
 
-        // If the method returns CallToolResult<T>, automatically use T for the output schema
-        if (GetCallToolResultContentType(method.ReturnType) is { } contentType)
+        // Generate the output schema from the return type if needed.
+        // UseStructuredContent on the attribute uses T from CallToolResult<T> or the return type directly.
+        // CallToolResult<T> return types automatically infer the schema from T even without UseStructuredContent.
+        Type? outputSchemaType = GetCallToolResultContentType(method.ReturnType);
+        if (outputSchemaType is null && useStructuredContent)
         {
-            newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(contentType,
+            outputSchemaType = method.ReturnType;
+        }
+
+        if (outputSchemaType is not null)
+        {
+            newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
                 serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
                 inferenceOptions: newOptions.SchemaCreateOptions);
         }
