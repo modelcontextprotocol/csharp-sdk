@@ -204,12 +204,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Icons = [new() { Source = iconSource }];
             }
 
-            newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
-
             if (toolAttr._taskSupport is { } taskSupport)
             {
                 newOptions.Execution ??= new ToolExecution();
                 newOptions.Execution.TaskSupport ??= taskSupport;
+            }
+
+            // When the attribute enables structured content, generate the output schema from the return type
+            if (toolAttr.UseStructuredContent)
+            {
+                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(method.ReturnType,
+                    serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+                    inferenceOptions: newOptions.SchemaCreateOptions);
             }
         }
 
@@ -221,16 +227,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Set metadata if not already provided
         newOptions.Metadata ??= CreateMetadata(method);
 
-        // Force UseStructuredContent when OutputSchema is explicitly provided
-        if (newOptions.OutputSchema is not null)
-        {
-            newOptions.UseStructuredContent = true;
-        }
-
         // If the method returns CallToolResult<T>, automatically use T for the output schema
         if (GetCallToolResultContentType(method) is { } contentType)
         {
-            newOptions.UseStructuredContent = true;
             newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(contentType,
                 serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
                 inferenceOptions: newOptions.SchemaCreateOptions);
@@ -476,16 +475,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// Gets the tool description, synthesizing from both the function description and return description when appropriate.
     /// </summary>
     /// <remarks>
-    /// When UseStructuredContent is true, the return description is included in the output schema.
-    /// When UseStructuredContent is false (default), if there's a return description in the ReturnJsonSchema,
+    /// When an output schema is present, the return description is included in the output schema.
+    /// When no output schema is present (default), if there's a return description in the ReturnJsonSchema,
     /// it will be appended to the tool description so the information is still available to consumers.
     /// </remarks>
     private static string? GetToolDescription(AIFunction function, McpServerToolCreateOptions? options)
     {
         string? description = options?.Description ?? function.Description;
 
-        // If structured content is enabled, the return description will be in the output schema
-        if (options?.UseStructuredContent is true)
+        // If structured content is enabled (output schema present), the return description will be in the output schema
+        if (options?.OutputSchema is not null)
         {
             return description;
         }
@@ -527,24 +526,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         structuredOutputRequiresWrapping = false;
 
-        // Determine the raw output schema to use.
-        JsonElement? rawSchema = null;
-
-        if (toolCreateOptions?.OutputSchema is JsonElement explicitSchema)
-        {
-            Debug.Assert(toolCreateOptions.UseStructuredContent, "UseStructuredContent should be true when OutputSchema is set.");
-            rawSchema = explicitSchema;
-        }
-        else if (toolCreateOptions?.UseStructuredContent is not true)
-        {
-            return null;
-        }
-        else
-        {
-            rawSchema = function.ReturnJsonSchema;
-        }
-
-        if (rawSchema is not JsonElement outputSchema)
+        if (toolCreateOptions?.OutputSchema is not JsonElement outputSchema)
         {
             return null;
         }
