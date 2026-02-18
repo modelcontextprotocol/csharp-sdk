@@ -41,13 +41,13 @@ public class CallToolResultOfTTests : ClientServerTestBase
             options: new() { JsonSerializerOptions = serOpts },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("Alice", result.Name);
-        Assert.Equal(30, result.Age);
+        Assert.NotNull(result.Content);
+        Assert.Equal("Alice", result.Content.Name);
+        Assert.Equal(30, result.Content.Age);
     }
 
     [Fact]
-    public async Task CallToolAsyncOfT_ThrowsOnIsError()
+    public async Task CallToolAsyncOfT_PropagatesIsError()
     {
         JsonSerializerOptions serOpts = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         _toolCollection.Add(McpServerTool.Create(
@@ -57,13 +57,12 @@ public class CallToolResultOfTTests : ClientServerTestBase
         StartServer();
         var client = await CreateMcpClientForServer();
 
-        var ex = await Assert.ThrowsAsync<McpException>(
-            () => client.CallToolAsync<string>(
-                "error_tool",
-                options: new() { JsonSerializerOptions = serOpts },
-                cancellationToken: TestContext.Current.CancellationToken).AsTask());
+        var result = await client.CallToolAsync<string>(
+            "error_tool",
+            options: new() { JsonSerializerOptions = serOpts },
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains("something went wrong", ex.Message);
+        Assert.True(result.IsError);
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public class CallToolResultOfTTests : ClientServerTestBase
             options: new() { JsonSerializerOptions = serOpts },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("Bob", result.Name);
-        Assert.Equal(25, result.Age);
+        Assert.NotNull(result.Content);
+        Assert.Equal("Bob", result.Content.Name);
+        Assert.Equal(25, result.Content.Age);
     }
 
     [Fact]
@@ -129,9 +128,9 @@ public class CallToolResultOfTTests : ClientServerTestBase
             options: new() { JsonSerializerOptions = serOpts },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("Charlie", result.Name);
-        Assert.Equal(35, result.Age);
+        Assert.NotNull(result.Content);
+        Assert.Equal("Charlie", result.Content.Name);
+        Assert.Equal(35, result.Content.Age);
     }
 
     [Fact]
@@ -154,9 +153,9 @@ public class CallToolResultOfTTests : ClientServerTestBase
             options: new() { JsonSerializerOptions = serOpts },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("Diana", result.Name);
-        Assert.Equal(28, result.Age);
+        Assert.NotNull(result.Content);
+        Assert.Equal("Diana", result.Content.Name);
+        Assert.Equal(28, result.Content.Age);
     }
 
     private class PersonData
