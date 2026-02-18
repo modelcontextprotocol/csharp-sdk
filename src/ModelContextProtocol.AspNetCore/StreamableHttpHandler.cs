@@ -26,6 +26,18 @@ internal sealed class StreamableHttpHandler(
     private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const string LastEventIdHeaderName = "Last-Event-ID";
 
+    /// <summary>
+    /// All protocol versions supported by this implementation.
+    /// Keep in sync with McpSessionHandler.SupportedProtocolVersions in ModelContextProtocol.Core.
+    /// </summary>
+    private static readonly HashSet<string> s_supportedProtocolVersions =
+    [
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+    ];
+
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
@@ -33,6 +45,12 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
+            return;
+        }
+
         // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
         // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
@@ -49,12 +67,6 @@ internal sealed class StreamableHttpHandler(
         var session = await GetOrCreateSessionAsync(context);
         if (session is null)
         {
-            return;
-        }
-
-        if (!ValidateProtocolVersionHeader(context, session.Server, out var errorMessage))
-        {
-            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
             return;
         }
 
@@ -81,6 +93,12 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
+            return;
+        }
+
         if (!context.Request.GetTypedHeaders().Accept.Any(MatchesTextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
@@ -93,12 +111,6 @@ internal sealed class StreamableHttpHandler(
         var session = await GetSessionAsync(context, sessionId);
         if (session is null)
         {
-            return;
-        }
-
-        if (!ValidateProtocolVersionHeader(context, session.Server, out var errorMessage))
-        {
-            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
             return;
         }
 
@@ -184,19 +196,16 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
-        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (sessionManager.TryGetValue(sessionId, out var session))
+        if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
-            if (!ValidateProtocolVersionHeader(context, session.Server, out var errorMessage))
-            {
-                await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
-                return;
-            }
+            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
+            return;
+        }
 
-            if (sessionManager.TryRemove(sessionId, out session))
-            {
-                await session.DisposeAsync();
-            }
+        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
+        if (sessionManager.TryRemove(sessionId, out var session))
+        {
+            await session.DisposeAsync();
         }
     }
 
@@ -416,11 +425,11 @@ internal sealed class StreamableHttpHandler(
     /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,
     /// but an invalid or unsupported value must be rejected with 400 Bad Request per the MCP spec.
     /// </summary>
-    private static bool ValidateProtocolVersionHeader(HttpContext context, McpServer server, out string? errorMessage)
+    private static bool ValidateProtocolVersionHeader(HttpContext context, out string? errorMessage)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
-            !server.SupportedProtocolVersions.Contains(protocolVersionHeader))
+            !s_supportedProtocolVersions.Contains(protocolVersionHeader))
         {
             errorMessage = $"Bad Request: The MCP-Protocol-Version header value '{protocolVersionHeader}' is not supported.";
             return false;
