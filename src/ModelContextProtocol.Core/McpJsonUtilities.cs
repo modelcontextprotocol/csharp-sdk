@@ -187,6 +187,11 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 
+    // Enterprise Managed Authorization (SEP-990) types
+    [JsonSerializable(typeof(JagTokenExchangeResponse))]
+    [JsonSerializable(typeof(JwtBearerAccessTokenResponse))]
+    [JsonSerializable(typeof(OAuthErrorResponse))]
+
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]
     [JsonSerializable(typeof(byte))]
