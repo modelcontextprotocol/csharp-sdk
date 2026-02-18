@@ -64,7 +64,7 @@ public sealed class CallToolResult<T> : ICallToolResultTyped
 
         return new()
         {
-            Content = [new TextContentBlock { Text = structuredContent?.ToJsonString(serializerOptions) ?? "null" }],
+            Content = [new TextContentBlock { Text = structuredContent?.ToString() ?? "null" }],
             StructuredContent = structuredContent,
             IsError = IsError,
             Meta = Meta,
