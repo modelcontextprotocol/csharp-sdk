@@ -35,4 +35,25 @@ internal static class Experimentals
     /// URL for the experimental MCP Tasks feature.
     /// </summary>
     public const string Tasks_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental MCP Extensions feature.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Tasks_DiagnosticId"/> because both
+    /// Tasks and Extensions are covered by the same MCPEXP001 diagnostic for experimental
+    /// MCP features. Having separate constants improves code clarity while maintaining a
+    /// single diagnostic suppression point.
+    /// </remarks>
+    public const string Extensions_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental MCP Extensions feature.
+    /// </summary>
+    public const string Extensions_Message = "The Extensions feature is part of a future MCP specification version that has not yet been ratified and is subject to change.";
+
+    /// <summary>
+    /// URL for the experimental MCP Extensions feature.
+    /// </summary>
+    public const string Extensions_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 }
