@@ -42,6 +42,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     private SseEventWriter? _httpSseWriter;
     private ISseEventStreamWriter? _storeSseWriter;
     private TaskCompletionSource<bool>? _httpResponseTcs;
+    private string? _negotiatedProtocolVersion;
     private bool _getHttpRequestStarted;
     private bool _getHttpResponseCompleted;
 
@@ -82,9 +83,13 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     public ISseEventStreamStore? EventStreamStore { get; init; }
 
     /// <summary>
-    /// Gets or sets the negotiated protocol version for this session.
+    /// Gets or sets an optional callback invoked after the initialization handshake completes.
     /// </summary>
-    internal string? NegotiatedProtocolVersion { get; private set; }
+    /// <remarks>
+    /// When set, this callback is invoked with the <see cref="InitializeRequestParams"/> after a successful
+    /// initialization handshake. This can be used to persist session data for cross-instance migration.
+    /// </remarks>
+    public Func<InitializeRequestParams, CancellationToken, ValueTask>? OnSessionInitialized { get; init; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
@@ -92,12 +97,23 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
 
     /// <summary>
-    /// Handles the initialize request by capturing the protocol version and invoking the user callback.
+    /// Handles initialization by capturing the negotiated protocol version and optionally invoking
+    /// <see cref="OnSessionInitialized"/> so session data can be persisted.
     /// </summary>
-    internal async ValueTask HandleInitRequestAsync(InitializeRequestParams? initParams)
+    /// <remarks>
+    /// This is called automatically when an <c>initialize</c> request is processed via
+    /// <see cref="HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>. It can also be called
+    /// directly when restoring a migrated session with known <see cref="InitializeRequestParams"/>.
+    /// </remarks>
+    /// <param name="initParams">The initialization parameters from the client, or <see langword="null"/> if unavailable.</param>
+    public async ValueTask HandleInitializeRequestAsync(InitializeRequestParams? initParams)
     {
-        // Capture the negotiated protocol version for resumability checks
-        NegotiatedProtocolVersion = initParams?.ProtocolVersion;
+        _negotiatedProtocolVersion = initParams?.ProtocolVersion;
+
+        if (initParams is not null && OnSessionInitialized is { } callback)
+        {
+            await callback(initParams, _transportDisposedCts.Token).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -266,7 +282,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
 
     internal async ValueTask<ISseEventStreamWriter?> TryCreateEventStreamAsync(string streamId, CancellationToken cancellationToken)
     {
-        if (EventStreamStore is null || !McpSessionHandler.SupportsPrimingEvent(NegotiatedProtocolVersion))
+        if (EventStreamStore is null || !McpSessionHandler.SupportsPrimingEvent(_negotiatedProtocolVersion))
         {
             return null;
         }

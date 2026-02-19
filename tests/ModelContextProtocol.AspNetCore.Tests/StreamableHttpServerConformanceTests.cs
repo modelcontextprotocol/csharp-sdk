@@ -235,6 +235,15 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task PostWithoutSessionId_NonInitializeRequest_Returns400()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent(ListToolsRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task InitializeRequest_Matches_CustomRoute()
     {
         Builder.Services.AddMcpServer().WithHttpTransport();
@@ -726,6 +735,10 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
     private static string InitializeRequest => """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        """;
+
+    private static string ListToolsRequest => """
+        {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
         """;
 
     private long _lastRequestId = 1;

@@ -75,6 +75,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         _clientInfo = options.KnownClientInfo;
+        _clientCapabilities = options.KnownClientCapabilities;
         UpdateEndpointNameWithClientInfo();
 
         _notificationHandlers = new();
