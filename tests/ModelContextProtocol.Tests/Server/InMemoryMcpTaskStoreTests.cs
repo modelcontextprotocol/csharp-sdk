@@ -491,7 +491,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         store.Dispose();
 
         // Advance time - timer should not fire after dispose
-        fakeTime.Advance(cleanupInterval * 3);
+        fakeTime.Advance(TimeSpan.FromTicks(cleanupInterval.Ticks * 3));
 
         // Assert - Store should still be accessible after dispose (no exceptions)
         // The cleanup timer should have stopped
