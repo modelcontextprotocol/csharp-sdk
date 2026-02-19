@@ -836,28 +836,52 @@ public static partial class McpServerBuilderExtensions
     #endregion
 
     #region Filters
+    private const string MessageFilterObsoleteMessage = "Use WithMessageFilters() instead.";
+    private const string RequestFilterObsoleteMessage = "Use WithRequestFilters() instead.";
+
+    /// <summary>
+    /// Configures message-level filters for the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configure">A callback used to register message filters.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configure"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithMessageFilters(this IMcpServerBuilder builder, Action<IMcpMessageFilterBuilder> configure)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(configure);
+
+        configure(new DefaultMcpMessageFilterBuilder(builder));
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures request-specific filters for the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configure">A callback used to register request-specific filters.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configure"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithRequestFilters(this IMcpServerBuilder builder, Action<IMcpRequestFilterBuilder> configure)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(configure);
+
+        configure(new DefaultMcpRequestFilterBuilder(builder));
+        return builder;
+    }
+
+    #pragma warning disable CS0436 // ObsoleteAttribute polyfill conflicts with framework type on netstandard.
+
     /// <summary>
     /// Adds a filter to the list resource templates handler pipeline.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that return a list of available resource templates when requested by a client.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ResourcesTemplatesList"/> requests. It supports pagination through the cursor mechanism,
-    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resource templates.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListResourceTemplatesFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddListResourceTemplatesFilter(filter));
 
     /// <summary>
     /// Adds a filter to the list tools handler pipeline.
@@ -865,26 +889,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that return a list of available tools when requested by a client.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ToolsList"/> requests. It supports pagination through the cursor mechanism,
-    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more tools.
-    /// </para>
-    /// <para>
-    /// This filter works alongside any tools defined in the <see cref="McpServerTool"/> collection.
-    /// Tools from both sources will be combined when returning results to clients.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListToolsFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddListToolsFilter(filter));
 
     /// <summary>
     /// Adds a filter to the call tool handler pipeline.
@@ -892,21 +899,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that are invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.CallToolFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddCallToolFilter(filter));
 
     /// <summary>
     /// Adds a filter to the list prompts handler pipeline.
@@ -914,26 +909,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that return a list of available prompts when requested by a client.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.PromptsList"/> requests. It supports pagination through the cursor mechanism,
-    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more prompts.
-    /// </para>
-    /// <para>
-    /// This filter works alongside any prompts defined in the <see cref="McpServerPrompt"/> collection.
-    /// Prompts from both sources will be combined when returning results to clients.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListPromptsFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddListPromptsFilter(filter));
 
     /// <summary>
     /// Adds a filter to the get prompt handler pipeline.
@@ -941,21 +919,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that are invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.PromptsGet"/> requests. The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.GetPromptFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddGetPromptFilter(filter));
 
     /// <summary>
     /// Adds a filter to the list resources handler pipeline.
@@ -963,22 +929,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that return a list of available resources when requested by a client.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ResourcesList"/> requests. It supports pagination through the cursor mechanism,
-    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resources.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListResourcesFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddListResourcesFilter(filter));
 
     /// <summary>
     /// Adds a filter to the read resource handler pipeline.
@@ -986,21 +939,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that are invoked when a client requests the content of a specific resource identified by its URI.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ResourcesRead"/> requests. The handler should implement logic to locate and retrieve the requested resource.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.ReadResourceFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddReadResourceFilter(filter));
 
     /// <summary>
     /// Adds a filter to the complete handler pipeline.
@@ -1008,22 +949,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that provide auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.CompletionComplete"/> requests. The handler processes auto-completion requests, returning a list of suggestions based on the
-    /// reference type and current argument value.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.CompleteFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddCompleteFilter(filter));
 
     /// <summary>
     /// Adds a filter to the subscribe-to-resources handler pipeline.
@@ -1031,26 +959,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that are invoked when a client wants to receive notifications about changes to specific resources or resource patterns.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ResourcesSubscribe"/> requests. The handler should implement logic to register the client's interest in the specified resources
-    /// and set up the necessary infrastructure to send notifications when those resources change.
-    /// </para>
-    /// <para>
-    /// After a successful subscription, the server should send resource change notifications to the client
-    /// whenever a relevant resource is created, updated, or deleted.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.SubscribeToResourcesFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddSubscribeToResourcesFilter(filter));
 
     /// <summary>
     /// Adds a filter to the unsubscribe-from-resources handler pipeline.
@@ -1058,26 +969,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that are invoked when a client wants to stop receiving notifications about previously subscribed resources.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.ResourcesUnsubscribe"/> requests. The handler should implement logic to remove the client's subscriptions to the specified resources
-    /// and clean up any associated resources.
-    /// </para>
-    /// <para>
-    /// After a successful unsubscription, the server should no longer send resource change notifications
-    /// to the client for the specified resources.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.UnsubscribeFromResourcesFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddUnsubscribeFromResourcesFilter(filter));
 
     /// <summary>
     /// Adds a filter to the set logging level handler pipeline.
@@ -1085,26 +979,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter wraps handlers that process <see cref="RequestMethods.LoggingSetLevel"/> requests from clients. When set, it enables
-    /// clients to control which log messages they receive by specifying a minimum severity threshold.
-    /// The filter can modify, log, or perform additional operations on requests and responses for
-    /// <see cref="RequestMethods.LoggingSetLevel"/> requests.
-    /// </para>
-    /// <para>
-    /// After handling a level change request, the server typically begins sending log messages
-    /// at or above the specified level to the client as notifications or message notifications.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.SetLoggingLevelFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(RequestFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter) =>
+        builder.WithRequestFilters(filters => filters.AddSetLoggingLevelFilter(filter));
 
     /// <summary>
     /// Adds a filter to intercept all incoming JSON-RPC messages.
@@ -1112,36 +989,9 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the message handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter intercepts all incoming JSON-RPC messages before they are processed by the server,
-    /// including requests, notifications, responses, and errors. The filter can perform logging,
-    /// authentication, rate limiting, or other cross-cutting concerns that apply to all message types.
-    /// </para>
-    /// <para>
-    /// Message filters are applied before request-specific filters. If a message filter does not call
-    /// the next handler in the pipeline, the default handlers will not be executed.
-    /// </para>
-    /// <para>
-    /// Filters are applied in the order they are registered, with the first registered filter being the outermost.
-    /// Each filter receives the next handler in the pipeline and can choose to:
-    /// <list type="bullet">
-    /// <item><description>Call the next handler to continue processing: <c>await next(context, cancellationToken)</c></description></item>
-    /// <item><description>Skip the default handlers entirely by not calling next</description></item>
-    /// <item><description>Perform operations before and/or after calling next</description></item>
-    /// <item><description>Catch and handle exceptions from inner handlers</description></item>
-    /// </list>
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
-    {
-        Throw.IfNull(builder);
-        Throw.IfNull(filter);
-
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.IncomingMessageFilters.Add(filter));
-        return builder;
-    }
+    [Obsolete(MessageFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
+        builder.WithMessageFilters(filters => filters.AddIncomingFilter(filter));
 
     /// <summary>
     /// Adds a filter to intercept all outgoing JSON-RPC messages.
@@ -1149,26 +999,11 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the message handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// <para>
-    /// This filter intercepts all outgoing JSON-RPC messages before they are sent to the client,
-    /// including responses, notifications, and errors. The filter can perform logging, redaction,
-    /// auditing, or other cross-cutting concerns that apply to all message types.
-    /// </para>
-    /// <para>
-    /// If a message filter does not call the next handler in the pipeline, the message will not be sent.
-    /// Filters may also call the next handler multiple times with different messages to emit additional
-    /// server-to-client messages.
-    /// </para>
-    /// </remarks>
-    public static IMcpServerBuilder AddOutgoingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
-    {
-        Throw.IfNull(builder);
+    [Obsolete(MessageFilterObsoleteMessage)]
+    public static IMcpServerBuilder AddOutgoingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
+        builder.WithMessageFilters(filters => filters.AddOutgoingFilter(filter));
 
-        builder.Services.Configure<McpServerOptions>(options => options.Filters.OutgoingMessageFilters.Add(filter));
-        return builder;
-    }
+    #pragma warning restore CS0436
     #endregion
 
     #region Transports

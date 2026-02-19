@@ -87,8 +87,8 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// This property provides access to filter collections that can be used to modify the behavior
-    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter
-    /// added will be the outermost (first to execute).
+    /// of various MCP server handlers. The first filter added is the outermost (first to execute),
+    /// and each subsequent filter wraps closer to the handler.
     /// </remarks>
     public McpServerFilters Filters { get; } = new();
 

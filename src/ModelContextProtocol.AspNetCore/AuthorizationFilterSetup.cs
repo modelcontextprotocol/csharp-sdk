@@ -43,7 +43,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListToolsFilter(McpServerOptions options)
     {
-        options.Filters.ListToolsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListToolsFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -57,7 +57,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckListToolsFilter(McpServerOptions options)
     {
-        options.Filters.ListToolsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListToolsFilters.Add(next => async (context, cancellationToken) =>
         {
             var result = await next(context, cancellationToken);
 
@@ -73,7 +73,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        options.Filters.CallToolFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
@@ -89,7 +89,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckCallToolFilter(McpServerOptions options)
     {
-        options.Filters.CallToolFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
@@ -103,7 +103,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListResourcesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -117,7 +117,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckListResourcesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
         {
             var result = await next(context, cancellationToken);
 
@@ -133,7 +133,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListResourceTemplatesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -147,7 +147,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckListResourceTemplatesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
         {
             var result = await next(context, cancellationToken);
 
@@ -163,7 +163,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureReadResourceFilter(McpServerOptions options)
     {
-        options.Filters.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -179,7 +179,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckReadResourceFilter(McpServerOptions options)
     {
-        options.Filters.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
@@ -193,7 +193,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListPromptsFilter(McpServerOptions options)
     {
-        options.Filters.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -207,7 +207,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckListPromptsFilter(McpServerOptions options)
     {
-        options.Filters.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
         {
             var result = await next(context, cancellationToken);
 
@@ -223,7 +223,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureGetPromptFilter(McpServerOptions options)
     {
-        options.Filters.GetPromptFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.GetPromptFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -239,7 +239,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckGetPromptFilter(McpServerOptions options)
     {
-        options.Filters.GetPromptFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.GetPromptFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
