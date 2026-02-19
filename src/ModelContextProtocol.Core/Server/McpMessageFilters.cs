@@ -21,7 +21,7 @@ public sealed class McpMessageFilters
     /// the next handler in the pipeline, the default handlers will not be executed.
     /// </para>
     /// </remarks>
-    public List<McpMessageFilter> IncomingFilters { get; } = [];
+    public IList<McpMessageFilter> IncomingFilters { get; } = [];
 
     /// <summary>
     /// Gets the filters for all outgoing JSON-RPC messages.
@@ -38,5 +38,5 @@ public sealed class McpMessageFilters
     /// server-to-client messages.
     /// </para>
     /// </remarks>
-    public List<McpMessageFilter> OutgoingFilters { get; } = [];
+    public IList<McpMessageFilter> OutgoingFilters { get; } = [];
 }
