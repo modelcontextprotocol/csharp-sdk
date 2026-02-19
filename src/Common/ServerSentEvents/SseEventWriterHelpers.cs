@@ -47,20 +47,12 @@ internal static class SseEventWriterHelpers
             return;
         }
 
-#if NET
         int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
         Span<byte> buffer = writer.GetSpan(maxByteCount);
         Debug.Assert(buffer.Length >= maxByteCount);
 
         int bytesWritten = Encoding.UTF8.GetBytes(value, buffer);
         writer.Advance(bytesWritten);
-#else
-        // netstandard2.0 doesn't have the Span overload of GetBytes
-        byte[] bytes = Encoding.UTF8.GetBytes(value.ToString());
-        Span<byte> buffer = writer.GetSpan(bytes.Length);
-        bytes.AsSpan().CopyTo(buffer);
-        writer.Advance(bytes.Length);
-#endif
     }
 
     public static bool ContainsLineBreaks(this ReadOnlySpan<char> text) =>

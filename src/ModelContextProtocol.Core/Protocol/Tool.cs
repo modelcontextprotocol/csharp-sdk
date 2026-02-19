@@ -128,8 +128,17 @@ public sealed class Tool : IBaseMetadata
     /// regarding task augmentation support. See <see cref="ToolExecution"/> for details.
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public ToolExecution? Execution
+    {
+        get => ExecutionCore;
+        set => ExecutionCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("execution")]
-    public ToolExecution? Execution { get; set; }
+    internal ToolExecution? ExecutionCore { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this tool.

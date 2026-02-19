@@ -78,5 +78,6 @@
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestSseServer/ModelContextProtocol.TestSseServer.csproj" />
+    <Project Path="tests/ModelContextProtocol.ExperimentalApiRegressionTest/ModelContextProtocol.ExperimentalApiRegressionTest.csproj" />
   </Folder>
 </Solution>

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -79,6 +80,16 @@ public sealed class ServerCapabilities
     /// See <see cref="McpTasksCapability"/> for details on configuring which operations support tasks.
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public McpTasksCapability? Tasks
+    {
+        get => TasksCore;
+        set => TasksCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("tasks")]
-    public McpTasksCapability? Tasks { get; set; }
+    internal McpTasksCapability? TasksCore { get; set; }
 }

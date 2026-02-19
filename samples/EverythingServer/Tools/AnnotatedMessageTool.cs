@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text;
 
 namespace EverythingServer.Tools;
 
@@ -41,7 +42,7 @@ public class AnnotatedMessageTool
         {
             contents.Add(new ImageContentBlock
             {
-                Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(),
+                Data = Encoding.UTF8.GetBytes(TinyImageTool.MCP_TINY_IMAGE.Split(",").Last()),
                 MimeType = "image/png",
                 Annotations = new() { Audience = [Role.User], Priority = 0.5f }
             });

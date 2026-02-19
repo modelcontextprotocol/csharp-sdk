@@ -95,7 +95,7 @@ public class AIContentExtensionsTests
             Content =
             [
                 new TextContentBlock { Text = "Text result" },
-                new ImageContentBlock { Data = Convert.ToBase64String([1, 2, 3]), MimeType = "image/png" }
+                ImageContentBlock.FromBytes((byte[])[1, 2, 3], "image/png")
             ]
         };
 
@@ -301,7 +301,7 @@ public class AIContentExtensionsTests
         var contentBlock = dataContent.ToContentBlock();
         var imageBlock = Assert.IsType<ImageContentBlock>(contentBlock);
 
-        Assert.Equal(Convert.ToBase64String(imageData), imageBlock.Data);
+        Assert.Equal(imageData, imageBlock.DecodedData);
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.NotNull(imageBlock.Meta);
         Assert.True(imageBlock.Meta.ContainsKey("dimensions"));

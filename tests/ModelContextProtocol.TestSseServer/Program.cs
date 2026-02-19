@@ -85,12 +85,7 @@ public class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "application/octet-stream"
                 });
-                resourceContents.Add(new BlobResourceContents
-                {
-                    Uri = uri,
-                    MimeType = "application/octet-stream",
-                    Blob = Convert.ToBase64String(buffer)
-                });
+                resourceContents.Add(BlobResourceContents.FromBytes(buffer, uri, "application/octet-stream"));
             }
         }
 
@@ -388,7 +383,7 @@ public class Program
                     Role = Role.User,
                     Content = new ImageContentBlock
                     {
-                        Data = MCP_TINY_IMAGE,
+                        Data = System.Text.Encoding.UTF8.GetBytes(MCP_TINY_IMAGE),
                         MimeType = "image/png"
                     }
                 });
