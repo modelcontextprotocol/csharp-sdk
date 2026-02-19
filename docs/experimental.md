@@ -26,7 +26,7 @@ Add the diagnostic ID to `<NoWarn>` in your project file:
 Use `#pragma warning disable` around specific call sites:
 
 ```csharp
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP001 // The Tasks feature is experimental per the MCP specification and is subject to change.
 tool.Execution = new ToolExecution { ... };
 #pragma warning restore MCPEXP001
 ```
