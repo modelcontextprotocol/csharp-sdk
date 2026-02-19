@@ -90,7 +90,15 @@ public sealed class McpServerOptions
     /// of various MCP server handlers. The first filter added is the outermost (first to execute),
     /// and each subsequent filter wraps closer to the handler.
     /// </remarks>
-    public McpServerFilters Filters { get; } = new();
+    public McpServerFilters Filters
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
