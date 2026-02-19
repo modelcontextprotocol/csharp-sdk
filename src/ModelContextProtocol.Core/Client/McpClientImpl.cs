@@ -58,7 +58,15 @@ internal sealed partial class McpClientImpl : McpClient
 
         RegisterHandlers(options, notificationHandlers, requestHandlers);
 
-        _sessionHandler = new McpSessionHandler(isServer: false, transport, endpointName, requestHandlers, notificationHandlers, _logger);
+        _sessionHandler = new McpSessionHandler(
+            isServer: false,
+            transport,
+            endpointName,
+            requestHandlers,
+            notificationHandlers,
+            incomingMessageFilter: null,
+            outgoingMessageFilter: null,
+            _logger);
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -189,6 +197,7 @@ internal sealed partial class McpClientImpl : McpClient
                                 async ct =>
                                 {
                                     var result = await elicitationHandler(request, ct).ConfigureAwait(false);
+                                    result = ElicitResult.WithDefaults(request, result);
                                     return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ElicitResult);
                                 },
                                 options.SendTaskStatusNotifications,
@@ -197,6 +206,7 @@ internal sealed partial class McpClientImpl : McpClient
 
                         // Normal synchronous execution - serialize result to JsonElement
                         var elicitResult = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
+                        elicitResult = ElicitResult.WithDefaults(request, elicitResult);
                         return JsonSerializer.SerializeToElement(elicitResult, McpJsonUtilities.JsonContext.Default.ElicitResult);
                     },
                     McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
@@ -206,7 +216,11 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 requestHandlers.Set(
                     RequestMethods.ElicitationCreate,
-                    (request, _, cancellationToken) => elicitationHandler(request, cancellationToken),
+                    async (request, _, cancellationToken) =>
+                    {
+                        var result = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
+                        return ElicitResult.WithDefaults(request, result);
+                    },
                     McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
                     McpJsonUtilities.JsonContext.Default.ElicitResult);
             }
@@ -663,4 +677,5 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
+
 }

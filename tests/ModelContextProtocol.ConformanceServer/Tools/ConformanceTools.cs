@@ -3,7 +3,6 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace ConformanceServer.Tools;
 
@@ -332,16 +331,49 @@ public class ConformanceTools
             {
                 Properties =
                 {
-                    ["color"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    ["untitledSingle"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a color",
-                        Enum = ["red", "green", "blue"]
+                        Description = "Choose an option",
+                        Enum = ["option1", "option2", "option3"]
                     },
-                    ["size"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    ["titledSingle"] = new ElicitRequestParams.TitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a size",
-                        Enum = ["small", "medium", "large"],
-                        Default = "medium"
+                        Description = "Choose a titled option",
+                        OneOf =
+                        [
+                            new() { Const = "value1", Title = "First Option" },
+                            new() { Const = "value2", Title = "Second Option" },
+                            new() { Const = "value3", Title = "Third Option" }
+                        ]
+                    },
+#pragma warning disable MCP9001
+                    ["legacyEnum"] = new ElicitRequestParams.LegacyTitledEnumSchema()
+                    {
+                        Description = "Choose a legacy option",
+                        Enum = ["opt1", "opt2", "opt3"],
+                        EnumNames = ["Option One", "Option Two", "Option Three"]
+                    },
+#pragma warning restore MCP9001
+                    ["untitledMulti"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema()
+                    {
+                        Description = "Choose multiple options",
+                        Items = new ElicitRequestParams.UntitledEnumItemsSchema
+                        {
+                            Enum = ["option1", "option2", "option3"]
+                        }
+                    },
+                    ["titledMulti"] = new ElicitRequestParams.TitledMultiSelectEnumSchema()
+                    {
+                        Description = "Choose multiple titled options",
+                        Items = new ElicitRequestParams.TitledEnumItemsSchema
+                        {
+                            AnyOf =
+                            [
+                                new() { Const = "value1", Title = "First Choice" },
+                                new() { Const = "value2", Title = "Second Choice" },
+                                new() { Const = "value3", Title = "Third Choice" }
+                            ]
+                        }
                     }
                 }
             };
@@ -354,8 +386,7 @@ public class ConformanceTools
 
             if (result.Action == "accept" && result.Content != null)
             {
-                return $"Accepted with values: color={result.Content["color"].GetString()}, " +
-                       $"size={result.Content["size"].GetString()}";
+                return $"Elicitation completed: action={result.Action}, content={result.Content}";
             }
             else
             {
@@ -366,5 +397,49 @@ public class ConformanceTools
         {
             return $"Elicitation not supported or error: {ex.Message}";
         }
+    }
+
+    /// <summary>Create the json_schema_2020_12_tool with a raw JSON Schema 2020-12 inputSchema.</summary>
+    public static McpServerTool CreateJsonSchema202012Tool()
+    {
+        var tool = McpServerTool.Create(
+            () => "JSON Schema 2020-12 tool executed successfully",
+            new()
+            {
+                Name = "json_schema_2020_12_tool",
+                Description = "Tool with JSON Schema 2020-12 features"
+            });
+
+        tool.ProtocolTool.InputSchema = JsonElement.Parse("""
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "$defs": {
+                    "address": {
+                        "type": "object",
+                        "properties": {
+                            "street": { "type": "string" },
+                            "city": { "type": "string" }
+                        }
+                    }
+                },
+                "properties": {
+                    "name": { "type": "string" },
+                    "address": { "$ref": "#/$defs/address" }
+                },
+                "additionalProperties": false
+            }
+            """);
+
+        return tool;
+    }
+
+    [McpServerTool(Name = "test_reconnection")]
+    [Description("Tests SSE stream reconnection by closing the stream mid-call")]
+    public static string TestReconnection()
+    {
+        // This tool doesn't need to do anything - the call filter will close the stream after this tool runs,
+        // and the client must reconnect to get the result.
+        return "Reconnection test completed successfully";
     }
 }

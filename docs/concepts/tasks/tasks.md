@@ -8,7 +8,7 @@ uid: tasks
 # MCP Tasks
 
 > [!WARNING]
-> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases.
+> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
 The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
 
@@ -424,8 +424,8 @@ Task operations may throw <xref:ModelContextProtocol.McpException> with these er
 
 | Error Code | Scenario |
 |------------|----------|
-| `InvalidParams` | Invalid or nonexistent task ID |
-| `InvalidRequest` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
+| `InvalidParams` | Invalid or nonexistent task ID or invalid cursor |
+| `InvalidParams` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
 | `InternalError` | Task execution failure or result unavailable |
 
 Example error handling:

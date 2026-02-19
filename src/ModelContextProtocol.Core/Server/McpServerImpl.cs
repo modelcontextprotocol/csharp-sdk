@@ -118,7 +118,17 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // And initialize the session.
-        _sessionHandler = new McpSessionHandler(isServer: true, _sessionTransport, _endpointName!, _requestHandlers, _notificationHandlers, _logger);
+        var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.IncomingMessageFilters);
+        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.OutgoingMessageFilters);
+        _sessionHandler = new McpSessionHandler(
+            isServer: true,
+            _sessionTransport,
+            _endpointName!,
+            _requestHandlers,
+            _notificationHandlers,
+            incomingMessageFilter,
+            outgoingMessageFilter,
+            _logger);
     }
 
     /// <inheritdoc/>
@@ -382,7 +392,17 @@ internal sealed partial class McpServerImpl : McpServer
                     }
                 }
 
-                return await handler(request, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+                    ReadResourceCompleted(request.Params?.Uri ?? string.Empty);
+                    return result;
+                }
+                catch (Exception e)
+                {
+                    ReadResourceError(request.Params?.Uri ?? string.Empty, e);
+                    throw;
+                }
             });
         subscribeHandler = BuildFilterPipeline(subscribeHandler, options.Filters.SubscribeToResourcesFilters);
         unsubscribeHandler = BuildFilterPipeline(unsubscribeHandler, options.Filters.UnsubscribeFromResourcesFilters);
@@ -477,7 +497,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         listPromptsHandler = BuildFilterPipeline(listPromptsHandler, options.Filters.ListPromptsFilters);
         getPromptHandler = BuildFilterPipeline(getPromptHandler, options.Filters.GetPromptFilters, handler =>
-            (request, cancellationToken) =>
+            async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
                 if (request.Params?.Name is { } promptName && prompts is not null &&
@@ -486,7 +506,17 @@ internal sealed partial class McpServerImpl : McpServer
                     request.MatchedPrimitive = prompt;
                 }
 
-                return handler(request, cancellationToken);
+                try
+                {
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+                    GetPromptCompleted(request.Params?.Name ?? string.Empty);
+                    return result;
+                }
+                catch (Exception e)
+                {
+                    GetPromptError(request.Params?.Name ?? string.Empty, e);
+                    throw;
+                }
             });
 
         ServerCapabilities.Prompts.ListChanged = listChanged;
@@ -561,7 +591,7 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             throw new McpProtocolException(
                                 $"Tool '{tool.ProtocolTool.Name}' does not support task-augmented execution.",
-                                McpErrorCode.MethodNotFound);
+                                McpErrorCode.InvalidParams);
                         }
 
                         // Task augmentation requested - return CreateTaskResult
@@ -574,7 +604,7 @@ internal sealed partial class McpServerImpl : McpServer
                         throw new McpProtocolException(
                             $"Tool '{tool.ProtocolTool.Name}' requires task-augmented execution. " +
                             "Include a 'task' parameter with the request.",
-                            McpErrorCode.MethodNotFound);
+                            McpErrorCode.InvalidParams);
                     }
 
                     // Normal synchronous execution
@@ -600,20 +630,35 @@ internal sealed partial class McpServerImpl : McpServer
 
                 try
                 {
-                    return await handler(request, cancellationToken).ConfigureAwait(false);
+                    var result = await handler(request, cancellationToken).ConfigureAwait(false);
+
+                    // Don't log here for task-augmented calls; logging happens asynchronously
+                    // in ExecuteToolAsTaskAsync when the tool actually completes.
+                    if (result.Task is null)
+                    {
+                        ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
+                    }
+
+                    return result;
                 }
-                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                catch (Exception e)
                 {
                     ToolCallError(request.Params?.Name ?? string.Empty, e);
 
-                    string errorMessage = e is McpException ?
-                        $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                        $"An error occurred invoking '{request.Params?.Name}'.";
+                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException)
+                    {
+                        throw;
+                    }
 
                     return new()
                     {
                         IsError = true,
-                        Content = [new TextContentBlock { Text = errorMessage }],
+                        Content = [new TextContentBlock
+                        {
+                            Text = e is McpException ?
+                                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                                $"An error occurred invoking '{request.Params?.Name}'.",
+                        }],
                     };
                 }
             });
@@ -875,6 +920,39 @@ internal sealed partial class McpServerImpl : McpServer
         return current;
     }
 
+    private JsonRpcMessageFilter BuildMessageFilterPipeline(List<McpMessageFilter> filters)
+    {
+        if (filters.Count == 0)
+        {
+            return next => next;
+        }
+
+        return next =>
+        {
+            // Build the handler chain from the filters.
+            // The innermost handler calls the provided 'next' delegate with the message from the context.
+            McpMessageHandler baseHandler = async (context, cancellationToken) =>
+            {
+                await next(context.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
+            };
+
+            var current = baseHandler;
+            for (int i = filters.Count - 1; i >= 0; i--)
+            {
+                current = filters[i](current);
+            }
+
+            // Return the handler that creates a MessageContext and invokes the pipeline.
+            return async (message, cancellationToken) =>
+            {
+                // Ensure message has a Context so Items can be shared through the pipeline
+                message.Context ??= new();
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport), message);
+                await current(context, cancellationToken).ConfigureAwait(false);
+            };
+        };
+    }
+
     private void UpdateEndpointNameWithClientInfo()
     {
         if (ClientInfo is null)
@@ -900,6 +978,21 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed. IsError = {IsError}.")]
+    private partial void ToolCallCompleted(string toolName, bool isError);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "GetPrompt \"{PromptName}\" threw an unhandled exception.")]
+    private partial void GetPromptError(string promptName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "GetPrompt \"{PromptName}\" completed.")]
+    private partial void GetPromptCompleted(string promptName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "ReadResource \"{ResourceUri}\" threw an unhandled exception.")]
+    private partial void ReadResourceError(string resourceUri, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
+    private partial void ReadResourceCompleted(string resourceUri);
 
     /// <summary>
     /// Executes a tool call as a task and returns a CallToolTaskResult immediately.
@@ -961,6 +1054,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Invoke the tool with task-specific cancellation token
                 var result = await tool.InvokeAsync(request, taskCancellationToken).ConfigureAwait(false);
+                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
 
                 // Determine final status based on whether there was an error
                 var finalStatus = result.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;

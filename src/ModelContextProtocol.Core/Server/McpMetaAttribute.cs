@@ -11,7 +11,15 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// The metadata is used to populate the <see cref="Tool.Meta"/>, <see cref="Prompt.Meta"/>,
-/// or <see cref="Resource.Meta"/> property of the corresponding primitive.
+/// or <see cref="Resource.Meta"/> property of the corresponding primitive. This metadata is
+/// included in the responses to listing operations (<c>tools/list</c>, <c>prompts/list</c>,
+/// <c>resources/list</c>).
+/// </para>
+/// <para>
+/// This metadata is <b>not</b> propagated to the results of invocation operations such as
+/// <c>tools/call</c>, <c>prompts/get</c>, or <c>resources/read</c>. To include metadata in
+/// those results, set the <c>Meta</c> property on the <see cref="CallToolResult"/>,
+/// <see cref="GetPromptResult"/>, or <see cref="ReadResourceResult"/> directly in your method implementation.
 /// </para>
 /// <para>
 /// This attribute can be applied multiple times to a method to specify multiple key/value pairs

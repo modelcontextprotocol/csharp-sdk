@@ -72,7 +72,7 @@ public abstract class ContentBlock
     /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
     /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public class Converter : JsonConverter<ContentBlock>
+    public sealed class Converter : JsonConverter<ContentBlock>
     {
         /// <inheritdoc/>
         public override ContentBlock? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

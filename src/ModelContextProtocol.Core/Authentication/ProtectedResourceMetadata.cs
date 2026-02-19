@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Authentication;
@@ -20,7 +21,8 @@ public sealed class ProtectedResourceMetadata
     /// <b>Resource</b> must be explicitly set. Automatic inference only works with the default endpoint pattern.
     /// </remarks>
     [JsonPropertyName("resource")]
-    public Uri? Resource { get; set; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public string? Resource { get; set; }
 
     /// <summary>
     /// Gets or sets the list of authorization server URIs.
@@ -33,7 +35,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
-    public List<Uri> AuthorizationServers { get; set; } = [];
+    public List<string> AuthorizationServers { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the supported bearer token methods.
@@ -69,7 +71,8 @@ public sealed class ProtectedResourceMetadata
     /// that the resource server uses to sign resource responses. This URL MUST use the HTTPS scheme.
     /// </remarks>
     [JsonPropertyName("jwks_uri")]
-    public Uri? JwksUri { get; set; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public string? JwksUri { get; set; }
 
     /// <summary>
     /// Gets or sets the list of the JWS signing algorithms supported by the protected resource for signing resource responses.
@@ -105,7 +108,8 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_documentation")]
-    public Uri? ResourceDocumentation { get; set; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public string? ResourceDocumentation { get; set; }
 
     /// <summary>
     /// Gets or sets the URL of a page containing human-readable information about the protected resource's requirements.
@@ -117,7 +121,8 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_policy_uri")]
-    public Uri? ResourcePolicyUri { get; set; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public string? ResourcePolicyUri { get; set; }
 
     /// <summary>
     /// Gets or sets the URL of a page containing human-readable information about the protected resource's terms of service.
@@ -126,7 +131,8 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL. The value of this field MAY be internationalized.
     /// </remarks>
     [JsonPropertyName("resource_tos_uri")]
-    public Uri? ResourceTosUri { get; set; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public string? ResourceTosUri { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether there is protected resource support for mutual-TLS client certificate-bound access tokens.
@@ -195,13 +201,13 @@ public sealed class ProtectedResourceMetadata
     /// <summary>
     /// Creates a deep copy of this <see cref="ProtectedResourceMetadata"/> instance, optionally overriding the Resource property.
     /// </summary>
-    /// <param name="derivedResourceUri">Optional URI to use for the Resource property if the original Resource is null.</param>
+    /// <param name="derivedResource">Optional resource URI string to use for the Resource property if the original Resource is null.</param>
     /// <returns>A new instance of <see cref="ProtectedResourceMetadata"/> with cloned values.</returns>
-    public ProtectedResourceMetadata Clone(Uri? derivedResourceUri = null)
+    public ProtectedResourceMetadata Clone(string? derivedResource = null)
     {
         return new ProtectedResourceMetadata
         {
-            Resource = Resource ?? derivedResourceUri,
+            Resource = Resource ?? derivedResource,
             AuthorizationServers = [.. AuthorizationServers],
             BearerMethodsSupported = [.. BearerMethodsSupported],
             ScopesSupported = [.. ScopesSupported],

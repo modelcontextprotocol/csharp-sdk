@@ -26,6 +26,7 @@ public class SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, 
         Assert.NotNull(sseResponse.Headers.CacheControl);
         Assert.True(sseResponse.Headers.CacheControl.NoStore);
         Assert.True(sseResponse.Headers.CacheControl.NoCache);
+        Assert.Equal("no", Assert.Single(sseResponse.Headers.GetValues("X-Accel-Buffering")));
     }
 
     [Fact]
