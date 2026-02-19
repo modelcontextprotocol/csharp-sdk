@@ -23,7 +23,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
         await using var app = await StartAuthenticationServerAsync(options =>
         {
             options.ResourceMetadataUri = new Uri(metadataPath, UriKind.Relative);
-            options.ResourceMetadata!.Resource = new Uri("http://localhost:5000/challenge");
+            options.ResourceMetadata!.Resource = "http://localhost:5000/challenge";
         });
 
         using var challengeResponse = await HttpClient.GetAsync(new Uri("/challenge", UriKind.Relative), HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
@@ -64,7 +64,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
         await using var app = await StartAuthenticationServerAsync(options =>
         {
             options.ResourceMetadataUri = metadataUri;
-            options.ResourceMetadata!.Resource = new Uri("http://localhost:5000/challenge");
+            options.ResourceMetadata!.Resource = "http://localhost:5000/challenge";
         });
 
         using var challengeResponse = await HttpClient.GetAsync(new Uri("/challenge", UriKind.Relative), HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
@@ -137,7 +137,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
             McpJsonUtilities.DefaultOptions,
             TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
-        Assert.Equal(new Uri("http://localhost:5000/resource/tools"), metadata!.Resource);
+        Assert.Equal("http://localhost:5000/resource/tools", metadata!.Resource);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
             McpJsonUtilities.DefaultOptions,
             TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
-        Assert.Equal(new Uri("http://localhost:5000/api/resource/tools"), metadata!.Resource);
+        Assert.Equal("http://localhost:5000/api/resource/tools", metadata!.Resource);
     }
 
     private async Task<WebApplication> StartAuthenticationServerAsync(Action<McpAuthenticationOptions>? configureOptions = null, PathString? pathBase = null)
@@ -169,7 +169,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
         {
             options.ResourceMetadata = new()
             {
-                AuthorizationServers = [new Uri("https://localhost:7029")],
+                AuthorizationServers = ["https://localhost:7029"],
                 ScopesSupported = ["mcp:tools"],
             };
             configureOptions?.Invoke(options);

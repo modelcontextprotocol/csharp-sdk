@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
@@ -61,7 +62,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         // Immediately dispose the response. SendHttpRequestAsync only returns the response so the auto transport can look at it.
         using var response = await SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.
@@ -74,6 +75,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 $"Cannot send '{RequestMethods.Initialize}' when {nameof(HttpClientTransportOptions)}.{nameof(HttpClientTransportOptions.KnownSessionId)} is configured. " +
                 $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
         }
+
+        LogTransportSendingMessageSensitive(message);
 
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
@@ -237,7 +240,19 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             if (shouldDelay)
             {
                 var delay = state.RetryInterval ?? _options.DefaultReconnectionInterval;
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+
+                // Subtract time already elapsed since the SSE stream ended to more accurately
+                // honor the retry interval. Without this, processing overhead (HTTP response
+                // disposal, condition checks, etc.) inflates the observed reconnection delay.
+                if (state.StreamEndedTimestamp != 0)
+                {
+                    delay -= ElapsedSince(state.StreamEndedTimestamp);
+                }
+
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
             }
             shouldDelay = true;
 
@@ -334,9 +349,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         catch (Exception ex) when (ex is IOException or HttpRequestException)
         {
+            state.StreamEndedTimestamp = Stopwatch.GetTimestamp();
             return new() { IsNetworkError = true };
         }
 
+        state.StreamEndedTimestamp = Stopwatch.GetTimestamp();
         return default;
     }
 
@@ -433,6 +450,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         public string? LastEventId { get; set; }
         public TimeSpan? RetryInterval { get; set; }
+        /// <summary>Timestamp (via Stopwatch.GetTimestamp()) when the last SSE stream ended, used to discount processing overhead from the retry delay.</summary>
+        public long StreamEndedTimestamp { get; set; }
     }
 
     /// <summary>
@@ -442,5 +461,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         public JsonRpcMessageWithId? Response { get; init; }
         public bool IsNetworkError { get; init; }
+    }
+
+    private static TimeSpan ElapsedSince(long stopwatchTimestamp)
+    {
+#if NET
+        return Stopwatch.GetElapsedTime(stopwatchTimestamp);
+#else
+        return TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - stopwatchTimestamp) / Stopwatch.Frequency);
+#endif
     }
 }

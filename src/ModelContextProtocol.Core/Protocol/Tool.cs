@@ -1,8 +1,9 @@
+using ModelContextProtocol.Server;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -30,7 +31,15 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// <para>
     /// The description is typically presented to AI models to help them determine when
-    /// and how to use the tool based on user requests.
+    /// and how to use the tool based on user requests. A well-written description significantly
+    /// reduces incorrect tool invocations. Include information about what the tool does, any
+    /// constraints or prerequisites, and what it returns.
+    /// </para>
+    /// <para>
+    /// Similarly, individual parameter descriptions (provided via <see cref="System.ComponentModel.DescriptionAttribute"/>
+    /// on tool method parameters) are important for guiding the model to supply correct argument values.
+    /// Descriptions should document expected formats, valid value ranges, and any other constraints
+    /// the model should be aware of.
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
@@ -110,6 +119,26 @@ public sealed class Tool : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("annotations")]
     public ToolAnnotations? Annotations { get; set; }
+
+    /// <summary>
+    /// Gets or sets execution-related metadata for this tool.
+    /// </summary>
+    /// <remarks>
+    /// This property provides hints about how the tool should be executed, particularly
+    /// regarding task augmentation support. See <see cref="ToolExecution"/> for details.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public ToolExecution? Execution
+    {
+        get => ExecutionCore;
+        set => ExecutionCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
+    [JsonPropertyName("execution")]
+    internal ToolExecution? ExecutionCore { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this tool.

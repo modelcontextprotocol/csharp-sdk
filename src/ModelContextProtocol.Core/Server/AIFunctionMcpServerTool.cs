@@ -148,6 +148,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             tool.Meta = function.UnderlyingMethod is not null ?
                 CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta) :
                 options.Meta;
+
+            // Apply user-specified Execution settings if provided
+            if (options.Execution is not null)
+            {
+                tool.Execution = options.Execution;
+            }
+        }
+
+        // Auto-detect async methods and mark with taskSupport = "optional" unless explicitly configured.
+        // This enables implicit task support for async tools: clients can choose to invoke them
+        // synchronously (wait for completion) or as a task (receive taskId, poll for result).
+        if (function.UnderlyingMethod is not null && 
+            IsAsyncMethod(function.UnderlyingMethod) &&
+            tool.Execution?.TaskSupport is null)
+        {
+            tool.Execution ??= new ToolExecution();
+            tool.Execution.TaskSupport = ToolTaskSupport.Optional;
         }
 
         return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
@@ -188,6 +205,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
+
+            if (toolAttr._taskSupport is { } taskSupport)
+            {
+                newOptions.Execution ??= new ToolExecution();
+                newOptions.Execution.TaskSupport ??= taskSupport;
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -315,27 +338,27 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         // Case the name based on the provided naming policy.
         return (policy ?? JsonNamingPolicy.SnakeCaseLower).ConvertName(name) ?? name;
+    }
 
-        static bool IsAsyncMethod(MethodInfo method)
+    private static bool IsAsyncMethod(MethodInfo method)
+    {
+        Type t = method.ReturnType;
+
+        if (t == typeof(Task) || t == typeof(ValueTask))
         {
-            Type t = method.ReturnType;
+            return true;
+        }
 
-            if (t == typeof(Task) || t == typeof(ValueTask))
+        if (t.IsGenericType)
+        {
+            t = t.GetGenericTypeDefinition();
+            if (t == typeof(Task<>) || t == typeof(ValueTask<>) || t == typeof(IAsyncEnumerable<>))
             {
                 return true;
             }
-
-            if (t.IsGenericType)
-            {
-                t = t.GetGenericTypeDefinition();
-                if (t == typeof(Task<>) || t == typeof(ValueTask<>) || t == typeof(IAsyncEnumerable<>))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
+
+        return false;
     }
 
     /// <summary>Creates metadata from attributes on the specified method and its declaring class, with the MethodInfo as the first item.</summary>

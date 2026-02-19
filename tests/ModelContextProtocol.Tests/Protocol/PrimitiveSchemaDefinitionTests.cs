@@ -283,7 +283,7 @@ public static class PrimitiveSchemaDefinitionTests
             json,
             McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result);
-        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(result);
         Assert.Equal("string", enumSchema.Type);
         Assert.Equal(2, enumSchema.Enum.Count);
         Assert.Contains("option1", enumSchema.Enum);

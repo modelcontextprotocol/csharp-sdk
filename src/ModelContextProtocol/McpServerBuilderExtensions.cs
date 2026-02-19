@@ -1105,6 +1105,70 @@ public static partial class McpServerBuilderExtensions
         builder.Services.Configure<McpServerOptions>(options => options.Filters.SetLoggingLevelFilters.Add(filter));
         return builder;
     }
+
+    /// <summary>
+    /// Adds a filter to intercept all incoming JSON-RPC messages.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the message handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter intercepts all incoming JSON-RPC messages before they are processed by the server,
+    /// including requests, notifications, responses, and errors. The filter can perform logging,
+    /// authentication, rate limiting, or other cross-cutting concerns that apply to all message types.
+    /// </para>
+    /// <para>
+    /// Message filters are applied before request-specific filters. If a message filter does not call
+    /// the next handler in the pipeline, the default handlers will not be executed.
+    /// </para>
+    /// <para>
+    /// Filters are applied in the order they are registered, with the first registered filter being the outermost.
+    /// Each filter receives the next handler in the pipeline and can choose to:
+    /// <list type="bullet">
+    /// <item><description>Call the next handler to continue processing: <c>await next(context, cancellationToken)</c></description></item>
+    /// <item><description>Skip the default handlers entirely by not calling next</description></item>
+    /// <item><description>Perform operations before and/or after calling next</description></item>
+    /// <item><description>Catch and handle exceptions from inner handlers</description></item>
+    /// </list>
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(filter);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.IncomingMessageFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to intercept all outgoing JSON-RPC messages.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the message handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter intercepts all outgoing JSON-RPC messages before they are sent to the client,
+    /// including responses, notifications, and errors. The filter can perform logging, redaction,
+    /// auditing, or other cross-cutting concerns that apply to all message types.
+    /// </para>
+    /// <para>
+    /// If a message filter does not call the next handler in the pipeline, the message will not be sent.
+    /// Filters may also call the next handler multiple times with different messages to emit additional
+    /// server-to-client messages.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddOutgoingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.OutgoingMessageFilters.Add(filter));
+        return builder;
+    }
     #endregion
 
     #region Transports

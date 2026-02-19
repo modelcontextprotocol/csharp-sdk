@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -12,11 +11,8 @@ namespace ModelContextProtocol.Server;
 /// This type is typically received as a parameter in handler delegates registered with IMcpServerBuilder,
 /// and can be injected as parameters into <see cref="McpServerTool"/>s.
 /// </remarks>
-public sealed class RequestContext<TParams>
+public sealed class RequestContext<TParams> : MessageContext
 {
-    /// <summary>The server with which this instance is associated.</summary>
-    private McpServer _server;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server and JSON-RPC request.
     /// </summary>
@@ -24,47 +20,9 @@ public sealed class RequestContext<TParams>
     /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
     public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
+        : base(server, jsonRpcRequest)
     {
-        Throw.IfNull(server);
-        Throw.IfNull(jsonRpcRequest);
-
-        _server = server;
-        JsonRpcRequest = jsonRpcRequest;
-        Services = server.Services;
-        User = jsonRpcRequest.Context?.User;
     }
-
-    /// <summary>Gets or sets the server with which this instance is associated.</summary>
-    public McpServer Server
-    {
-        get => _server;
-        set
-        {
-            Throw.IfNull(value);
-            _server = value;
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets a key/value collection that can be used to share data within the scope of this request.
-    /// </summary>
-    public IDictionary<string, object?> Items
-    {
-        get => field ??= new Dictionary<string, object?>();
-        set => field = value;
-    }
-
-    /// <summary>Gets or sets the services associated with this request.</summary>
-    /// <remarks>
-    /// This provider might not be the same instance stored in <see cref="McpServer.Services"/>
-    /// if <see cref="McpServerOptions.ScopeRequests"/> was true, in which case this
-    /// might be a scoped <see cref="IServiceProvider"/> derived from the server's
-    /// <see cref="McpServer.Services"/>.
-    /// </remarks>
-    public IServiceProvider? Services { get; set; }
-
-    /// <summary>Gets or sets the user associated with this request.</summary>
-    public ClaimsPrincipal? User { get; set; }
 
     /// <summary>Gets or sets the parameters associated with this request.</summary>
     public TParams? Params { get; set; }
@@ -81,7 +39,11 @@ public sealed class RequestContext<TParams>
     /// This property provides access to the complete JSON-RPC request that initiated this handler invocation,
     /// including the method name, parameters, request ID, and associated transport and user information.
     /// </remarks>
-    public JsonRpcRequest JsonRpcRequest { get; }
+    public JsonRpcRequest JsonRpcRequest
+    {
+        get => (JsonRpcRequest)JsonRpcMessage;
+        set => JsonRpcMessage = value;
+    }
 
     /// <summary>
     /// Ends the current response and enables polling for updates from the server.

@@ -1,15 +1,20 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
@@ -209,32 +214,46 @@ public class AuthTests : OAuthTestBase
     {
         var hasForcedRefresh = false;
 
-        Builder.Services.AddHttpContextAccessor();
         Builder.Services.AddMcpServer(options =>
+        {
+            options.ToolCollection = new();
+        });
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Add middleware to intercept list tools requests and force a token refresh on the first call
+            app.Use(async (context, next) =>
             {
-                options.ToolCollection = new();
-            })
-            .AddListToolsFilter(next =>
-            {
-                return async (mcpContext, cancellationToken) =>
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/" && !hasForcedRefresh)
                 {
-                    if (!hasForcedRefresh)
+                    // Enable buffering so we can read the request body multiple times
+                    context.Request.EnableBuffering();
+
+                    // Read the request body to check if it's calling tools/list
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    // Reset the request body position so MapMcp can read it
+                    context.Request.Body.Position = 0;
+
+                    // Check if this is a tools/list request
+                    if (message is JsonRpcRequest request && request.Method == "tools/list")
                     {
                         hasForcedRefresh = true;
 
-                        var httpContext = mcpContext.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext!;
-                        await httpContext.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
-                        await httpContext.Response.CompleteAsync();
-                        throw new Exception("This exception will not impact the client because the response has already been completed.");
+                        // Return 401 to force token refresh
+                        await context.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
+                        await context.Response.StartAsync(context.RequestAborted);
+                        await context.Response.Body.FlushAsync(context.RequestAborted);
+                        return; // Short-circuit, don't call next()
                     }
-                    else
-                    {
-                        return await next(mcpContext, cancellationToken);
-                    }
-                };
-            });
+                }
 
-        await using var app = await StartMcpServerAsync();
+                await next(context);
+            });
+        });
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -449,29 +468,66 @@ public class AuthTests : OAuthTestBase
     {
         var adminScopes = "admin:read admin:write";
 
-        Builder.Services.AddHttpContextAccessor();
         Builder.Services.AddMcpServer()
             .WithTools([
                 McpServerTool.Create([McpServerTool(Name = "admin-tool")]
-                async (IServiceProvider serviceProvider, ClaimsPrincipal user) =>
+                (ClaimsPrincipal user) =>
                 {
-                    if (!user.HasClaim("scope", adminScopes))
-                    {
-                        var httpContext = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext!;
-                        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        httpContext.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{adminScopes}\"";
-                        await httpContext.Response.CompleteAsync();
-
-                        throw new Exception("This exception will not impact the client because the response has already been completed.");
-                    }
-
+                    // Tool now just checks if user has the required scopes
+                    // If they don't, it shouldn't get here due to middleware
+                    Assert.True(user.HasClaim("scope", adminScopes), "User should have admin scopes when tool executes");
                     return "Admin tool executed.";
                 }),
             ]);
 
         string? requestedScope = null;
 
-        await using var app = await StartMcpServerAsync();
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Add middleware to intercept requests and check for admin-tool calls
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    // Enable buffering so we can read the request body multiple times
+                    context.Request.EnableBuffering();
+
+                    // Read the request body to check if it's calling admin-tool
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    // Reset the request body position so MapMcp can read it
+                    context.Request.Body.Position = 0;
+
+                    // Check if this is a tools/call request for admin-tool
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        if (toolCallParams?.Name == "admin-tool")
+                        {
+                            // Check if user has required scopes
+                            var user = context.User;
+                            if (!user.HasClaim("scope", adminScopes))
+                            {
+                                // User lacks required scopes, return 403 before MapMcp processes the request
+                                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                                context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{adminScopes}\"";
+                                await context.Response.StartAsync(context.RequestAborted);
+                                await context.Response.Body.FlushAsync(context.RequestAborted);
+                                return; // Short-circuit, don't call next()
+                            }
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -506,7 +562,7 @@ public class AuthTests : OAuthTestBase
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.Resource = new Uri("http://localhost:5999");
+            options.ResourceMetadata!.Resource = "http://localhost:5999";
         });
 
         await using var app = await StartMcpServerAsync();
@@ -528,11 +584,52 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WhenProtectedResourceMetadataMissingResource()
+    {
+        TestOAuthServer.RequireResource = false;
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.Events.OnResourceMetadataRequest = async context =>
+            {
+                context.HandleResponse();
+
+                var metadata = new ProtectedResourceMetadata
+                {
+                    AuthorizationServers = { OAuthServerUrl },
+                    ScopesSupported = ["mcp:tools"],
+                };
+
+                await Results.Json(metadata, McpJsonUtilities.DefaultOptions).ExecuteAsync(context.HttpContext);
+            };
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Resource URI in metadata", ex.Message);
+    }
+
+    [Fact]
     public async Task CanAuthenticate_WithAuthorizationServerPathInsertionMetadata()
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}/tenant1")];
+            options.ResourceMetadata!.AuthorizationServers = [$"{OAuthServerUrl}/tenant1"];
         });
 
         await using var app = await StartMcpServerAsync();
@@ -565,7 +662,7 @@ public class AuthTests : OAuthTestBase
 
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}{issuerPath}")];
+            options.ResourceMetadata!.AuthorizationServers = [$"{OAuthServerUrl}{issuerPath}"];
         });
 
         await using var app = await StartMcpServerAsync();
@@ -606,8 +703,8 @@ public class AuthTests : OAuthTestBase
 
         var metadata = new ProtectedResourceMetadata
         {
-            Resource = new Uri($"{McpServerUrl}{resourcePath}"),
-            AuthorizationServers = { new Uri(OAuthServerUrl) },
+            Resource = $"{McpServerUrl}{resourcePath}",
+            AuthorizationServers = { OAuthServerUrl },
         };
 
         app.Use(async (context, next) =>
@@ -678,8 +775,8 @@ public class AuthTests : OAuthTestBase
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                Resource = new Uri($"{McpServerUrl}{configuredResourcePath}"),
-                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                Resource = $"{McpServerUrl}{configuredResourcePath}",
+                AuthorizationServers = { OAuthServerUrl },
             };
         });
 
@@ -719,8 +816,8 @@ public class AuthTests : OAuthTestBase
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                Resource = new Uri($"{McpServerUrl}"),
-                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                Resource = McpServerUrl,
+                AuthorizationServers = { OAuthServerUrl },
             };
         });
 
@@ -749,5 +846,107 @@ public class AuthTests : OAuthTestBase
         });
 
         Assert.Contains("does not match", ex.Message);
+    }
+
+    [Fact]
+    public async Task ResourceMetadata_DoesNotAddTrailingSlash()
+    {
+        // This test verifies that automatically derived resource URIs don't have trailing slashes
+        // and that the client doesn't add them during authentication
+        
+        // Don't explicitly set Resource - let it be derived from the request
+        await using var app = await StartMcpServerAsync();
+
+        // First, manually check the PRM document doesn't contain a trailing slash
+        using var metadataResponse = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.NotNull(metadata);
+        Assert.Equal("http://localhost:5000", metadata.Resource);
+        Assert.DoesNotMatch(@"/$", metadata.Resource); // No trailing slash
+
+        // Then authenticate with the client - this will use the derived resource URI
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should succeed - the client should not add a trailing slash
+        // If the client incorrectly added a trailing slash, ValidResources would reject it
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ResourceMetadata_PreservesExplicitTrailingSlash()
+    {
+        // This test verifies that explicitly configured trailing slashes are preserved
+        const string resourceWithTrailingSlash = "http://localhost:5000/";
+        
+        // Configure ValidResources to accept the trailing slash version for this test
+        TestOAuthServer.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
+        
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = resourceWithTrailingSlash,
+                AuthorizationServers = { OAuthServerUrl },
+                ScopesSupported = ["mcp:tools"],
+            };
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        // First, manually check the PRM document contains the trailing slash
+        using var metadataResponse = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.NotNull(metadata);
+        Assert.Equal(resourceWithTrailingSlash, metadata.Resource);
+        Assert.Matches(@"/$", metadata.Resource); // Has trailing slash
+
+        // Then authenticate with the client
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should succeed with the explicitly configured trailing slash
+        // If the client incorrectly trimmed the slash, ValidResources would reject it
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 }

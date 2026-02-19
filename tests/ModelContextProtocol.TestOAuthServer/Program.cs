@@ -16,10 +16,11 @@ public sealed class Program
     private static readonly string _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
-    private static readonly string[] ValidResources = [
-        "http://localhost:5000/",
+    // Per MCP spec, URIs should not have trailing slashes unless semantically significant
+    public string[] ValidResources { get; set; } = [
+        "http://localhost:5000",
         "http://localhost:5000/mcp",
-        "http://localhost:7071/"
+        "http://localhost:7071"
     ];
 
     private readonly ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
@@ -33,6 +34,7 @@ public sealed class Program
 
     private readonly ILoggerProvider? _loggerProvider;
     private readonly IConnectionListenerFactory? _kestrelTransport;
+    private readonly TaskCompletionSource _serverStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Program"/> class with logging and transport parameters.
@@ -47,6 +49,11 @@ public sealed class Program
         _kestrelTransport = kestrelTransport;
     }
 
+    /// <summary>
+    /// Gets a task that completes when the server has started and is ready to accept connections.
+    /// </summary>
+    public Task ServerStarted => _serverStarted.Task;
+
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
     public bool HasRefreshedToken { get; set; }
 
@@ -59,6 +66,14 @@ public sealed class Program
     /// The default value is <c>true</c>.
     /// </remarks>
     public bool ClientIdMetadataDocumentSupported { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server requires a resource parameter.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>true</c>.
+    /// </remarks>
+    public bool RequireResource { get; set; } = true;
 
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
@@ -283,7 +298,7 @@ public sealed class Program
             }
 
             // Validate resource in accordance with RFC 8707
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -331,7 +346,7 @@ public sealed class Program
 
             // Validate resource in accordance with RFC 8707
             var resource = form["resource"].ToString();
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {
@@ -541,7 +556,20 @@ public sealed class Program
         Console.WriteLine($"Demo Client ID: {clientId}");
         Console.WriteLine($"Demo Client Secret: {clientSecret}");
 
-        await app.RunAsync(cancellationToken);
+        await app.StartAsync(cancellationToken);
+        _serverStarted.TrySetResult();
+
+        // Wait until cancellation is requested
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancellation is requested
+        }
+
+        await app.StopAsync();
     }
 
     /// <summary>

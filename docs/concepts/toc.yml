@@ -5,6 +5,8 @@ items:
   items:
   - name: Progress
     uid: progress
+  - name: Tasks
+    uid: tasks
 - name: Client Features
   items:
   - name: Elicitation

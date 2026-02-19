@@ -140,4 +140,41 @@ public static class NotificationMethods
     /// </para>
     /// </remarks>
     public const string CancelledNotification = "notifications/cancelled";
+
+    /// <summary>
+    /// The name of the notification sent when a task status changes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When a task status changes, receivers may send this notification to inform the requestor
+    /// of the change. This notification includes the full task state.
+    /// </para>
+    /// <para>
+    /// Requestors must not rely on receiving this notification, as it is optional. Receivers
+    /// are not required to send status notifications and may choose to only send them for
+    /// certain status transitions. Requestors should continue to poll via tasks/get to ensure
+    /// they receive status updates.
+    /// </para>
+    /// </remarks>
+    public const string TaskStatusNotification = "notifications/tasks/status";
+
+    /// <summary>
+    /// The metadata key used to associate requests, responses, and notifications with a task.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This constant defines the key <c>"io.modelcontextprotocol/related-task"</c> used in the
+    /// <c>_meta</c> field to associate messages with their originating task across the entire
+    /// request lifecycle.
+    /// </para>
+    /// <para>
+    /// For example, an elicitation that a task-augmented tool call depends on must share the
+    /// same related task ID with that tool call's task.
+    /// </para>
+    /// <para>
+    /// For <c>tasks/get</c>, <c>tasks/list</c>, and <c>tasks/cancel</c> operations, this
+    /// metadata should not be included as the taskId is already present in the message structure.
+    /// </para>
+    /// </remarks>
+    public const string RelatedTaskMetaKey = "io.modelcontextprotocol/related-task";
 }

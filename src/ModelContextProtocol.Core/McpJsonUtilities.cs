@@ -108,10 +108,12 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(RootsListChangedNotificationParams))]
     [JsonSerializable(typeof(ToolListChangedNotificationParams))]
+    [JsonSerializable(typeof(McpTaskStatusNotificationParams))]
 
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResult))]
+    [JsonSerializable(typeof(CreateTaskResult))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
@@ -142,6 +144,22 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
 
+    // MCP Task Request Params / Results
+    [JsonSerializable(typeof(McpTask))]
+    [JsonSerializable(typeof(McpTaskStatus))]
+    [JsonSerializable(typeof(McpTaskMetadata))]
+    [JsonSerializable(typeof(GetTaskRequestParams))]
+    [JsonSerializable(typeof(GetTaskResult))]
+    [JsonSerializable(typeof(GetTaskPayloadRequestParams))]
+    [JsonSerializable(typeof(ListTasksRequestParams))]
+    [JsonSerializable(typeof(ListTasksResult))]
+    [JsonSerializable(typeof(CancelMcpTaskRequestParams))]
+    [JsonSerializable(typeof(CancelMcpTaskResult))]
+    [JsonSerializable(typeof(McpTasksCapability))]
+    [JsonSerializable(typeof(RequestMcpTasksCapability))]
+    [JsonSerializable(typeof(ToolExecution))]
+    [JsonSerializable(typeof(ToolTaskSupport))]
+
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]
     [JsonSerializable(typeof(TextContentBlock))]
@@ -161,6 +179,7 @@ public static partial class McpJsonUtilities
     // Other MCP Types
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
+    [JsonSerializable(typeof(JsonElement))]
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]

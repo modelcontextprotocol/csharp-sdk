@@ -16,6 +16,8 @@ on:
       - "*.props"
       - "Makefile"
       - "global.json"
+      - "package.json"
+      - "package-lock.json"
       - "src/**"
       - "tests/**"
       - "samples/**"
@@ -36,7 +38,7 @@ jobs:
 
     steps:
     - name: 📥 Clone the repo
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
@@ -47,35 +49,23 @@ jobs:
           10.0.x
           9.0.x
 
-    # NetFX testing on non-Windows requires mono
-    - name: 🔧 Setup Mono
-      if: runner.os == 'Linux'
-      run: sudo apt-get install -y mono-devel
-
-    - name: 🔧 Setup Mono on macOS
-      if: runner.os == 'macOS'
-      run: brew install mono
-
     - name: 🔧 Set up Node.js
       uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
       with:
         node-version: '20'
 
-    - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-everything@2025.12.18
-
-    - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-memory
-
-    # Keep version in sync with McpConformanceVersion in Directory.Packages.props
-    - name: 📦 Install conformance test runner
-      run: npm install @modelcontextprotocol/conformance@0.1.10
+    - name: 📦 Install pinned npm dependencies for tests
+      run: npm ci
 
     - name: 🏗️ Build
       run: make build CONFIGURATION=${{ matrix.configuration }}
 
     - name: 🧪 Test
       run: make test CONFIGURATION=${{ matrix.configuration }}
+
+    - name: 🧪 AOT Compatibility
+      if: matrix.configuration == 'Release'
+      run: make test-aot CONFIGURATION=${{ matrix.configuration }}
 
     - name: 📦 Pack
       if: matrix.configuration == 'Release'

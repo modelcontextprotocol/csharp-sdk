@@ -56,6 +56,36 @@ public sealed class ElicitResult : Result
     /// </remarks>
     [JsonPropertyName("content")]
     public IDictionary<string, JsonElement>? Content { get; set; }
+
+    /// <summary>
+    /// Applies default values from the elicitation request schema to any missing fields in the result content.
+    /// </summary>
+    internal static ElicitResult WithDefaults(ElicitRequestParams? requestParams, ElicitResult result)
+    {
+        if (result.IsAccepted && requestParams?.RequestedSchema?.Properties is { } properties)
+        {
+            Dictionary<string, JsonElement>? newContent = null;
+
+            foreach (KeyValuePair<string, ElicitRequestParams.PrimitiveSchemaDefinition> kvp in properties)
+            {
+                if ((result.Content is null || !result.Content.ContainsKey(kvp.Key)) &&
+                    kvp.Value.GetDefaultAsJsonElement() is { } element)
+                {
+                    newContent ??= result.Content is not null ?
+                        new Dictionary<string, JsonElement>(result.Content) :
+                        [];
+                    newContent[kvp.Key] = element;
+                }
+            }
+
+            if (newContent is not null)
+            {
+                return new ElicitResult { Action = result.Action, Content = newContent, Meta = result.Meta };
+            }
+        }
+
+        return result;
+    }
 }
 
 /// <summary>

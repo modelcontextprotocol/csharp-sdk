@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -50,7 +51,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         var receivedNotification = await notificationReceived.Task.WaitAsync(cts.Token);
         Assert.NotNull(receivedNotification);
         Assert.Equal(resourceUri, receivedNotification.Uri);
@@ -92,7 +93,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         await correctNotificationReceived.Task.WaitAsync(cts.Token);
         
         // Give a small delay to ensure no other notifications are processed
@@ -168,7 +169,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         var receivedNotification = await notificationReceived.Task.WaitAsync(cts.Token);
         Assert.NotNull(receivedNotification);
         Assert.Equal(resourceUri.AbsoluteUri, receivedNotification.Uri);
@@ -263,7 +264,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         var combined = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, TestContext.Current.CancellationToken);
         await Task.WhenAll(
             notification1Received.Task.WaitAsync(combined.Token),
@@ -341,7 +342,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Both handlers should be invoked
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         var combined = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, TestContext.Current.CancellationToken);
         await Task.WhenAll(
             handler1Called.Task.WaitAsync(combined.Token),
@@ -360,7 +361,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for handler2 to be called again
-        using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts2 = new CancellationTokenSource(TestConstants.DefaultTimeout);
         var combined2 = CancellationTokenSource.CreateLinkedTokenSource(cts2.Token, TestContext.Current.CancellationToken);
         await handler2CalledAgain.Task.WaitAsync(combined2.Token);
 

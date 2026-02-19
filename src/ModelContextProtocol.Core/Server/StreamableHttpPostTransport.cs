@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.ServerSentEvents;
@@ -10,7 +11,11 @@ namespace ModelContextProtocol.Server;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessageContext.RelatedTransport"/>.
 /// </summary>
-internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream, CancellationToken sessionCancellationToken) : ITransport
+internal sealed partial class StreamableHttpPostTransport(
+    StreamableHttpServerTransport parentTransport,
+    Stream responseStream,
+    CancellationToken sessionCancellationToken,
+    ILogger logger) : ITransport
 {
     private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -36,9 +41,12 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     {
         Debug.Assert(_pendingRequest.Id is null);
 
+        message.Context ??= new JsonRpcMessageContext();
+
         if (message is JsonRpcRequest request)
         {
             _pendingRequest = request.Id;
+            message.Context.RelatedTransport = this;
 
             // Invoke the initialize request handler if applicable.
             if (request.Method == RequestMethods.Initialize)
@@ -47,9 +55,6 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
                 await parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
             }
         }
-
-        message.Context ??= new JsonRpcMessageContext();
-        message.Context.RelatedTransport = this;
 
         if (parentTransport.FlowExecutionContextFromRequests)
         {
@@ -68,6 +73,13 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             if (primingItem.HasValue)
             {
                 await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // If there's no priming write, flush the stream to ensure HTTP response headers are
+                // sent to the client now that the server is ready to process the request.
+                // This prevents HttpClient timeout for long-running requests.
+                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
@@ -199,7 +211,14 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             {
                 using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
 
-                await _storeSseWriter!.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await _storeSseWriter!.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    LogStoreStreamDisposalFailed(ex);
+                }
             }
         }
     }
@@ -222,4 +241,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
         // after disposal if there are pending messages.
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to dispose SSE event stream writer.")]
+    private partial void LogStoreStreamDisposalFailed(Exception exception);
 }

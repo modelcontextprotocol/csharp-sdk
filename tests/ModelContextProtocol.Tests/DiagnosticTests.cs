@@ -32,6 +32,11 @@ public class DiagnosticTests
                 var tool = tools.First(t => t.Name == "DoubleValue");
                 await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             }, clientToServerLog);
+
+            // Wait for server-side activities to be exported. The server processes messages
+            // via fire-and-forget tasks, so activities may not be immediately available
+            // after the client operation completes.
+            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
         }
 
         Assert.NotEmpty(activities);
@@ -97,6 +102,9 @@ public class DiagnosticTests
                 await client.CallToolAsync("Throw", cancellationToken: TestContext.Current.CancellationToken);
                 await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
             }, []);
+
+            // Wait for server-side activities to be exported.
+            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
         }
 
         Assert.NotEmpty(activities);
@@ -164,6 +172,9 @@ public class DiagnosticTests
                     .First(t => t.Name == "DoubleValue");
                 await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             }, []);
+
+            // Wait for server-side activities to be exported.
+            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 3);
         }
 
         // The outer activity should have MCP-specific attributes added to it
@@ -214,6 +225,15 @@ public class DiagnosticTests
         }
 
         await serverTask;
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 10_000)
+    {
+        using var cts = new CancellationTokenSource(timeoutMs);
+        while (!condition())
+        {
+            await Task.Delay(10, cts.Token);
+        }
     }
 }
 

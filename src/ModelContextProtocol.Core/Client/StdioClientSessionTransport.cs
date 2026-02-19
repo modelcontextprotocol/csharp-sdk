@@ -72,11 +72,13 @@ internal sealed class StdioClientSessionTransport(
         try
         {
             // The process has exited, but we still need to ensure stderr has been flushed.
+            // WaitForExitAsync only waits for exit; it does not guarantee that all
+            // ErrorDataReceived events have been dispatched. The synchronous WaitForExit()
+            // (no arguments) does ensure that, so call it after WaitForExitAsync completes.
 #if NET
             await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-#else
-            _process.WaitForExit();
 #endif
+            _process.WaitForExit();
         }
         catch { }
 

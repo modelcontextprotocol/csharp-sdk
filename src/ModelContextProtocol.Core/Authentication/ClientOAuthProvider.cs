@@ -44,6 +44,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string? _clientId;
     private string? _clientSecret;
+    private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -153,7 +154,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Try to refresh the access token if it is invalid and we have a refresh token.
         if (_authServerMetadata is not null && tokens?.RefreshToken is { Length: > 0 } refreshToken)
         {
-            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
@@ -242,15 +243,26 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ThrowFailedToHandleUnauthorizedResponse("No authorization servers found in authentication challenge");
         }
 
+        // Convert string URIs to Uri objects for the selector
+        List<Uri> authServerUris = [];
+        foreach (var serverUriString in availableAuthorizationServers)
+        {
+            if (!Uri.TryCreate(serverUriString, UriKind.Absolute, out var serverUri))
+            {
+                ThrowFailedToHandleUnauthorizedResponse($"Invalid authorization server URI: '{serverUriString}'. Available servers: {string.Join(", ", availableAuthorizationServers)}");
+            }
+            authServerUris.Add(serverUri);
+        }
+
         // Select authorization server using configured strategy
-        var selectedAuthServer = _authServerSelector(availableAuthorizationServers);
+        var selectedAuthServer = _authServerSelector(authServerUris);
 
         if (selectedAuthServer is null)
         {
             ThrowFailedToHandleUnauthorizedResponse($"Authorization server selection returned null. Available servers: {string.Join(", ", availableAuthorizationServers)}");
         }
 
-        if (!availableAuthorizationServers.Contains(selectedAuthServer))
+        if (!authServerUris.Contains(selectedAuthServer))
         {
             ThrowFailedToHandleUnauthorizedResponse($"Authorization server selector returned a server not in the available list: {selectedAuthServer}. Available servers: {string.Join(", ", availableAuthorizationServers)}");
         }
@@ -259,9 +271,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
-
-        // Store auth server metadata for future refresh operations
-        _authServerMetadata = authServerMetadata;
 
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
@@ -295,6 +304,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 await PerformDynamicClientRegistrationAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
             }
         }
+
+        // Determine the token endpoint auth method from server metadata if not already set by DCR.
+        _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
+
+        // Store auth server metadata for future refresh operations
+        _authServerMetadata = authServerMetadata;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -383,21 +398,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private async Task<string?> RefreshTokensAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<string?> RefreshTokensAsync(string refreshToken, string resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["client_id"] = GetClientIdOrThrow(),
-            ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
+            ["resource"] = resourceUri,
         };
+
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -444,7 +454,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
-            ["resource"] = resourceUri.ToString(),
+            ["resource"] = resourceUri,
         };
 
         var scope = GetScopeParameter(protectedResourceMetadata);
@@ -482,28 +492,55 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
 
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
-            ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
+            ["resource"] = resourceUri,
         };
 
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
+
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        httpResponse.EnsureSuccessStatusCode();
+        await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
         return tokens.AccessToken;
+    }
+
+    /// <summary>
+    /// Creates an HTTP request to the token endpoint, applying the appropriate authentication
+    /// method based on <see cref="_tokenEndpointAuthMethod"/>.
+    /// </summary>
+    private HttpRequestMessage CreateTokenRequest(Uri tokenEndpoint, Dictionary<string, string> formFields)
+    {
+        HttpRequestMessage request = new(HttpMethod.Post, tokenEndpoint);
+
+        var clientId = GetClientIdOrThrow();
+        if (string.Equals(_tokenEndpointAuthMethod, "client_secret_basic", StringComparison.Ordinal))
+        {
+            // Per RFC 6749 §2.3.1: send client_id:client_secret as HTTP Basic auth.
+            request.Headers.Authorization = new(
+                "Basic",
+                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Uri.EscapeDataString(clientId)}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}")));
+        }
+        else if (string.Equals(_tokenEndpointAuthMethod, "none", StringComparison.Ordinal))
+        {
+            // Public client: include client_id in the body but no secret.
+            formFields["client_id"] = clientId;
+        }
+        else
+        {
+            // Default to client_secret_post: include credentials in the body.
+            formFields["client_id"] = clientId;
+            formFields["client_secret"] = _clientSecret ?? string.Empty;
+        }
+
+        request.Content = new FormUrlEncodedContent(formFields);
+        return request;
     }
 
     private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -544,7 +581,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
         if (requireSuccess)
         {
-            httpResponse.EnsureSuccessStatusCode();
+            await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
         }
         else if (!httpResponse.IsSuccessStatusCode)
         {
@@ -581,8 +618,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             Scope = GetScopeParameter(protectedResourceMetadata),
         };
 
-        var requestJson = JsonSerializer.Serialize(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
-        using var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
+        using var requestContent = new ByteArrayContent(requestBytes);
+        requestContent.Headers.ContentType = McpHttpClient.s_applicationJsonContentType;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.RegistrationEndpoint)
         {
@@ -620,6 +658,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             _clientSecret = registrationResponse.ClientSecret;
         }
 
+        if (!string.IsNullOrEmpty(registrationResponse.TokenEndpointAuthMethod))
+        {
+            _tokenEndpointAuthMethod = registrationResponse.TokenEndpointAuthMethod;
+        }
+
         LogDynamicClientRegistrationSuccessful(_clientId!);
 
         if (_dcrResponseDelegate is not null)
@@ -628,7 +671,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private static Uri GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
+    private static string GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
     {
         if (protectedResourceMetadata.Resource is null)
         {
@@ -699,6 +742,27 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         builder.Append(uri.AbsolutePath.TrimEnd('/'));
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Normalizes a URI string for consistent comparison.
+    /// </summary>
+    /// <param name="uriString">The URI string to normalize.</param>
+    /// <returns>
+    /// A normalized string representation of the URI. If the string is a valid absolute URI,
+    /// it is parsed and normalized (scheme, host, port, and path without trailing slash).
+    /// If the string is not a valid absolute URI, only the trailing slash is removed.
+    /// </returns>
+    private static string NormalizeUri(string uriString)
+    {
+        // Parse the string as a URI to normalize it
+        if (!Uri.TryCreate(uriString, UriKind.Absolute, out var uri))
+        {
+            // If it's not a valid URI, return the string with trailing slash removed
+            return uriString.TrimEnd('/');
+        }
+
+        return NormalizeUri(uri);
     }
 
     /// <summary>
