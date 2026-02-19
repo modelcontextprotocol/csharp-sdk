@@ -338,9 +338,12 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
         }
         catch (Exception ex)
         {
+            var logger = context.Services?.GetService<ILogger<Program>>();
+            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Meta.ProgressToken);
+
             return new CallToolResult
             {
-                Content = new[] { new TextContent { Type = "text", Text = $"Error: {ex.Message}" } },
+                Content = new[] { new TextContent { Type = "text", Text = "An unexpected error occurred while processing the tool call." } },
                 IsError = true
             };
         }
