@@ -396,7 +396,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 { 
                     Uri = request.Params!.Uri, 
                     MimeType = dc.MediaType, 
-                    Blob = GetBase64Utf8Bytes(dc)
+                    Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
                 }],
             },
 
@@ -426,7 +426,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = GetBase64Utf8Bytes(dc)
+                            Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
@@ -447,16 +447,5 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             _ => throw new InvalidOperationException($"Unsupported result type '{result.GetType()}' returned from resource function."),
         };
-    }
-
-    /// <summary>
-    /// Helper method to get UTF-8 bytes from DataContent.Base64Data efficiently.
-    /// </summary>
-    private static ReadOnlyMemory<byte> GetBase64Utf8Bytes(DataContent dataContent)
-    {
-        var utf16 = dataContent.Base64Data.Span;
-        byte[] bytes = new byte[Encoding.UTF8.GetByteCount(utf16)];
-        Encoding.UTF8.GetBytes(utf16, bytes);
-        return bytes;
     }
 }

@@ -575,7 +575,7 @@ public partial class McpServerResourceTests
             return (IList<ResourceContents>)
             [
                 new TextResourceContents { Text = "hello", Uri = "" },
-                BlobResourceContents.FromData((byte[])[1, 2, 3], ""),
+                BlobResourceContents.FromBytes((byte[])[1, 2, 3], ""),
             ];
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(

@@ -85,7 +85,7 @@ public class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "application/octet-stream"
                 });
-                resourceContents.Add(BlobResourceContents.FromData(buffer, uri, "application/octet-stream"));
+                resourceContents.Add(BlobResourceContents.FromBytes(buffer, uri, "application/octet-stream"));
             }
         }
 

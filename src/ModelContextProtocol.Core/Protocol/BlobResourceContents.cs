@@ -33,18 +33,18 @@ public sealed class BlobResourceContents : ResourceContents
     /// <summary>
     /// Creates an <see cref="BlobResourceContents"/> from raw data.
     /// </summary>
-    /// <param name="data">The raw data.</param>
+    /// <param name="bytes">The raw unencoded data.</param>
     /// <param name="uri">The URI of the data.</param>
     /// <param name="mimeType">The optional MIME type of the data.</param>
     /// <returns>A new <see cref="BlobResourceContents"/> instance.</returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public static BlobResourceContents FromData(ReadOnlyMemory<byte> data, string uri, string? mimeType = null)
+    public static BlobResourceContents FromBytes(ReadOnlyMemory<byte> bytes, string uri, string? mimeType = null)
     {
-        ReadOnlyMemory<byte> blob = Base64Helpers.EncodeToBase64Utf8(data);
+        ReadOnlyMemory<byte> blob = EncodingUtilities.EncodeToBase64Utf8(bytes);
         
         return new()
         {
-            _decodedData = data,
+            _decodedData = bytes,
             Blob = blob,
             MimeType = mimeType,
             Uri = uri
@@ -88,7 +88,7 @@ public sealed class BlobResourceContents : ResourceContents
         {
             if (_decodedData is null)
             {
-                _decodedData = Base64Helpers.DecodeFromBase64Utf8(Blob);
+                _decodedData = EncodingUtilities.DecodeFromBase64Utf8(Blob);
             }
 
             return _decodedData.Value;

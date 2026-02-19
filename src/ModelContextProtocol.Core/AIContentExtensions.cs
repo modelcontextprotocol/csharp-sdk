@@ -399,13 +399,13 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
+                Data = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
+                Data = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
@@ -413,7 +413,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = GetUtf8Bytes(dataContent.Base64Data.Span),
+                    Blob = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }
@@ -446,14 +446,6 @@ public static class AIContentExtensions
         contentBlock.Meta = content.AdditionalProperties?.ToJsonObject(options);
 
         return contentBlock;
-
-        static byte[] GetUtf8Bytes(ReadOnlySpan<char> utf16)
-        {
-            // Get UTF-8 bytes from UTF-16 chars without intermediate string allocations
-            byte[] bytes = new byte[Encoding.UTF8.GetByteCount(utf16)];
-            Encoding.UTF8.GetBytes(utf16, bytes);
-            return bytes;
-        }
     }
 
     private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
