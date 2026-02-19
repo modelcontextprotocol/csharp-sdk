@@ -83,12 +83,25 @@ public sealed class McpServerOptions
     public Implementation? KnownClientInfo { get; set; }
 
     /// <summary>
+    /// Gets the filter collections for incoming and outgoing messages and requests.
+    /// Gets or sets preexisting knowledge about the client's capabilities to support session migration
+    /// scenarios where the client will not re-send the initialize request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When not specified, this information is sourced from the client's initialize request.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientInfo"/>.
+    /// </para>
+    /// </remarks>
+    public ClientCapabilities? KnownClientCapabilities { get; set; }
+
+    /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
     public McpServerHandlers Handlers { get; } = new();
 
     /// <summary>
-    /// Gets the filter collections for incoming and outgoing messages and requests.
+    /// Gets the filter collections for MCP server handlers.
     /// </summary>
     /// <remarks>
     /// This property provides access to filter collections that can be used to modify the behavior
