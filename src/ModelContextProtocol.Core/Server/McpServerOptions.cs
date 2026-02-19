@@ -83,7 +83,6 @@ public sealed class McpServerOptions
     public Implementation? KnownClientInfo { get; set; }
 
     /// <summary>
-    /// Gets the filter collections for incoming and outgoing messages and requests.
     /// Gets or sets preexisting knowledge about the client's capabilities to support session migration
     /// scenarios where the client will not re-send the initialize request.
     /// </summary>
