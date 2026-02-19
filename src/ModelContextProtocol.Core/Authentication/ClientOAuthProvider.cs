@@ -618,8 +618,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             Scope = GetScopeParameter(protectedResourceMetadata),
         };
 
-        var requestJson = JsonSerializer.Serialize(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
-        using var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
+        using var requestContent = new ByteArrayContent(requestBytes);
+        requestContent.Headers.ContentType = McpHttpClient.s_applicationJsonContentType;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.RegistrationEndpoint)
         {

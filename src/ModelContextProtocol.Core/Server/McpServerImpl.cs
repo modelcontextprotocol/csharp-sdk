@@ -591,7 +591,7 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             throw new McpProtocolException(
                                 $"Tool '{tool.ProtocolTool.Name}' does not support task-augmented execution.",
-                                McpErrorCode.MethodNotFound);
+                                McpErrorCode.InvalidParams);
                         }
 
                         // Task augmentation requested - return CreateTaskResult
@@ -604,7 +604,7 @@ internal sealed partial class McpServerImpl : McpServer
                         throw new McpProtocolException(
                             $"Tool '{tool.ProtocolTool.Name}' requires task-augmented execution. " +
                             "Include a 'task' parameter with the request.",
-                            McpErrorCode.MethodNotFound);
+                            McpErrorCode.InvalidParams);
                     }
 
                     // Normal synchronous execution

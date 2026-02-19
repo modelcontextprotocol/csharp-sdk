@@ -526,8 +526,8 @@ public class ToolTaskSupportTests : LoggedTest
                 arguments: new Dictionary<string, object?> { ["input"] = "test" },
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
-        // The server returns MethodNotFound because direct invocation is not allowed for required-task tools
-        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        // The server returns InvalidParams because direct invocation is not allowed for required-task tools
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
         Assert.Contains("task", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 

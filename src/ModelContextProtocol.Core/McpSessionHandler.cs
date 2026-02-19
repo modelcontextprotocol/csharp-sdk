@@ -31,7 +31,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
     internal const string LatestProtocolVersion = "2025-11-25";
 
-    /// <summary>All protocol versions supported by this implementation.</summary>
+    /// <summary>
+    /// All protocol versions supported by this implementation.
+    /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
+    /// </summary>
     internal static readonly string[] SupportedProtocolVersions =
     [
         "2024-11-05",

@@ -1,10 +1,10 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
+using System.Net.Http.Headers;
 
 #if NET
 using System.Net.Http.Json;
 #else
-using System.Text;
 using System.Text.Json;
 #endif
 
@@ -12,6 +12,8 @@ namespace ModelContextProtocol.Client;
 
 internal class McpHttpClient(HttpClient httpClient)
 {
+    internal static readonly MediaTypeHeaderValue s_applicationJsonContentType = new("application/json") { CharSet = "utf-8" };
+
     internal virtual async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
     {
         Debug.Assert(request.Content is null, "The request body should only be supplied as a JsonRpcMessage");
@@ -32,11 +34,10 @@ internal class McpHttpClient(HttpClient httpClient)
 #if NET
         return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 #else
-        return new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
-            Encoding.UTF8,
-            "application/json"
-        );
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = s_applicationJsonContentType;
+        return content;
 #endif
     }
 }

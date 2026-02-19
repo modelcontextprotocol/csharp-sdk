@@ -100,7 +100,7 @@ public class McpServerTaskAugmentedValidationTests : LoggedTest
                 TestContext.Current.CancellationToken));
 
         Assert.Contains("does not support task-augmented execution", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class McpServerTaskAugmentedValidationTests : LoggedTest
                 TestContext.Current.CancellationToken));
 
         Assert.Contains("requires task-augmented execution", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
 
     [Fact]

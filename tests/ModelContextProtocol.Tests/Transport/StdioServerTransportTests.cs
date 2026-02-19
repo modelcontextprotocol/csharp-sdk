@@ -24,7 +24,7 @@ public class StdioServerTransportTests : LoggedTest
         };
     }
 
-    [Fact(Skip="https://github.com/modelcontextprotocol/csharp-sdk/issues/143")]
+    [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
         // Act
@@ -225,6 +225,54 @@ public class StdioServerTransportTests : LoggedTest
 
         Assert.NotEmpty(traceLogMessages);
         Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":44"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
+    {
+        using var output = new MemoryStream();
+
+        await using var transport = new StreamServerTransport(
+            new Pipe().Reader.AsStream(),
+            output,
+            loggerFactory: LoggerFactory);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+
+        await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+
+        byte[] bytes = output.ToArray();
+
+        // The output should end with exactly \n (0x0A), not \r\n (0x0D 0x0A).
+        Assert.True(bytes.Length > 1, "Output should contain message data");
+        Assert.Equal((byte)'\n', bytes[^1]);
+        Assert.NotEqual((byte)'\r', bytes[^2]);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
+    {
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            Stream.Null,
+            loggerFactory: LoggerFactory);
+
+        // Write the message with \r\n line ending
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\r\n"), TestContext.Current.CancellationToken);
+
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(canRead, "Should be able to read a \\r\\n-delimited message");
+        Assert.True(transport.MessageReader.TryPeek(out var readMessage));
+        Assert.NotNull(readMessage);
+        Assert.IsType<JsonRpcRequest>(readMessage);
+        Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
     }
 
     [Fact]
