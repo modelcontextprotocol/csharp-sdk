@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -78,7 +79,7 @@ public abstract class ResourceContents
 
             string? uri = null;
             string? mimeType = null;
-            string? blob = null;
+            ReadOnlyMemory<byte>? blob = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -104,7 +105,7 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.GetString();
+                        blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
 
                     case "text":
@@ -127,7 +128,7 @@ public abstract class ResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob,
+                    Blob = blob.Value,
                     Meta = meta,
                 };
             }
@@ -162,7 +163,7 @@ public abstract class ResourceContents
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                writer.WriteString("blob", blobResource.Blob);
+                writer.WriteString("blob", blobResource.Blob.Span);
             }
             else if (value is TextResourceContents textResource)
             {

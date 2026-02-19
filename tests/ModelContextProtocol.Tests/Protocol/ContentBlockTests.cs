@@ -183,7 +183,7 @@ public class ContentBlockTests
             Content =
             [
                 new TextContentBlock { Text = "Result data" },
-                new ImageContentBlock { Data = "base64data", MimeType = "image/png" }
+                new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("base64data"), MimeType = "image/png" }
             ],
             StructuredContent = JsonElement.Parse("""{"temperature":18,"condition":"cloudy"}"""),
             IsError = false
@@ -198,7 +198,7 @@ public class ContentBlockTests
         var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
         Assert.Equal("Result data", textBlock.Text);
         var imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
-        Assert.Equal("base64data", imageBlock.Data);
+        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(imageBlock.Data.ToArray()));
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.NotNull(result.StructuredContent);
         Assert.Equal(18, result.StructuredContent.Value.GetProperty("temperature").GetInt32());

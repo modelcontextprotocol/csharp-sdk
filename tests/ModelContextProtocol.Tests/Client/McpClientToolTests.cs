@@ -37,13 +37,13 @@ public class McpClientToolTests : ClientServerTestBase
         [McpServerTool]
         public static ImageContentBlock ImageTool() =>
             new()
-            { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-image-data")), MimeType = "image/png" };
+            { Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-image-data"))), MimeType = "image/png" };
 
         // Tool that returns audio content as single ContentBlock
         [McpServerTool]
         public static AudioContentBlock AudioTool() =>
             new()
-            { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-audio-data")), MimeType = "audio/mp3" };
+            { Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-audio-data"))), MimeType = "audio/mp3" };
 
         // Tool that returns embedded resource
         [McpServerTool]
@@ -103,7 +103,7 @@ public class McpClientToolTests : ClientServerTestBase
         [McpServerTool]
         public static IEnumerable<ContentBlock> MixedWithNonConvertibleTool()
         {
-            yield return new ImageContentBlock { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("image-data")), MimeType = "image/png" };
+            yield return new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(Encoding.UTF8.GetBytes("image-data"))), MimeType = "image/png" };
             yield return new ResourceLinkBlock { Uri = "file://linked.txt", Name = "linked.txt" };
         }
 
@@ -152,7 +152,7 @@ public class McpClientToolTests : ClientServerTestBase
                 Resource = new BlobResourceContents
                 {
                     Uri = "data://blob",
-                    Blob = Convert.ToBase64String(Encoding.UTF8.GetBytes("binary-data")),
+                    Blob = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(Encoding.UTF8.GetBytes("binary-data"))),
                     MimeType = "application/octet-stream"
                 }
             };
