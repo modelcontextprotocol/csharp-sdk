@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol;
@@ -7,19 +6,17 @@ namespace ModelContextProtocol;
 /// <summary>
 /// Configures the McpServerOptions using addition services from DI.
 /// </summary>
-/// <param name="serverHandlers">The server handlers configuration options.</param>
 /// <param name="serverTools">The individually registered tools.</param>
 /// <param name="serverPrompts">The individually registered prompts.</param>
 /// <param name="serverResources">The individually registered resources.</param>
 internal sealed class McpServerOptionsSetup(
-    IOptions<McpServerHandlers> serverHandlers,
     IEnumerable<McpServerTool> serverTools,
     IEnumerable<McpServerPrompt> serverPrompts,
     IEnumerable<McpServerResource> serverResources) : IConfigureOptions<McpServerOptions>
 {
     /// <summary>
     /// Configures the given McpServerOptions instance by setting server information
-    /// and applying custom server handlers and tools.
+    /// and collecting registered server primitives.
     /// </summary>
     /// <param name="options">The options instance to be configured.</param>
     public void Configure(McpServerOptions options)
@@ -70,70 +67,5 @@ internal sealed class McpServerOptionsSetup(
         {
             options.ResourceCollection = resourceCollection;
         }
-
-        // Apply custom server handlers.
-        OverwriteWithSetHandlers(serverHandlers.Value, options);
-    }
-
-    /// <summary>
-    /// Overwrite any handlers in McpServerOptions with non-null handlers from this instance.
-    /// </summary>
-    private static void OverwriteWithSetHandlers(McpServerHandlers handlers, McpServerOptions options)
-    {
-        McpServerHandlers optionsHandlers = options.Handlers;
-
-        PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
-        if (handlers.ListPromptsHandler is not null || handlers.GetPromptHandler is not null)
-        {
-            promptsCapability ??= new();
-            optionsHandlers.ListPromptsHandler = handlers.ListPromptsHandler ?? optionsHandlers.ListPromptsHandler;
-            optionsHandlers.GetPromptHandler = handlers.GetPromptHandler ?? optionsHandlers.GetPromptHandler;
-        }
-
-        ResourcesCapability? resourcesCapability = options.Capabilities?.Resources;
-        if (handlers.ListResourceTemplatesHandler is not null || handlers.ListResourcesHandler is not null || handlers.ReadResourceHandler is not null)
-        {
-            resourcesCapability ??= new();
-            optionsHandlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesHandler ?? optionsHandlers.ListResourceTemplatesHandler;
-            optionsHandlers.ListResourcesHandler = handlers.ListResourcesHandler ?? optionsHandlers.ListResourcesHandler;
-            optionsHandlers.ReadResourceHandler = handlers.ReadResourceHandler ?? optionsHandlers.ReadResourceHandler;
-        }
-
-        if (handlers.SubscribeToResourcesHandler is not null || handlers.UnsubscribeFromResourcesHandler is not null)
-        {
-            resourcesCapability ??= new();
-            optionsHandlers.SubscribeToResourcesHandler = handlers.SubscribeToResourcesHandler ?? optionsHandlers.SubscribeToResourcesHandler;
-            optionsHandlers.UnsubscribeFromResourcesHandler = handlers.UnsubscribeFromResourcesHandler ?? optionsHandlers.UnsubscribeFromResourcesHandler;
-            resourcesCapability.Subscribe = true;
-        }
-
-        ToolsCapability? toolsCapability = options.Capabilities?.Tools;
-        if (handlers.ListToolsHandler is not null || handlers.CallToolHandler is not null)
-        {
-            toolsCapability ??= new();
-            optionsHandlers.ListToolsHandler = handlers.ListToolsHandler ?? optionsHandlers.ListToolsHandler;
-            optionsHandlers.CallToolHandler = handlers.CallToolHandler ?? optionsHandlers.CallToolHandler;
-        }
-
-        LoggingCapability? loggingCapability = options.Capabilities?.Logging;
-        if (handlers.SetLoggingLevelHandler is not null)
-        {
-            loggingCapability ??= new();
-            optionsHandlers.SetLoggingLevelHandler = handlers.SetLoggingLevelHandler;
-        }
-
-        CompletionsCapability? completionsCapability = options.Capabilities?.Completions;
-        if (handlers.CompleteHandler is not null)
-        {
-            completionsCapability ??= new();
-            optionsHandlers.CompleteHandler = handlers.CompleteHandler;
-        }
-
-        options.Capabilities ??= new();
-        options.Capabilities.Prompts = promptsCapability;
-        options.Capabilities.Resources = resourcesCapability;
-        options.Capabilities.Tools = toolsCapability;
-        options.Capabilities.Logging = loggingCapability;
-        options.Capabilities.Completions = completionsCapability;
     }
 }
