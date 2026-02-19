@@ -12,7 +12,7 @@ The MCP Server provides two levels of filters for intercepting and modifying req
 1. **Message Filters** - Low-level filters (`AddIncomingFilter`, `AddOutgoingFilter`) configured via `WithMessageFilters(...)` that intercept all JSON-RPC messages before routing.
 2. **Request-Specific Filters** - Handler-level filters (e.g., `AddListToolsFilter`, `AddCallToolFilter`) configured via `WithRequestFilters(...)` that target specific MCP operations.
 
-The filters are stored in `McpServerOptions.Filters` and applied during server configuration.
+The filters are stored in `McpServerOptions.Filters`.
 
 ## Available Request-Specific Filter Methods
 
