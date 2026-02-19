@@ -30,6 +30,9 @@ internal sealed class StreamableHttpHandler(
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
+    private static bool AllowNewSessionForNonInitializeRequests { get; } =
+        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", out var enabled) && enabled;
+
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _migrationLocks = new(StringComparer.Ordinal);
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
@@ -265,7 +268,8 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateful mode, only allow creating new sessions for initialize requests.
             // In stateless mode, every request is independent, so we always create a new session.
-            if (!HttpServerTransportOptions.Stateless && message is not JsonRpcRequest { Method: RequestMethods.Initialize })
+            if (!HttpServerTransportOptions.Stateless && !AllowNewSessionForNonInitializeRequests
+                && message is not JsonRpcRequest { Method: RequestMethods.Initialize })
             {
                 await WriteJsonRpcErrorAsync(context,
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests.",
