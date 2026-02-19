@@ -583,7 +583,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.ListResourceTemplatesHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.ListResourceTemplatesHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+        });
         return builder;
     }
 
@@ -616,7 +621,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.ListToolsHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.ListToolsHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Tools ??= new();
+        });
         return builder;
     }
 
@@ -636,7 +646,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.CallToolHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.CallToolHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Tools ??= new();
+        });
         return builder;
     }
 
@@ -669,7 +684,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.ListPromptsHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.ListPromptsHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Prompts ??= new();
+        });
         return builder;
     }
 
@@ -684,7 +704,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.GetPromptHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.GetPromptHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Prompts ??= new();
+        });
         return builder;
     }
 
@@ -705,7 +730,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.ListResourcesHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.ListResourcesHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+        });
         return builder;
     }
 
@@ -724,7 +754,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.ReadResourceHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.ReadResourceHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+        });
         return builder;
     }
 
@@ -743,7 +778,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.CompleteHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.CompleteHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Completions ??= new();
+        });
         return builder;
     }
 
@@ -773,7 +813,13 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.SubscribeToResourcesHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.SubscribeToResourcesHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+            options.Capabilities.Resources.Subscribe = true;
+        });
         return builder;
     }
 
@@ -803,7 +849,13 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.UnsubscribeFromResourcesHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.UnsubscribeFromResourcesHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+            options.Capabilities.Resources.Subscribe = true;
+        });
         return builder;
     }
 
@@ -830,7 +882,12 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.SetLoggingLevelHandler = handler);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.SetLoggingLevelHandler = handler;
+            options.Capabilities ??= new();
+            options.Capabilities.Logging ??= new();
+        });
         return builder;
     }
     #endregion
