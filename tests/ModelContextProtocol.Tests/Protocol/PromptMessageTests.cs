@@ -29,7 +29,7 @@ public static class PromptMessageTests
         var original = new PromptMessage
         {
             Role = Role.Assistant,
-            Content = new ImageContentBlock { Data = "base64data", MimeType = "image/png" }
+            Content = new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("base64data"), MimeType = "image/png" }
         };
 
         string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
@@ -38,7 +38,7 @@ public static class PromptMessageTests
         Assert.NotNull(deserialized);
         Assert.Equal(Role.Assistant, deserialized.Role);
         var imageBlock = Assert.IsType<ImageContentBlock>(deserialized.Content);
-        Assert.Equal("base64data", imageBlock.Data);
+        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(imageBlock.Data.ToArray()));
         Assert.Equal("image/png", imageBlock.MimeType);
     }
 }
