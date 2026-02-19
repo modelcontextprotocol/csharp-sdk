@@ -902,7 +902,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
-        List<McpRequestFilter<TParams, TResult>> filters,
+        IList<McpRequestFilter<TParams, TResult>> filters,
         McpRequestFilter<TParams, TResult>? initialHandler = null)
     {
         var current = baseHandler;
@@ -920,7 +920,7 @@ internal sealed partial class McpServerImpl : McpServer
         return current;
     }
 
-    private JsonRpcMessageFilter BuildMessageFilterPipeline(List<McpMessageFilter> filters)
+    private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {
         if (filters.Count == 0)
         {
