@@ -52,7 +52,7 @@ internal sealed partial class StreamableHttpPostTransport(
             if (request.Method == RequestMethods.Initialize)
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                await parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
+                await parentTransport.HandleInitializeRequestAsync(initializeRequest).ConfigureAwait(false);
             }
         }
 

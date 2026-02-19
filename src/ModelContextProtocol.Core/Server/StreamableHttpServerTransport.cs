@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.ServerSentEvents;
+using System.Security.Claims;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
@@ -105,7 +106,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// directly when restoring a migrated session with known <see cref="InitializeRequestParams"/>.
     /// </remarks>
     /// <param name="initParams">The initialization parameters from the client, or <see langword="null"/> if unavailable.</param>
-    public async ValueTask HandleInitRequestAsync(InitializeRequestParams? initParams)
+    public async ValueTask HandleInitializeRequestAsync(InitializeRequestParams? initParams)
     {
         _negotiatedProtocolVersion = initParams?.ProtocolVersion;
 
@@ -180,7 +181,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// If an authenticated user sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
+    /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
     /// </remarks>
     public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)

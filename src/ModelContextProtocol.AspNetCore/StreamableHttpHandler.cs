@@ -375,7 +375,7 @@ internal sealed class StreamableHttpHandler(
         };
 
         // Initialize the transport with the migrated session's init params.
-        await transport.HandleInitRequestAsync(initializeParams);
+        await transport.HandleInitializeRequestAsync(initializeParams);
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;
 
