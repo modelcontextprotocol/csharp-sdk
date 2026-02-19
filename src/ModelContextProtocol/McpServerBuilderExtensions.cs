@@ -836,9 +836,6 @@ public static partial class McpServerBuilderExtensions
     #endregion
 
     #region Filters
-    private const string MessageFilterObsoleteMessage = "Use WithMessageFilters() instead.";
-    private const string RequestFilterObsoleteMessage = "Use WithRequestFilters() instead.";
-
     /// <summary>
     /// Configures message-level filters for the MCP server.
     /// </summary>
@@ -879,7 +876,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddListResourceTemplatesFilter(filter));
 
@@ -889,7 +886,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddListToolsFilter(filter));
 
@@ -899,7 +896,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddCallToolFilter(filter));
 
@@ -909,7 +906,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddListPromptsFilter(filter));
 
@@ -919,7 +916,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddGetPromptFilter(filter));
 
@@ -929,7 +926,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddListResourcesFilter(filter));
 
@@ -939,7 +936,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddReadResourceFilter(filter));
 
@@ -949,7 +946,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddCompleteFilter(filter));
 
@@ -959,7 +956,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddSubscribeToResourcesFilter(filter));
 
@@ -969,7 +966,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddUnsubscribeFromResourcesFilter(filter));
 
@@ -979,7 +976,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(RequestFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter) =>
         builder.WithRequestFilters(filters => filters.AddSetLoggingLevelFilter(filter));
 
@@ -989,7 +986,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the message handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(MessageFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.MessageFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
         builder.WithMessageFilters(filters => filters.AddIncomingFilter(filter));
 
@@ -999,7 +996,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="filter">The filter function that wraps the message handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(MessageFilterObsoleteMessage)]
+    [Obsolete(Obsoletions.MessageFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
     public static IMcpServerBuilder AddOutgoingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
         builder.WithMessageFilters(filters => filters.AddOutgoingFilter(filter));
 
