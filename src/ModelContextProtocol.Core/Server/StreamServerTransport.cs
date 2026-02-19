@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 
@@ -20,7 +22,8 @@ public class StreamServerTransport : TransportBase
 
     private readonly ILogger _logger;
 
-    private readonly TextReader _inputReader;
+    private readonly Stream _inputStream;
+    private readonly PipeReader _inputPipeReader;
     private readonly Stream _outputStream;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -45,11 +48,8 @@ public class StreamServerTransport : TransportBase
 
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
-#if NET
-        _inputReader = new StreamReader(inputStream, Encoding.UTF8);
-#else
-        _inputReader = new CancellableStreamReader(inputStream, Encoding.UTF8);
-#endif
+        _inputStream = inputStream;
+        _inputPipeReader = PipeReader.Create(inputStream);
         _outputStream = outputStream;
 
         SetConnected();
@@ -97,43 +97,35 @@ public class StreamServerTransport : TransportBase
 
             while (!shutdownToken.IsCancellationRequested)
             {
-                var line = await _inputReader.ReadLineAsync(shutdownToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(line))
+                ReadResult result = await _inputPipeReader.ReadAsync(shutdownToken).ConfigureAwait(false);
+                ReadOnlySequence<byte> buffer = result.Buffer;
+
+                SequencePosition? position;
+                while ((position = buffer.PositionOf((byte)'\n')) != null)
                 {
-                    if (line is null)
+                    ReadOnlySequence<byte> line = buffer.Slice(0, position.Value);
+
+                    // Trim trailing \r for Windows-style CRLF line endings.
+                    if (EndsWithCarriageReturn(line))
                     {
-                        LogTransportEndOfStream(Name);
-                        break;
+                        line = line.Slice(0, line.Length - 1);
                     }
 
-                    continue;
+                    if (!line.IsEmpty)
+                    {
+                        await ProcessLineAsync(line, shutdownToken).ConfigureAwait(false);
+                    }
+
+                    // Advance past the '\n'.
+                    buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
                 }
 
-                LogTransportReceivedMessageSensitive(Name, line);
+                _inputPipeReader.AdvanceTo(buffer.Start, buffer.End);
 
-                try
+                if (result.IsCompleted)
                 {
-                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
-                    {
-                        await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    if (Logger.IsEnabled(LogLevel.Trace))
-                    {
-                        LogTransportMessageParseFailedSensitive(Name, line, ex);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseFailed(Name, ex);
-                    }
-
-                    // Continue reading even if we fail to parse a message
+                    LogTransportEndOfStream(Name);
+                    break;
                 }
             }
         }
@@ -150,6 +142,79 @@ public class StreamServerTransport : TransportBase
         {
             SetDisconnected(error);
         }
+    }
+
+    private async Task ProcessLineAsync(ReadOnlySequence<byte> line, CancellationToken cancellationToken)
+    {
+        if (Logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportReceivedMessageSensitive(Name, GetString(line));
+        }
+
+        try
+        {
+            JsonRpcMessage? message;
+            if (line.IsSingleSegment)
+            {
+                message = JsonSerializer.Deserialize(line.First.Span, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+            else
+            {
+                var reader = new Utf8JsonReader(line, isFinalBlock: true, state: default);
+                message = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+
+            if (message is not null)
+            {
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, GetString(line));
+                }
+            }
+        }
+        catch (JsonException ex)
+        {
+            if (Logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, GetString(line), ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
+
+            // Continue reading even if we fail to parse a message.
+        }
+    }
+
+    private static string GetString(in ReadOnlySequence<byte> sequence) =>
+        sequence.IsSingleSegment
+            ? Encoding.UTF8.GetString(sequence.First.Span)
+            : Encoding.UTF8.GetString(sequence.ToArray());
+
+    private static bool EndsWithCarriageReturn(in ReadOnlySequence<byte> sequence)
+    {
+        if (sequence.IsSingleSegment)
+        {
+            ReadOnlySpan<byte> span = sequence.First.Span;
+            return span.Length > 0 && span[span.Length - 1] == (byte)'\r';
+        }
+
+        // Multi-segment: find the last non-empty segment to check its last byte.
+        ReadOnlyMemory<byte> last = default;
+        foreach (ReadOnlyMemory<byte> segment in sequence)
+        {
+            if (!segment.IsEmpty)
+            {
+                last = segment;
+            }
+        }
+
+        return !last.IsEmpty && last.Span[last.Length - 1] == (byte)'\r';
     }
 
     /// <inheritdoc />
@@ -170,7 +235,7 @@ public class StreamServerTransport : TransportBase
 
             // Dispose of stdin/out. Cancellation may not be able to wake up operations
             // synchronously blocked in a syscall; we need to forcefully close the handle / file descriptor.
-            _inputReader?.Dispose();
+            _inputStream?.Dispose();
             _outputStream?.Dispose();
 
             // Make sure the work has quiesced.

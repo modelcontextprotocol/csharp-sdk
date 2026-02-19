@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 
@@ -12,7 +14,7 @@ internal class StreamClientSessionTransport : TransportBase
 
     internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
 
-    private readonly TextReader _serverOutput;
+    private readonly PipeReader _serverOutputPipe;
     private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private CancellationTokenSource? _shutdownCts = new();
@@ -27,9 +29,6 @@ internal class StreamClientSessionTransport : TransportBase
     /// <param name="serverOutput">
     /// The server's output stream. Messages read from this stream will be received from the server.
     /// </param>
-    /// <param name="encoding">
-    /// The encoding used for reading and writing messages from the input and output streams. Defaults to UTF-8 without BOM if null.
-    /// </param>
     /// <param name="endpointName">
     /// A name that identifies this transport endpoint in logs.
     /// </param>
@@ -40,18 +39,14 @@ internal class StreamClientSessionTransport : TransportBase
     /// This constructor starts a background task to read messages from the server output stream.
     /// The transport will be marked as connected once initialized.
     /// </remarks>
-    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
+    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, string endpointName, ILoggerFactory? loggerFactory)
         : base(endpointName, loggerFactory)
     {
         Throw.IfNull(serverInput);
         Throw.IfNull(serverOutput);
 
         _serverInputStream = serverInput;
-#if NET
-        _serverOutput = new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#else
-        _serverOutput = new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#endif
+        _serverOutputPipe = PipeReader.Create(serverOutput);
 
         SetConnected();
 
@@ -105,20 +100,41 @@ internal class StreamClientSessionTransport : TransportBase
 
             while (true)
             {
-                if (await _serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
+                ReadResult result = await _serverOutputPipe.ReadAsync(cancellationToken).ConfigureAwait(false);
+                ReadOnlySequence<byte> buffer = result.Buffer;
+
+                SequencePosition? position;
+                while ((position = buffer.PositionOf((byte)'\n')) != null)
+                {
+                    ReadOnlySequence<byte> line = buffer.Slice(0, position.Value);
+
+                    // Trim trailing \r for Windows-style CRLF line endings.
+                    if (EndsWithCarriageReturn(line))
+                    {
+                        line = line.Slice(0, line.Length - 1);
+                    }
+
+                    if (!line.IsEmpty)
+                    {
+                        if (Logger.IsEnabled(LogLevel.Trace))
+                        {
+                            LogTransportReceivedMessageSensitive(Name, GetString(line));
+                        }
+
+                        await ProcessLineAsync(line, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    // Advance past the '\n'.
+                    buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
+                }
+
+                _serverOutputPipe.AdvanceTo(buffer.Start, buffer.End);
+
+                if (result.IsCompleted)
                 {
                     LogTransportEndOfStream(Name);
                     break;
                 }
-
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                LogTransportReceivedMessageSensitive(Name, line);
-
-                await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -137,31 +153,70 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
-    private async Task ProcessMessageAsync(string line, CancellationToken cancellationToken)
+    private async Task ProcessLineAsync(ReadOnlySequence<byte> line, CancellationToken cancellationToken)
     {
         try
         {
-            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
-            if (message != null)
+            JsonRpcMessage? message;
+            if (line.IsSingleSegment)
+            {
+                message = JsonSerializer.Deserialize(line.First.Span, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+            else
+            {
+                var reader = new Utf8JsonReader(line, isFinalBlock: true, state: default);
+                message = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+
+            if (message is not null)
             {
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, GetString(line));
+                }
             }
         }
         catch (JsonException ex)
         {
             if (Logger.IsEnabled(LogLevel.Trace))
             {
-                LogTransportMessageParseFailedSensitive(Name, line, ex);
+                LogTransportMessageParseFailedSensitive(Name, GetString(line), ex);
             }
             else
             {
                 LogTransportMessageParseFailed(Name, ex);
             }
         }
+    }
+
+    private static string GetString(in ReadOnlySequence<byte> sequence) =>
+        sequence.IsSingleSegment
+            ? Encoding.UTF8.GetString(sequence.First.Span)
+            : Encoding.UTF8.GetString(sequence.ToArray());
+
+    private static bool EndsWithCarriageReturn(in ReadOnlySequence<byte> sequence)
+    {
+        if (sequence.IsSingleSegment)
+        {
+            ReadOnlySpan<byte> span = sequence.First.Span;
+            return span.Length > 0 && span[span.Length - 1] == (byte)'\r';
+        }
+
+        // Multi-segment: find the last non-empty segment to check its last byte.
+        ReadOnlyMemory<byte> last = default;
+        foreach (ReadOnlyMemory<byte> segment in sequence)
+        {
+            if (!segment.IsEmpty)
+            {
+                last = segment;
+            }
+        }
+
+        return !last.IsEmpty && last.Span[last.Length - 1] == (byte)'\r';
     }
 
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)

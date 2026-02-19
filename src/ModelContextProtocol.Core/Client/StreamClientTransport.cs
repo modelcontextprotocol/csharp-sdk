@@ -50,7 +50,6 @@ public sealed class StreamClientTransport : IClientTransport
         return Task.FromResult<ITransport>(new StreamClientSessionTransport(
             _serverInput,
             _serverOutput,
-            encoding: null,
             "Client (stream)",
             _loggerFactory));
     }
