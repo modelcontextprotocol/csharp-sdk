@@ -8,7 +8,7 @@ uid: tasks
 # MCP Tasks
 
 > [!WARNING]
-> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases.
+> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
 The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
 
