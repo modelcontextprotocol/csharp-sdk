@@ -50,3 +50,41 @@ public static class EchoTool
     public static string Echo(string message) => $"hello {message}";
 }
 ```
+
+## Using with MVC Controllers
+
+If your application uses traditional MVC controllers instead of minimal APIs,
+you can use `McpRequestDelegateFactory.Create()` to create a `RequestDelegate` that handles MCP requests:
+
+```csharp
+// Program.cs
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers();
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly();
+var app = builder.Build();
+
+app.MapControllers(); // No MapMcp() needed!
+
+app.Run("http://localhost:3001");
+```
+
+```csharp
+// Controllers/McpController.cs
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using ModelContextProtocol.AspNetCore;
+
+[ApiController]
+[Route("mcp")]
+public class McpController : ControllerBase
+{
+    private static readonly RequestDelegate _mcpHandler = McpRequestDelegateFactory.Create();
+
+    [HttpPost]
+    [HttpGet]
+    [HttpDelete]
+    public Task Handle() => _mcpHandler(HttpContext);
+}
+```
