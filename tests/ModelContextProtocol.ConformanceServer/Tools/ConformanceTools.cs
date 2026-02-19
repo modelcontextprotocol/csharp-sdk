@@ -346,14 +346,6 @@ public class ConformanceTools
                             new() { Const = "value3", Title = "Third Option" }
                         ]
                     },
-#pragma warning disable MCP9001
-                    ["legacyEnum"] = new ElicitRequestParams.LegacyTitledEnumSchema()
-                    {
-                        Description = "Choose a legacy option",
-                        Enum = ["opt1", "opt2", "opt3"],
-                        EnumNames = ["Option One", "Option Two", "Option Three"]
-                    },
-#pragma warning restore MCP9001
                     ["untitledMulti"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema()
                     {
                         Description = "Choose multiple options",

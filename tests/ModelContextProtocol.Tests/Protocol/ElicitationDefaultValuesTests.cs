@@ -282,26 +282,6 @@ public static class ElicitationDefaultValuesTests
         Assert.DoesNotContain("\"default\"", json);
     }
 
-#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
-    [Fact]
-    public static void LegacyTitledEnumSchema_Default_Null_DoesNotSerialize()
-    {
-        // Arrange
-        var schema = new ElicitRequestParams.LegacyTitledEnumSchema
-        {
-            Title = "Legacy Options",
-            Enum = ["option1", "option2"],
-            EnumNames = ["Option 1", "Option 2"]
-        };
-
-        // Act - serialize as base type to use the converter
-        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
-
-        // Assert
-        Assert.DoesNotContain("\"default\"", json);
-    }
-#pragma warning restore MCP9001
-
     [Fact]
     public static void RequestSchema_WithAllDefaultTypes_Serializes_Correctly()
     {

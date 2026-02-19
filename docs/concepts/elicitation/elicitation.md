@@ -32,7 +32,6 @@ For enum types, the SDK supports several schema formats:
 - **TitledSingleSelectEnumSchema**: A single-select enum with separate display titles for each option (using JSON Schema `oneOf` with `const` and `title`).
 - **UntitledMultiSelectEnumSchema**: A multi-select enum allowing multiple values to be selected.
 - **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option.
-- **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility.
 
 The server can request a single input or multiple inputs at once.
 To help distinguish multiple inputs, each input has a unique name.

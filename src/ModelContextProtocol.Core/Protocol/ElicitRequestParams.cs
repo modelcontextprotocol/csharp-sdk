@@ -86,8 +86,7 @@ public sealed class ElicitRequestParams : RequestParams
     /// <value>
     /// Possible values are <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
-    /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
-    /// and <see cref="LegacyTitledEnumSchema"/> (deprecated).
+    /// <see cref="UntitledMultiSelectEnumSchema"/>, and <see cref="TitledMultiSelectEnumSchema"/>.
     /// </value>
     [JsonPropertyName("requestedSchema")]
     public RequestSchema? RequestedSchema { get; set; }
@@ -132,8 +131,7 @@ public sealed class ElicitRequestParams : RequestParams
     /// Represents a restricted subset of JSON Schema:
     /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
-    /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
-    /// or <see cref="LegacyTitledEnumSchema"/> (deprecated).
+    /// <see cref="UntitledMultiSelectEnumSchema"/>, or <see cref="TitledMultiSelectEnumSchema"/>.
     /// </summary>
     [JsonConverter(typeof(Converter))]
     public abstract class PrimitiveSchemaDefinition
@@ -153,9 +151,6 @@ public sealed class ElicitRequestParams : RequestParams
             TitledSingleSelectEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
             UntitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
             TitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
-#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
-            LegacyTitledEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
-#pragma warning restore MCP9001
             _ => null,
         };
 
@@ -329,27 +324,12 @@ public sealed class ElicitRequestParams : RequestParams
                         }
                         else if (enumValues is not null)
                         {
-                            if (enumNames is not null)
+                            // UntitledSingleSelectEnumSchema (enumNames is ignored if present)
+                            psd = new UntitledSingleSelectEnumSchema
                             {
-                                // LegacyTitledEnumSchema is deprecated but supported for backward compatibility.
-#pragma warning disable MCP9001
-                                psd = new LegacyTitledEnumSchema
-#pragma warning restore MCP9001
-                                {
-                                    Enum = enumValues,
-                                    EnumNames = enumNames,
-                                    Default = defaultString,
-                                };
-                            }
-                            else
-                            {
-                                // UntitledSingleSelectEnumSchema
-                                psd = new UntitledSingleSelectEnumSchema
-                                {
-                                    Enum = enumValues,
-                                    Default = defaultString,
-                                };
-                            }
+                                Enum = enumValues,
+                                Default = defaultString,
+                            };
                         }
                         else
                         {
@@ -639,25 +619,6 @@ public sealed class ElicitRequestParams : RequestParams
                         {
                             writer.WritePropertyName("default");
                             JsonSerializer.Serialize(writer, titledMultiSelect.Default, McpJsonUtilities.JsonContext.Default.IListString);
-                        }
-                        break;
-
-#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
-                    case LegacyTitledEnumSchema legacyTitledEnum:
-#pragma warning restore MCP9001
-                        if (legacyTitledEnum.Enum is not null)
-                        {
-                            writer.WritePropertyName("enum");
-                            JsonSerializer.Serialize(writer, legacyTitledEnum.Enum, McpJsonUtilities.JsonContext.Default.IListString);
-                        }
-                        if (legacyTitledEnum.EnumNames is not null)
-                        {
-                            writer.WritePropertyName("enumNames");
-                            JsonSerializer.Serialize(writer, legacyTitledEnum.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
-                        }
-                        if (legacyTitledEnum.Default is not null)
-                        {
-                            writer.WriteString("default", legacyTitledEnum.Default);
                         }
                         break;
 
@@ -1008,48 +969,4 @@ public sealed class ElicitRequestParams : RequestParams
         public IList<string>? Default { get; set; }
     }
 
-    /// <summary>
-    /// Represents a legacy schema for an enum type with enumNames.
-    /// </summary>
-    /// <remarks>
-    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
-    /// </remarks>
-    [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
-    public sealed class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
-    {
-        /// <inheritdoc/>
-        [JsonPropertyName("type")]
-        public override string Type
-        {
-            get => "string";
-            set
-            {
-                if (value is not "string")
-                {
-                    throw new ArgumentException("Type must be 'string'.", nameof(value));
-                }
-            }
-        }
-
-        /// <summary>Gets or sets the list of allowed string values for the enum.</summary>
-        [JsonPropertyName("enum")]
-        [field: MaybeNull]
-        public IList<string> Enum
-        {
-            get => field ??= [];
-            set
-            {
-                Throw.IfNull(value);
-                field = value;
-            }
-        }
-
-        /// <summary>Gets or sets optional display names corresponding to the enum values.</summary>
-        [JsonPropertyName("enumNames")]
-        public IList<string>? EnumNames { get; set; }
-
-        /// <summary>Gets or sets the default value for the enum.</summary>
-        [JsonPropertyName("default")]
-        public string? Default { get; set; }
-    }
 }

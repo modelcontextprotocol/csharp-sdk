@@ -257,39 +257,4 @@ public static class PrimitiveSchemaDefinitionTests
         Assert.Contains("optionX", enumSchema.Default);
         Assert.Contains("optionZ", enumSchema.Default);
     }
-
-#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
-    [Fact]
-    public static void LegacyTitledEnumSchema_UnknownProperties_AreIgnored()
-    {
-        const string json = """
-        {
-            "type": "string",
-            "enum": ["option1", "option2"],
-
-            "unknownNull": null,
-            "unknownEmptyObject": {},
-            "unknownObject": {"a": 1},
-            "unknownEmptyArray": [],
-            "unknownArray": [1, 2, 3],
-            "unknownNestedObject": {"b": {"c": "d", "e": ["f"]}},
-
-            "enumNames": ["Option 1", "Option 2"],
-            "default": "option2"
-        }
-        """;
-
-        var result = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(
-            json,
-            McpJsonUtilities.DefaultOptions);
-        Assert.NotNull(result);
-        var enumSchema = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(result);
-        Assert.Equal("string", enumSchema.Type);
-        Assert.Equal(2, enumSchema.Enum.Count);
-        Assert.Contains("option1", enumSchema.Enum);
-        Assert.Contains("option2", enumSchema.Enum);
-        Assert.Contains("Option 1", enumSchema.EnumNames!);
-        Assert.Contains("Option 2", enumSchema.EnumNames!);
-    }
-#pragma warning restore MCP9001
 }

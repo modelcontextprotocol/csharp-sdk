@@ -19,7 +19,5 @@ namespace ModelContextProtocol;
 /// </remarks>
 internal static class Obsoletions
 {
-    public const string LegacyTitledEnumSchema_DiagnosticId = "MCP9001";
-    public const string LegacyTitledEnumSchema_Message = "The EnumSchema and LegacyTitledEnumSchema APIs are deprecated as of specification version 2025-11-25 and will be removed in a future major version. See SEP-1330 for more information.";
-    public const string LegacyTitledEnumSchema_Url = "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1330";
+    // MCP9001 was used for LegacyTitledEnumSchema (removed) - do not reuse
 }
