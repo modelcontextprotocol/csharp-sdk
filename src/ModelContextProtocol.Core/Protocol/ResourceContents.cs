@@ -163,7 +163,6 @@ public abstract class ResourceContents
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                // Write the UTF-8 bytes directly as a string value
                 writer.WriteString("blob", blobResource.Blob.Span);
             }
             else if (value is TextResourceContents textResource)

@@ -425,16 +425,12 @@ public sealed class ImageContentBlock : ContentBlock
     }
 
     /// <summary>
-    /// Gets or sets the decoded image data represented by <see cref="Data"/>.
+    /// Gets the decoded image data represented by <see cref="Data"/>.
     /// </summary>
     /// <remarks>
     /// <para>
     /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
     /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
-    /// </para>
-    /// <para>
-    /// When setting, the binary data is stored and <see cref="Data"/> is updated
-    /// with the base64-encoded UTF-8 representation.
     /// </para>
     /// </remarks>
     [JsonIgnore]
@@ -514,16 +510,12 @@ public sealed class AudioContentBlock : ContentBlock
     }
 
     /// <summary>
-    /// Gets or sets the decoded audio data represented by <see cref="Data"/>.
+    /// Gets the decoded audio data represented by <see cref="Data"/>.
     /// </summary>
     /// <remarks>
     /// <para>
     /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
     /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
-    /// </para>
-    /// <para>
-    /// When setting, the binary data is stored and <see cref="Data"/> is updated
-    /// with the base64-encoded UTF-8 representation.
     /// </para>
     /// </remarks>
     [JsonIgnore]

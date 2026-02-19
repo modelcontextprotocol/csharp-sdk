@@ -34,7 +34,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// Creates an <see cref="BlobResourceContents"/> from raw data.
     /// </summary>
     /// <param name="bytes">The raw unencoded data.</param>
-    /// <param name="uri">The URI of the data.</param>
+    /// <param name="uri">The URI of the blob resource.</param>
     /// <param name="mimeType">The optional MIME type of the data.</param>
     /// <returns>A new <see cref="BlobResourceContents"/> instance.</returns>
     /// <exception cref="InvalidOperationException"></exception>
@@ -69,16 +69,12 @@ public sealed class BlobResourceContents : ResourceContents
     }
 
     /// <summary>
-    /// Gets or sets the decoded data represented by <see cref="Blob"/>.
+    /// Gets the decoded data represented by <see cref="Blob"/>.
     /// </summary>
     /// <remarks>
     /// <para>
     /// When getting, this member will decode the value in <see cref="Blob"/> and cache the result.
     /// Subsequent accesses return the cached value unless <see cref="Blob"/> is modified.
-    /// </para>
-    /// <para>
-    /// When setting, the binary data is stored and <see cref="Blob"/> is updated
-    /// with the base64-encoded UTF-8 representation.
     /// </para>
     /// </remarks>
     [JsonIgnore]
