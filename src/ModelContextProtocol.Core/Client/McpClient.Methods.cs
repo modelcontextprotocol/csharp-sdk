@@ -280,7 +280,7 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Retrieves a list of available prompts from the server.
+    /// Retrieves a specific prompt from the MCP server.
     /// </summary>
     /// <param name="requestParams">The request parameters to send in the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -549,9 +549,9 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// Subscribes to a resource on the server to receive notifications when it changes.
     /// </summary>
-    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="uri">The URI of the resource to subscribe to.</param>
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
