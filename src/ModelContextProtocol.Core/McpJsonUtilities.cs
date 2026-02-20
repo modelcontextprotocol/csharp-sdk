@@ -169,6 +169,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceLinkBlock))]
     [JsonSerializable(typeof(ContentBlock[]))]
     [JsonSerializable(typeof(IEnumerable<ContentBlock>))]
+    [JsonSerializable(typeof(IList<Icon>))]
     [JsonSerializable(typeof(PromptMessage))]
     [JsonSerializable(typeof(IEnumerable<PromptMessage>))]
     [JsonSerializable(typeof(PromptReference))]

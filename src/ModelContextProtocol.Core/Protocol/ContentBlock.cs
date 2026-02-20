@@ -90,11 +90,13 @@ public abstract class ContentBlock
             string? type = null;
             string? text = null;
             string? name = null;
+            string? title = null;
             ReadOnlyMemory<byte>? data = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
             long? size = null;
+            IList<Icon>? icons = null;
             ResourceContents? resource = null;
             Annotations? annotations = null;
             JsonObject? meta = null;
@@ -130,6 +132,10 @@ public abstract class ContentBlock
                         name = reader.GetString();
                         break;
 
+                    case "title":
+                        title = reader.GetString();
+                        break;
+
                     case "data":
                         data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
@@ -148,6 +154,10 @@ public abstract class ContentBlock
 
                     case "size":
                         size = reader.GetInt64();
+                        break;
+
+                    case "icons":
+                        icons = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListIcon);
                         break;
 
                     case "resource":
@@ -233,9 +243,11 @@ public abstract class ContentBlock
                 {
                     Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
                     Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
+                    Title = title,
                     Description = description,
                     MimeType = mimeType,
                     Size = size,
+                    Icons = icons,
                 },
 
                 "tool_use" => new ToolUseContentBlock
@@ -299,6 +311,10 @@ public abstract class ContentBlock
                 case ResourceLinkBlock resourceLink:
                     writer.WriteString("uri", resourceLink.Uri);
                     writer.WriteString("name", resourceLink.Name);
+                    if (resourceLink.Title is not null)
+                    {
+                        writer.WriteString("title", resourceLink.Title);
+                    }
                     if (resourceLink.Description is not null)
                     {
                         writer.WriteString("description", resourceLink.Description);
@@ -310,6 +326,11 @@ public abstract class ContentBlock
                     if (resourceLink.Size.HasValue)
                     {
                         writer.WriteNumber("size", resourceLink.Size.Value);
+                    }
+                    if (resourceLink.Icons is { Count: > 0 } resourceLinkIcons)
+                    {
+                        writer.WritePropertyName("icons");
+                        JsonSerializer.Serialize(writer, resourceLinkIcons, McpJsonUtilities.JsonContext.Default.IListIcon);
                     }
                     break;
 
@@ -596,6 +617,15 @@ public sealed class ResourceLinkBlock : ContentBlock
     public required string Name { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional human-readable title for this resource, intended for UI display purposes.
+    /// </summary>
+    /// <remarks>
+    /// If not provided, the <see cref="Name"/> should be used for display.
+    /// </remarks>
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or sets a description of what this resource represents.
     /// </summary>
     /// <remarks>
@@ -638,6 +668,12 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("size")]
     public long? Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional icons for this resource, for display in user interfaces.
+    /// </summary>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>

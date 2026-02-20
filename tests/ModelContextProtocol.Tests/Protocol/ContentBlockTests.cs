@@ -13,9 +13,11 @@ public class ContentBlockTests
         {
             Uri = "https://example.com/resource",
             Name = "Test Resource",
+            Title = "Test Resource Display Title",
             Description = "A test resource for validation",
             MimeType = "text/plain",
-            Size = 1024
+            Size = 1024,
+            Icons = [new Icon { Source = "https://example.com/icon.png", MimeType = "image/png" }]
         };
 
         // Act - Serialize to JSON
@@ -30,10 +32,15 @@ public class ContentBlockTests
         
         Assert.Equal(original.Uri, resourceLink.Uri);
         Assert.Equal(original.Name, resourceLink.Name);
+        Assert.Equal(original.Title, resourceLink.Title);
         Assert.Equal(original.Description, resourceLink.Description);
         Assert.Equal(original.MimeType, resourceLink.MimeType);
         Assert.Equal(original.Size, resourceLink.Size);
         Assert.Equal("resource_link", resourceLink.Type);
+        Assert.NotNull(resourceLink.Icons);
+        Assert.Single(resourceLink.Icons);
+        Assert.Equal("https://example.com/icon.png", resourceLink.Icons[0].Source);
+        Assert.Equal("image/png", resourceLink.Icons[0].MimeType);
     }
 
     [Fact]
@@ -57,9 +64,11 @@ public class ContentBlockTests
         
         Assert.Equal("https://example.com/minimal", resourceLink.Uri);
         Assert.Equal("Minimal Resource", resourceLink.Name);
+        Assert.Null(resourceLink.Title);
         Assert.Null(resourceLink.Description);
         Assert.Null(resourceLink.MimeType);
         Assert.Null(resourceLink.Size);
+        Assert.Null(resourceLink.Icons);
         Assert.Equal("resource_link", resourceLink.Type);
     }
 
