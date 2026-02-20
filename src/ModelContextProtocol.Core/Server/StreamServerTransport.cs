@@ -115,7 +115,7 @@ public class StreamServerTransport : TransportBase
     {
         if (Logger.IsEnabled(LogLevel.Trace))
         {
-            LogTransportReceivedMessageSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
+            LogTransportReceivedMessageSensitive(Name, EncodingUtilities.GetUtf8String(line));
         }
 
         try
@@ -139,7 +139,7 @@ public class StreamServerTransport : TransportBase
             {
                 if (Logger.IsEnabled(LogLevel.Trace))
                 {
-                    LogTransportMessageParseUnexpectedTypeSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, EncodingUtilities.GetUtf8String(line));
                 }
             }
         }
@@ -147,7 +147,7 @@ public class StreamServerTransport : TransportBase
         {
             if (Logger.IsEnabled(LogLevel.Trace))
             {
-                LogTransportMessageParseFailedSensitive(Name, PipeReaderExtensions.GetUtf8String(line), ex);
+                LogTransportMessageParseFailedSensitive(Name, EncodingUtilities.GetUtf8String(line), ex);
             }
             else
             {

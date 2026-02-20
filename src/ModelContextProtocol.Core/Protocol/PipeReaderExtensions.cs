@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.IO.Pipelines;
-using System.Text;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -49,12 +48,6 @@ internal static class PipeReaderExtensions
             }
         }
     }
-
-    /// <summary>Decodes a UTF-8 <see cref="ReadOnlySequence{T}"/> to a <see cref="string"/>.</summary>
-    internal static string GetUtf8String(in ReadOnlySequence<byte> sequence) =>
-        sequence.IsSingleSegment
-            ? Encoding.UTF8.GetString(sequence.First.Span)
-            : Encoding.UTF8.GetString(sequence.ToArray());
 
     private static bool EndsWithCarriageReturn(in ReadOnlySequence<byte> sequence)
     {

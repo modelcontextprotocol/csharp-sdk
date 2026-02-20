@@ -20,6 +20,19 @@ internal static class EncodingUtilities
         return bytes;
     }
 
+    /// <summary>Decodes a UTF-8 <see cref="ReadOnlySequence{T}"/> to a <see cref="string"/>.</summary>
+    public static string GetUtf8String(in ReadOnlySequence<byte> sequence)
+    {
+        if (sequence.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        return sequence.IsSingleSegment
+            ? Encoding.UTF8.GetString(sequence.First.Span)
+            : Encoding.UTF8.GetString(sequence.ToArray());
+    }
+
     /// <summary>
     /// Encodes binary data to base64-encoded UTF-8 bytes.
     /// </summary>

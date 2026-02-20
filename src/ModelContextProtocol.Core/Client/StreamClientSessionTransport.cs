@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Buffers;
 using System.IO.Pipelines;
-using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -11,8 +10,6 @@ namespace ModelContextProtocol.Client;
 internal class StreamClientSessionTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
-
-    internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly PipeReader _serverOutputPipe;
     private readonly Stream _serverInputStream;
@@ -120,7 +117,7 @@ internal class StreamClientSessionTransport : TransportBase
     {
         if (Logger.IsEnabled(LogLevel.Trace))
         {
-            LogTransportReceivedMessageSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
+            LogTransportReceivedMessageSensitive(Name, EncodingUtilities.GetUtf8String(line));
         }
 
         try
@@ -144,7 +141,7 @@ internal class StreamClientSessionTransport : TransportBase
             {
                 if (Logger.IsEnabled(LogLevel.Trace))
                 {
-                    LogTransportMessageParseUnexpectedTypeSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, EncodingUtilities.GetUtf8String(line));
                 }
             }
         }
@@ -152,7 +149,7 @@ internal class StreamClientSessionTransport : TransportBase
         {
             if (Logger.IsEnabled(LogLevel.Trace))
             {
-                LogTransportMessageParseFailedSensitive(Name, PipeReaderExtensions.GetUtf8String(line), ex);
+                LogTransportMessageParseFailedSensitive(Name, EncodingUtilities.GetUtf8String(line), ex);
             }
             else
             {

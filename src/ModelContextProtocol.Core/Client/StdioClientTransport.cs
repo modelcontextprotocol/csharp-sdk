@@ -31,6 +31,8 @@ public sealed partial class StdioClientTransport : IClientTransport
     private static readonly object s_consoleEncodingLock = new();
 #endif
 
+    private static readonly UTF8Encoding s_noBomUtf8Encoding = new(encoderShouldEmitUTF8Identifier: false);
+
     private readonly StdioClientTransportOptions _options;
     private readonly ILoggerFactory? _loggerFactory;
 
@@ -85,10 +87,10 @@ public sealed partial class StdioClientTransport : IClientTransport
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = _options.WorkingDirectory ?? Environment.CurrentDirectory,
-                StandardOutputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
-                StandardErrorEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
+                StandardOutputEncoding = s_noBomUtf8Encoding,
+                StandardErrorEncoding = s_noBomUtf8Encoding,
 #if NET
-                StandardInputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
+                StandardInputEncoding = s_noBomUtf8Encoding,
 #endif
             };
 
@@ -173,7 +175,7 @@ public sealed partial class StdioClientTransport : IClientTransport
                 Encoding originalInputEncoding = Console.InputEncoding;
                 try
                 {
-                    Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                    Console.InputEncoding = s_noBomUtf8Encoding;
                     processStarted = process.Start();
                 }
                 finally
