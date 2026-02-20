@@ -47,11 +47,20 @@ internal sealed class StreamableHttpHandler(
         AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", out var enabled) && enabled;
 
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _migrationLocks = new(StringComparer.Ordinal);
+    private const string ConfigureSessionOptionsRequiresClonedServerOptionsMessage =
+        $"Explicit {nameof(McpServerOptions)} cannot be used with non-null {nameof(HttpServerTransportOptions.ConfigureSessionOptions)} because per-request cloning is required.";
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
 
-    public async Task HandlePostRequestAsync(HttpContext context)
+    public Task HandlePostRequestAsync(HttpContext context)
+        => HandlePostRequestAsync(context, serverOptionsOverride: null, transportOptionsOverride: null);
+
+    internal async Task HandlePostRequestAsync(
+        HttpContext context,
+        McpServerOptions? serverOptionsOverride,
+        HttpServerTransportOptions? transportOptionsOverride)
     {
+        var requestOptions = ResolveRequestOptions(serverOptionsOverride, transportOptionsOverride);
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
@@ -80,7 +89,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        var session = await GetOrCreateSessionAsync(context, message);
+        var session = await GetOrCreateSessionAsync(context, message, requestOptions);
         if (session is null)
         {
             return;
@@ -98,8 +107,15 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    public async Task HandleGetRequestAsync(HttpContext context)
+    public Task HandleGetRequestAsync(HttpContext context)
+        => HandleGetRequestAsync(context, serverOptionsOverride: null, transportOptionsOverride: null);
+
+    internal async Task HandleGetRequestAsync(
+        HttpContext context,
+        McpServerOptions? serverOptionsOverride,
+        HttpServerTransportOptions? transportOptionsOverride)
     {
+        var requestOptions = ResolveRequestOptions(serverOptionsOverride, transportOptionsOverride);
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
@@ -115,7 +131,7 @@ internal sealed class StreamableHttpHandler(
         }
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        var session = await GetSessionAsync(context, sessionId);
+        var session = await GetSessionAsync(context, sessionId, requestOptions);
         if (session is null)
         {
             return;
@@ -124,7 +140,7 @@ internal sealed class StreamableHttpHandler(
         var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
         if (!string.IsNullOrEmpty(lastEventId))
         {
-            await HandleResumedStreamAsync(context, session, lastEventId);
+            await HandleResumedStreamAsync(context, session, lastEventId, requestOptions.TransportOptions);
         }
         else
         {
@@ -132,9 +148,13 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async Task HandleResumedStreamAsync(HttpContext context, StreamableHttpSession session, string lastEventId)
+    private async Task HandleResumedStreamAsync(
+        HttpContext context,
+        StreamableHttpSession session,
+        string lastEventId,
+        HttpServerTransportOptions transportOptions)
     {
-        if (HttpServerTransportOptions.Stateless)
+        if (transportOptions.Stateless)
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: The Last-Event-ID header is not supported in stateless mode.",
@@ -142,7 +162,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        var eventStreamReader = await GetEventStreamReaderAsync(context, lastEventId);
+        var eventStreamReader = await GetEventStreamReaderAsync(context, lastEventId, transportOptions);
         if (eventStreamReader is null)
         {
             // There was an error obtaining the event stream; consider the request failed.
@@ -201,7 +221,13 @@ internal sealed class StreamableHttpHandler(
         await eventStreamReader.CopyToAsync(context.Response.Body, context.RequestAborted);
     }
 
-    public async Task HandleDeleteRequestAsync(HttpContext context)
+    public Task HandleDeleteRequestAsync(HttpContext context)
+        => HandleDeleteRequestAsync(context, serverOptionsOverride: null, transportOptionsOverride: null);
+
+    internal async Task HandleDeleteRequestAsync(
+        HttpContext context,
+        McpServerOptions? serverOptionsOverride,
+        HttpServerTransportOptions? transportOptionsOverride)
     {
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
@@ -216,7 +242,10 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> GetSessionAsync(
+        HttpContext context,
+        string sessionId,
+        RequestOptions requestOptions)
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -227,7 +256,7 @@ internal sealed class StreamableHttpHandler(
         if (!sessionManager.TryGetValue(sessionId, out var session))
         {
             // Session not found locally. Attempt migration if a handler is registered.
-            session = await TryMigrateSessionAsync(context, sessionId);
+            session = await TryMigrateSessionAsync(context, sessionId, requestOptions);
 
             if (session is null)
             {
@@ -253,7 +282,10 @@ internal sealed class StreamableHttpHandler(
         return session;
     }
 
-    private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(
+        HttpContext context,
+        string sessionId,
+        RequestOptions requestOptions)
     {
         if (sessionMigrationHandler is not { } handler)
         {
@@ -276,7 +308,7 @@ internal sealed class StreamableHttpHandler(
                 return null;
             }
 
-            var migratedSession = await MigrateSessionAsync(context, sessionId, initParams);
+            var migratedSession = await MigrateSessionAsync(context, sessionId, initParams, requestOptions);
 
             // Register the session with the session manager while still holding the lock
             // so concurrent requests for the same session ID find it via sessionManager.TryGetValue.
@@ -291,7 +323,10 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message)
+    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(
+        HttpContext context,
+        JsonRpcMessage message,
+        RequestOptions requestOptions)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
@@ -299,7 +334,7 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateful mode, only allow creating new sessions for initialize requests.
             // In stateless mode, every request is independent, so we always create a new session.
-            if (!HttpServerTransportOptions.Stateless && !AllowNewSessionForNonInitializeRequests
+            if (!requestOptions.TransportOptions.Stateless && !AllowNewSessionForNonInitializeRequests
                 && message is not JsonRpcRequest { Method: RequestMethods.Initialize })
             {
                 await WriteJsonRpcErrorAsync(context,
@@ -308,9 +343,9 @@ internal sealed class StreamableHttpHandler(
                 return null;
             }
 
-            return await StartNewSessionAsync(context);
+            return await StartNewSessionAsync(context, requestOptions);
         }
-        else if (HttpServerTransportOptions.Stateless)
+        else if (requestOptions.TransportOptions.Stateless)
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
@@ -319,23 +354,23 @@ internal sealed class StreamableHttpHandler(
         }
         else
         {
-            return await GetSessionAsync(context, sessionId);
+            return await GetSessionAsync(context, sessionId, requestOptions);
         }
     }
 
-    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
+    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context, RequestOptions requestOptions)
     {
         string sessionId;
         StreamableHttpServerTransport transport;
 
-        if (!HttpServerTransportOptions.Stateless)
+        if (!requestOptions.TransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
             transport = new(loggerFactory)
             {
                 SessionId = sessionId,
-                FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
-                EventStreamStore = HttpServerTransportOptions.EventStreamStore,
+                FlowExecutionContextFromRequests = !requestOptions.TransportOptions.PerSessionExecutionContext,
+                EventStreamStore = requestOptions.TransportOptions.EventStreamStore,
                 OnSessionInitialized = sessionMigrationHandler is { } handler
                     ? (initParams, ct) => handler.OnSessionInitializedAsync(context, sessionId, initParams, ct)
                     : null,
@@ -355,22 +390,28 @@ internal sealed class StreamableHttpHandler(
             };
         }
 
-        return await CreateSessionAsync(context, transport, sessionId);
+        return await CreateSessionAsync(context, transport, sessionId, requestOptions);
     }
 
     private async ValueTask<StreamableHttpSession> CreateSessionAsync(
         HttpContext context,
         StreamableHttpServerTransport transport,
         string sessionId,
+        RequestOptions requestOptions,
         Action<McpServerOptions>? configureOptions = null)
     {
         var mcpServerServices = applicationServices;
-        var mcpServerOptions = mcpServerOptionsSnapshot.Value;
-        if (HttpServerTransportOptions.Stateless || HttpServerTransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
+        var mcpServerOptions = requestOptions.ServerOptionsOverride ?? mcpServerOptionsSnapshot.Value;
+        if (requestOptions.TransportOptions.Stateless || requestOptions.TransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
         {
+            if (requestOptions.ServerOptionsOverride is not null)
+            {
+                throw new ArgumentException(ConfigureSessionOptionsRequiresClonedServerOptionsMessage, nameof(requestOptions));
+            }
+
             mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
 
-            if (HttpServerTransportOptions.Stateless)
+            if (requestOptions.TransportOptions.Stateless)
             {
                 // The session does not outlive the request in stateless mode.
                 mcpServerServices = context.RequestServices;
@@ -379,7 +420,7 @@ internal sealed class StreamableHttpHandler(
 
             configureOptions?.Invoke(mcpServerOptions);
 
-            if (HttpServerTransportOptions.ConfigureSessionOptions is { } configureSessionOptions)
+            if (requestOptions.TransportOptions.ConfigureSessionOptions is { } configureSessionOptions)
             {
                 await configureSessionOptions(context, mcpServerOptions, context.RequestAborted);
             }
@@ -391,7 +432,7 @@ internal sealed class StreamableHttpHandler(
         var userIdClaim = GetUserIdClaim(context.User);
         var session = new StreamableHttpSession(sessionId, transport, server, userIdClaim, sessionManager);
 
-        var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
+        var runSessionAsync = requestOptions.TransportOptions.RunSessionHandler ?? RunSessionAsync;
         session.ServerRunTask = runSessionAsync(context, server, session.SessionClosed);
 
         return session;
@@ -400,13 +441,14 @@ internal sealed class StreamableHttpHandler(
     private async ValueTask<StreamableHttpSession> MigrateSessionAsync(
         HttpContext context,
         string sessionId,
-        InitializeRequestParams initializeParams)
+        InitializeRequestParams initializeParams,
+        RequestOptions requestOptions)
     {
         var transport = new StreamableHttpServerTransport(loggerFactory)
         {
             SessionId = sessionId,
-            FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
-            EventStreamStore = HttpServerTransportOptions.EventStreamStore,
+            FlowExecutionContextFromRequests = !requestOptions.TransportOptions.PerSessionExecutionContext,
+            EventStreamStore = requestOptions.TransportOptions.EventStreamStore,
         };
 
         // Initialize the transport with the migrated session's init params.
@@ -414,16 +456,19 @@ internal sealed class StreamableHttpHandler(
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;
 
-        return await CreateSessionAsync(context, transport, sessionId, options =>
+        return await CreateSessionAsync(context, transport, sessionId, requestOptions, options =>
         {
             options.KnownClientInfo = initializeParams.ClientInfo;
             options.KnownClientCapabilities = initializeParams.Capabilities;
         });
     }
 
-    private async ValueTask<ISseEventStreamReader?> GetEventStreamReaderAsync(HttpContext context, string lastEventId)
+    private async ValueTask<ISseEventStreamReader?> GetEventStreamReaderAsync(
+        HttpContext context,
+        string lastEventId,
+        HttpServerTransportOptions transportOptions)
     {
-        if (HttpServerTransportOptions.EventStreamStore is not { } eventStreamStore)
+        if (transportOptions.EventStreamStore is not { } eventStreamStore)
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: This server does not support resuming streams.",
@@ -442,6 +487,15 @@ internal sealed class StreamableHttpHandler(
 
         return eventStreamReader;
     }
+
+    private RequestOptions ResolveRequestOptions(
+        McpServerOptions? serverOptionsOverride,
+        HttpServerTransportOptions? transportOptionsOverride)
+        => new(serverOptionsOverride, transportOptionsOverride ?? httpServerTransportOptions.Value);
+
+    private readonly record struct RequestOptions(
+        McpServerOptions? ServerOptionsOverride,
+        HttpServerTransportOptions TransportOptions);
 
     private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
     {

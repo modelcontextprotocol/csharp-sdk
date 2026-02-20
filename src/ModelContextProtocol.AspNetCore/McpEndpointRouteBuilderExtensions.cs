@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
@@ -26,38 +27,39 @@ public static class McpEndpointRouteBuilderExtensions
     /// </remarks>
     public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "")
     {
-        var streamableHttpHandler = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
+        _ = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
+        var httpServerTransportOptions = endpoints.ServiceProvider.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value;
+        var mcpRequestDelegate = McpRequestDelegateFactory.Create(endpoints.ServiceProvider);
 
         var mcpGroup = endpoints.MapGroup(pattern);
         var streamableHttpGroup = mcpGroup.MapGroup("")
             .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status404NotFound, typeof(JsonRpcError), contentTypes: ["application/json"]));
 
-        streamableHttpGroup.MapPost("", streamableHttpHandler.HandlePostRequestAsync)
+        streamableHttpGroup.MapPost("", mcpRequestDelegate)
             .WithMetadata(new AcceptsMetadata(["application/json"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
-        if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
+        if (!httpServerTransportOptions.Stateless)
         {
             // The GET endpoint is not mapped in Stateless mode since there's no way to send unsolicited messages.
             // Resuming streams via GET is currently not supported in Stateless mode.
-            streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
+            streamableHttpGroup.MapGet("", mcpRequestDelegate)
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
 
             // The DELETE endpoint is not mapped in Stateless mode since there is no server-side state for the DELETE to clean up.
-            streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
+            streamableHttpGroup.MapDelete("", mcpRequestDelegate);
 
             // Map legacy HTTP with SSE endpoints only if not in Stateless mode, because we cannot guarantee the /message requests
             // will be handled by the same process as the /sse request.
-            var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
             var sseGroup = mcpGroup.MapGroup("")
                 .WithDisplayName(b => $"MCP HTTP with SSE | {b.DisplayName}");
 
-            sseGroup.MapGet("/sse", sseHandler.HandleSseRequestAsync)
+            sseGroup.MapGet("/sse", mcpRequestDelegate)
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
-            sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
+            sseGroup.MapPost("/message", mcpRequestDelegate)
                 .WithMetadata(new AcceptsMetadata(["application/json"]))
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
         }
