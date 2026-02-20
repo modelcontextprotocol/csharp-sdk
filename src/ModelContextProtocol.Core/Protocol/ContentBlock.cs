@@ -425,9 +425,12 @@ public sealed class ImageContentBlock : ContentBlock
     /// <remarks>
     /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
     /// </remarks>
-    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
     public static ImageContentBlock FromBytes(ReadOnlyMemory<byte> bytes, string mimeType)
     {
+        Throw.IfNullOrWhiteSpace(mimeType);
+
         ReadOnlyMemory<byte> data = EncodingUtilities.EncodeToBase64Utf8(bytes);
         
         return new()
@@ -510,9 +513,12 @@ public sealed class AudioContentBlock : ContentBlock
     /// <remarks>
     /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
     /// </remarks>
-    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
     public static AudioContentBlock FromBytes(ReadOnlyMemory<byte> bytes, string mimeType)
     {
+        Throw.IfNullOrWhiteSpace(mimeType);
+
         ReadOnlyMemory<byte> data = EncodingUtilities.EncodeToBase64Utf8(bytes);
         
         return new()
