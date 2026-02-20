@@ -462,7 +462,7 @@ public abstract partial class McpServer : McpSession
             var taskResults = await ListTasksAsync(requestParams, cancellationToken).ConfigureAwait(false);
             if (tasks is null)
             {
-                tasks = new List<McpTask>(taskResults.Tasks.Length);
+                tasks = new List<McpTask>(taskResults.Tasks.Count);
             }
 
             foreach (var mcpTask in taskResults.Tasks)

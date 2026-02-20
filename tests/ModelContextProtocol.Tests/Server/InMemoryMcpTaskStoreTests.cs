@@ -353,7 +353,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(2, result.Tasks.Length);
+        Assert.Equal(2, result.Tasks.Count);
         Assert.Contains(result.Tasks, t => t.TaskId == task1.TaskId);
         Assert.Contains(result.Tasks, t => t.TaskId == task2.TaskId);
         Assert.Null(result.NextCursor);
@@ -397,9 +397,9 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var secondPageResult = await store.ListTasksAsync(cursor: firstPageResult.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(100, firstPageResult.Tasks.Length);
+        Assert.Equal(100, firstPageResult.Tasks.Count);
         Assert.NotNull(firstPageResult.NextCursor);
-        Assert.Equal(50, secondPageResult.Tasks.Length);
+        Assert.Equal(50, secondPageResult.Tasks.Count);
         Assert.Null(secondPageResult.NextCursor);
     }
 
@@ -779,11 +779,11 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result3 = await store.ListTasksAsync(cursor: result2.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(10, result1.Tasks.Length);
+        Assert.Equal(10, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
-        Assert.Equal(10, result2.Tasks.Length);
+        Assert.Equal(10, result2.Tasks.Count);
         Assert.NotNull(result2.NextCursor);
-        Assert.Equal(5, result3.Tasks.Length);
+        Assert.Equal(5, result3.Tasks.Count);
         Assert.Null(result3.NextCursor);
 
         // Verify no duplicates across pages
@@ -854,7 +854,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - First page should have 5 tasks, second page should have 0 (all expired)
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
         Assert.Empty(result2.Tasks);
         Assert.Null(result2.NextCursor);
@@ -874,7 +874,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
         // Get first page
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
 
         // Add more tasks between pages (these should appear in later queries, not retroactively in page 2)
         for (int i = 10; i < 15; i++)
@@ -886,7 +886,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Second page should have 5 tasks from original set
-        Assert.Equal(5, result2.Tasks.Length);
+        Assert.Equal(5, result2.Tasks.Count);
         Assert.NotNull(result2.NextCursor);
 
         // Verify no overlap between pages
@@ -1128,14 +1128,14 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - First page should have 5 tasks
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
 
         // Get second page using cursor
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Second page should have 5 tasks
-        Assert.Equal(5, result2.Tasks.Length);
+        Assert.Equal(5, result2.Tasks.Count);
         Assert.Null(result2.NextCursor); // No more pages
 
         // Verify no overlap between pages
@@ -1180,7 +1180,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
         // Get first page - should have 5 tasks with a cursor
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
 
         // Now create 5 more tasks AFTER we got the first page cursor

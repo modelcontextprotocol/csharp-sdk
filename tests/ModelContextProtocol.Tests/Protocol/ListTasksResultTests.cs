@@ -38,7 +38,7 @@ public static class ListTasksResultTests
         // Assert
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.Tasks);
-        Assert.Equal(2, deserialized.Tasks.Length);
+        Assert.Equal(2, deserialized.Tasks.Count);
         Assert.Equal(original.Tasks[0].TaskId, deserialized.Tasks[0].TaskId);
         Assert.Equal(original.Tasks[1].TaskId, deserialized.Tasks[1].TaskId);
         Assert.Equal(original.NextCursor, deserialized.NextCursor);
