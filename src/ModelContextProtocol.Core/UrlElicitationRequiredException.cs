@@ -66,7 +66,7 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
         return true;
     }
 
-    private static bool TryParseElicitations(JsonElement dataElement, out IReadOnlyList<ElicitRequestParams> elicitations)
+    private static bool TryParseElicitations(JsonElement dataElement, out IList<ElicitRequestParams> elicitations)
     {
         elicitations = [];
 
@@ -89,7 +89,7 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
             }
         }
 
-        elicitations = elicitationsFromPayload.ToList();
+        elicitations = elicitationsFromPayload;
         return true;
     }
 
