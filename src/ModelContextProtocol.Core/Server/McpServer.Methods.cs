@@ -1069,7 +1069,7 @@ public abstract partial class McpServer : McpSession
     /// <remarks>
     /// <para>
     /// This method sends an optional status notification to inform the client of task state changes.
-    /// According to the MCP specification, receivers MAY send this notification but are not required to.
+    /// According to the MCP specification, receivers may send this notification but are not required to.
     /// Clients must not rely on receiving these notifications and should continue polling via tasks/get.
     /// </para>
     /// <para>

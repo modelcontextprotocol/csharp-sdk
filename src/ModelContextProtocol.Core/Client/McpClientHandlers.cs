@@ -93,7 +93,7 @@ public class McpClientHandlers
     /// <remarks>
     /// <para>
     /// This handler is called when the server sends a task status notification to inform the client
-    /// about changes to a task's state. These notifications are optional and clients MUST NOT rely
+    /// about changes to a task's state. These notifications are optional and clients must not rely
     /// on receiving them.
     /// </para>
     /// <para>

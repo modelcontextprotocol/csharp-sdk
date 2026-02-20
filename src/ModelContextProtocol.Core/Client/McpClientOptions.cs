@@ -107,7 +107,7 @@ public sealed class McpClientOptions
     /// <remarks>
     /// When enabled and a <see cref="TaskStore"/> is configured, the client will send optional
     /// <c>notifications/tasks/status</c> notifications to inform the server of task state changes.
-    /// Servers MUST NOT rely on receiving these notifications and should continue polling via <c>tasks/get</c>.
+    /// Servers must not rely on receiving these notifications and should continue polling via <c>tasks/get</c>.
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public bool SendTaskStatusNotifications { get; set; } = true;

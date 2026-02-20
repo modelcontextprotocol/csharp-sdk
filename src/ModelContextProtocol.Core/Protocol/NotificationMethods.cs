@@ -133,7 +133,7 @@ public static class NotificationMethods
     /// it is always possible that this notification might arrive after the request has already finished.
     /// </para>
     /// <para>
-    /// This notification indicates that the result will be unused, so any associated processing SHOULD cease.
+    /// This notification indicates that the result will be unused, so any associated processing should cease.
     /// </para>
     /// <para>
     /// A client must not attempt to cancel its `initialize` request.

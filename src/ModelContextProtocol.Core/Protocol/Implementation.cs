@@ -70,7 +70,7 @@ public sealed class Implementation : IBaseMetadata
     /// This URL can be used by clients to link to documentation or more information about the implementation.
     /// </para>
     /// <para>
-    /// Consumers SHOULD take steps to ensure URLs are from the same domain as the client/server
+    /// Consumers should take steps to ensure URLs are from the same domain as the client/server
     /// or a trusted domain to prevent security issues.
     /// </para>
     /// </remarks>

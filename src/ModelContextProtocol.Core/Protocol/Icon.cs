@@ -12,14 +12,14 @@ namespace ModelContextProtocol.Protocol;
 /// Each icon includes a source URI pointing to the icon resource, and optional MIME type and size information.
 /// </para>
 /// <para>
-/// Clients that support rendering icons MUST support at least the following MIME types:
+/// Clients that support rendering icons must support at least the following MIME types:
 /// </para>
 /// <list type="bullet">
 /// <item><description>image/png - PNG images (safe, universal compatibility)</description></item>
 /// <item><description>image/jpeg (and image/jpg) - JPEG images (safe, universal compatibility)</description></item>
 /// </list>
 /// <para>
-/// Clients that support rendering icons SHOULD also support:
+/// Clients that support rendering icons should also support:
 /// </para>
 /// <list type="bullet">
 /// <item><description>image/svg+xml - SVG images (scalable but requires security precautions)</description></item>
@@ -40,11 +40,11 @@ public sealed class Icon
     /// This value can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
     /// </para>
     /// <para>
-    /// Consumers SHOULD take steps to ensure URLs serving icons are from the same domain as the client/server
+    /// Consumers should take steps to ensure URLs serving icons are from the same domain as the client/server
     /// or a trusted domain.
     /// </para>
     /// <para>
-    /// Consumers SHOULD take appropriate precautions when consuming SVGs as they can contain executable JavaScript.
+    /// Consumers should take appropriate precautions when consuming SVGs as they can contain executable JavaScript.
     /// </para>
     /// </remarks>
     [JsonPropertyName("src")]

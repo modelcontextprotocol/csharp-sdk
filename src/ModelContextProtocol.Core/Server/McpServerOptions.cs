@@ -209,7 +209,7 @@ public sealed class McpServerOptions
     /// <para>
     /// When enabled, the server will send <c>notifications/tasks/status</c> notifications to inform clients
     /// of task state changes. According to the MCP specification, these notifications are optional and
-    /// receivers MAY send them but are not required to.
+    /// receivers may send them but are not required to.
     /// </para>
     /// <para>
     /// Clients must not rely on receiving these notifications and should continue polling via <c>tasks/get</c>

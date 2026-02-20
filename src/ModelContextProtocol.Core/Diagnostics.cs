@@ -98,7 +98,7 @@ internal static class Diagnostics
 
     /// <summary>
     /// If outer GenAI instrumentation is already tracing the tool execution,
-    /// MCP instrumentation SHOULD add MCP-specific attributes to the existing tool execution span instead
+    /// MCP instrumentation should add MCP-specific attributes to the existing tool execution span instead
     /// of creating a new one.
     /// </summary>
     /// <param name="activity">The outer activity for tool execution, if found.</param>

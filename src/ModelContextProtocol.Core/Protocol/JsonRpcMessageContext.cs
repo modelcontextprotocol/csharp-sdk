@@ -19,7 +19,7 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// This property is used to support the Streamable HTTP transport where the specification states that the server
-    /// SHOULD include JSON-RPC responses in the HTTP response body for the POST request containing
+    /// should include JSON-RPC responses in the HTTP response body for the POST request containing
     /// the corresponding JSON-RPC request. It can be <see langword="null"/> for other transports.
     /// </remarks>
     public ITransport? RelatedTransport { get; set; }

@@ -16,7 +16,7 @@ public sealed class ProtectedResourceMetadata
     /// The protected resource's resource identifier.
     /// </value>
     /// <remarks>
-    /// OPTIONAL. When omitted, the MCP authentication handler infers the resource URI from the incoming request only when serving
+    /// Optional. When omitted, the MCP authentication handler infers the resource URI from the incoming request only when serving
     /// the default <c>/.well-known/oauth-protected-resource</c> endpoint. If a custom <c>ResourceMetadataUri</c> is configured,
     /// <b>Resource</b> must be explicitly set. Automatic inference only works with the default endpoint pattern.
     /// </remarks>
@@ -32,7 +32,7 @@ public sealed class ProtectedResourceMetadata
     /// for authorization servers that can be used with this protected resource.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
     public IList<string> AuthorizationServers { get; set; } = [];
@@ -45,7 +45,7 @@ public sealed class ProtectedResourceMetadata
     /// to the protected resource. Defined values are ["header", "body", "query"].
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
     public IList<string> BearerMethodsSupported { get; set; } = ["header"];
@@ -58,7 +58,7 @@ public sealed class ProtectedResourceMetadata
     /// requests to request access to this protected resource.
     /// </value>
     /// <remarks>
-    /// RECOMMENDED.
+    /// Recommended.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
     public IList<string> ScopesSupported { get; set; } = [];
@@ -67,8 +67,8 @@ public sealed class ProtectedResourceMetadata
     /// Gets or sets the URL of the protected resource's JSON Web Key (JWK) Set document.
     /// </summary>
     /// <remarks>
-    /// OPTIONAL. This document contains public keys belonging to the protected resource, such as signing keys
-    /// that the resource server uses to sign resource responses. This URL MUST use the HTTPS scheme.
+    /// Optional. This document contains public keys belonging to the protected resource, such as signing keys
+    /// that the resource server uses to sign resource responses. This URL must use the HTTPS scheme.
     /// </remarks>
     [JsonPropertyName("jwks_uri")]
     [StringSyntax(StringSyntaxAttribute.Uri)]
@@ -82,7 +82,7 @@ public sealed class ProtectedResourceMetadata
     /// for signing resource responses.
     /// </value>
     /// <remarks>
-    /// OPTIONAL. No default algorithms are implied if this entry is omitted. The value "none" MUST NOT be used.
+    /// Optional. No default algorithms are implied if this entry is omitted. The value "none" must not be used.
     /// </remarks>
     [JsonPropertyName("resource_signing_alg_values_supported")]
     public IList<string>? ResourceSigningAlgValuesSupported { get; set; }
@@ -91,8 +91,8 @@ public sealed class ProtectedResourceMetadata
     /// Gets or sets the human-readable name of the protected resource intended for display to the end user.
     /// </summary>
     /// <remarks>
-    /// RECOMMENDED. It is recommended that protected resource metadata include this field.
-    /// The value of this field MAY be internationalized.
+    /// Recommended. It is recommended that protected resource metadata include this field.
+    /// The value of this field may be internationalized.
     /// </remarks>
     [JsonPropertyName("resource_name")]
     public string? ResourceName { get; set; }
@@ -105,7 +105,7 @@ public sealed class ProtectedResourceMetadata
     /// when using the protected resource.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("resource_documentation")]
     [StringSyntax(StringSyntaxAttribute.Uri)]
@@ -118,7 +118,7 @@ public sealed class ProtectedResourceMetadata
     /// The URL of a page that contains information about how the client can use the data provided by the protected resource.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("resource_policy_uri")]
     [StringSyntax(StringSyntaxAttribute.Uri)]
@@ -128,7 +128,7 @@ public sealed class ProtectedResourceMetadata
     /// Gets or sets the URL of a page containing human-readable information about the protected resource's terms of service.
     /// </summary>
     /// <remarks>
-    /// OPTIONAL. The value of this field MAY be internationalized.
+    /// Optional. The value of this field may be internationalized.
     /// </remarks>
     [JsonPropertyName("resource_tos_uri")]
     [StringSyntax(StringSyntaxAttribute.Uri)]
@@ -141,7 +141,7 @@ public sealed class ProtectedResourceMetadata
     /// <see langword="true"/> if there's protected resource support for mutual-TLS client certificate-bound access tokens; otherwise, <see langword="false"/>. The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("tls_client_certificate_bound_access_tokens")]
     public bool? TlsClientCertificateBoundAccessTokens { get; set; }
@@ -154,7 +154,7 @@ public sealed class ProtectedResourceMetadata
     /// when the authorization_details request parameter is used.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("authorization_details_types_supported")]
     public IList<string>? AuthorizationDetailsTypesSupported { get; set; }
@@ -167,7 +167,7 @@ public sealed class ProtectedResourceMetadata
     /// for validating Demonstrating Proof of Possession (DPoP) proof JWTs.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("dpop_signing_alg_values_supported")]
     public IList<string>? DpopSigningAlgValuesSupported { get; set; }
@@ -179,7 +179,7 @@ public sealed class ProtectedResourceMetadata
     /// <see langword="true"/> if the protected resource always requires the use of DPoP-bound access tokens; otherwise, <see langword="false"/>. The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
-    /// OPTIONAL.
+    /// Optional.
     /// </remarks>
     [JsonPropertyName("dpop_bound_access_tokens_required")]
     public bool? DpopBoundAccessTokensRequired { get; set; }
@@ -188,9 +188,9 @@ public sealed class ProtectedResourceMetadata
     /// Used internally by the client to get or set the scope specified as a WWW-Authenticate header parameter.
     /// This should be preferred over using the ScopesSupported property.
     ///
-    /// The scopes included in the WWW-Authenticate challenge MAY match scopes_supported, be a subset or superset of it,
-    /// or an alternative collection that is neither a strict subset nor superset. Clients MUST NOT assume any particular
-    /// set relationship between the challenged scope set and scopes_supported. Clients MUST treat the scopes provided
+    /// The scopes included in the WWW-Authenticate challenge may match scopes_supported, be a subset or superset of it,
+    /// or an alternative collection that is neither a strict subset nor superset. Clients must not assume any particular
+    /// set relationship between the challenged scope set and scopes_supported. Clients must treat the scopes provided
     /// in the challenge as authoritative for satisfying the current request.
     ///
     /// https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
