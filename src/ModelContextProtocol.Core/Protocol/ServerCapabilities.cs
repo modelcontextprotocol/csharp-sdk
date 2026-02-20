@@ -104,8 +104,7 @@ public sealed class ServerCapabilities
     /// </para>
     /// <para>
     /// Extensions provide a framework for extending the Model Context Protocol while maintaining
-    /// interoperability. Both clients and servers advertise extension support via this field during
-    /// the initialization handshake.
+    /// interoperability. Servers advertise extension support via this field during the initialization handshake.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
