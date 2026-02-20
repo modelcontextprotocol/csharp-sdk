@@ -15,69 +15,50 @@ public static class McpRequestDelegateFactory
         $"Explicit {nameof(McpServerOptions)} cannot be used with non-null {nameof(HttpServerTransportOptions.ConfigureSessionOptions)} because per-request cloning is required.";
 
     /// <summary>
-    /// Creates a request delegate that handles MCP Streamable HTTP and legacy SSE endpoints.
+    /// Creates a request delegate that handles MCP Streamable HTTP requests.
     /// </summary>
     /// <param name="serverOptions">Explicit MCP server options to use instead of options from dependency injection.</param>
     /// <param name="transportOptions">Explicit HTTP transport options to use instead of options from dependency injection.</param>
-    /// <returns>A request delegate that dispatches to MCP handlers based on HTTP method and request path.</returns>
+    /// <param name="serviceProvider">
+    /// Optional service provider used to resolve singleton dependencies outside the delegate closure.
+    /// If <see langword="null"/>, dependencies are resolved from <see cref="HttpContext.RequestServices"/>.
+    /// </param>
+    /// <returns>A request delegate that dispatches to MCP Streamable HTTP handlers based on HTTP method.</returns>
     /// <exception cref="ArgumentException">
     /// <paramref name="serverOptions"/> and <paramref name="transportOptions"/> cannot be used together when
     /// <see cref="HttpServerTransportOptions.ConfigureSessionOptions"/> is non-null.
     /// </exception>
-    public static RequestDelegate Create(McpServerOptions? serverOptions = null, HttpServerTransportOptions? transportOptions = null)
+    public static RequestDelegate Create(
+        McpServerOptions? serverOptions = null,
+        HttpServerTransportOptions? transportOptions = null,
+        IServiceProvider? serviceProvider = null)
     {
         if (serverOptions is not null && transportOptions?.ConfigureSessionOptions is not null)
         {
             throw new ArgumentException(ConfigureSessionOptionsRequiresClonedServerOptionsMessage, nameof(transportOptions));
         }
 
+        var streamableHttpHandler = serviceProvider?.GetService<StreamableHttpHandler>() ??
+            (serviceProvider is not null
+                ? throw new InvalidOperationException(MissingHttpTransportServicesMessage)
+                : null);
+
         return async context =>
         {
-            var services = context.GetEndpoint()?.Metadata.GetMetadata<ServiceProviderMetadata>()?.ServiceProvider ?? context.RequestServices;
-            var streamableHttpHandler = services.GetService<StreamableHttpHandler>() ??
+            var resolvedHandler = streamableHttpHandler ?? context.RequestServices.GetService<StreamableHttpHandler>() ??
                 throw new InvalidOperationException(MissingHttpTransportServicesMessage);
-
-            if (IsSseEndpoint(context.Request.Path))
-            {
-                if (HttpMethods.IsGet(context.Request.Method))
-                {
-                    var sseHandler = services.GetRequiredService<SseHandler>();
-                    await sseHandler.HandleSseRequestAsync(context, serverOptions, transportOptions);
-                }
-                else
-                {
-                    context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
-                }
-
-                return;
-            }
-
-            if (IsSseMessageEndpoint(context.Request.Path))
-            {
-                if (HttpMethods.IsPost(context.Request.Method))
-                {
-                    var sseHandler = services.GetRequiredService<SseHandler>();
-                    await sseHandler.HandleMessageRequestAsync(context);
-                }
-                else
-                {
-                    context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
-                }
-
-                return;
-            }
 
             if (HttpMethods.IsPost(context.Request.Method))
             {
-                await streamableHttpHandler.HandlePostRequestAsync(context, serverOptions, transportOptions);
+                await resolvedHandler.HandlePostRequestAsync(context, serverOptions, transportOptions);
             }
             else if (HttpMethods.IsGet(context.Request.Method))
             {
-                await streamableHttpHandler.HandleGetRequestAsync(context, serverOptions, transportOptions);
+                await resolvedHandler.HandleGetRequestAsync(context, serverOptions, transportOptions);
             }
             else if (HttpMethods.IsDelete(context.Request.Method))
             {
-                await streamableHttpHandler.HandleDeleteRequestAsync(context, serverOptions, transportOptions);
+                await resolvedHandler.HandleDeleteRequestAsync(context, serverOptions, transportOptions);
             }
             else
             {
@@ -85,12 +66,4 @@ public static class McpRequestDelegateFactory
             }
         };
     }
-
-    private static bool IsSseEndpoint(PathString path)
-        => path.HasValue && path.Value!.EndsWith("/sse", StringComparison.Ordinal);
-
-    private static bool IsSseMessageEndpoint(PathString path)
-        => path.HasValue && path.Value!.EndsWith("/message", StringComparison.Ordinal);
-
-    internal sealed record ServiceProviderMetadata(IServiceProvider ServiceProvider);
 }

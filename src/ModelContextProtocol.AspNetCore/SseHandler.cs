@@ -16,18 +16,9 @@ internal sealed class SseHandler(
     ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<string, SseSession> _sessions = new(StringComparer.Ordinal);
-    private const string ConfigureSessionOptionsRequiresClonedServerOptionsMessage =
-        $"Explicit {nameof(McpServerOptions)} cannot be used with non-null {nameof(HttpServerTransportOptions.ConfigureSessionOptions)} because per-request cloning is required.";
 
-    public Task HandleSseRequestAsync(HttpContext context)
-        => HandleSseRequestAsync(context, serverOptionsOverride: null, transportOptionsOverride: null);
-
-    internal async Task HandleSseRequestAsync(
-        HttpContext context,
-        McpServerOptions? serverOptionsOverride,
-        HttpServerTransportOptions? transportOptionsOverride)
+    public async Task HandleSseRequestAsync(HttpContext context)
     {
-        var resolvedTransportOptions = transportOptionsOverride ?? httpMcpServerOptions.Value;
         var sessionId = StreamableHttpHandler.MakeNewSessionId();
 
         // If the server is shutting down, we need to cancel all SSE connections immediately without waiting for HostOptions.ShutdownTimeout
@@ -51,14 +42,9 @@ internal sealed class SseHandler(
 
         try
         {
-            var mcpServerOptions = serverOptionsOverride ?? mcpServerOptionsSnapshot.Value;
-            if (resolvedTransportOptions.ConfigureSessionOptions is { } configureSessionOptions)
+            var mcpServerOptions = mcpServerOptionsSnapshot.Value;
+            if (httpMcpServerOptions.Value.ConfigureSessionOptions is { } configureSessionOptions)
             {
-                if (serverOptionsOverride is not null)
-                {
-                    throw new ArgumentException(ConfigureSessionOptionsRequiresClonedServerOptionsMessage, nameof(transportOptionsOverride));
-                }
-
                 mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
                 await configureSessionOptions(context, mcpServerOptions, cancellationToken);
             }
@@ -70,7 +56,7 @@ internal sealed class SseHandler(
                 await using var mcpServer = McpServer.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
                 context.Features.Set(mcpServer);
 
-                var runSessionAsync = resolvedTransportOptions.RunSessionHandler ?? StreamableHttpHandler.RunSessionAsync;
+                var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? StreamableHttpHandler.RunSessionAsync;
                 await runSessionAsync(context, mcpServer, cancellationToken);
             }
             finally
