@@ -103,6 +103,10 @@ After confirmation:
 
 When the user requests revisions after the initial update, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
 
+### Step 8: Bump Version
+
+After the draft release is created or updated, inform the user that the draft release is now associated with a known target commit (state the short SHA and commit message) and recommend proceeding with a version bump. Ask if they want to create a pull request to bump the version for the next release. If yes, invoke the **bump-version** skill and let it handle determining or requesting the target version number.
+
 ## Edge Cases
 
 - **PR spans categories**: categorize by primary intent
