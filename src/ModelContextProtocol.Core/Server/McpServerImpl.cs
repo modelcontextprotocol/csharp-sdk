@@ -58,8 +58,6 @@ internal sealed partial class McpServerImpl : McpServer
         Throw.IfNull(transport);
         Throw.IfNull(options);
 
-        options ??= new();
-
         _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
