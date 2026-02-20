@@ -158,7 +158,10 @@ public abstract class ResourceContents
 
             writer.WriteStartObject();
             writer.WriteString("uri", value.Uri);
-            writer.WriteString("mimeType", value.MimeType);
+            if (value.MimeType is not null)
+            {
+                writer.WriteString("mimeType", value.MimeType);
+            }
 
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
