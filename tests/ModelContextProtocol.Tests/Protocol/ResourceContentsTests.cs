@@ -459,4 +459,34 @@ public static class ResourceContentsTests
         Assert.Equal(string.Empty, blobResource.Uri);
         Assert.Equal("YmxvYg==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
+
+    [Fact]
+    public static void TextResourceContents_NullMimeType_OmittedFromJson()
+    {
+        var resource = new TextResourceContents
+        {
+            Uri = "file:///test.txt",
+            MimeType = null,
+            Text = "hello"
+        };
+
+        var json = JsonSerializer.Serialize<ResourceContents>(resource, McpJsonUtilities.DefaultOptions);
+
+        Assert.DoesNotContain("mimeType", json);
+    }
+
+    [Fact]
+    public static void BlobResourceContents_NullMimeType_OmittedFromJson()
+    {
+        var resource = new BlobResourceContents
+        {
+            Uri = "file:///test.bin",
+            MimeType = null,
+            Blob = new byte[] { 1, 2, 3 }
+        };
+
+        var json = JsonSerializer.Serialize<ResourceContents>(resource, McpJsonUtilities.DefaultOptions);
+
+        Assert.DoesNotContain("mimeType", json);
+    }
 }
