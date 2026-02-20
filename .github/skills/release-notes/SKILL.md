@@ -52,7 +52,12 @@ Sort every PR into one of three categories. See [references/categorization.md](r
 
 ### Step 3: Breaking Change Audit
 
-Invoke the **breaking-changes** skill with the commit range from the previous release tag to the target commit. That skill handles the full audit — examining every PR, assessing impact, reconciling labels, and getting user confirmation.
+Invoke the **breaking-changes** skill with the commit range from the previous release tag to the target commit. The full audit process applies whether creating new release notes or editing existing ones — examine every PR, assess impact, reconcile labels (offering to add/remove labels and comment on PRs), and get user confirmation.
+
+When **editing an existing release**, also extract any breaking changes already documented in the current release notes (`## Breaking Changes` section). These must be preserved — never remove breaking changes from existing notes. Reconcile the existing documented breaks with the audit results:
+- **Previously documented breaks**: keep them, updating formatting if needed
+- **Newly discovered breaks**: add them alongside the existing ones
+- **Audit finds no issue with a documented break**: still keep it (do not remove without explicit user request)
 
 Use the results (confirmed breaking changes with impact ordering and detail bullets) in the remaining steps.
 
@@ -82,12 +87,12 @@ Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), 
 
 ### Step 6: Preamble
 
-Compose a short preamble summarizing the release theme.
+Every release **must** have a preamble — a short paragraph summarizing the release theme that appears before the first `##` heading. The preamble is not optional. The preamble may mention the presence of breaking changes as part of the theme summary, but the versioning documentation link belongs under the Breaking Changes heading (see template), not in the preamble.
 
-- **New release**: Draft a preamble based on the categorized changes. If there are breaking changes, mention them and link to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) docs.
+- **New release**: Draft a preamble based on the categorized changes.
 - **Editing an existing release**: Extract the current preamble from the release body (text before the first `##` heading) and present it alongside a newly drafted alternative.
 
-Present the options and let the user choose one, edit one, or enter their own text or markdown. Do not repeat preamble text under the Breaking Changes heading.
+Present the options and let the user choose one, edit one, or enter their own text or markdown.
 
 ### Step 7: Final Assembly
 
@@ -121,17 +126,19 @@ After the draft release is created or updated, inform the user that the draft re
 - **PR spans categories**: categorize by primary intent
 - **Copilot timeline missing**: fall back to `Co-authored-by` trailers; if still unclear, use `@Copilot` as primary author
 - **Draft tag changes**: re-fetch the tag before each `gh release edit`
-- **No breaking changes**: omit the Breaking Changes section and breaking change preamble language
+- **No breaking changes**: omit the Breaking Changes section entirely
 - **Single breaking change**: use the same numbered format as multiple
 
 ## Release Notes Template
 
-Omit empty sections:
+Omit empty sections. The preamble is **always required** — it is not inside a section heading.
 
 ```markdown
-[Preamble — release theme, breaking changes note, versioning docs link]
+[Preamble — REQUIRED. Summarize the release theme.]
 
 ## Breaking Changes
+
+Refer to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break
@@ -159,5 +166,5 @@ Omit empty sections:
 * @user submitted issue #1234 (resolved by #5678)
 * @user1 @user2 @user3 reviewed pull requests
 
-**Full Changelog**: previous-tag...new-tag
+**Full Changelog**: https://github.com/modelcontextprotocol/csharp-sdk/compare/previous-tag...new-tag
 ```

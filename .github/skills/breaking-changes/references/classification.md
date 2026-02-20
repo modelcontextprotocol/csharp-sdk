@@ -49,6 +49,17 @@ Behavioral changes that customers would have reasonably depended on. **Flag and 
 ### Bucket 3: Unlikely Grey Area
 Behavioral changes that customers could have depended on but probably wouldn't (e.g., corner case corrections). **Flag with lower confidence.**
 
+### Bug Fixes (Exclude)
+Changes that correct incorrect behavior, fix spec compliance, or address security issues are **not breaking changes** even if they alter observable behavior. Examples:
+- Fixing encoding to match a specification requirement
+- Correcting a logger category or metric name that was wrong
+- Fixing exception message leaks that were a security concern
+- Moving data to the correct location per protocol spec evolution
+- Setting a flag that should have been set automatically (e.g., `IsError` for error content)
+- Returning a more specific/informative exception for better diagnostics
+
+If a change is primarily a bug fix or spec compliance correction, exclude it from the breaking changes list even though the observable behavior changes.
+
 ### Bucket 4: Clearly Non-Public
 Changes to internal surface or behavior (e.g., internal APIs, private reflection). **Generally not flagged** unless they could affect ecosystem tools.
 

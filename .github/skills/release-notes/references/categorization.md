@@ -59,6 +59,11 @@ For Dependabot PRs, do not acknowledge @dependabot[bot]:
 * Bump actions/checkout from 5.0.0 to 6.0.0 #1234
 ```
 
+For direct commits without an associated PR (e.g., version bumps merged directly to the branch), use the commit description and `by @author` but omit the `#PR` reference:
+```
+* Bump version to v0.1.0-preview.12 by @halter73
+```
+
 For Copilot-authored PRs, identify who triggered Copilot using the `copilot_work_started` timeline event on the PR. That person becomes the primary author, and @Copilot becomes a co-author:
 ```
 * Add trace-level logging for JSON-RPC payloads #1234 by @halter73 (co-authored by @Copilot)

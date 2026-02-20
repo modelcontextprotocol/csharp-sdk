@@ -11,6 +11,12 @@ GitHub automatically links `@username`, `#123`, and `@org/repo#123` references i
 
 This keeps the markdown source readable and avoids brittle links.
 
+**Exception — Full Changelog link**: The `**Full Changelog**` compare link at the bottom of the release notes does **not** auto-link. It must use the full URL format:
+```
+**Full Changelog**: https://github.com/modelcontextprotocol/csharp-sdk/compare/previous-tag...new-tag
+```
+A bare `previous-tag...new-tag` will render as plain text, not a clickable link.
+
 ## Writing the Release Body
 
 Always compose the full release body as a complete markdown file before uploading. Never perform incremental string replacements on the body through shell commands or API calls — this risks collapsing newlines, introducing encoding artifacts, or corrupting the markdown structure.
@@ -20,10 +26,12 @@ Always compose the full release body as a complete markdown file before uploadin
 When the user requests changes to existing release notes:
 
 1. Fetch the current release body and save it to a local file
-2. Write the **entire** corrected body to a separate local file (ensuring proper line breaks between all sections, entries, and paragraphs)
-3. **If the release is already published** (not a draft): run `git diff --no-index` between the original and updated files and present the raw diff output directly in the response as a fenced code block with `diff` syntax highlighting. Do not summarize or paraphrase the diff. Require explicit confirmation before uploading. Before uploading, offer to save the original body to a permanent local file, noting that GitHub does not retain prior versions of release notes.
-4. Upload the complete file using `gh release edit --notes-file <file>`
-5. Verify the result by fetching the body again and checking that line count and structure are intact
+2. **Breaking change audit**: Run the full breaking-changes skill audit on the commit range, just as for new release notes — this includes examining PRs, reconciling labels, offering to comment on PRs, and getting user confirmation. Also extract any breaking changes already documented in the existing release body; these must be preserved and reconciled with the audit results.
+3. **Preamble check**: Verify the release has a preamble (text before the first `##` heading). If missing, compose one. The versioning documentation link belongs under the `## Breaking Changes` heading, not in the preamble.
+4. Write the **entire** corrected body to a separate local file (ensuring proper line breaks between all sections, entries, and paragraphs)
+5. Run `git diff --no-index` between the original and updated files and **always** present the raw diff output directly in the response as a fenced code block with `diff` syntax highlighting. Do not summarize or paraphrase the diff — always show the complete diff to the user. Require explicit confirmation before uploading. For published releases (not drafts), also offer to save the original body to a permanent local file, noting that GitHub does not retain prior versions of release notes.
+6. Upload the complete file using `gh release edit --notes-file <file>`
+7. Verify the result by fetching the body again and checking that line count and structure are intact
 
 ### Common Pitfalls
 
@@ -37,6 +45,8 @@ When the user requests changes to existing release notes:
 
 After every release body update:
 
+- [ ] Preamble exists before the first `##` heading
+- [ ] If `## Breaking Changes` section exists, it begins with the versioning docs link paragraph before the numbered list
 - [ ] Line count matches expected structure (~80+ lines for a typical release)
 - [ ] Section headings (`## Breaking Changes`, `## What's Changed`, etc.) each appear on their own line
 - [ ] Bullet entries are each on their own line
