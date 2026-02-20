@@ -97,7 +97,15 @@ public sealed class McpServerOptions
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
-    public McpServerHandlers Handlers { get; } = new();
+    public McpServerHandlers Handlers
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets the filter collections for MCP server handlers.
