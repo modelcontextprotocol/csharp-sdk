@@ -12,7 +12,7 @@ namespace ModelContextProtocol;
 /// </summary>
 public sealed class UrlElicitationRequiredException : McpProtocolException
 {
-    private readonly IReadOnlyList<ElicitRequestParams> _elicitations;
+    private readonly List<ElicitRequestParams> _elicitations;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UrlElicitationRequiredException"/> class with the specified message and pending elicitations.
@@ -89,11 +89,11 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
             }
         }
 
-        elicitations = elicitationsFromPayload;
+        elicitations = elicitationsFromPayload.ToList();
         return true;
     }
 
-    private static IReadOnlyList<ElicitRequestParams> Validate(IEnumerable<ElicitRequestParams> elicitations)
+    private static List<ElicitRequestParams> Validate(IEnumerable<ElicitRequestParams> elicitations)
     {
         var list = new List<ElicitRequestParams>();
         foreach (var elicitation in elicitations)
