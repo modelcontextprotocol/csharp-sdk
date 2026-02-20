@@ -30,9 +30,10 @@ public static class McpEndpointRouteBuilderExtensions
         _ = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
         var httpServerTransportOptions = endpoints.ServiceProvider.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value;
-        var mcpRequestDelegate = McpRequestDelegateFactory.Create(endpoints.ServiceProvider);
+        var mcpRequestDelegate = McpRequestDelegateFactory.Create();
 
         var mcpGroup = endpoints.MapGroup(pattern);
+        mcpGroup.WithMetadata(new McpRequestDelegateFactory.ServiceProviderMetadata(endpoints.ServiceProvider));
         var streamableHttpGroup = mcpGroup.MapGroup("")
             .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status404NotFound, typeof(JsonRpcError), contentTypes: ["application/json"]));

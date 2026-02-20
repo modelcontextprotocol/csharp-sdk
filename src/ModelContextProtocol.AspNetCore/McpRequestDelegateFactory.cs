@@ -25,15 +25,6 @@ public static class McpRequestDelegateFactory
     /// <see cref="HttpServerTransportOptions.ConfigureSessionOptions"/> is non-null.
     /// </exception>
     public static RequestDelegate Create(McpServerOptions? serverOptions = null, HttpServerTransportOptions? transportOptions = null)
-        => CreateCore(serviceProvider: null, serverOptions, transportOptions);
-
-    internal static RequestDelegate Create(IServiceProvider serviceProvider, McpServerOptions? serverOptions = null, HttpServerTransportOptions? transportOptions = null)
-    {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        return CreateCore(serviceProvider, serverOptions, transportOptions);
-    }
-
-    private static RequestDelegate CreateCore(IServiceProvider? serviceProvider, McpServerOptions? serverOptions, HttpServerTransportOptions? transportOptions)
     {
         if (serverOptions is not null && transportOptions?.ConfigureSessionOptions is not null)
         {
@@ -42,7 +33,7 @@ public static class McpRequestDelegateFactory
 
         return async context =>
         {
-            var services = serviceProvider ?? context.RequestServices;
+            var services = context.GetEndpoint()?.Metadata.GetMetadata<ServiceProviderMetadata>()?.ServiceProvider ?? context.RequestServices;
             var streamableHttpHandler = services.GetService<StreamableHttpHandler>() ??
                 throw new InvalidOperationException(MissingHttpTransportServicesMessage);
 
@@ -100,4 +91,6 @@ public static class McpRequestDelegateFactory
 
     private static bool IsSseMessageEndpoint(PathString path)
         => path.HasValue && path.Value!.EndsWith("/message", StringComparison.Ordinal);
+
+    internal sealed record ServiceProviderMetadata(IServiceProvider ServiceProvider);
 }
