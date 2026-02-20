@@ -35,7 +35,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
-    public List<string> AuthorizationServers { get; set; } = [];
+    public IList<string> AuthorizationServers { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the supported bearer token methods.
@@ -48,7 +48,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
-    public List<string> BearerMethodsSupported { get; set; } = ["header"];
+    public IList<string> BearerMethodsSupported { get; set; } = ["header"];
 
     /// <summary>
     /// Gets or sets the supported scopes.
@@ -61,7 +61,7 @@ public sealed class ProtectedResourceMetadata
     /// RECOMMENDED.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
-    public List<string> ScopesSupported { get; set; } = [];
+    public IList<string> ScopesSupported { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the URL of the protected resource's JSON Web Key (JWK) Set document.
@@ -85,7 +85,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL. No default algorithms are implied if this entry is omitted. The value "none" MUST NOT be used.
     /// </remarks>
     [JsonPropertyName("resource_signing_alg_values_supported")]
-    public List<string>? ResourceSigningAlgValuesSupported { get; set; }
+    public IList<string>? ResourceSigningAlgValuesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets the human-readable name of the protected resource intended for display to the end user.
@@ -157,7 +157,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_details_types_supported")]
-    public List<string>? AuthorizationDetailsTypesSupported { get; set; }
+    public IList<string>? AuthorizationDetailsTypesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets the list of the JWS algorithm values supported by the resource server for validating DPoP proof JWTs.
@@ -170,7 +170,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("dpop_signing_alg_values_supported")]
-    public List<string>? DpopSigningAlgValuesSupported { get; set; }
+    public IList<string>? DpopSigningAlgValuesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether the protected resource always requires the use of DPoP-bound access tokens.

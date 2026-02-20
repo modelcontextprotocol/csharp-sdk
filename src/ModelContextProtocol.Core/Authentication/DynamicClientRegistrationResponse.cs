@@ -23,7 +23,7 @@ public sealed class DynamicClientRegistrationResponse
     /// Gets or initializes the redirect URIs for the client.
     /// </summary>
     [JsonPropertyName("redirect_uris")]
-    public string[]? RedirectUris { get; init; }
+    public IList<string>? RedirectUris { get; init; }
 
     /// <summary>
     /// Gets or initializes the token endpoint authentication method.
@@ -35,13 +35,13 @@ public sealed class DynamicClientRegistrationResponse
     /// Gets or initializes the grant types that the client will use.
     /// </summary>
     [JsonPropertyName("grant_types")]
-    public string[]? GrantTypes { get; init; }
+    public IList<string>? GrantTypes { get; init; }
 
     /// <summary>
     /// Gets or initializes the response types that the client will use.
     /// </summary>
     [JsonPropertyName("response_types")]
-    public string[]? ResponseTypes { get; init; }
+    public IList<string>? ResponseTypes { get; init; }
 
     /// <summary>
     /// Gets or initializes the timestamp at which the client ID was issued.
