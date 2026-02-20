@@ -33,7 +33,7 @@ Look for both categories of breaking changes:
 - **API (compile-time)** — changes to public type signatures, parameter types, return types, removed members, sealed types, new obsoletion attributes, etc.
 - **Behavioral (runtime)** — new/changed exceptions, altered return values, changed defaults, modified event ordering, serialization changes, etc.
 
-See [references/classification.md](references/classification.md) for the full classification guide.
+See [references/classification.md](references/classification.md) for the full classification guide, including SDK-specific versioning policies (pre-1.0 preview flexibility, experimental APIs, obsoletion lifecycle, and spec-driven changes) that influence how breaks are assessed.
 
 ### Step 2: Assess Impact
 

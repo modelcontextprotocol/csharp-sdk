@@ -63,15 +63,36 @@ If a change is primarily a bug fix or spec compliance correction, exclude it fro
 ### Bucket 4: Clearly Non-Public
 Changes to internal surface or behavior (e.g., internal APIs, private reflection). **Generally not flagged** unless they could affect ecosystem tools.
 
-## API Deprecation and Removal
+## SDK Versioning Policy
 
-The MCP SDK follows a more flexible deprecation policy than fully stable frameworks. In exceptional circumstances, removal of public APIs is permissible provided:
+The classification rules above are derived from the dotnet/runtime breaking change guidelines, but the MCP SDK has its own versioning policy (see `docs/versioning.md`) that provides additional context for classification decisions.
 
-- The removal is called out explicitly in planning and release notes
-- A relevant `[Obsolete]` attribute is added in an earlier release, giving consumers a migration window
-- The removal is documented in the Breaking Changes section with migration guidance
+### Pre-1.0 Preview Status
 
-When auditing for breaking changes, API removal that follows this process should still be flagged as a breaking change, but the migration guidance should note the prior deprecation.
+Prior to a stable 1.0.0 release, the SDK is in preview and breaking changes can be introduced without prior notice. This does **not** change how breaks are classified — they should still be flagged, labeled, and documented — but it affects the **severity assessment**. Preview consumers expect breaks, so migration guidance matters more than avoidance.
+
+### Experimental APIs
+
+APIs annotated with `[Experimental]` (using `MCP`-prefixed diagnostic codes) can change at any time, including within PATCH or MINOR updates. Changes to experimental APIs should still be **noted** in the audit, but classified as **Bucket 3 (Unlikely Grey Area)** or lower unless the API has been widely adopted despite its experimental status.
+
+### Obsoletion Lifecycle
+
+The SDK follows a three-step obsoletion process:
+
+1. **MINOR update**: API marked `[Obsolete]` producing _build warnings_ with migration guidance
+2. **MAJOR update**: API marked `[Obsolete]` producing _build errors_ (API throws at runtime)
+3. **MAJOR update**: API removed entirely (expected to be rare)
+
+When auditing, classify each step appropriately:
+- Step 1 (adding `[Obsolete]` warning) → API breaking change (new build warning)
+- Step 2 (escalating to error) → API breaking change (previously working code now fails)
+- Step 3 (removal) → API breaking change; migration guidance should note prior deprecation
+
+In exceptional circumstances — especially during the pre-1.0 preview period — the obsoletion lifecycle may be compressed (e.g., marking obsolete and removing in the same MINOR release). This should still be flagged as a breaking change but the migration guidance should explain the rationale.
+
+### Spec-Driven Changes
+
+Breaking changes necessitated by MCP specification evolution should be flagged and documented normally, but the migration guidance should reference the spec change. If a spec change forces an incompatible API change, preference is given to supporting the most recent spec version.
 
 ## Compatibility Switches
 
