@@ -97,45 +97,8 @@ internal class StreamClientSessionTransport : TransportBase
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
-
-            while (true)
-            {
-                ReadResult result = await _serverOutputPipe.ReadAsync(cancellationToken).ConfigureAwait(false);
-                ReadOnlySequence<byte> buffer = result.Buffer;
-
-                SequencePosition? position;
-                while ((position = buffer.PositionOf((byte)'\n')) != null)
-                {
-                    ReadOnlySequence<byte> line = buffer.Slice(0, position.Value);
-
-                    // Trim trailing \r for Windows-style CRLF line endings.
-                    if (EndsWithCarriageReturn(line))
-                    {
-                        line = line.Slice(0, line.Length - 1);
-                    }
-
-                    if (!line.IsEmpty)
-                    {
-                        if (Logger.IsEnabled(LogLevel.Trace))
-                        {
-                            LogTransportReceivedMessageSensitive(Name, GetString(line));
-                        }
-
-                        await ProcessLineAsync(line, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    // Advance past the '\n'.
-                    buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
-                }
-
-                _serverOutputPipe.AdvanceTo(buffer.Start, buffer.End);
-
-                if (result.IsCompleted)
-                {
-                    LogTransportEndOfStream(Name);
-                    break;
-                }
-            }
+            await _serverOutputPipe.ReadLinesAsync(ProcessLineAsync, cancellationToken).ConfigureAwait(false);
+            LogTransportEndOfStream(Name);
         }
         catch (OperationCanceledException)
         {
@@ -155,6 +118,11 @@ internal class StreamClientSessionTransport : TransportBase
 
     private async Task ProcessLineAsync(ReadOnlySequence<byte> line, CancellationToken cancellationToken)
     {
+        if (Logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportReceivedMessageSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
+        }
+
         try
         {
             JsonRpcMessage? message;
@@ -176,7 +144,7 @@ internal class StreamClientSessionTransport : TransportBase
             {
                 if (Logger.IsEnabled(LogLevel.Trace))
                 {
-                    LogTransportMessageParseUnexpectedTypeSensitive(Name, GetString(line));
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, PipeReaderExtensions.GetUtf8String(line));
                 }
             }
         }
@@ -184,39 +152,13 @@ internal class StreamClientSessionTransport : TransportBase
         {
             if (Logger.IsEnabled(LogLevel.Trace))
             {
-                LogTransportMessageParseFailedSensitive(Name, GetString(line), ex);
+                LogTransportMessageParseFailedSensitive(Name, PipeReaderExtensions.GetUtf8String(line), ex);
             }
             else
             {
                 LogTransportMessageParseFailed(Name, ex);
             }
         }
-    }
-
-    private static string GetString(in ReadOnlySequence<byte> sequence) =>
-        sequence.IsSingleSegment
-            ? Encoding.UTF8.GetString(sequence.First.Span)
-            : Encoding.UTF8.GetString(sequence.ToArray());
-
-    private static bool EndsWithCarriageReturn(in ReadOnlySequence<byte> sequence)
-    {
-        if (sequence.IsSingleSegment)
-        {
-            ReadOnlySpan<byte> span = sequence.First.Span;
-            return span.Length > 0 && span[span.Length - 1] == (byte)'\r';
-        }
-
-        // Multi-segment: find the last non-empty segment to check its last byte.
-        ReadOnlyMemory<byte> last = default;
-        foreach (ReadOnlyMemory<byte> segment in sequence)
-        {
-            if (!segment.IsEmpty)
-            {
-                last = segment;
-            }
-        }
-
-        return !last.IsEmpty && last.Span[last.Length - 1] == (byte)'\r';
     }
 
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
