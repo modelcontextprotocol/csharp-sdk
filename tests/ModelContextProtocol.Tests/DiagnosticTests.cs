@@ -35,8 +35,10 @@ public class DiagnosticTests
 
             // Wait for server-side activities to be exported. The server processes messages
             // via fire-and-forget tasks, so activities may not be immediately available
-            // after the client operation completes.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
+            // after the client operation completes. Wait for the specific activity we need
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() => activities.Any(a =>
+                a.DisplayName == "tools/call DoubleValue" && a.Kind == ActivityKind.Server));
         }
 
         Assert.NotEmpty(activities);
@@ -103,8 +105,11 @@ public class DiagnosticTests
                 await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
             }, []);
 
-            // Wait for server-side activities to be exported.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
+            // Wait for server-side activities to be exported. Wait for specific activities
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() =>
+                activities.Any(a => a.DisplayName == "tools/call Throw" && a.Kind == ActivityKind.Server) &&
+                activities.Any(a => a.DisplayName == "tools/call does-not-exist" && a.Kind == ActivityKind.Server));
         }
 
         Assert.NotEmpty(activities);
@@ -173,8 +178,10 @@ public class DiagnosticTests
                 await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             }, []);
 
-            // Wait for server-side activities to be exported.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 3);
+            // Wait for server-side activities to be exported. Wait for specific activities
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() => activities.Any(a =>
+                a.DisplayName == "tools/call DoubleValue" && a.Kind == ActivityKind.Server));
         }
 
         // The outer activity should have MCP-specific attributes added to it
