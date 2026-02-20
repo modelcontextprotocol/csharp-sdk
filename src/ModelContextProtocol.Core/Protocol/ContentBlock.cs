@@ -693,7 +693,7 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// audio, resource links, and embedded resources.
     /// </remarks>
     [JsonPropertyName("content")]
-    public required List<ContentBlock> Content { get; set; }
+    public required IList<ContentBlock> Content { get; set; }
 
     /// <summary>
     /// Gets or sets an optional structured result object.
