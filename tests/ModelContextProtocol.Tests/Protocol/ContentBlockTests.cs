@@ -225,4 +225,22 @@ public class ContentBlockTests
         Assert.Equal("Paris", result.Input.GetProperty("city").GetString());
         Assert.Equal("metric", result.Input.GetProperty("units").GetString());
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ImageContentBlock_FromBytes_ThrowsForNullOrWhiteSpaceMimeType(string? mimeType)
+    {
+        Assert.ThrowsAny<ArgumentException>(() => ImageContentBlock.FromBytes((byte[])[1, 2, 3], mimeType!));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void AudioContentBlock_FromBytes_ThrowsForNullOrWhiteSpaceMimeType(string? mimeType)
+    {
+        Assert.ThrowsAny<ArgumentException>(() => AudioContentBlock.FromBytes((byte[])[1, 2, 3], mimeType!));
+    }
 }
