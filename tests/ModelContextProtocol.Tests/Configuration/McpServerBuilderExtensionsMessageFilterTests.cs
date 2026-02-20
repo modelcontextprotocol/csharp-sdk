@@ -23,24 +23,28 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         List<string> messageTypes = [];
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters =>
             {
-                var logger = GetLogger(context.Services, "MessageFilter1");
-                logger.LogInformation("MessageFilter1 before");
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    var logger = GetLogger(context.Services, "MessageFilter1");
+                    logger.LogInformation("MessageFilter1 before");
 
-                var messageTypeName = context.JsonRpcMessage.GetType().Name;
-                messageTypes.Add(messageTypeName);
+                    var messageTypeName = context.JsonRpcMessage.GetType().Name;
+                    messageTypes.Add(messageTypeName);
 
-                await next(context, cancellationToken);
+                    await next(context, cancellationToken);
 
-                logger.LogInformation("MessageFilter1 after");
-            })
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
-            {
-                var logger = GetLogger(context.Services, "MessageFilter2");
-                logger.LogInformation("MessageFilter2 before");
-                await next(context, cancellationToken);
-                logger.LogInformation("MessageFilter2 after");
+                    logger.LogInformation("MessageFilter1 after");
+                });
+
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    var logger = GetLogger(context.Services, "MessageFilter2");
+                    logger.LogInformation("MessageFilter2 before");
+                    await next(context, cancellationToken);
+                    logger.LogInformation("MessageFilter2 after");
+                });
             })
             .WithTools<TestTool>()
             .WithPrompts<TestPrompt>()
@@ -69,12 +73,12 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         List<string> messageTypes = [];
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 var messageTypeName = context.JsonRpcMessage.GetType().Name;
                 messageTypes.Add(messageTypeName);
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -91,19 +95,23 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     public async Task AddIncomingMessageFilter_Multiple_Filters_Execute_In_Order()
     {
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters =>
             {
-                var logger = GetLogger(context.Services, "MessageFilter1");
-                logger.LogInformation("MessageFilter1 before");
-                await next(context, cancellationToken);
-                logger.LogInformation("MessageFilter1 after");
-            })
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
-            {
-                var logger = GetLogger(context.Services, "MessageFilter2");
-                logger.LogInformation("MessageFilter2 before");
-                await next(context, cancellationToken);
-                logger.LogInformation("MessageFilter2 after");
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    var logger = GetLogger(context.Services, "MessageFilter1");
+                    logger.LogInformation("MessageFilter1 before");
+                    await next(context, cancellationToken);
+                    logger.LogInformation("MessageFilter1 after");
+                });
+
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    var logger = GetLogger(context.Services, "MessageFilter2");
+                    logger.LogInformation("MessageFilter2 before");
+                    await next(context, cancellationToken);
+                    logger.LogInformation("MessageFilter2 after");
+                });
             })
             .WithTools<TestTool>();
 
@@ -142,11 +150,11 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         McpServer? capturedServer = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 capturedServer = context.Server;
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -166,18 +174,22 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         string? capturedValue = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters =>
             {
-                context.Items["testKey"] = "testValue";
-                await next(context, cancellationToken);
-            })
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
-            {
-                if (context.Items.TryGetValue("testKey", out var value))
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
                 {
-                    capturedValue = value as string;
-                }
-                await next(context, cancellationToken);
+                    context.Items["testKey"] = "testValue";
+                    await next(context, cancellationToken);
+                });
+
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    if (context.Items.TryGetValue("testKey", out var value))
+                    {
+                        capturedValue = value as string;
+                    }
+                    await next(context, cancellationToken);
+                });
             })
             .WithTools<TestTool>();
 
@@ -196,14 +208,14 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         string? capturedMethod = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
                     capturedMethod = request.Method;
                 }
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -219,7 +231,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     public async Task AddIncomingMessageFilter_Exception_Propagates_Properly()
     {
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 // Only throw for tools/list, not for initialize/initialized
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
@@ -227,7 +239,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     throw new InvalidOperationException("Filter exception");
                 }
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -248,19 +260,19 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         var executionOrder = new List<string>();
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
                     executionOrder.Add("MessageFilter");
                 }
                 await next(context, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
+            }))
+            .WithRequestFilters(filters => filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
             {
                 executionOrder.Add("ListToolsFilter");
                 return await next(request, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -279,7 +291,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     public async Task AddIncomingMessageFilter_Can_Skip_Default_Handlers()
     {
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 // Skip calling next for tools/list
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
@@ -288,7 +300,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     return;
                 }
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -310,7 +322,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         var observedMessages = new List<string>();
 
         McpServerBuilder
-            .AddOutgoingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
             {
                 switch (context.JsonRpcMessage)
                 {
@@ -330,7 +342,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                 }
 
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<ProgressTool>();
 
         StartServer();
@@ -353,7 +365,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     public async Task AddOutgoingMessageFilter_Can_Skip_Sending_Messages()
     {
         McpServerBuilder
-            .AddOutgoingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcResponse response && response.Result is JsonObject result && result.ContainsKey("tools"))
                 {
@@ -361,7 +373,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                 }
 
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -379,7 +391,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     public async Task AddOutgoingMessageFilter_Can_Send_Additional_Messages()
     {
         McpServerBuilder
-            .AddOutgoingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcResponse response && response.Result is JsonObject result && result.ContainsKey("tools"))
                 {
@@ -394,7 +406,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                 }
 
                 await next(context, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -422,7 +434,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         string? capturedValue = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 // Set an item in the message filter
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
@@ -430,8 +442,8 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     context.Items["messageFilterKey"] = "messageFilterValue";
                 }
                 await next(context, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
+            }))
+            .WithRequestFilters(filters => filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
             {
                 // Read the item in the request-specific filter
                 if (request.Items.TryGetValue("messageFilterKey", out var value))
@@ -439,7 +451,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     capturedValue = value as string;
                 }
                 return await next(request, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -457,7 +469,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         object? capturedValue = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 // Set an item in the message filter for CallTool requests
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsCall)
@@ -465,8 +477,8 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     context.Items["toolContextKey"] = 42;
                 }
                 await next(context, cancellationToken);
-            })
-            .AddCallToolFilter((next) => async (request, cancellationToken) =>
+            }))
+            .WithRequestFilters(filters => filters.AddCallToolFilter((next) => async (request, cancellationToken) =>
             {
                 // Read the item in the call tool filter
                 if (request.Items.TryGetValue("toolContextKey", out var value))
@@ -474,7 +486,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     capturedValue = value;
                 }
                 return await next(request, cancellationToken);
-            })
+            }))
             .WithTools<SimpleTool>();
 
         StartServer();
@@ -492,7 +504,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         ClaimsPrincipal? capturedUser = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 // Set a custom user in the message filter for CallTool requests
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsCall)
@@ -502,13 +514,13 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     context.User = new ClaimsPrincipal(identity);
                 }
                 await next(context, cancellationToken);
-            })
-            .AddCallToolFilter((next) => async (request, cancellationToken) =>
+            }))
+            .WithRequestFilters(filters => filters.AddCallToolFilter((next) => async (request, cancellationToken) =>
             {
                 // Read the user in the call tool filter
                 capturedUser = request.User;
                 return await next(request, cancellationToken);
-            })
+            }))
             .WithTools<SimpleTool>();
 
         StartServer();
@@ -529,43 +541,47 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         object? secondFilterValue = null;
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters =>
             {
-                // First filter sets an item
-                if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
                 {
-                    context.Items["firstFilterKey"] = "firstFilterValue";
-                }
-                await next(context, cancellationToken);
-            })
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
-            {
-                // Second filter creates a new context with a new JsonRpcRequest and adds an item
-                if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
-                {
-                    var newRequest = new JsonRpcRequest
+                    // First filter sets an item
+                    if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                     {
-                        Id = request.Id,
-                        Method = RequestMethods.ToolsList,
-                        Params = request.Params,
-                        Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
-                    };
+                        context.Items["firstFilterKey"] = "firstFilterValue";
+                    }
+                    await next(context, cancellationToken);
+                });
 
-                    var newContext = new MessageContext(context.Server, newRequest);
-                    newContext.Items["secondFilterKey"] = "secondFilterValue";
+                filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+                {
+                    // Second filter creates a new context with a new JsonRpcRequest and adds an item
+                    if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
+                    {
+                        var newRequest = new JsonRpcRequest
+                        {
+                            Id = request.Id,
+                            Method = RequestMethods.ToolsList,
+                            Params = request.Params,
+                            Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
+                        };
 
-                    await next(newContext, cancellationToken);
-                    return;
-                }
-                await next(context, cancellationToken);
+                        var newContext = new MessageContext(context.Server, newRequest);
+                        newContext.Items["secondFilterKey"] = "secondFilterValue";
+
+                        await next(newContext, cancellationToken);
+                        return;
+                    }
+                    await next(context, cancellationToken);
+                });
             })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
+            .WithRequestFilters(filters => filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
             {
                 // Request filter should see items from message filters
                 request.Items.TryGetValue("firstFilterKey", out firstFilterValue);
                 request.Items.TryGetValue("secondFilterKey", out secondFilterValue);
                 return await next(request, cancellationToken);
-            })
+            }))
             .WithTools<TestTool>();
 
         StartServer();
@@ -584,32 +600,36 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         var observedValues = new List<string>();
 
         McpServerBuilder
-            .AddIncomingMessageFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
                     context.Items["sharedKey"] = "fromMessageFilter";
                 }
                 await next(context, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
+            }))
+            .WithRequestFilters(filters =>
             {
-                // First request filter reads and modifies
-                if (request.Items.TryGetValue("sharedKey", out var value))
+                filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
                 {
-                    observedValues.Add((string)value!);
-                    request.Items["sharedKey"] = "modifiedByFilter1";
-                }
-                return await next(request, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
-            {
-                // Second request filter should see modified value
-                if (request.Items.TryGetValue("sharedKey", out var value))
+                    // First request filter reads and modifies
+                    if (request.Items.TryGetValue("sharedKey", out var value))
+                    {
+                        observedValues.Add((string)value!);
+                        request.Items["sharedKey"] = "modifiedByFilter1";
+                    }
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
                 {
-                    observedValues.Add((string)value!);
-                }
-                return await next(request, cancellationToken);
+                    // Second request filter should see modified value
+                    if (request.Items.TryGetValue("sharedKey", out var value))
+                    {
+                        observedValues.Add((string)value!);
+                    }
+                    return await next(request, cancellationToken);
+                });
             })
             .WithTools<TestTool>();
 

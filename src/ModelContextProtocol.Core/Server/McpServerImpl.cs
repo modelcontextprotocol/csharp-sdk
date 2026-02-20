@@ -119,8 +119,8 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // And initialize the session.
-        var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.IncomingMessageFilters);
-        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.OutgoingMessageFilters);
+        var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters);
+        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
         _sessionHandler = new McpSessionHandler(
             isServer: true,
             _sessionTransport,
@@ -260,7 +260,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         completeHandler ??= (static async (_, __) => new CompleteResult());
-        completeHandler = BuildFilterPipeline(completeHandler, options.Filters.CompleteFilters);
+        completeHandler = BuildFilterPipeline(completeHandler, options.Filters.Request.CompleteFilters);
 
         ServerCapabilities.Completions = new();
 
@@ -366,9 +366,9 @@ internal sealed partial class McpServerImpl : McpServer
             // subscribe = true;
         }
 
-        listResourcesHandler = BuildFilterPipeline(listResourcesHandler, options.Filters.ListResourcesFilters);
-        listResourceTemplatesHandler = BuildFilterPipeline(listResourceTemplatesHandler, options.Filters.ListResourceTemplatesFilters);
-        readResourceHandler = BuildFilterPipeline(readResourceHandler, options.Filters.ReadResourceFilters, handler =>
+        listResourcesHandler = BuildFilterPipeline(listResourcesHandler, options.Filters.Request.ListResourcesFilters);
+        listResourceTemplatesHandler = BuildFilterPipeline(listResourceTemplatesHandler, options.Filters.Request.ListResourceTemplatesFilters);
+        readResourceHandler = BuildFilterPipeline(readResourceHandler, options.Filters.Request.ReadResourceFilters, handler =>
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
@@ -405,8 +405,8 @@ internal sealed partial class McpServerImpl : McpServer
                     throw;
                 }
             });
-        subscribeHandler = BuildFilterPipeline(subscribeHandler, options.Filters.SubscribeToResourcesFilters);
-        unsubscribeHandler = BuildFilterPipeline(unsubscribeHandler, options.Filters.UnsubscribeFromResourcesFilters);
+        subscribeHandler = BuildFilterPipeline(subscribeHandler, options.Filters.Request.SubscribeToResourcesFilters);
+        unsubscribeHandler = BuildFilterPipeline(unsubscribeHandler, options.Filters.Request.UnsubscribeFromResourcesFilters);
 
         ServerCapabilities.Resources.ListChanged = listChanged;
         ServerCapabilities.Resources.Subscribe = subscribe;
@@ -496,8 +496,8 @@ internal sealed partial class McpServerImpl : McpServer
             listChanged = true;
         }
 
-        listPromptsHandler = BuildFilterPipeline(listPromptsHandler, options.Filters.ListPromptsFilters);
-        getPromptHandler = BuildFilterPipeline(getPromptHandler, options.Filters.GetPromptFilters, handler =>
+        listPromptsHandler = BuildFilterPipeline(listPromptsHandler, options.Filters.Request.ListPromptsFilters);
+        getPromptHandler = BuildFilterPipeline(getPromptHandler, options.Filters.Request.GetPromptFilters, handler =>
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
@@ -618,8 +618,8 @@ internal sealed partial class McpServerImpl : McpServer
             listChanged = true;
         }
 
-        listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.ListToolsFilters);
-        callToolHandler = BuildFilterPipeline(callToolHandler, options.Filters.CallToolFilters, handler =>
+        listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
+        callToolHandler = BuildFilterPipeline(callToolHandler, options.Filters.Request.CallToolFilters, handler =>
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
@@ -819,7 +819,7 @@ internal sealed partial class McpServerImpl : McpServer
         // Apply filters to the handler
         if (setLoggingLevelHandler is not null)
         {
-            setLoggingLevelHandler = BuildFilterPipeline(setLoggingLevelHandler, options.Filters.SetLoggingLevelFilters);
+            setLoggingLevelHandler = BuildFilterPipeline(setLoggingLevelHandler, options.Filters.Request.SetLoggingLevelFilters);
         }
 
         ServerCapabilities.Logging = new();
@@ -903,7 +903,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
-        List<McpRequestFilter<TParams, TResult>> filters,
+        IList<McpRequestFilter<TParams, TResult>> filters,
         McpRequestFilter<TParams, TResult>? initialHandler = null)
     {
         var current = baseHandler;
@@ -921,7 +921,7 @@ internal sealed partial class McpServerImpl : McpServer
         return current;
     }
 
-    private JsonRpcMessageFilter BuildMessageFilterPipeline(List<McpMessageFilter> filters)
+    private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {
         if (filters.Count == 0)
         {
