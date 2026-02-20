@@ -22,4 +22,9 @@ internal static class Obsoletions
     public const string LegacyTitledEnumSchema_DiagnosticId = "MCP9001";
     public const string LegacyTitledEnumSchema_Message = "The EnumSchema and LegacyTitledEnumSchema APIs are deprecated as of specification version 2025-11-25 and will be removed in a future major version. See SEP-1330 for more information.";
     public const string LegacyTitledEnumSchema_Url = "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1330";
+
+    public const string MessageAndRequestFilter_DiagnosticId = "MCP9002";
+    public const string MessageAndRequestFilter_Url = "https://github.com/modelcontextprotocol/csharp-sdk/pull/1308";
+    public const string MessageFilter_Message = "Use WithMessageFilters() instead.";
+    public const string RequestFilter_Message = "Use WithRequestFilters() instead.";
 }
