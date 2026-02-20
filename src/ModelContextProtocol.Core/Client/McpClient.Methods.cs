@@ -1073,6 +1073,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The raw JSON result of the task.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// This method sends a tasks/result request to the server, which will block until the task completes if it hasn't already.
     /// The server handles all polling logic internally.
