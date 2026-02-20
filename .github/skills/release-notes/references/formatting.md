@@ -21,8 +21,9 @@ When the user requests changes to existing release notes:
 
 1. Fetch the current release body
 2. Write the **entire** corrected body to a local file (ensuring proper line breaks between all sections, entries, and paragraphs)
-3. Upload the complete file using `gh release edit --notes-file <file>`
-4. Verify the result by fetching the body again and checking that line count and structure are intact
+3. **If the release is already published** (not a draft): save the original body to a local file, show the user a diff between the original and updated body, and require explicit confirmation before uploading
+4. Upload the complete file using `gh release edit --notes-file <file>`
+5. Verify the result by fetching the body again and checking that line count and structure are intact
 
 ### Common Pitfalls
 
