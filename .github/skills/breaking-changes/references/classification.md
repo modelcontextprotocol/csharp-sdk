@@ -52,6 +52,14 @@ Behavioral changes that customers could have depended on but probably wouldn't (
 ### Bucket 4: Clearly Non-Public
 Changes to internal surface or behavior (e.g., internal APIs, private reflection). **Generally not flagged** unless they could affect ecosystem tools.
 
+## Compatibility Switches
+
+When a breaking change includes an `AppContext` switch or other opt-in/opt-out mechanism, always note it in the migration guidance. Search for `AppContext.TryGetSwitch`, `DOTNET_` environment variables, and similar compat patterns in the diff. Include the switch name and the value that alters the behavior:
+
+```
+* Compat switch: `ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests` = `true` restores previous behavior
+```
+
 ## What to Study for Each PR
 
 For every PR in the range, examine:
@@ -66,4 +74,5 @@ For every PR in the range, examine:
    - Return value changes
    - Parameter validation changes
    - Attribute changes (`[Obsolete]`, `[Experimental]`, etc.)
+   - `AppContext.TryGetSwitch` or environment variable compat switches
 5. **Labels** — Check if `breaking-change` is already applied

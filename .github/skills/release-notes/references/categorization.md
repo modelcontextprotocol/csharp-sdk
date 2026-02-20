@@ -21,15 +21,26 @@ PRs whose **sole purpose** is documentation. Examples:
 **Important**: A PR that changes code AND updates docs should go in "What's Changed" — only pure documentation PRs belong here. However, documentation PRs should still be studied during the breaking change audit, as they may document changes that were not properly flagged as breaking.
 
 ### Repository Infrastructure Updates
-PRs that maintain the development environment but don't affect the shipped product. Examples:
+PRs that maintain the development environment but don't affect the shipped product or test coverage. Examples:
 - Version bumps (`Bump version to X.Y.Z`)
 - CI/CD workflow changes (GitHub Actions updates)
 - Dependency updates from Dependabot
-- Test infrastructure improvements (new test helpers, test fixes, flaky test repairs)
 - Build system changes
 - Dev container or codespace configuration
 - Copilot instructions updates
 - NuGet/package configuration changes
+
+**Important**: PRs that touch the `tests/` folder should never be categorized as Infrastructure — they belong in either "Test Improvements" or "What's Changed" depending on whether product code was also modified.
+
+### Test Improvements
+PRs focused on test quality, coverage, or reliability. Examples:
+- Adding new tests (unit, integration, regression, conformance)
+- Fixing broken or incorrect tests
+- Addressing flaky tests (timing, race conditions)
+- Unskipping or skipping tests
+- Test infrastructure improvements (new test helpers, test base classes)
+
+**Important**: PRs that reference "MCP conformance tests" are not automatically test-only. Examine the PR body and file changes to determine whether product code was modified to achieve conformance — if so, the PR belongs in "What's Changed." Conformance PRs should never be placed in "Repository Infrastructure Updates."
 
 ## Entry Format
 
@@ -83,13 +94,18 @@ Sort entries within each section by **merge date** (chronological order, oldest 
 * Bump version to 0.8.0-preview.1 #1181 by @stephentoub (co-authored by @Copilot)
 * Bump actions/checkout from 6.0.1 to 6.0.2 #1173 by @dependabot[bot]
 * Bump the opentelemetry-testing group with 6 updates #1174 by @dependabot[bot]
+```
+
+### Test Improvements (format example)
+```
 * Remove 10 second wait from docker tests #1188 by @stephentoub
 * Fix Session_TracksActivities test #1200 by @stephentoub
+* Add serialization roundtrip tests for all Protocol namespace types #1289 by @stephentoub (co-authored by @Copilot)
 ```
 
 ### Acknowledgements (format example)
 ```
 * @ruyut made their first contribution in #1186
 * @user submitted issue #1234 (resolved by #5678)
-* PR reviewers: @user1 @user2 @user3
+* @user1 @user2 @user3 reviewed pull requests
 ```

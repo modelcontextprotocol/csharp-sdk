@@ -35,7 +35,8 @@ Sort every PR into one of three categories. See [references/categorization.md](r
 |----------|---------|
 | **What's Changed** | Features, bug fixes, improvements, breaking changes |
 | **Documentation Updates** | PRs whose sole purpose is documentation |
-| **Repository Infrastructure Updates** | CI/CD, tests, dependency bumps, version bumps |
+| **Test Improvements** | Adding, fixing, or unskipping tests; flaky test repairs |
+| **Repository Infrastructure Updates** | CI/CD, dependency bumps, version bumps, build system |
 
 **Entry format** — `* Description #PR by @author` with co-authors when present:
 ```
@@ -61,7 +62,8 @@ Present each section for user review:
 1. **Breaking Changes** — sorted most → least impactful (from Step 3 results)
 2. **What's Changed** — chronological; includes breaking change PRs
 3. **Documentation Updates** — chronological
-4. **Repository Infrastructure Updates** — chronological
+4. **Test Improvements** — chronological
+5. **Repository Infrastructure Updates** — chronological
 
 ### Step 5: Acknowledgements
 
@@ -130,6 +132,10 @@ Omit empty sections:
 
 * Description #PR by @author (co-authored by @user1 @Copilot)
 
+## Test Improvements
+
+* Description #PR by @author (co-authored by @user1 @Copilot)
+
 ## Repository Infrastructure Updates
 
 * Description #PR by @author (co-authored by @user1 @Copilot)
@@ -138,7 +144,7 @@ Omit empty sections:
 
 * @user made their first contribution in #PR
 * @user submitted issue #1234 (resolved by #5678)
-* PR reviewers: @user1 @user2 @user3
+* @user1 @user2 @user3 reviewed pull requests
 
 **Full Changelog**: previous-tag...new-tag
 ```
