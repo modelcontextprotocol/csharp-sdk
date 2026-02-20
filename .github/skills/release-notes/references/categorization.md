@@ -97,8 +97,8 @@ Sort entries within each section by **merge date** (chronological order, oldest 
 ### Repository Infrastructure Updates (format example)
 ```
 * Bump version to 0.8.0-preview.1 #1181 by @stephentoub (co-authored by @Copilot)
-* Bump actions/checkout from 6.0.1 to 6.0.2 #1173 by @dependabot[bot]
-* Bump the opentelemetry-testing group with 6 updates #1174 by @dependabot[bot]
+* Bump actions/checkout from 6.0.1 to 6.0.2 #1173
+* Bump the opentelemetry-testing group with 6 updates #1174
 ```
 
 ### Test Improvements (format example)

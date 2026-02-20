@@ -63,6 +63,16 @@ If a change is primarily a bug fix or spec compliance correction, exclude it fro
 ### Bucket 4: Clearly Non-Public
 Changes to internal surface or behavior (e.g., internal APIs, private reflection). **Generally not flagged** unless they could affect ecosystem tools.
 
+## API Deprecation and Removal
+
+The MCP SDK follows a more flexible deprecation policy than fully stable frameworks. In exceptional circumstances, removal of public APIs is permissible provided:
+
+- The removal is called out explicitly in planning and release notes
+- A relevant `[Obsolete]` attribute is added in an earlier release, giving consumers a migration window
+- The removal is documented in the Breaking Changes section with migration guidance
+
+When auditing for breaking changes, API removal that follows this process should still be flagged as a breaking change, but the migration guidance should note the prior deprecation.
+
 ## Compatibility Switches
 
 When a breaking change includes an `AppContext` switch or other opt-in/opt-out mechanism, always note it in the migration guidance. Search for `AppContext.TryGetSwitch`, `DOTNET_` environment variables, and similar compat patterns in the diff. Include the switch name and the value that alters the behavior:

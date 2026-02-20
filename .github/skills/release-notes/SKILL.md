@@ -29,7 +29,7 @@ Once the target is established:
 
 ### Step 2: Categorize and Attribute
 
-Sort every PR into one of three categories. See [references/categorization.md](references/categorization.md) for detailed guidance.
+Sort every PR into one of four categories. See [references/categorization.md](references/categorization.md) for detailed guidance.
 
 | Category | Content |
 |----------|---------|
@@ -81,7 +81,7 @@ Exclude anyone already listed as a PR author. Format:
 ```
 * @user made their first contribution in #PR
 * @user submitted issue #1234 (resolved by #5678)
-* PR reviewers: @user1 @user2 @user3
+* @user1 @user2 @user3 reviewed pull requests
 ```
 Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), without citing the count.
 
