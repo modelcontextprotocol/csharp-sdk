@@ -1,6 +1,6 @@
 # Breaking Change Classification Guide
 
-This guide defines how to identify and classify breaking changes during the release notes process for the C# MCP SDK. It is derived from the [dotnet/runtime breaking change guidelines](https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/breaking-changes.md).
+This guide defines how to identify and classify breaking changes in the C# MCP SDK. It is derived from the [dotnet/runtime breaking change guidelines](https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/breaking-changes.md).
 
 ## Two Categories of Breaking Changes
 
@@ -54,7 +54,7 @@ Changes to internal surface or behavior (e.g., internal APIs, private reflection
 
 ## What to Study for Each PR
 
-For every PR in the release, examine:
+For every PR in the range, examine:
 
 1. **PR description** — Authors often describe breaking changes here
 2. **Linked issues** — May contain discussion about breaking impact
@@ -67,48 +67,3 @@ For every PR in the release, examine:
    - Parameter validation changes
    - Attribute changes (`[Obsolete]`, `[Experimental]`, etc.)
 5. **Labels** — Check if `breaking-change` is already applied
-
-## Breaking Changes Section Format
-
-When breaking changes exist, format them under the `## Breaking Changes` heading with no introductory blurb (the preamble at the top of the release notes already introduces the breaking changes). Use the numbered list format — GitHub will auto-link `#PR`:
-
-```markdown
-## Breaking Changes
-
-1. **Description #PR_NUMBER**
-   * Specific API or behavior that changed
-   * What existing code needs to do differently
-
-2. **Another breaking change #PR_NUMBER**
-   * Detail of the break
-```
-
-Each breaking change entry should have:
-- A bold title with the PR number (GitHub auto-links `#PR`)
-- 1-2 bullet points succinctly describing what breaks and how
-
-### Example from v0.5.0-preview.1
-
-```markdown
-## Breaking Changes
-
-1. **Add request options bag to high level requests and include Meta #970**
-   * High-level request methods refactored to use options bag. Methods `CallToolAsync`, `GetPromptAsync`, `ListResourcesAsync`, etc. now accept a new `RequestOptions` parameter instead of individual `JsonSerializerOptions` and `ProgressToken` parameters.
-   * Code that passes `JsonSerializerOptions` or `ProgressToken` as named or positional parameters to high-level request methods will break and must be updated to use the `RequestOptions` bag instead.
-
-2. **Remove obsolete APIs from codebase #985**
-   * `McpServerFactory` class: Removed obsolete factory class for creating MCP servers.
-   * `McpClientFactory` class: Removed obsolete factory class for creating MCP clients.
-   * Obsolete interfaces removed: `IMcpEndpoint`, `IMcpClient`, `IMcpServer`
-```
-
-### Example: Single breaking change (v0.8.0-preview.1)
-
-When there is only one breaking change, the numbered format with detail bullets still applies:
-
-```markdown
-## Breaking Changes
-
-1. **Seal public Protocol reference types to prevent external inheritance #1232**
-   * Public protocol reference types (e.g. `Tool`, `Prompt`, `Resource`) are now sealed. Code that subclasses these types will no longer compile.
-```

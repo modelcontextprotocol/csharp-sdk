@@ -51,28 +51,19 @@ Sort every PR into one of three categories. See [references/categorization.md](r
 
 ### Step 3: Breaking Change Audit
 
-Examine **every** PR for breaking changes — both API (compile-time) and behavioral (runtime). For each PR, study the description, linked issues, review comments, and full diff.
+Invoke the **breaking-changes** skill with the commit range from the previous release tag to the target commit. That skill handles the full audit — examining every PR, assessing impact, reconciling labels, and getting user confirmation.
 
-For each identified breaking change, assess **impact** (breadth of consumers affected, compile-time vs. behavioral, migration difficulty) to inform the ordering in Step 5.
+Use the results (confirmed breaking changes with impact ordering and detail bullets) in the remaining steps.
 
-Compare findings against existing `breaking-change` labels. See [references/breaking-changes.md](references/breaking-changes.md) for classification guidance.
-
-### Step 4: Reconcile Labels
-
-Present mismatches to the user interactively:
-
-- **Unlabeled but appears breaking** → explain why, ask user to confirm. If confirmed: apply label, ask user whether to comment on the PR explaining the addition, and include in Breaking Changes.
-- **Labeled but does not appear breaking** → explain why, ask user to confirm removal. If confirmed: remove label, ask user whether to comment on the PR explaining the removal, and exclude from Breaking Changes.
-
-### Step 5: Review Sections
+### Step 4: Review Sections
 
 Present each section for user review:
-1. **Breaking Changes** — sorted most → least impactful (from Step 3 assessment)
+1. **Breaking Changes** — sorted most → least impactful (from Step 3 results)
 2. **What's Changed** — chronological; includes breaking change PRs
 3. **Documentation Updates** — chronological
 4. **Repository Infrastructure Updates** — chronological
 
-### Step 6: Acknowledgements
+### Step 5: Acknowledgements
 
 Identify contributors beyond PR authors:
 1. **New contributors** — first contribution to the repository in this release
@@ -87,7 +78,7 @@ Exclude anyone already listed as a PR author. Format:
 ```
 Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), without citing the count.
 
-### Step 7: Final Assembly
+### Step 6: Final Assembly
 
 1. **Preamble** — summarize the release theme. If there are breaking changes, mention them and link to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) docs. Do not repeat preamble text under the Breaking Changes heading. Let the user revise or omit.
 2. **Notable callouts** — only if something is extraordinarily noteworthy.
@@ -95,7 +86,7 @@ Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), 
 
 Follow [references/formatting.md](references/formatting.md) when composing and updating the release body.
 
-### Step 8: Create or Update Draft Release
+### Step 7: Create or Update Draft Release
 
 Display release metadata for user review:
 - **Title / Tag**: e.g. `v0.9.0-preview.1`
