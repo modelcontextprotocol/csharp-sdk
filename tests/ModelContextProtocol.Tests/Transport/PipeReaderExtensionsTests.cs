@@ -272,6 +272,42 @@ public class PipeReaderExtensionsTests
     }
 
     [Fact]
+    public async Task MultiByteSequenceInterruptedByNewline_BothLinesSkipped_NextValidLineDelivered()
+    {
+        // '€' encodes as 3 UTF-8 bytes: 0xE2 0x82 0xAC.  If a newline is injected after the
+        // first byte, the two resulting lines both contain invalid byte sequences:
+        //   Line 1: ...0xE2\n  — a truncated 3-byte lead byte; invalid JSON in both old and new impl
+        //   Line 2: 0x82 0xAC...\n — continuation bytes without a lead byte; also invalid JSON
+        //
+        // Both the old StreamReader-based path (which produced U+FFFD replacement chars before
+        // passing to JsonSerializer) and the new PipeReader-based path (which passes raw bytes to
+        // JsonSerializer) raise JsonException for each line and silently skip them.  A subsequent
+        // valid JSON line must still be delivered.
+        var ct = TestContext.Current.CancellationToken;
+        var pipe = new Pipe();
+        await using var transport = new StreamServerTransport(pipe.Reader.AsStream(), Stream.Null);
+
+        // Build line 1: a JSON string where '€' is split after byte 0xE2, terminated with \n.
+        byte[] euroBytes = Encoding.UTF8.GetBytes("€"); // [0xE2, 0x82, 0xAC]
+        byte[] line1 = [.. Encoding.UTF8.GetBytes("{\"method\":\"te"), euroBytes[0], (byte)'\n'];
+        // Build line 2: the remaining continuation bytes + rest of JSON, terminated with \n.
+        byte[] line2 = [euroBytes[1], euroBytes[2], .. Encoding.UTF8.GetBytes("st\"}\n")];
+        // Build line 3: a valid JSON message that must survive the two bad lines.
+        byte[] line3 = Encoding.UTF8.GetBytes(s_testJson + "\n");
+
+        byte[] allBytes = [.. line1, .. line2, .. line3];
+        await pipe.Writer.WriteAsync(allBytes, ct);
+        await pipe.Writer.CompleteAsync();
+
+        // Only the valid line 3 should produce a message; lines 1 and 2 are silently skipped.
+        var message = await transport.MessageReader.ReadAsync(ct);
+        Assert.IsType<JsonRpcRequest>(message);
+
+        // No further messages.
+        Assert.False(transport.MessageReader.TryRead(out _));
+    }
+
+    [Fact]
     public async Task LineWithNoTerminatingNewline_IsNotDelivered()
     {
         // Data without a trailing newline should not produce a message.
