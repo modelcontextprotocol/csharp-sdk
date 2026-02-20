@@ -21,7 +21,7 @@ When the user requests changes to existing release notes:
 
 1. Fetch the current release body and save it to a local file
 2. Write the **entire** corrected body to a separate local file (ensuring proper line breaks between all sections, entries, and paragraphs)
-3. **If the release is already published** (not a draft): run `git diff --no-index` between the original and updated files and present the raw diff output to the user. Do not summarize — show the diff and nothing else. Require explicit confirmation before uploading. Before uploading, offer to save the original body to a permanent local file, noting that GitHub does not retain prior versions of release notes.
+3. **If the release is already published** (not a draft): run `git diff --no-index` between the original and updated files and present the raw diff output directly in the response as a fenced code block with `diff` syntax highlighting. Do not summarize or paraphrase the diff. Require explicit confirmation before uploading. Before uploading, offer to save the original body to a permanent local file, noting that GitHub does not retain prior versions of release notes.
 4. Upload the complete file using `gh release edit --notes-file <file>`
 5. Verify the result by fetching the body again and checking that line count and structure are intact
 

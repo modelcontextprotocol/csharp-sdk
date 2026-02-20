@@ -80,15 +80,24 @@ Exclude anyone already listed as a PR author. Format:
 ```
 Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), without citing the count.
 
-### Step 6: Final Assembly
+### Step 6: Preamble
 
-1. **Preamble** — summarize the release theme. If there are breaking changes, mention them and link to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) docs. Do not repeat preamble text under the Breaking Changes heading. Let the user revise or omit.
+Compose a short preamble summarizing the release theme.
+
+- **New release**: Draft a preamble based on the categorized changes. If there are breaking changes, mention them and link to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) docs.
+- **Editing an existing release**: Extract the current preamble from the release body (text before the first `##` heading) and present it alongside a newly drafted alternative.
+
+Present the options and let the user choose one, edit one, or enter their own text or markdown. Do not repeat preamble text under the Breaking Changes heading.
+
+### Step 7: Final Assembly
+
+1. Combine the confirmed preamble with all sections from previous steps.
 2. **Notable callouts** — only if something is extraordinarily noteworthy.
 3. Present the **complete release notes** for user approval.
 
 Follow [references/formatting.md](references/formatting.md) when composing and updating the release body.
 
-### Step 7: Create or Update Draft Release
+### Step 8: Create or Update Draft Release
 
 Display release metadata for user review:
 - **Title / Tag**: e.g. `v0.9.0-preview.1`
@@ -103,7 +112,7 @@ After confirmation:
 
 When the user requests revisions after the initial update, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
 
-### Step 8: Bump Version
+### Step 9: Bump Version
 
 After the draft release is created or updated, inform the user that the draft release is now associated with a known target commit (state the short SHA and commit message) and recommend proceeding with a version bump. Ask if they want to create a pull request to bump the version for the next release. If yes, invoke the **bump-version** skill and let it handle determining or requesting the target version number.
 
