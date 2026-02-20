@@ -1036,6 +1036,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The current state of the task.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public async ValueTask<McpTask> GetTaskAsync(
         string taskId,
@@ -1073,6 +1074,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The raw JSON result of the task.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// This method sends a tasks/result request to the server, which will block until the task completes if it hasn't already.
     /// The server handles all polling logic internally.
@@ -1099,6 +1101,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all tasks.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public async ValueTask<IList<McpTask>> ListTasksAsync(
         RequestOptions? options = null,
@@ -1124,6 +1127,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListTasksAsync(RequestOptions?, CancellationToken)"/> overload retrieves all tasks by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListTasksRequestParams"/> and <see cref="ListTasksResult"/>, returning the raw result from the server.
@@ -1153,6 +1157,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The updated state of the task after cancellation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// Cancelling a task requests that the server stop execution. The server may not immediately cancel the task,
     /// and may choose to allow the task to complete if it's close to finishing.
