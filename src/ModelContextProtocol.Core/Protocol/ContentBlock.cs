@@ -90,11 +90,13 @@ public abstract class ContentBlock
             string? type = null;
             string? text = null;
             string? name = null;
+            string? title = null;
             ReadOnlyMemory<byte>? data = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
             long? size = null;
+            IList<Icon>? icons = null;
             ResourceContents? resource = null;
             Annotations? annotations = null;
             JsonObject? meta = null;
@@ -130,6 +132,10 @@ public abstract class ContentBlock
                         name = reader.GetString();
                         break;
 
+                    case "title":
+                        title = reader.GetString();
+                        break;
+
                     case "data":
                         data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
@@ -148,6 +154,18 @@ public abstract class ContentBlock
 
                     case "size":
                         size = reader.GetInt64();
+                        break;
+
+                    case "icons":
+                        if (reader.TokenType == JsonTokenType.StartArray)
+                        {
+                            icons = [];
+                            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                            {
+                                icons.Add(JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Icon) ??
+                                    throw new JsonException("Unexpected null item in icons array."));
+                            }
+                        }
                         break;
 
                     case "resource":
@@ -233,9 +251,11 @@ public abstract class ContentBlock
                 {
                     Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
                     Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
+                    Title = title,
                     Description = description,
                     MimeType = mimeType,
                     Size = size,
+                    Icons = icons,
                 },
 
                 "tool_use" => new ToolUseContentBlock
@@ -299,6 +319,10 @@ public abstract class ContentBlock
                 case ResourceLinkBlock resourceLink:
                     writer.WriteString("uri", resourceLink.Uri);
                     writer.WriteString("name", resourceLink.Name);
+                    if (resourceLink.Title is not null)
+                    {
+                        writer.WriteString("title", resourceLink.Title);
+                    }
                     if (resourceLink.Description is not null)
                     {
                         writer.WriteString("description", resourceLink.Description);
@@ -310,6 +334,16 @@ public abstract class ContentBlock
                     if (resourceLink.Size.HasValue)
                     {
                         writer.WriteNumber("size", resourceLink.Size.Value);
+                    }
+                    if (resourceLink.Icons is { Count: > 0 })
+                    {
+                        writer.WritePropertyName("icons");
+                        writer.WriteStartArray();
+                        foreach (var icon in resourceLink.Icons)
+                        {
+                            JsonSerializer.Serialize(writer, icon, McpJsonUtilities.JsonContext.Default.Icon);
+                        }
+                        writer.WriteEndArray();
                     }
                     break;
 
@@ -596,6 +630,17 @@ public sealed class ResourceLinkBlock : ContentBlock
     public required string Name { get; set; }
 
     /// <summary>
+    /// Gets or sets a title for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This is intended for UI and end-user contexts. It is optimized to be human-readable and easily understood,
+    /// even by those unfamiliar with domain-specific terminology.
+    /// If not provided, <see cref="Name"/> can be used for display.
+    /// </remarks>
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or sets a description of what this resource represents.
     /// </summary>
     /// <remarks>
@@ -638,6 +683,15 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("size")]
     public long? Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional list of icons for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the resource's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>

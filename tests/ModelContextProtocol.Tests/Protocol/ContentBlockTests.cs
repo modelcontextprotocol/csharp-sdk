@@ -13,9 +13,11 @@ public class ContentBlockTests
         {
             Uri = "https://example.com/resource",
             Name = "Test Resource",
+            Title = "Test Resource Title",
             Description = "A test resource for validation",
             MimeType = "text/plain",
-            Size = 1024
+            Size = 1024,
+            Icons = [new Icon { Source = "https://example.com/icon.png", MimeType = "image/png" }]
         };
 
         // Act - Serialize to JSON
@@ -30,10 +32,15 @@ public class ContentBlockTests
         
         Assert.Equal(original.Uri, resourceLink.Uri);
         Assert.Equal(original.Name, resourceLink.Name);
+        Assert.Equal(original.Title, resourceLink.Title);
         Assert.Equal(original.Description, resourceLink.Description);
         Assert.Equal(original.MimeType, resourceLink.MimeType);
         Assert.Equal(original.Size, resourceLink.Size);
         Assert.Equal("resource_link", resourceLink.Type);
+        Assert.NotNull(resourceLink.Icons);
+        Assert.Single(resourceLink.Icons);
+        Assert.Equal("https://example.com/icon.png", resourceLink.Icons[0].Source);
+        Assert.Equal("image/png", resourceLink.Icons[0].MimeType);
     }
 
     [Fact]
@@ -57,9 +64,11 @@ public class ContentBlockTests
         
         Assert.Equal("https://example.com/minimal", resourceLink.Uri);
         Assert.Equal("Minimal Resource", resourceLink.Name);
+        Assert.Null(resourceLink.Title);
         Assert.Null(resourceLink.Description);
         Assert.Null(resourceLink.MimeType);
         Assert.Null(resourceLink.Size);
+        Assert.Null(resourceLink.Icons);
         Assert.Equal("resource_link", resourceLink.Type);
     }
 
@@ -79,6 +88,44 @@ public class ContentBlockTests
             JsonSerializer.Deserialize<ContentBlock>(Json, McpJsonUtilities.DefaultOptions));
         
         Assert.Contains("Name must be provided for 'resource_link' type", exception.Message);
+    }
+
+    [Fact]
+    public void ResourceLinkBlock_DeserializationWithTitleAndIcons_Succeeds()
+    {
+        // Arrange - JSON with title and icons properties per spec
+        const string Json = """
+            {
+                "type": "resource_link",
+                "uri": "https://example.com/resource",
+                "name": "my-resource",
+                "title": "My Resource",
+                "icons": [
+                    { "src": "https://example.com/icon1.png", "mimeType": "image/png", "sizes": ["48x48"], "theme": "light" },
+                    { "src": "https://example.com/icon2.svg", "mimeType": "image/svg+xml" }
+                ]
+            }
+            """;
+
+        // Act
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(Json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var resourceLink = Assert.IsType<ResourceLinkBlock>(deserialized);
+
+        Assert.Equal("https://example.com/resource", resourceLink.Uri);
+        Assert.Equal("my-resource", resourceLink.Name);
+        Assert.Equal("My Resource", resourceLink.Title);
+        Assert.NotNull(resourceLink.Icons);
+        Assert.Equal(2, resourceLink.Icons.Count);
+        Assert.Equal("https://example.com/icon1.png", resourceLink.Icons[0].Source);
+        Assert.Equal("image/png", resourceLink.Icons[0].MimeType);
+        Assert.NotNull(resourceLink.Icons[0].Sizes);
+        Assert.Equal("48x48", resourceLink.Icons[0].Sizes![0]);
+        Assert.Equal("light", resourceLink.Icons[0].Theme);
+        Assert.Equal("https://example.com/icon2.svg", resourceLink.Icons[1].Source);
+        Assert.Equal("image/svg+xml", resourceLink.Icons[1].MimeType);
     }
 
     [Fact]
