@@ -1,4 +1,3 @@
-using ModelContextProtocol.Server;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -157,12 +156,6 @@ public sealed class Tool : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
-
-    /// <summary>
-    /// Gets or sets the callable server tool corresponding to this metadata if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerTool? McpServerTool { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay
