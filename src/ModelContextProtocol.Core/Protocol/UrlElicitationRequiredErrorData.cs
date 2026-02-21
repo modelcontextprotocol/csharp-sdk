@@ -12,5 +12,5 @@ public sealed class UrlElicitationRequiredErrorData
     /// Gets or sets the elicitations that must be completed before retrying the original request.
     /// </summary>
     [JsonPropertyName("elicitations")]
-    public required IReadOnlyList<ElicitRequestParams> Elicitations { get; init; }
+    public required IList<ElicitRequestParams> Elicitations { get; set; }
 }
