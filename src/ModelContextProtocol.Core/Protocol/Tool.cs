@@ -15,7 +15,7 @@ public sealed class Tool : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    public required string Name { get; set; }
 
     /// <inheritdoc />
     [JsonPropertyName("title")]

@@ -95,7 +95,7 @@ public static class ToolTests
     [Fact]
     public static void ToolInputSchema_HasValidDefaultSchema()
     {
-        var tool = new Tool();
+        var tool = new Tool { Name = "test" };
         JsonElement jsonElement = tool.InputSchema;
 
         Assert.Equal(JsonValueKind.Object, jsonElement.ValueKind);
@@ -119,7 +119,7 @@ public static class ToolTests
     public static void ToolInputSchema_RejectsInvalidSchemaDocuments(string invalidSchema)
     {
         using var document = JsonDocument.Parse(invalidSchema);
-        var tool = new Tool();
+        var tool = new Tool { Name = "test" };
 
         Assert.Throws<ArgumentException>(() => tool.InputSchema = document.RootElement);
     }
@@ -133,6 +133,7 @@ public static class ToolTests
         using var document = JsonDocument.Parse(validSchema);
         Tool tool = new()
         {
+            Name = "test",
             InputSchema = document.RootElement
         };
 
