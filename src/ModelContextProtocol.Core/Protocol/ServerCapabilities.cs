@@ -92,4 +92,31 @@ public sealed class ServerCapabilities
     [JsonInclude]
     [JsonPropertyName("tasks")]
     internal McpTasksCapability? TasksCore { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional MCP extensions that the server supports.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keys are extension identifiers in reverse domain notation with an extension name
+    /// (e.g., <c>"io.modelcontextprotocol/apps"</c>), and values are per-extension settings
+    /// objects. An empty object indicates support with no additional settings.
+    /// </para>
+    /// <para>
+    /// Extensions provide a framework for extending the Model Context Protocol while maintaining
+    /// interoperability. Servers advertise extension support via this field during the initialization handshake.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
+    [JsonIgnore]
+    public IDictionary<string, object>? Extensions
+    {
+        get => ExtensionsCore;
+        set => ExtensionsCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
+    [JsonPropertyName("extensions")]
+    internal IDictionary<string, object>? ExtensionsCore { get; set; }
 }
