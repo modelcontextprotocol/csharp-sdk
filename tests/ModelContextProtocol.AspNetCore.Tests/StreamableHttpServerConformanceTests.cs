@@ -287,6 +287,18 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task GetRequest_Succeeds_WithAllowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://allowed.example.com");
+        await CallInitializeAndValidateAsync();
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task DeleteRequest_IsForbidden_WithDisallowedOriginHeader()
     {
         await StartWithAllowedOriginsAsync("https://allowed.example.com");
@@ -299,6 +311,18 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRequest_Succeeds_WithAllowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://allowed.example.com");
+        await CallInitializeAndValidateAsync();
+
+        using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
