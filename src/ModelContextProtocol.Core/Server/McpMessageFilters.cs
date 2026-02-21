@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 public sealed class McpMessageFilters
 {
     /// <summary>
-    /// Gets the filters for all incoming JSON-RPC messages.
+    /// Gets or sets the filters for all incoming JSON-RPC messages.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -21,10 +21,18 @@ public sealed class McpMessageFilters
     /// the next handler in the pipeline, the default handlers will not be executed.
     /// </para>
     /// </remarks>
-    public IList<McpMessageFilter> IncomingFilters { get; } = [];
+    public IList<McpMessageFilter> IncomingFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for all outgoing JSON-RPC messages.
+    /// Gets or sets the filters for all outgoing JSON-RPC messages.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -38,5 +46,13 @@ public sealed class McpMessageFilters
     /// server-to-client messages.
     /// </para>
     /// </remarks>
-    public IList<McpMessageFilter> OutgoingFilters { get; } = [];
+    public IList<McpMessageFilter> OutgoingFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 }
