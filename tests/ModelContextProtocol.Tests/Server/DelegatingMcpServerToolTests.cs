@@ -1,77 +1,31 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
 using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public class DelegatingMcpServerToolTests
 {
-    private static JsonRpcRequest CreateTestJsonRpcRequest() => new()
-    {
-        Id = new RequestId("test-id"),
-        Method = "test/method",
-        Params = null,
-    };
-
     [Fact]
     public void Ctor_NullInnerTool_Throws()
     {
-        Assert.Throws<ArgumentNullException>("innerTool", () => new TestDelegatingMcpServerTool(null!));
+        Assert.Throws<ArgumentNullException>("innerTool", () => new TestDelegatingTool(null!));
     }
 
     [Fact]
-    public void ProtocolTool_DelegatesToInnerTool()
+    public async Task AllMembers_DelegateToInnerTool()
     {
-        Tool expected = new() { Name = "test-tool" };
-        Mock<McpServerTool> mock = new();
-        mock.Setup(t => t.ProtocolTool).Returns(expected);
+        Tool expectedTool = new() { Name = "sentinel-tool" };
+        IReadOnlyList<object> expectedMetadata = new object[] { "m1" };
+        CallToolResult expectedResult = new() { Content = [] };
+        InnerTool inner = new(expectedTool, expectedMetadata, expectedResult);
 
-        TestDelegatingMcpServerTool delegating = new(mock.Object);
+        TestDelegatingTool delegating = new(inner);
 
-        Assert.Same(expected, delegating.ProtocolTool);
-        mock.Verify(t => t.ProtocolTool, Times.Once);
-    }
-
-    [Fact]
-    public void Metadata_DelegatesToInnerTool()
-    {
-        IReadOnlyList<object> expected = new object[] { "attr1", "attr2" };
-        Mock<McpServerTool> mock = new();
-        mock.Setup(t => t.Metadata).Returns(expected);
-
-        TestDelegatingMcpServerTool delegating = new(mock.Object);
-
-        Assert.Same(expected, delegating.Metadata);
-        mock.Verify(t => t.Metadata, Times.Once);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_DelegatesToInnerTool()
-    {
-        CallToolResult expected = new() { Content = [] };
-        RequestContext<CallToolRequestParams> request = new(new Mock<McpServer>().Object, CreateTestJsonRpcRequest());
-        using CancellationTokenSource cts = new();
-        Mock<McpServerTool> mock = new();
-        mock.Setup(t => t.InvokeAsync(request, cts.Token)).ReturnsAsync(expected);
-
-        TestDelegatingMcpServerTool delegating = new(mock.Object);
-
-        CallToolResult result = await delegating.InvokeAsync(request, cts.Token);
-
-        Assert.Same(expected, result);
-        mock.Verify(t => t.InvokeAsync(request, cts.Token), Times.Once);
-    }
-
-    [Fact]
-    public void ToString_DelegatesToInnerTool()
-    {
-        Mock<McpServerTool> mock = new();
-        mock.Setup(t => t.ToString()).Returns("inner-tool-string");
-
-        TestDelegatingMcpServerTool delegating = new(mock.Object);
-
-        Assert.Equal("inner-tool-string", delegating.ToString());
+        Assert.Same(expectedTool, delegating.ProtocolTool);
+        Assert.Same(expectedMetadata, delegating.Metadata);
+        Assert.Same(expectedResult, await delegating.InvokeAsync(null!, CancellationToken.None));
+        Assert.Equal(inner.ToString(), delegating.ToString());
     }
 
     [Fact]
@@ -87,7 +41,6 @@ public class DelegatingMcpServerToolTests
         {
             MethodInfo? overriddenMethod = typeof(DelegatingMcpServerTool).GetMethod(
                 baseMethod.Name,
-                BindingFlags.Public | BindingFlags.Instance,
                 baseMethod.GetParameters().Select(p => p.ParameterType).ToArray());
 
             Assert.True(
@@ -96,5 +49,13 @@ public class DelegatingMcpServerToolTests
         }
     }
 
-    private sealed class TestDelegatingMcpServerTool(McpServerTool innerTool) : DelegatingMcpServerTool(innerTool);
+    private sealed class TestDelegatingTool(McpServerTool innerTool) : DelegatingMcpServerTool(innerTool);
+
+    private sealed class InnerTool(Tool protocolTool, IReadOnlyList<object> metadata, CallToolResult result) : McpServerTool
+    {
+        public override Tool ProtocolTool => protocolTool;
+        public override IReadOnlyList<object> Metadata => metadata;
+        public override ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) => new(result);
+        public override string ToString() => "inner-tool";
+    }
 }
