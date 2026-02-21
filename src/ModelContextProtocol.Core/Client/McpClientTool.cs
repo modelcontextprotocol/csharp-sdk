@@ -278,7 +278,10 @@ public sealed class McpClientTool : AIFunction
     /// <summary>
     /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
     /// </summary>
-    /// <param name="progress">The <see cref="IProgress{T}"/> to which progress notifications should be reported.</param>
+    /// <param name="progress">
+    /// The <see cref="IProgress{T}"/> to which progress notifications should be reported.
+    /// If <see langword="null"/>, any previously supplied progress instance will be removed.
+    /// </param>
     /// <remarks>
     /// <para>
     /// Adding an <see cref="IProgress{T}"/> to the tool does not impact how it is reported to any AI model.
@@ -290,15 +293,12 @@ public sealed class McpClientTool : AIFunction
     /// Only one <see cref="IProgress{T}"/> can be specified at a time. Calling <see cref="WithProgress"/> again
     /// overwrites any previously specified progress instance.
     /// </para>
+    /// Calling <see cref="WithProgress"/> with <see langword="null"/> clears any previously specified progress instance.
+    /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is <see langword="null"/>.</exception>
-    public McpClientTool WithProgress(IProgress<ProgressNotificationValue> progress)
-    {
-        Throw.IfNull(progress);
-
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta);
-    }
+    public McpClientTool WithProgress(IProgress<ProgressNotificationValue>? progress) =>
+        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to include the specified metadata in tool call requests.

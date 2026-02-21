@@ -469,7 +469,8 @@ public class McpClientTests : ClientServerTestBase
             }
         });
 
-        Assert.Throws<ArgumentNullException>("progress", () => tool.WithProgress(null!));
+        var toolWithNoProgress = tool.WithProgress(null);
+        Assert.NotNull(toolWithNoProgress);
 
         var result = await tool.WithProgress(progress).InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("42", result?.ToString());
