@@ -290,4 +290,37 @@ public class ContentBlockTests
     {
         Assert.ThrowsAny<ArgumentException>(() => AudioContentBlock.FromBytes((byte[])[1, 2, 3], mimeType!));
     }
+
+    [Fact]
+    public void ImageContentBlock_Deserialization_HandlesEscapedForwardSlashInBase64()
+    {
+        // Base64 uses '/' which some JSON encoders escape as '\/' (valid JSON).
+        // The converter must unescape before storing the base64 UTF-8 bytes.
+        byte[] originalBytes = [0xFF, 0xD8, 0xFF, 0xE0]; // sample bytes that produce '/' in base64
+        string base64 = Convert.ToBase64String(originalBytes); // "/9j/4A=="
+        Assert.Contains("/", base64);
+
+        // Simulate a JSON encoder that escapes '/' as '\/'
+        string json = $$"""{"type":"image","data":"{{base64.Replace("/", "\\/")}}","mimeType":"image/jpeg"}""";
+
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+        var image = Assert.IsType<ImageContentBlock>(deserialized);
+        Assert.Equal(base64, System.Text.Encoding.UTF8.GetString(image.Data.ToArray()));
+        Assert.Equal(originalBytes, image.DecodedData.ToArray());
+    }
+
+    [Fact]
+    public void AudioContentBlock_Deserialization_HandlesEscapedForwardSlashInBase64()
+    {
+        byte[] originalBytes = [0xFF, 0xD8, 0xFF, 0xE0];
+        string base64 = Convert.ToBase64String(originalBytes);
+        Assert.Contains("/", base64);
+
+        string json = $$"""{"type":"audio","data":"{{base64.Replace("/", "\\/")}}","mimeType":"audio/wav"}""";
+
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+        var audio = Assert.IsType<AudioContentBlock>(deserialized);
+        Assert.Equal(base64, System.Text.Encoding.UTF8.GetString(audio.Data.ToArray()));
+        Assert.Equal(originalBytes, audio.DecodedData.ToArray());
+    }
 }

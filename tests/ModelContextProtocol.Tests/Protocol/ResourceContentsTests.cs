@@ -489,4 +489,22 @@ public static class ResourceContentsTests
 
         Assert.DoesNotContain("mimeType", json);
     }
+
+    [Fact]
+    public static void BlobResourceContents_Deserialization_HandlesEscapedForwardSlashInBase64()
+    {
+        // Base64 uses '/' which some JSON encoders escape as '\/' (valid JSON).
+        // The converter must unescape before storing the base64 UTF-8 bytes.
+        byte[] originalBytes = [0xFF, 0xD8, 0xFF, 0xE0]; // sample bytes that produce '/' in base64
+        string base64 = Convert.ToBase64String(originalBytes); // "/9j/4A=="
+        Assert.Contains("/", base64);
+
+        // Simulate a JSON encoder that escapes '/' as '\/'
+        string json = $$"""{"uri":"file:///test.bin","blob":"{{base64.Replace("/", "\\/")}}","mimeType":"application/octet-stream"}""";
+
+        var deserialized = JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions);
+        var blob = Assert.IsType<BlobResourceContents>(deserialized);
+        Assert.Equal(base64, System.Text.Encoding.UTF8.GetString(blob.Blob.ToArray()));
+        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+    }
 }
