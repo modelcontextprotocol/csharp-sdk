@@ -108,14 +108,22 @@ public sealed class McpServerOptions
     }
 
     /// <summary>
-    /// Gets the filter collections for MCP server handlers.
+    /// Gets or sets the filter collections for MCP server handlers.
     /// </summary>
     /// <remarks>
     /// This property provides access to filter collections that can be used to modify the behavior
     /// of various MCP server handlers. The first filter added is the outermost (first to execute),
     /// and each subsequent filter wraps closer to the handler.
     /// </remarks>
-    public McpServerFilters Filters { get; } = new();
+    public McpServerFilters Filters
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a collection of tools served by the server.
