@@ -433,6 +433,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     private CancellationTokenRegistration RegisterCancellation(CancellationToken cancellationToken, JsonRpcRequest request)
     {
         // Per the spec, "A client MUST NOT attempt to cancel its initialize request."
+        // The initialize method is only ever sent by clients, so this check is safe
+        // for shared client/server code paths.
         if (!cancellationToken.CanBeCanceled || request.Method == RequestMethods.Initialize)
         {
             return default;

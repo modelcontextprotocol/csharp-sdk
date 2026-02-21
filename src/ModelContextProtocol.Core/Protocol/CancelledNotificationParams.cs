@@ -18,9 +18,11 @@ public sealed class CancelledNotificationParams : NotificationParams
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This must correspond to the ID of a request previously issued in the same direction.
-    /// This must be provided for cancelling non-task requests.
-    /// This must not be used for cancelling tasks (use the <c>tasks/cancel</c> request instead).
+    /// When provided, this must correspond to the ID of a request previously issued in the same direction.
+    /// </para>
+    /// <para>
+    /// This property is required (non-null) when cancelling non-task requests.
+    /// For task cancellation, use the <c>tasks/cancel</c> request instead, and do not set this property.
     /// </para>
     /// </remarks>
     [JsonPropertyName("requestId")]
