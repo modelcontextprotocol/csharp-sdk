@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -35,5 +35,5 @@ public sealed class Root
     /// This is reserved by the protocol for future use.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonElement? Meta { get; set; }
+    public JsonObject? Meta { get; set; }
 }
