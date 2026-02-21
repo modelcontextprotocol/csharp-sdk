@@ -35,6 +35,10 @@ public class Program
                 // Enable resumability for SSE polling conformance test
                 options.EventStreamStore = new DistributedCacheEventStreamStore(
                     new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
+
+                // Configure allowed origins for DNS rebinding protection.
+                // For local servers, allow requests from localhost origins.
+                options.AllowedOrigins = GetAllowedOrigins(args);
             })
             .WithTools<ConformanceTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
@@ -126,5 +130,42 @@ public class Program
     public static async Task Main(string[] args)
     {
         await MainAsync(args);
+    }
+
+    /// <summary>
+    /// Builds a set of allowed origins for DNS rebinding protection based on the server's configured URLs.
+    /// For local servers, allows localhost, 127.0.0.1, and [::1] origins with all configured ports.
+    /// </summary>
+    private static HashSet<string> GetAllowedOrigins(string[] args)
+    {
+        var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Parse --urls from command-line args to determine the server's listening addresses.
+        string? urls = null;
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--urls", StringComparison.OrdinalIgnoreCase))
+            {
+                urls = args[i + 1];
+                break;
+            }
+        }
+
+        urls ??= Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://localhost:5000";
+
+        foreach (var url in urls.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            {
+                var port = uri.Port;
+                var scheme = uri.Scheme;
+
+                origins.Add($"{scheme}://localhost:{port}");
+                origins.Add($"{scheme}://127.0.0.1:{port}");
+                origins.Add($"{scheme}://[::1]:{port}");
+            }
+        }
+
+        return origins;
     }
 }

@@ -19,6 +19,12 @@ internal sealed class SseHandler(
 
     public async Task HandleSseRequestAsync(HttpContext context)
     {
+        if (!StreamableHttpHandler.IsOriginAllowed(context, httpMcpServerOptions.Value.AllowedOrigins))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
         var sessionId = StreamableHttpHandler.MakeNewSessionId();
 
         // If the server is shutting down, we need to cancel all SSE connections immediately without waiting for HostOptions.ShutdownTimeout
@@ -78,6 +84,12 @@ internal sealed class SseHandler(
 
     public async Task HandleMessageRequestAsync(HttpContext context)
     {
+        if (!StreamableHttpHandler.IsOriginAllowed(context, httpMcpServerOptions.Value.AllowedOrigins))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
         if (!context.Request.Query.TryGetValue("sessionId", out var sessionId))
         {
             await Results.BadRequest("Missing sessionId query parameter.").ExecuteAsync(context);

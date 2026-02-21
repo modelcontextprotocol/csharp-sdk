@@ -100,6 +100,26 @@ public class HttpServerTransportOptions
     public int MaxIdleSessionCount { get; set; } = 10_000;
 
     /// <summary>
+    /// Gets or sets the set of allowed request origins, used to validate the <c>Origin</c> HTTP header on incoming requests
+    /// as a defense against DNS rebinding attacks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Per the MCP specification, servers MUST validate the <c>Origin</c> header on all incoming connections.
+    /// When the <c>Origin</c> header is present and does not match any value in this set, the server responds with HTTP 403 Forbidden.
+    /// </para>
+    /// <para>
+    /// When this is <see langword="null"/> (default), any request that includes an <c>Origin</c> header is rejected.
+    /// Requests without an <c>Origin</c> header are always allowed, as they typically come from non-browser MCP clients.
+    /// </para>
+    /// <para>
+    /// To allow specific origins, set this to a collection containing the allowed origin values
+    /// (for example, <c>new HashSet&lt;string&gt; { "https://example.com" }</c>).
+    /// </para>
+    /// </remarks>
+    public ISet<string>? AllowedOrigins { get; set; }
+
+    /// <summary>
     /// Gets or sets the time provider that's used for testing the <see cref="IdleTimeout"/>.
     /// </summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;

@@ -52,6 +52,14 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
+        if (!ValidateOriginHeader(context))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: Origin not allowed",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
@@ -100,6 +108,14 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
+        if (!ValidateOriginHeader(context))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: Origin not allowed",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
@@ -203,6 +219,14 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
+        if (!ValidateOriginHeader(context))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: Origin not allowed",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
         if (!ValidateProtocolVersionHeader(context, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest);
@@ -514,6 +538,25 @@ internal sealed class StreamableHttpHandler(
     }
 
     internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    /// <summary>
+    /// Validates the Origin header per the MCP spec. If the Origin header is present and not in the
+    /// configured allowed origins set, the request is rejected. Requests without an Origin header
+    /// are allowed through, as they typically come from non-browser MCP clients.
+    /// </summary>
+    internal bool ValidateOriginHeader(HttpContext context)
+        => IsOriginAllowed(context, HttpServerTransportOptions.AllowedOrigins);
+
+    internal static bool IsOriginAllowed(HttpContext context, ISet<string>? allowedOrigins)
+    {
+        var origin = context.Request.Headers.Origin.ToString();
+        if (string.IsNullOrEmpty(origin))
+        {
+            return true;
+        }
+
+        return allowedOrigins?.Contains(origin) == true;
+    }
 
     /// <summary>
     /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,

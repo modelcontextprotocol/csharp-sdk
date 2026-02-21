@@ -48,6 +48,30 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
     }
 
+    private async Task StartWithAllowedOriginsAsync(params string[] allowedOrigins)
+    {
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new Implementation
+            {
+                Name = nameof(StreamableHttpServerConformanceTests),
+                Version = "73",
+            };
+        }).WithTools(Tools).WithHttpTransport(options =>
+        {
+            options.AllowedOrigins = new HashSet<string>(allowedOrigins, StringComparer.Ordinal);
+        });
+
+        _app = Builder.Build();
+
+        _app.MapMcp();
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_app is not null)
@@ -202,6 +226,79 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_IsForbidden_WithOriginHeader_WhenNoAllowedOriginsConfigured()
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://evil.example.com");
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithoutOriginHeader()
+    {
+        await StartAsync();
+
+        // No Origin header is set - this should be accepted (non-browser clients)
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithAllowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://allowed.example.com");
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_IsForbidden_WithDisallowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://evil.example.com");
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRequest_IsForbidden_WithDisallowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://allowed.example.com");
+        await CallInitializeAndValidateAsync();
+
+        HttpClient.DefaultRequestHeaders.Remove("Origin");
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://evil.example.com");
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRequest_IsForbidden_WithDisallowedOriginHeader()
+    {
+        await StartWithAllowedOriginsAsync("https://allowed.example.com");
+
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://allowed.example.com");
+        var sessionId = await CallInitializeAndValidateAsync();
+
+        HttpClient.DefaultRequestHeaders.Remove("Origin");
+        HttpClient.DefaultRequestHeaders.Add("Origin", "https://evil.example.com");
+
+        using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
