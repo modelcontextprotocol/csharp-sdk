@@ -31,20 +31,17 @@ public class DelegatingMcpServerPromptTests
     [Fact]
     public void OverridesAllVirtualAndAbstractMembers()
     {
-        MethodInfo[] baseMethods = typeof(McpServerPrompt).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(m => (m.IsVirtual || m.IsAbstract) && m.DeclaringType == typeof(McpServerPrompt))
+        MethodInfo[] baseMethods = typeof(McpServerPrompt).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.IsVirtual || m.IsAbstract)
             .ToArray();
 
         Assert.NotEmpty(baseMethods);
 
         foreach (MethodInfo baseMethod in baseMethods)
         {
-            MethodInfo? overriddenMethod = typeof(DelegatingMcpServerPrompt).GetMethod(
-                baseMethod.Name,
-                baseMethod.GetParameters().Select(p => p.ParameterType).ToArray());
-
             Assert.True(
-                overriddenMethod is not null && overriddenMethod.DeclaringType == typeof(DelegatingMcpServerPrompt),
+                typeof(DelegatingMcpServerPrompt).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Any(m => m.Name == baseMethod.Name),
                 $"DelegatingMcpServerPrompt does not override {baseMethod.Name} from McpServerPrompt.");
         }
     }

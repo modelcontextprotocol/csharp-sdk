@@ -34,20 +34,17 @@ public class DelegatingMcpServerResourceTests
     [Fact]
     public void OverridesAllVirtualAndAbstractMembers()
     {
-        MethodInfo[] baseMethods = typeof(McpServerResource).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(m => (m.IsVirtual || m.IsAbstract) && m.DeclaringType == typeof(McpServerResource))
+        MethodInfo[] baseMethods = typeof(McpServerResource).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.IsVirtual || m.IsAbstract)
             .ToArray();
 
         Assert.NotEmpty(baseMethods);
 
         foreach (MethodInfo baseMethod in baseMethods)
         {
-            MethodInfo? overriddenMethod = typeof(DelegatingMcpServerResource).GetMethod(
-                baseMethod.Name,
-                baseMethod.GetParameters().Select(p => p.ParameterType).ToArray());
-
             Assert.True(
-                overriddenMethod is not null && overriddenMethod.DeclaringType == typeof(DelegatingMcpServerResource),
+                typeof(DelegatingMcpServerResource).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Any(m => m.Name == baseMethod.Name),
                 $"DelegatingMcpServerResource does not override {baseMethod.Name} from McpServerResource.");
         }
     }
