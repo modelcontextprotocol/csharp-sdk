@@ -100,5 +100,4 @@ public sealed class Resource : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
-
 }
