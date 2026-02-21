@@ -45,8 +45,11 @@ public sealed class LoggingMessageNotificationParams : NotificationParams
     public string? Logger { get; set; }
 
     /// <summary>
-    /// Gets or sets the data to be logged, such as a string message.
+    /// Gets or sets the data to be logged, such as a string message or an object.
     /// </summary>
+    /// <remarks>
+    /// Any JSON serializable type is allowed here. This property is required by the MCP specification.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public JsonElement? Data { get; set; }
+    public required JsonElement Data { get; set; }
 }

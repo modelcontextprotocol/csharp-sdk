@@ -17,10 +17,16 @@ public sealed class CancelledNotificationParams : NotificationParams
     /// Gets or sets the ID of the request to cancel.
     /// </summary>
     /// <remarks>
-    /// This value must match the ID of an in-flight request that the sender wishes to cancel.
+    /// <para>
+    /// This value must correspond to the ID of a request previously issued in the same direction.
+    /// It must be provided for cancelling non-task requests.
+    /// </para>
+    /// <para>
+    /// This must not be used for cancelling tasks; use the <c>tasks/cancel</c> request instead.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("requestId")]
-    public required RequestId RequestId { get; set; }
+    public RequestId? RequestId { get; set; }
 
     /// <summary>
     /// Gets or sets an optional string describing the reason for the cancellation request.
