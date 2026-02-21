@@ -293,6 +293,7 @@ public sealed class McpClientTool : AIFunction
     /// Only one <see cref="IProgress{T}"/> can be specified at a time. Calling <see cref="WithProgress"/> again
     /// overwrites any previously specified progress instance.
     /// </para>
+    /// <para>
     /// Calling <see cref="WithProgress"/> with <see langword="null"/> clears any previously specified progress instance.
     /// </para>
     /// </remarks>
