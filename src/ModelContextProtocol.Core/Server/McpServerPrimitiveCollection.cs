@@ -129,7 +129,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     }
 
     /// <summary>Gets the names of all of the primitives in the collection.</summary>
-    public virtual ICollection<string> PrimitiveNames => _primitives.Keys;
+    public virtual IReadOnlyCollection<string> PrimitiveNames => (IReadOnlyCollection<string>)_primitives.Keys;
 
     /// <summary>Creates an array containing all of the primitives in the collection.</summary>
     /// <returns>An array containing all of the primitives in the collection.</returns>
