@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -137,7 +138,14 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            data = Encoding.UTF8.GetBytes(reader.GetString()!);
+                        }
                         break;
 
                     case "mimeType":

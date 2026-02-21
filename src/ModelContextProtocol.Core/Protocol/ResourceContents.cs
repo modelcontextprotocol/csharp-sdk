@@ -2,6 +2,7 @@ using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -105,7 +106,14 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            blob = Encoding.UTF8.GetBytes(reader.GetString()!);
+                        }
                         break;
 
                     case "text":
