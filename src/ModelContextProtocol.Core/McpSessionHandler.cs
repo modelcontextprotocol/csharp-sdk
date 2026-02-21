@@ -381,10 +381,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             try
             {
                 if (GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
-                    _handlingRequests.TryGetValue(cn.RequestId, out var cts))
+                    cn.RequestId is RequestId requestId &&
+                    _handlingRequests.TryGetValue(requestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
-                    LogRequestCanceled(EndpointName, cn.RequestId, cn.Reason);
+                    LogRequestCanceled(EndpointName, requestId, cn.Reason);
                 }
             }
             catch
@@ -431,7 +432,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private CancellationTokenRegistration RegisterCancellation(CancellationToken cancellationToken, JsonRpcRequest request)
     {
-        if (!cancellationToken.CanBeCanceled)
+        // Per the spec, "A client MUST NOT attempt to cancel its initialize request."
+        if (!cancellationToken.CanBeCanceled || request.Method == RequestMethods.Initialize)
         {
             return default;
         }
@@ -626,7 +628,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
                 if (msg is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
                     GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
-                    _pendingRequests.TryRemove(cn.RequestId, out var tcs))
+                    cn.RequestId is RequestId requestId &&
+                    _pendingRequests.TryRemove(requestId, out var tcs))
                 {
                     tcs.TrySetCanceled(default);
                 }

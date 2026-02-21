@@ -42,4 +42,20 @@ public static class CancelledNotificationParamsTests
         Assert.Null(deserialized.Reason);
         Assert.Null(deserialized.Meta);
     }
+
+    [Fact]
+    public static void CancelledNotificationParams_SerializationRoundTrip_WithNullRequestId()
+    {
+        var original = new CancelledNotificationParams
+        {
+            Reason = "Task cancelled via tasks/cancel"
+        };
+
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<CancelledNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(deserialized);
+        Assert.Null(deserialized.RequestId);
+        Assert.Equal(original.Reason, deserialized.Reason);
+    }
 }
