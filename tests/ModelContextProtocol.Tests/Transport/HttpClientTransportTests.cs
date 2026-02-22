@@ -2,6 +2,7 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.Net;
+using System.Text;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -245,5 +246,84 @@ public class HttpClientTransportTests : LoggedTest
 
         var transportBase = Assert.IsAssignableFrom<TransportBase>(session);
         Assert.False(transportBase.IsConnected);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_InitialGetSseConnection_DoesNotCountAgainstMaxReconnectionAttempts()
+    {
+        // Arrange: The initial GET SSE connection (with no Last-Event-ID) is the initial connection,
+        // not a reconnection. It should not count against MaxReconnectionAttempts.
+        // With MaxReconnectionAttempts=2, we expect 1 initial + 2 reconnection = 3 total GET requests.
+        const int MaxReconnectionAttempts = 2;
+
+        var getRequestCount = 0;
+        var allGetRequestsDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            MaxReconnectionAttempts = MaxReconnectionAttempts,
+            DefaultReconnectionInterval = TimeSpan.FromMilliseconds(1),
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                // Return a successful initialize response with a session-id header.
+                // This triggers ReceiveUnsolicitedMessagesAsync which starts the GET SSE stream.
+                var response = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"TestServer","version":"1.0.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                };
+                response.Headers.Add("Mcp-Session-Id", "test-session");
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                // Return 500 for all GET SSE requests to force the retry loop to exhaust all attempts.
+                var count = Interlocked.Increment(ref getRequestCount);
+                if (count == 1 + MaxReconnectionAttempts)
+                {
+                    allGetRequestsDone.TrySetResult();
+                }
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.InternalServerError,
+                });
+            }
+
+            if (request.Method == HttpMethod.Delete)
+            {
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                });
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method}");
+        };
+
+        // Act - Connect and send the initialize request, which starts the background GET SSE task.
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
+            TestContext.Current.CancellationToken);
+
+        // Wait for all expected GET requests to be made before disposing.
+        await allGetRequestsDone.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert - Total GET requests = 1 initial connection + MaxReconnectionAttempts reconnections.
+        Assert.Equal(1 + MaxReconnectionAttempts, getRequestCount);
     }
 }
