@@ -118,7 +118,8 @@ public sealed class HttpClientTransportOptions
     /// <remarks>
     /// When an SSE stream is disconnected (e.g., due to a network issue), the client will attempt to
     /// reconnect using the Last-Event-ID header to resume from where it left off. This property controls
-    /// how many reconnection attempts are made before giving up.
+    /// how many consecutive reconnection attempts are made before giving up. The initial connection attempt
+    /// is not counted against this limit.
     /// </remarks>
     public int MaxReconnectionAttempts { get; set; } = 2;
 
