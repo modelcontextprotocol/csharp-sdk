@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Protocol;
 
@@ -165,6 +166,37 @@ public class CreateMessageRequestParamsTests
         Assert.Equal("object", deserialized.Tools[0].InputSchema.GetProperty("type").GetString());
         Assert.NotNull(deserialized.ToolChoice);
         Assert.Equal("none", deserialized.ToolChoice.Mode);
+    }
+
+    [Fact]
+    public void WithMetadata_SerializationRoundtrips()
+    {
+        CreateMessageRequestParams requestParams = new()
+        {
+            MaxTokens = 500,
+            Messages =
+            [
+                new SamplingMessage
+                {
+                    Role = Role.User,
+                    Content = [new TextContentBlock { Text = "Hello" }]
+                }
+            ],
+            Metadata = new JsonObject
+            {
+                ["provider"] = "test-provider",
+                ["custom_setting"] = 42
+            }
+        };
+
+        var json = JsonSerializer.Serialize(requestParams, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(500, deserialized.MaxTokens);
+        Assert.NotNull(deserialized.Metadata);
+        Assert.Equal("test-provider", (string?)deserialized.Metadata["provider"]);
+        Assert.Equal(42, (int)deserialized.Metadata["custom_setting"]!);
     }
 }
 
