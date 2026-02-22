@@ -257,7 +257,7 @@ public class HttpClientTransportTests : LoggedTest
         const int MaxReconnectionAttempts = 2;
 
         var getRequestCount = 0;
-        var allGetRequestsDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allGetRequestsDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var options = new HttpClientTransportOptions
         {
@@ -295,7 +295,7 @@ public class HttpClientTransportTests : LoggedTest
                 var count = Interlocked.Increment(ref getRequestCount);
                 if (count == 1 + MaxReconnectionAttempts)
                 {
-                    allGetRequestsDone.TrySetResult();
+                    allGetRequestsDone.TrySetResult(true);
                 }
                 return Task.FromResult(new HttpResponseMessage
                 {
