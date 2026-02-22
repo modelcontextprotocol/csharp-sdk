@@ -380,11 +380,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             try
             {
-                if (GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams { RequestId: { } requestId } cn &&
-                    _handlingRequests.TryGetValue(requestId, out var cts))
+                if (GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
+                    _handlingRequests.TryGetValue(cn.RequestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
-                    LogRequestCanceled(EndpointName, requestId, cn.Reason);
+                    LogRequestCanceled(EndpointName, cn.RequestId, cn.Reason);
                 }
             }
             catch
@@ -625,8 +625,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
                 // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
                 if (msg is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-                    GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams { RequestId: { } requestId } &&
-                    _pendingRequests.TryRemove(requestId, out var tcs))
+                    GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
+                    _pendingRequests.TryRemove(cn.RequestId, out var tcs))
                 {
                     tcs.TrySetCanceled(default);
                 }
