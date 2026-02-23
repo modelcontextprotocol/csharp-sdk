@@ -2,7 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
+using ModelContextProtocol.Tests.Utils;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -20,6 +20,9 @@ public partial class McpServerResourceTests
             Params = null
         };
     }
+
+    private static McpServer CreateTestServer(IServiceProvider? services = null) =>
+        McpServer.Create(new TestServerTransport(), new McpServerOptions(), serviceProvider: services);
 
     public McpServerResourceTests()
     {
@@ -143,7 +146,7 @@ public partial class McpServerResourceTests
 
         McpServerResource t;
         ReadResourceResult result;
-        McpServer server = new Mock<McpServer>().Object;
+        McpServer server = CreateTestServer();
 
         t = McpServerResource.Create(() => "42", new() { Name = Name });
         Assert.Equal("resource://mcp/Hello", t.ProtocolResourceTemplate.UriTemplate);
@@ -288,7 +291,7 @@ public partial class McpServerResourceTests
         Assert.Equal("resource://mcp/Hello{?arg1}", t.ProtocolResourceTemplate.UriTemplate);
         Assert.False(t.IsMatch(uri));
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
             TestContext.Current.CancellationToken));
     }
 
@@ -299,7 +302,7 @@ public partial class McpServerResourceTests
     {
         McpServerResource t = McpServerResource.Create(() => "resource", new() { UriTemplate = actualUri });
         Assert.NotNull(await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = queriedUri } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = queriedUri } },
             TestContext.Current.CancellationToken));
     }
 
@@ -328,7 +331,7 @@ public partial class McpServerResourceTests
         McpServerResource t = McpServerResource.Create((string arg1, int arg2) => arg1, new() { Name = "Hello" });
         Assert.Equal("resource://mcp/Hello{?arg1,arg2}", t.ProtocolResourceTemplate.UriTemplate);
         await Assert.ThrowsAsync<ArgumentException>(async () => await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
             TestContext.Current.CancellationToken));
     }
 
@@ -341,25 +344,25 @@ public partial class McpServerResourceTests
         ReadResourceResult result;
 
         result = await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("", ((TextResourceContents)result.Contents[0]).Text);
 
         result = await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg1=first" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg1=first" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("first", ((TextResourceContents)result.Contents[0]).Text);
 
         result = await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg2=42" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg2=42" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
 
         result = await t.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg1=first&arg2=42" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello?arg1=first&arg2=42" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("first42", ((TextResourceContents)result.Contents[0]).Text);
@@ -368,16 +371,16 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task SupportsMcpServer()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
 
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return "42";
         }, new() { Name = "Test" });
 
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
@@ -392,8 +395,7 @@ public partial class McpServerResourceTests
         sc.AddSingleton(expectedMyService);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Mock<McpServer> mockServer = new();
-        mockServer.SetupGet(s => s.Services).Returns(services);
+        McpServer testServer = CreateTestServer(services);
 
         MethodInfo? testMethod = typeof(HasCtorWithSpecialParameters).GetMethod(nameof(HasCtorWithSpecialParameters.TestResource));
         Assert.NotNull(testMethod);
@@ -404,7 +406,7 @@ public partial class McpServerResourceTests
         }, new() { Services = services });
 
         var result = await tool.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "https://something" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "https://something" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.NotNull(result.Contents);
@@ -478,14 +480,14 @@ public partial class McpServerResourceTests
 
         McpServerResource resource = services.GetRequiredService<McpServerResource>();
 
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
 
         await Assert.ThrowsAnyAsync<ArgumentException>(async () => await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken));
 
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Services = services, Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Services = services, Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
@@ -507,7 +509,7 @@ public partial class McpServerResourceTests
         }, new() { Services = services, Name = "Test" });
 
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
@@ -523,7 +525,7 @@ public partial class McpServerResourceTests
             _ => new DisposableResourceType());
 
         var result = await resource1.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "test://static/resource/instanceMethod" } },
+            new RequestContext<ReadResourceRequestParams>(CreateTestServer(), CreateTestJsonRpcRequest()) { Params = new() { Uri = "test://static/resource/instanceMethod" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("0", ((TextResourceContents)result.Contents[0]).Text);
@@ -534,14 +536,14 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnReadResult()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return new ReadResourceResult { Contents = [new TextResourceContents { Text = "hello", Uri = "" }] };
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -551,14 +553,14 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnResourceContents()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return new TextResourceContents { Text = "hello", Uri = "" };
         }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -568,10 +570,10 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnCollectionOfResourceContents()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return (IList<ResourceContents>)
             [
                 new TextResourceContents { Text = "hello", Uri = "" },
@@ -579,7 +581,7 @@ public partial class McpServerResourceTests
             ];
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal(2, result.Contents.Count);
@@ -590,14 +592,14 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnString()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return "42";
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -607,14 +609,14 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnCollectionOfStrings()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return new List<string> { "42", "43" };
         }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal(2, result.Contents.Count);
@@ -625,14 +627,14 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnDataContent()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return new DataContent(new byte[] { 0, 1, 2 }, "application/octet-stream");
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -643,10 +645,10 @@ public partial class McpServerResourceTests
     [Fact]
     public async Task CanReturnCollectionOfAIContent()
     {
-        Mock<McpServer> mockServer = new();
+        McpServer testServer = CreateTestServer();
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
-            Assert.Same(mockServer.Object, server);
+            Assert.Same(testServer, server);
             return new List<AIContent>
             {
                 new TextContent("hello!"),
@@ -654,7 +656,7 @@ public partial class McpServerResourceTests
             };
         }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
-            new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
+            new RequestContext<ReadResourceRequestParams>(testServer, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal(2, result.Contents.Count);
