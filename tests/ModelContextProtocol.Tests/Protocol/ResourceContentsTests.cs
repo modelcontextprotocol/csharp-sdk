@@ -524,7 +524,7 @@ public static class ResourceContentsTests
             new byte[] { 0x00, 0x01 }, // 2 bytes, 1 padding char: "AAE="
             new byte[] { 0x00, 0x01, 0x02 }, // 3 bytes, no padding: "AAEC"
             new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, // produces '/' in base64: "/9j/4A=="
-            new byte[] { 0xFB, 0xEF, 0xBE }, // produces '+' in base64: "+++"
+            new byte[] { 0xFB, 0xEF, 0xBE }, // produces '+' in base64: "++++"
         };
 
         // All 256 byte values to exercise the full base64 alphabet
