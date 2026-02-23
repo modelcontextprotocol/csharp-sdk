@@ -120,7 +120,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     /// <summary>Checks if a specific primitive is present in the collection of primitives.</summary>
     /// <param name="primitive">The primitive to search for in the collection.</param>
-    /// <see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.
+    /// <returns><see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="primitive"/> is <see langword="null"/>.</exception>
     public virtual bool Contains(T primitive)
     {
