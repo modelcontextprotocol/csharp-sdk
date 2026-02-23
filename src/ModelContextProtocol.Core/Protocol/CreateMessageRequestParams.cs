@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -68,7 +68,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("metadata")]
-    public JsonElement? Metadata { get; set; }
+    public JsonObject? Metadata { get; set; }
 
     /// <summary>
     /// Gets or sets the server's preferences for which model to select.
