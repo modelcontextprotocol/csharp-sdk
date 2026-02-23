@@ -21,8 +21,7 @@ internal sealed class StreamableHttpHandler(
     StatefulSessionManager sessionManager,
     IHostApplicationLifetime hostApplicationLifetime,
     IServiceProvider applicationServices,
-    ILoggerFactory loggerFactory,
-    ISessionMigrationHandler? sessionMigrationHandler = null)
+    ILoggerFactory loggerFactory)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
@@ -255,7 +254,7 @@ internal sealed class StreamableHttpHandler(
 
     private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(HttpContext context, string sessionId)
     {
-        if (sessionMigrationHandler is not { } handler)
+        if (HttpServerTransportOptions.SessionMigrationHandler is not { } handler)
         {
             return null;
         }
@@ -336,7 +335,7 @@ internal sealed class StreamableHttpHandler(
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
                 EventStreamStore = HttpServerTransportOptions.EventStreamStore,
-                OnSessionInitialized = sessionMigrationHandler is { } handler
+                OnSessionInitialized = HttpServerTransportOptions.SessionMigrationHandler is { } handler
                     ? (initParams, ct) => handler.OnSessionInitializedAsync(context, sessionId, initParams, ct)
                     : null,
             };

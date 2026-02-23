@@ -55,8 +55,28 @@ public class HttpServerTransportOptions
     /// <item><description>Replay missed events when a client reconnects with a Last-Event-ID header</description></item>
     /// <item><description>Send priming events to establish resumability before any actual messages</description></item>
     /// </list>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISseEventStreamStore"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISseEventStreamStore"/> from DI.
+    /// </para>
     /// </remarks>
     public ISseEventStreamStore? EventStreamStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets the session migration handler for cross-instance session migration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When configured, the server will support session migration between instances.
+    /// If a request arrives with a session ID that is not found locally, the handler
+    /// is consulted to determine if the session can be migrated from another instance.
+    /// </para>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISessionMigrationHandler"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISessionMigrationHandler"/> from DI.
+    /// </para>
+    /// </remarks>
+    public ISessionMigrationHandler? SessionMigrationHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a value that indicates whether the server uses a single execution context for the entire session.
