@@ -18,6 +18,7 @@ namespace ModelContextProtocol.Server;
 public class StreamServerTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
+    private static readonly StreamPipeReaderOptions s_pipeReaderOptions = new(bufferSize: 64 * 1024);  // 64KB minimum buffer
 
     private readonly ILogger _logger;
 
@@ -48,7 +49,7 @@ public class StreamServerTransport : TransportBase
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
         _inputStream = inputStream;
-        _inputPipeReader = PipeReader.Create(inputStream);
+        _inputPipeReader = PipeReader.Create(inputStream, s_pipeReaderOptions);
         _outputStream = outputStream;
 
         SetConnected();

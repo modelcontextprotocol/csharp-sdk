@@ -10,6 +10,7 @@ namespace ModelContextProtocol.Client;
 internal class StreamClientSessionTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
+    private static readonly StreamPipeReaderOptions s_pipeReaderOptions = new(bufferSize: 64 * 1024);  // 64KB minimum buffer
 
     private readonly PipeReader _serverOutputPipe;
     private readonly Stream _serverInputStream;
@@ -43,7 +44,7 @@ internal class StreamClientSessionTransport : TransportBase
         Throw.IfNull(serverOutput);
 
         _serverInputStream = serverInput;
-        _serverOutputPipe = PipeReader.Create(serverOutput);
+        _serverOutputPipe = PipeReader.Create(serverOutput, s_pipeReaderOptions);
 
         SetConnected();
 
