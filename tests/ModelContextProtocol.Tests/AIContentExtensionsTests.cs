@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Tests.Protocol;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -403,34 +404,8 @@ public class AIContentExtensionsTests
         Assert.Null(exception);
     }
 
-    /// <summary>
-    /// Provides test data for base64 AIContent roundtrip tests covering various lengths,
-    /// the full base64 alphabet (including '+' and '/'), and with/without padding.
-    /// </summary>
-    public static TheoryData<byte[]> Base64TestData()
-    {
-        var data = new TheoryData<byte[]>
-        {
-            new byte[] { 0x00 },       // 1 byte, 2 padding chars: "AA=="
-            new byte[] { 0x00, 0x01 }, // 2 bytes, 1 padding char: "AAE="
-            new byte[] { 0x00, 0x01, 0x02 }, // 3 bytes, no padding: "AAEC"
-            new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, // produces '/' in base64: "/9j/4A=="
-            new byte[] { 0xFB, 0xEF, 0xBE }, // produces '+' in base64: "++++"
-        };
-
-        // All 256 byte values to exercise the full base64 alphabet
-        byte[] allBytes = new byte[256];
-        for (int i = 0; i < 256; i++)
-        {
-            allBytes[i] = (byte)i;
-        }
-        data.Add(allBytes);
-
-        return data;
-    }
-
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void ImageContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         var image = ImageContentBlock.FromBytes(originalBytes, "image/png");
@@ -445,7 +420,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void ImageContentBlock_DataSetter_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -465,7 +440,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void AudioContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         var audio = AudioContentBlock.FromBytes(originalBytes, "audio/wav");
@@ -480,7 +455,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void AudioContentBlock_DataSetter_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -500,7 +475,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void BlobResourceContents_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin", "application/octet-stream");
@@ -517,7 +492,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void BlobResourceContents_BlobSetter_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -540,7 +515,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void ImageContentBlock_JsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -556,7 +531,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void ImageContentBlock_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -572,7 +547,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void AudioContentBlock_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -588,7 +563,7 @@ public class AIContentExtensionsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public void BlobResourceContents_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);

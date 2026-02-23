@@ -509,42 +509,8 @@ public static class ResourceContentsTests
         Assert.Equal(originalBytes, blob.DecodedData.ToArray());
     }
 
-    /// <summary>
-    /// Provides test data for base64 roundtrip tests. Each entry is a byte array that exercises
-    /// different base64 encoding characteristics:
-    /// - Various lengths producing 0, 1, or 2 padding characters
-    /// - Bytes that produce all 64 base64 alphabet characters including '+' and '/'
-    /// </summary>
-    public static TheoryData<byte[]> Base64TestData()
-    {
-        var data = new TheoryData<byte[]>
-        {
-            Array.Empty<byte>(),       // empty: ""
-            new byte[] { 0x00 },       // 1 byte, 2 padding chars: "AA=="
-            new byte[] { 0x00, 0x01 }, // 2 bytes, 1 padding char: "AAE="
-            new byte[] { 0x00, 0x01, 0x02 }, // 3 bytes, no padding: "AAEC"
-            new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, // produces '/' in base64: "/9j/4A=="
-            new byte[] { 0xFB, 0xEF, 0xBE }, // produces '+' in base64: "++++"
-        };
-
-        // All 256 byte values to exercise the full base64 alphabet
-        byte[] allBytes = new byte[256];
-        for (int i = 0; i < 256; i++)
-        {
-            allBytes[i] = (byte)i;
-        }
-        data.Add(allBytes);
-
-        // Larger payload (1024 bytes)
-        byte[] largePayload = new byte[1024];
-        new Random(42).NextBytes(largePayload);
-        data.Add(largePayload);
-
-        return data;
-    }
-
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_FromBytes_RoundtripsCorrectly(byte[] originalBytes)
     {
         string expectedBase64 = Convert.ToBase64String(originalBytes);
@@ -558,7 +524,7 @@ public static class ResourceContentsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_BlobSetter_RoundtripsCorrectly(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -571,7 +537,7 @@ public static class ResourceContentsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_JsonRoundtrip_PreservesData(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -592,7 +558,7 @@ public static class ResourceContentsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_FromBytes_JsonRoundtrip_PreservesData(byte[] originalBytes)
     {
         string expectedBase64 = Convert.ToBase64String(originalBytes);
@@ -607,7 +573,7 @@ public static class ResourceContentsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_EscapedJsonRoundtrip_PreservesData(byte[] originalBytes)
     {
         string base64 = Convert.ToBase64String(originalBytes);
@@ -637,7 +603,7 @@ public static class ResourceContentsTests
     }
 
     [Theory]
-    [MemberData(nameof(Base64TestData))]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
     public static void BlobResourceContents_FromBytes_LazilyEncodesBlob(byte[] originalBytes)
     {
         var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin");
