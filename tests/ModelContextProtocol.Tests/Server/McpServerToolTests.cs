@@ -54,18 +54,18 @@ public partial class McpServerToolTests
     [Fact]
     public async Task SupportsMcpServer()
     {
-        McpServer server = CreateTestServer();
+        McpServer testServer = CreateTestServer();
 
-        McpServerTool tool = McpServerTool.Create((McpServer s) =>
+        McpServerTool tool = McpServerTool.Create((McpServer server) =>
         {
-            Assert.Same(server, s);
+            Assert.Same(testServer, server);
             return "42";
         });
 
         Assert.DoesNotContain("server", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, McpJsonUtilities.DefaultOptions));
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(server, CreateTestJsonRpcRequest()),
+            new RequestContext<CallToolRequestParams>(testServer, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
         Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
     }

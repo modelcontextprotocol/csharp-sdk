@@ -46,18 +46,18 @@ public class McpServerPromptTests
     [Fact]
     public async Task SupportsMcpServer()
     {
-        McpServer server = CreateTestServer();
+        McpServer testServer = CreateTestServer();
 
-        McpServerPrompt prompt = McpServerPrompt.Create((McpServer s) =>
+        McpServerPrompt prompt = McpServerPrompt.Create((McpServer server) =>
         {
-            Assert.Same(server, s);
+            Assert.Same(testServer, server);
             return new ChatMessage(ChatRole.User, "Hello");
         });
 
-        Assert.DoesNotContain("s", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
+        Assert.DoesNotContain("server", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(server, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(testServer, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.NotNull(result.Messages);
