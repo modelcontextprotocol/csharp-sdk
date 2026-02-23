@@ -9,9 +9,10 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
-#pragma warning disable MCPEXP002 // Subclassing McpServer is experimental
+#pragma warning disable MCPEXP001
 internal sealed partial class McpServerImpl : McpServer
 {
+#pragma warning restore MCPEXP001
     internal static Implementation DefaultImplementation { get; } = new()
     {
         Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpServer),

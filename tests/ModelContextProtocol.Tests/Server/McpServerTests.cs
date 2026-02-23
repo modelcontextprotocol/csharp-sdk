@@ -943,9 +943,9 @@ public class McpServerTests : LoggedTest
         await tcs.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
     }
 
-#pragma warning disable MCPEXP002 // Subclassing McpServer is experimental
+#pragma warning disable MCPEXP001
     private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer
-#pragma warning restore MCPEXP002
+#pragma warning restore MCPEXP001
     {
         public override ClientCapabilities? ClientCapabilities =>
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
