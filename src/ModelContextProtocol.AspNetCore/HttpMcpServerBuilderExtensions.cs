@@ -35,7 +35,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
         {
@@ -107,7 +107,7 @@ public static class HttpMcpServerBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.TryAddSingleton<ISseEventStreamStore>(sp =>
+        builder.Services.AddSingleton<ISseEventStreamStore>(sp =>
         {
             var resolvedCache = cache ?? sp.GetRequiredService<IDistributedCache>();
             var options = sp.GetService<IOptions<DistributedCacheEventStreamStoreOptions>>()?.Value;

@@ -8,9 +8,9 @@ namespace ModelContextProtocol.AspNetCore;
 /// Post-configures <see cref="HttpServerTransportOptions"/> by resolving services from DI
 /// when they haven't been explicitly set on the options.
 /// </summary>
-internal sealed class HttpServerTransportOptionsSetup(IServiceProvider serviceProvider) : IPostConfigureOptions<HttpServerTransportOptions>
+internal sealed class HttpServerTransportOptionsSetup(IServiceProvider serviceProvider) : IConfigureOptions<HttpServerTransportOptions>
 {
-    public void PostConfigure(string? name, HttpServerTransportOptions options)
+    public void Configure(HttpServerTransportOptions options)
     {
         options.EventStreamStore ??= serviceProvider.GetService<ISseEventStreamStore>();
         options.SessionMigrationHandler ??= serviceProvider.GetService<ISessionMigrationHandler>();

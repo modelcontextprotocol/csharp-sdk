@@ -89,6 +89,23 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     }
 
     [Fact]
+    public void EventStreamStore_CanBeOverriddenToNull_AfterDIRegistration()
+    {
+        Builder.Services.AddDistributedMemoryCache();
+        Builder.Services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .WithDistributedCacheEventStreamStore();
+
+        Builder.Services.Configure<HttpServerTransportOptions>(options => options.EventStreamStore = null);
+
+        using var app = Builder.Build();
+
+        var options = app.Services.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value;
+        Assert.Null(options.EventStreamStore);
+    }
+
+    [Fact]
     public void SessionMigrationHandler_IsPopulatedFromDI_ViaPostConfigure()
     {
         var handler = new StubSessionMigrationHandler();

@@ -21,7 +21,6 @@ public static class McpServerServiceCollectionExtensions
     {
         services.AddOptions();
         services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<McpServerOptions>, McpServerOptionsSetup>());
-        services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, McpServerOptionsPostSetup>());
         if (configureOptions is not null)
         {
             services.Configure(configureOptions);
