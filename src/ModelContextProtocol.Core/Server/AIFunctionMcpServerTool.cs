@@ -537,22 +537,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonNode? nodeResult = aiFunctionResult switch
+        JsonElement? elementResult = aiFunctionResult switch
         {
-            JsonNode node => node,
-            JsonElement jsonElement => JsonSerializer.SerializeToNode(jsonElement, McpJsonUtilities.JsonContext.Default.JsonElement),
-            _ => JsonSerializer.SerializeToNode(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+            JsonElement jsonElement => jsonElement,
+            JsonNode node => node.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement),
+            null => null,
+            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
 
         if (_structuredOutputRequiresWrapping)
         {
-            nodeResult = new JsonObject
+            JsonNode? resultNode = elementResult is { } je
+                ? JsonSerializer.SerializeToNode(je, McpJsonUtilities.JsonContext.Default.JsonElement)
+                : null;
+            return new JsonObject
             {
-                ["result"] = nodeResult
-            };
+                ["result"] = resultNode
+            }.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement);
         }
 
-        return nodeResult?.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement);
+        return elementResult;
     }
 
     private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
