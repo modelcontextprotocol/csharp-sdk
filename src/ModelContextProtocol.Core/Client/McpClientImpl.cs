@@ -6,6 +6,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <inheritdoc/>
+#pragma warning disable MCPEXP002 // Subclassing McpClient is experimental
 internal sealed partial class McpClientImpl : McpClient
 {
     private static Implementation DefaultImplementation { get; } = new()

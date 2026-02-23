@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol;
+﻿using System.Diagnostics.CodeAnalysis;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
 
@@ -7,6 +8,14 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 public abstract partial class McpClient : McpSession
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClient"/> class.
+    /// </summary>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    protected McpClient()
+    {
+    }
+
     /// <summary>
     /// Gets the capabilities supported by the connected server.
     /// </summary>

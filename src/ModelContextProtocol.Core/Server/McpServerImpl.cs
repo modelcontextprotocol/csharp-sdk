@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
+#pragma warning disable MCPEXP002 // Subclassing McpServer is experimental
 internal sealed partial class McpServerImpl : McpServer
 {
     internal static Implementation DefaultImplementation { get; } = new()
