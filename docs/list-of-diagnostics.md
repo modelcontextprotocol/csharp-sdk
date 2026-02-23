@@ -24,3 +24,4 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | Diagnostic ID | Description |
 | :------------ | :---------- |
 | `MCPEXP001` | MCP experimental APIs including Tasks and Extensions. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results (see [MCP Tasks specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)). Extensions provide a framework for extending the Model Context Protocol while maintaining interoperability (see [SEP-2133](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133)). |
+| `MCPEXP002` | Subclassing `McpClient` and `McpServer` is experimental and subject to change. The internal implementation details of these types may change in future versions, which could break custom subclasses. |

@@ -8,7 +8,7 @@
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental tasks warning -->
-    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">

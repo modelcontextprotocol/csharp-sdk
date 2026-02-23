@@ -56,4 +56,19 @@ internal static class Experimentals
     /// URL for the experimental MCP Extensions feature.
     /// </summary>
     public const string Extensions_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental subclassing of McpClient and McpServer.
+    /// </summary>
+    public const string Subclassing_DiagnosticId = "MCPEXP002";
+
+    /// <summary>
+    /// Message for the experimental subclassing feature.
+    /// </summary>
+    public const string Subclassing_Message = "Subclassing McpClient and McpServer is experimental and subject to change.";
+
+    /// <summary>
+    /// URL for the experimental subclassing feature.
+    /// </summary>
+    public const string Subclassing_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
 }

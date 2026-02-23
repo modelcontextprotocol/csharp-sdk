@@ -4,6 +4,6 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <!-- Suppress the experimental tasks warning in test projects -->
-    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
   </PropertyGroup>
 </Project>
