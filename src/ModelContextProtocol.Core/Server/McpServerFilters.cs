@@ -12,12 +12,28 @@ namespace ModelContextProtocol.Server;
 public sealed class McpServerFilters
 {
     /// <summary>
-    /// Gets the filters for incoming and outgoing JSON-RPC messages.
+    /// Gets or sets the filters for incoming and outgoing JSON-RPC messages.
     /// </summary>
-    public McpMessageFilters Message { get; } = new();
+    public McpMessageFilters Message
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for request-specific MCP handler pipelines.
+    /// Gets or sets the filters for request-specific MCP handler pipelines.
     /// </summary>
-    public McpRequestFilters Request { get; } = new();
+    public McpRequestFilters Request
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 }

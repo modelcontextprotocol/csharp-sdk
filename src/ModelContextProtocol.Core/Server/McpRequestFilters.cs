@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 public sealed class McpRequestFilters
 {
     /// <summary>
-    /// Gets the filters for the list-tools handler pipeline.
+    /// Gets or sets the filters for the list-tools handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -22,20 +22,36 @@ public sealed class McpRequestFilters
     /// Tools from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<ListToolsRequestParams, ListToolsResult>> ListToolsFilters { get; } = [];
+    public IList<McpRequestFilter<ListToolsRequestParams, ListToolsResult>> ListToolsFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the call-tool handler pipeline.
+    /// Gets or sets the filters for the call-tool handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </remarks>
-    public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters { get; } = [];
+    public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the list-prompts handler pipeline.
+    /// Gets or sets the filters for the list-prompts handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -49,20 +65,36 @@ public sealed class McpRequestFilters
     /// Prompts from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<ListPromptsRequestParams, ListPromptsResult>> ListPromptsFilters { get; } = [];
+    public IList<McpRequestFilter<ListPromptsRequestParams, ListPromptsResult>> ListPromptsFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the get-prompt handler pipeline.
+    /// Gets or sets the filters for the get-prompt handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.PromptsGet"/> requests. The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
     /// </remarks>
-    public IList<McpRequestFilter<GetPromptRequestParams, GetPromptResult>> GetPromptFilters { get; } = [];
+    public IList<McpRequestFilter<GetPromptRequestParams, GetPromptResult>> GetPromptFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the list-resource-templates handler pipeline.
+    /// Gets or sets the filters for the list-resource-templates handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that return a list of available resource templates when requested by a client.
@@ -70,10 +102,18 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ResourcesTemplatesList"/> requests. It supports pagination through the cursor mechanism,
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resource templates.
     /// </remarks>
-    public IList<McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>> ListResourceTemplatesFilters { get; } = [];
+    public IList<McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>> ListResourceTemplatesFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the list-resources handler pipeline.
+    /// Gets or sets the filters for the list-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that return a list of available resources when requested by a client.
@@ -81,20 +121,36 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ResourcesList"/> requests. It supports pagination through the cursor mechanism,
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resources.
     /// </remarks>
-    public IList<McpRequestFilter<ListResourcesRequestParams, ListResourcesResult>> ListResourcesFilters { get; } = [];
+    public IList<McpRequestFilter<ListResourcesRequestParams, ListResourcesResult>> ListResourcesFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the read-resource handler pipeline.
+    /// Gets or sets the filters for the read-resource handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client requests the content of a specific resource identified by its URI.
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.ResourcesRead"/> requests. The handler should implement logic to locate and retrieve the requested resource.
     /// </remarks>
-    public IList<McpRequestFilter<ReadResourceRequestParams, ReadResourceResult>> ReadResourceFilters { get; } = [];
+    public IList<McpRequestFilter<ReadResourceRequestParams, ReadResourceResult>> ReadResourceFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the complete-handler pipeline.
+    /// Gets or sets the filters for the complete-handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that provide auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
@@ -102,10 +158,18 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.CompletionComplete"/> requests. The handler processes auto-completion requests, returning a list of suggestions based on the
     /// reference type and current argument value.
     /// </remarks>
-    public IList<McpRequestFilter<CompleteRequestParams, CompleteResult>> CompleteFilters { get; } = [];
+    public IList<McpRequestFilter<CompleteRequestParams, CompleteResult>> CompleteFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the subscribe-to-resources handler pipeline.
+    /// Gets or sets the filters for the subscribe-to-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -119,10 +183,18 @@ public sealed class McpRequestFilters
     /// whenever a relevant resource is created, updated, or deleted.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<SubscribeRequestParams, EmptyResult>> SubscribeToResourcesFilters { get; } = [];
+    public IList<McpRequestFilter<SubscribeRequestParams, EmptyResult>> SubscribeToResourcesFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the unsubscribe-from-resources handler pipeline.
+    /// Gets or sets the filters for the unsubscribe-from-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -136,10 +208,18 @@ public sealed class McpRequestFilters
     /// to the client for the specified resources.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<UnsubscribeRequestParams, EmptyResult>> UnsubscribeFromResourcesFilters { get; } = [];
+    public IList<McpRequestFilter<UnsubscribeRequestParams, EmptyResult>> UnsubscribeFromResourcesFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filters for the set-logging-level handler pipeline.
+    /// Gets or sets the filters for the set-logging-level handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -153,5 +233,13 @@ public sealed class McpRequestFilters
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<SetLevelRequestParams, EmptyResult>> SetLoggingLevelFilters { get; } = [];
+    public IList<McpRequestFilter<SetLevelRequestParams, EmptyResult>> SetLoggingLevelFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 }
