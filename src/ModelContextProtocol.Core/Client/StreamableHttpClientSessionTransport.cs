@@ -244,6 +244,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             {
                 var delay = state.RetryInterval ?? _options.DefaultReconnectionInterval;
 
+                // Apply exponential backoff: double the delay for each consecutive failed attempt.
+                for (int i = 0; i < attempt && delay.Ticks <= long.MaxValue / 2; i++)
+                {
+                    delay += delay;
+                }
+
                 // Subtract time already elapsed since the SSE stream ended to more accurately
                 // honor the retry interval. Without this, processing overhead (HTTP response
                 // disposal, condition checks, etc.) inflates the observed reconnection delay.
