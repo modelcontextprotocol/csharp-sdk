@@ -540,7 +540,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonElement? elementResult = aiFunctionResult switch
         {
             JsonElement jsonElement => jsonElement,
-            JsonNode node => node.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement),
+            JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
             null => null,
             _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
@@ -550,10 +550,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonNode? resultNode = elementResult is { } je
                 ? JsonSerializer.SerializeToNode(je, McpJsonUtilities.JsonContext.Default.JsonElement)
                 : null;
-            return new JsonObject
+            return JsonSerializer.SerializeToElement(new JsonObject
             {
                 ["result"] = resultNode
-            }.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement);
+            }, McpJsonUtilities.JsonContext.Default.JsonObject);
         }
 
         return elementResult;
