@@ -80,6 +80,7 @@ public abstract class ResourceContents
             string? uri = null;
             string? mimeType = null;
             ReadOnlyMemory<byte>? blob = null;
+            ReadOnlyMemory<byte>? decodedBlob = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -105,7 +106,14 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            decodedBlob = reader.GetBytesFromBase64();
+                        }
                         break;
 
                     case "text":
@@ -120,6 +128,13 @@ public abstract class ResourceContents
                         reader.Skip();
                         break;
                 }
+            }
+
+            if (decodedBlob is not null)
+            {
+                var blobResource = BlobResourceContents.FromBytes(decodedBlob.Value, uri ?? string.Empty, mimeType);
+                blobResource.Meta = meta;
+                return blobResource;
             }
 
             if (blob is not null)

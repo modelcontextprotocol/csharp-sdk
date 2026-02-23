@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Tests.Protocol;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -401,6 +402,183 @@ public class AIContentExtensionsTests
         var exception = Record.Exception(() => result.ToChatMessage("call_123"));
         
         Assert.Null(exception);
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void ImageContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        var image = ImageContentBlock.FromBytes(originalBytes, "image/png");
+
+        var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
+        Assert.Equal("image/png", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("image/png", roundTripped.MimeType);
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void ImageContentBlock_DataSetter_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        var image = new ImageContentBlock
+        {
+            Data = System.Text.Encoding.UTF8.GetBytes(base64),
+            MimeType = "image/jpeg"
+        };
+
+        var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
+        Assert.Equal("image/jpeg", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("image/jpeg", roundTripped.MimeType);
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void AudioContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        var audio = AudioContentBlock.FromBytes(originalBytes, "audio/wav");
+
+        var aiContent = Assert.IsType<DataContent>(audio.ToAIContent());
+        Assert.Equal("audio/wav", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("audio/wav", roundTripped.MimeType);
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void AudioContentBlock_DataSetter_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        var audio = new AudioContentBlock
+        {
+            Data = System.Text.Encoding.UTF8.GetBytes(base64),
+            MimeType = "audio/mp3"
+        };
+
+        var aiContent = Assert.IsType<DataContent>(audio.ToAIContent());
+        Assert.Equal("audio/mp3", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("audio/mp3", roundTripped.MimeType);
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void BlobResourceContents_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin", "application/octet-stream");
+        var embedded = new EmbeddedResourceBlock { Resource = blob };
+
+        var aiContent = Assert.IsType<DataContent>(embedded.ToAIContent());
+        Assert.Equal("application/octet-stream", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<EmbeddedResourceBlock>(aiContent.ToContentBlock());
+        var roundTrippedBlob = Assert.IsType<BlobResourceContents>(roundTripped.Resource);
+        Assert.Equal("application/octet-stream", roundTrippedBlob.MimeType);
+        Assert.Equal(originalBytes, roundTrippedBlob.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void BlobResourceContents_BlobSetter_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        var blob = new BlobResourceContents
+        {
+            Blob = System.Text.Encoding.UTF8.GetBytes(base64),
+            Uri = "file:///test.bin",
+            MimeType = "application/octet-stream"
+        };
+        var embedded = new EmbeddedResourceBlock { Resource = blob };
+
+        var aiContent = Assert.IsType<DataContent>(embedded.ToAIContent());
+        Assert.Equal("application/octet-stream", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<EmbeddedResourceBlock>(aiContent.ToContentBlock());
+        var roundTrippedBlob = Assert.IsType<BlobResourceContents>(roundTripped.Resource);
+        Assert.Equal("application/octet-stream", roundTrippedBlob.MimeType);
+        Assert.Equal(originalBytes, roundTrippedBlob.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void ImageContentBlock_JsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        string json = $$"""{"type":"image","data":"{{base64}}","mimeType":"image/png"}""";
+
+        var image = Assert.IsType<ImageContentBlock>(
+            JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions));
+        var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void ImageContentBlock_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        string json = $$"""{"type":"image","data":"{{base64.Replace("/", "\\/")}}","mimeType":"image/png"}""";
+
+        var image = Assert.IsType<ImageContentBlock>(
+            JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions));
+        var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void AudioContentBlock_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        string json = $$"""{"type":"audio","data":"{{base64.Replace("/", "\\/")}}","mimeType":"audio/wav"}""";
+
+        var audio = Assert.IsType<AudioContentBlock>(
+            JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions));
+        var aiContent = Assert.IsType<DataContent>(audio.ToAIContent());
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public void BlobResourceContents_EscapedJsonDeserialized_ToAIContent_RoundTrips(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        string json = $$"""{"uri":"file:///test.bin","blob":"{{base64.Replace("/", "\\/")}}","mimeType":"application/octet-stream"}""";
+
+        var blob = Assert.IsType<BlobResourceContents>(
+            JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions));
+        var embedded = new EmbeddedResourceBlock { Resource = blob };
+
+        var aiContent = Assert.IsType<DataContent>(embedded.ToAIContent());
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
+        var roundTripped = Assert.IsType<EmbeddedResourceBlock>(aiContent.ToContentBlock());
+        var roundTrippedBlob = Assert.IsType<BlobResourceContents>(roundTripped.Resource);
+        Assert.Equal(originalBytes, roundTrippedBlob.DecodedData.ToArray());
     }
 }
 
