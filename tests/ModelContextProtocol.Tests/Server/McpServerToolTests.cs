@@ -654,11 +654,11 @@ public partial class McpServerToolTests
         }
     }
 
-    private static void AssertMatchesJsonSchema(JsonElement schemaDoc, JsonNode? value)
+    private static void AssertMatchesJsonSchema(JsonElement schemaDoc, JsonElement? value)
     {
         JsonSchema schema = JsonSerializer.Deserialize(schemaDoc, JsonContext2.Default.JsonSchema)!;
         EvaluationOptions options = new() { OutputFormat = OutputFormat.List };
-        EvaluationResults results = schema.Evaluate(JsonSerializer.SerializeToElement(value, JsonContext2.Default.JsonNode), options);
+        EvaluationResults results = schema.Evaluate(value ?? default, options);
         if (!results.IsValid)
         {
             IEnumerable<string> errors = (results.Details ?? [])
@@ -670,7 +670,7 @@ public partial class McpServerToolTests
                 Schema:
                 {JsonSerializer.Serialize(schema)}
                 Instance:
-                {value?.ToJsonString() ?? "null"}
+                {value?.ToString() ?? "null"}
                 Errors:
                 {string.Join(Environment.NewLine, errors)}
                 """);

@@ -267,7 +267,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        JsonNode? structuredContent = CreateStructuredResponse(result);
+        JsonElement? structuredContent = CreateStructuredResponse(result);
         return result switch
         {
             AIContent aiContent => new()
@@ -530,7 +530,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return outputSchema;
     }
 
-    private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
+    private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
     {
         if (ProtocolTool.OutputSchema is null)
         {
@@ -547,16 +547,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (_structuredOutputRequiresWrapping)
         {
-            return new JsonObject
+            nodeResult = new JsonObject
             {
                 ["result"] = nodeResult
             };
         }
 
-        return nodeResult;
+        return nodeResult?.Deserialize(McpJsonUtilities.JsonContext.Default.JsonElement);
     }
 
-    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
+    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
     {
         List<ContentBlock> contentList = [];
         bool allErrorContent = true;
