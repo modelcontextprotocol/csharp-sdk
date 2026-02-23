@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -93,6 +92,7 @@ public abstract class ContentBlock
             string? name = null;
             string? title = null;
             ReadOnlyMemory<byte>? data = null;
+            ReadOnlyMemory<byte>? decodedData = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -144,7 +144,7 @@ public abstract class ContentBlock
                         }
                         else
                         {
-                            data = Encoding.UTF8.GetBytes(reader.GetString()!);
+                            decodedData = reader.GetBytesFromBase64();
                         }
                         break;
 
@@ -238,17 +238,23 @@ public abstract class ContentBlock
                     Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
                 },
 
-                "image" => new ImageContentBlock
-                {
-                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                },
+                "image" => decodedData is not null ?
+                    ImageContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'image' type.")) :
+                    new ImageContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
+                    },
 
-                "audio" => new AudioContentBlock
-                {
-                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                },
+                "audio" => decodedData is not null ?
+                    AudioContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type.")) :
+                    new AudioContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
+                    },
 
                 "resource" => new EmbeddedResourceBlock
                 {

@@ -2,7 +2,6 @@ using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -81,6 +80,7 @@ public abstract class ResourceContents
             string? uri = null;
             string? mimeType = null;
             ReadOnlyMemory<byte>? blob = null;
+            ReadOnlyMemory<byte>? decodedBlob = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -112,7 +112,7 @@ public abstract class ResourceContents
                         }
                         else
                         {
-                            blob = Encoding.UTF8.GetBytes(reader.GetString()!);
+                            decodedBlob = reader.GetBytesFromBase64();
                         }
                         break;
 
@@ -128,6 +128,13 @@ public abstract class ResourceContents
                         reader.Skip();
                         break;
                 }
+            }
+
+            if (decodedBlob is not null)
+            {
+                var blobResource = BlobResourceContents.FromBytes(decodedBlob.Value, uri ?? string.Empty, mimeType);
+                blobResource.Meta = meta;
+                return blobResource;
             }
 
             if (blob is not null)
