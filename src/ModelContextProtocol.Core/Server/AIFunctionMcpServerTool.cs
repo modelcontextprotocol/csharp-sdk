@@ -234,7 +234,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         AIFunction = function;
         ProtocolTool = tool;
-        ProtocolTool.McpServerTool = this;
 
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
