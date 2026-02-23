@@ -658,7 +658,7 @@ public partial class McpServerToolTests
     {
         JsonSchema schema = JsonSerializer.Deserialize(schemaDoc, JsonContext2.Default.JsonSchema)!;
         EvaluationOptions options = new() { OutputFormat = OutputFormat.List };
-        EvaluationResults results = schema.Evaluate(value ?? default, options);
+        EvaluationResults results = schema.Evaluate(value!.Value, options);
         if (!results.IsValid)
         {
             IEnumerable<string> errors = (results.Details ?? [])
