@@ -11,6 +11,7 @@ public abstract partial class McpClient : McpSession
     private protected McpClient()
     {
     }
+
     /// <summary>
     /// Gets the capabilities supported by the connected server.
     /// </summary>
