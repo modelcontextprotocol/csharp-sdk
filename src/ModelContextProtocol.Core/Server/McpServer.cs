@@ -7,6 +7,10 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public abstract partial class McpServer : McpSession
 {
+    /// <summary>Initializes a new instance of the <see cref="McpServer"/> class.</summary>
+    private protected McpServer()
+    {
+    }
     /// <summary>
     /// Gets the capabilities supported by the client.
     /// </summary>

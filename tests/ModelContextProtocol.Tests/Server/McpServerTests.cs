@@ -807,7 +807,8 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task AsSamplingChatClient_NoSamplingSupport_Throws()
     {
-        await using var server = new TestServerForIChatClient(supportsSampling: false);
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
 
         Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
     }
@@ -815,7 +816,27 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task AsSamplingChatClient_HandlesRequestResponse()
     {
-        await using var server = new TestServerForIChatClient(supportsSampling: true);
+        await using var transport = new TestServerTransport();
+        transport.MockSamplingResult = new CreateMessageResult
+        {
+            Content = [new TextContentBlock { Text = "The Eiffel Tower." }],
+            Model = "amazingmodel",
+            Role = Role.Assistant,
+            StopReason = "endTurn",
+        };
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities { Sampling = new SamplingCapability() }, TestContext.Current.CancellationToken);
+
+        // Capture the sampling request for validation
+        CreateMessageRequestParams? capturedParams = null;
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcRequest request && request.Method == RequestMethods.SamplingCreateMessage)
+            {
+                capturedParams = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
+            }
+        };
 
         IChatClient client = server.AsSamplingChatClient();
 
@@ -839,6 +860,22 @@ public class McpServerTests : LoggedTest
         Assert.Single(response.Messages);
         Assert.Equal("The Eiffel Tower.", response.Text);
         Assert.Equal(ChatRole.Assistant, response.Messages[0].Role);
+
+        // Validate the request parameters
+        Assert.NotNull(capturedParams);
+        Assert.Equal(0.75f, capturedParams.Temperature);
+        Assert.Equal(42, capturedParams.MaxTokens);
+        Assert.Equal(["."], capturedParams.StopSequences);
+        Assert.Null(capturedParams.IncludeContext);
+        Assert.Null(capturedParams.Metadata);
+        Assert.Null(capturedParams.ModelPreferences);
+        Assert.Equal($"You are a helpful assistant.{Environment.NewLine}More system stuff.", capturedParams.SystemPrompt);
+        Assert.Equal(2, capturedParams.Messages.Count);
+        Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(Assert.Single(capturedParams.Messages[0].Content)).Text);
+        Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(Assert.Single(capturedParams.Messages[1].Content)).Text);
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]
@@ -888,62 +925,6 @@ public class McpServerTests : LoggedTest
 
         // Wait for the initialize response to be sent
         await tcs.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
-    }
-
-    private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer
-    {
-        public override ClientCapabilities? ClientCapabilities =>
-            supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
-            null;
-
-        public override McpServerOptions ServerOptions => new();
-
-        public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
-        {
-            CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
-
-            Assert.NotNull(rp);
-            Assert.Equal(0.75f, rp.Temperature);
-            Assert.Equal(42, rp.MaxTokens);
-            Assert.Equal(["."], rp.StopSequences);
-            Assert.Null(rp.IncludeContext);
-            Assert.Null(rp.Metadata);
-            Assert.Null(rp.ModelPreferences);
-
-            Assert.Equal($"You are a helpful assistant.{Environment.NewLine}More system stuff.", rp.SystemPrompt);
-
-            Assert.Equal(2, rp.Messages.Count);
-            Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[0].Content)).Text);
-            Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[1].Content)).Text);
-
-            CreateMessageResult result = new()
-            {
-                Content = [new TextContentBlock { Text = "The Eiffel Tower." }],
-                Model = "amazingmodel",
-                Role = Role.Assistant,
-                StopReason = "endTurn",
-            };
-
-            return Task.FromResult(new JsonRpcResponse
-            {
-                Id = new RequestId("0"),
-                Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
-            });
-        }
-
-        public override ValueTask DisposeAsync() => default;
-
-        public override string? SessionId => throw new NotImplementedException();
-        public override string? NegotiatedProtocolVersion => throw new NotImplementedException();
-        public override Implementation? ClientInfo => throw new NotImplementedException();
-        public override IServiceProvider? Services => throw new NotImplementedException();
-        public override LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
-            throw new NotImplementedException();
-        public override Task RunAsync(CancellationToken cancellationToken = default) =>
-            throw new NotImplementedException();
-        public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) =>
-            throw new NotImplementedException();
     }
 
     [Fact]

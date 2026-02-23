@@ -93,10 +93,11 @@ public class TestServerTransport : ITransport
         else
         {
             // Return a normal sampling response
+            var result = MockSamplingResult ?? new CreateMessageResult { Content = [new TextContentBlock { Text = "" }], Model = "model" };
             await WriteMessageAsync(new JsonRpcResponse
             {
                 Id = request.Id,
-                Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = [new TextContentBlock { Text = "" }], Model = "model" }, McpJsonUtilities.DefaultOptions),
+                Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
             }, cancellationToken);
         }
     }
@@ -124,6 +125,12 @@ public class TestServerTransport : ITransport
             }, cancellationToken);
         }
     }
+
+    /// <summary>
+    /// Gets or sets the sampling result to return from sampling/createMessage requests.
+    /// When null, a default sampling response is returned.
+    /// </summary>
+    public CreateMessageResult? MockSamplingResult { get; set; }
 
     /// <summary>
     /// Gets or sets the task to return from tasks/get requests.
