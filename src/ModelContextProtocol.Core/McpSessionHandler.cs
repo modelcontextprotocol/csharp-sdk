@@ -154,6 +154,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     public string? NegotiatedProtocolVersion { get; set; }
 
     /// <summary>
+    /// Gets a task that completes when the client session has completed, providing details about the closure.
+    /// Completion details are resolved from the transport's channel completion exception: if a transport
+    /// completes its channel with a <see cref="TransportClosedException"/>, the wrapped
+    /// <see cref="ClientCompletionDetails"/> is unwrapped. Otherwise, a default instance is returned.
+    /// </summary>
+    internal Task<ClientCompletionDetails> CompletionTask => 
+        field ??= GetCompletionDetailsAsync(_transport.MessageReader.Completion);
+
+    /// <summary>
     /// Starts processing messages from the transport. This method will block until the transport is disconnected.
     /// This is generally started in a background task or thread from the initialization logic of the derived class.
     /// </summary>
@@ -302,6 +311,28 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 entry.Value.TrySetException(new IOException("The server shut down unexpectedly."));
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves <see cref="ClientCompletionDetails"/> from the transport's channel completion.
+    /// If the channel was completed with a <see cref="TransportClosedException"/>, the wrapped
+    /// details are returned. Otherwise a default instance is created from the completion state.
+    /// </summary>
+    private static async Task<ClientCompletionDetails> GetCompletionDetailsAsync(Task channelCompletion)
+    {
+        try
+        {
+            await channelCompletion.ConfigureAwait(false);
+            return new ClientCompletionDetails();
+        }
+        catch (TransportClosedException tce)
+        {
+            return tce.Details;
+        }
+        catch (Exception ex)
+        {
+            return new ClientCompletionDetails { Exception = ex };
         }
     }
 

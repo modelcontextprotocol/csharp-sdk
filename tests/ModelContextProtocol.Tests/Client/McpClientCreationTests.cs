@@ -112,7 +112,11 @@ public class McpClientCreationTests
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
 
-        public ValueTask DisposeAsync() => default;
+        public ValueTask DisposeAsync()
+        {
+            _channel.Writer.TryComplete();
+            return default;
+        }
 
         public string Name => "Test Nop Transport";
 

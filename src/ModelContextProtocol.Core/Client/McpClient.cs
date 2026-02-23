@@ -53,4 +53,21 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract string? ServerInstructions { get; }
+
+    /// <summary>
+    /// Gets a <see cref="Task{TResult}"/> that completes when the client session has completed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The task always completes successfully. The result provides details about why the session
+    /// completed. Transport implementations may return derived types with additional strongly-typed
+    /// information, such as <see cref="StdioClientCompletionDetails"/>.
+    /// </para>
+    /// <para>
+    /// For graceful closure (e.g., explicit disposal), <see cref="ClientCompletionDetails.Exception"/>
+    /// will be <see langword="null"/>. For unexpected closure (e.g., process crash, network failure),
+    /// it may contain an exception that caused or that represents the failure.
+    /// </para>
+    /// </remarks>
+    public abstract Task<ClientCompletionDetails> Completion { get; }
 }

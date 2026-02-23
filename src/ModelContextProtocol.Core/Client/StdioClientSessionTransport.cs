@@ -5,14 +5,22 @@ using System.Diagnostics;
 namespace ModelContextProtocol.Client;
 
 /// <summary>Provides the client side of a stdio-based session transport.</summary>
-internal sealed class StdioClientSessionTransport(
-    StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory) :
-    StreamClientSessionTransport(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 {
-    private readonly StdioClientTransportOptions _options = options;
-    private readonly Process _process = process;
-    private readonly Queue<string> _stderrRollingLog = stderrRollingLog;
+    private readonly StdioClientTransportOptions _options;
+    private readonly Process _process;
+    private readonly Queue<string> _stderrRollingLog;
     private int _cleanedUp = 0;
+    private readonly int? _processId;
+
+    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory) :
+        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+    {
+        _options = options;
+        _process = process;
+        _stderrRollingLog = stderrRollingLog;
+        try { _processId = process.Id; } catch { }
+    }
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -47,17 +55,26 @@ internal sealed class StdioClientSessionTransport(
         // so create an exception with details about that.
         error ??= await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Now terminate the server process.
+        // Terminate the server process (or confirm it already exited), then build
+        // and publish strongly-typed completion details while the process handle
+        // is still valid so we can read the exit code.
         try
         {
-            StdioClientTransport.DisposeProcess(_process, processRunning: true, shutdownTimeout: _options.ShutdownTimeout);
+            StdioClientTransport.DisposeProcess(
+                _process, 
+                processRunning: true,
+                _options.ShutdownTimeout,
+                beforeDispose: () => SetDisconnected(new TransportClosedException(BuildCompletionDetails(error))));
         }
         catch (Exception ex)
         {
             LogTransportShutdownFailed(Name, ex);
+            SetDisconnected(new TransportClosedException(BuildCompletionDetails(error)));
         }
 
-        // And handle cleanup in the base type.
+        // And handle cleanup in the base type. SetDisconnected has already been
+        // called above, so the base call is a no-op for disconnect state but
+        // still performs other cleanup (cancelling the read task, etc.).
         await base.CleanupAsync(error, cancellationToken).ConfigureAwait(false);
     }
 
@@ -103,5 +120,33 @@ internal sealed class StdioClientSessionTransport(
         }
 
         return new IOException(errorMessage);
+    }
+
+    private StdioClientCompletionDetails BuildCompletionDetails(Exception? error)
+    {
+        StdioClientCompletionDetails details = new()
+        {
+            Exception = error,
+            ProcessId = _processId,
+        };
+        
+        try
+        {
+            if (StdioClientTransport.HasExited(_process))
+            {
+                details.ExitCode = _process.ExitCode;
+            }
+        }
+        catch { }
+
+        lock (_stderrRollingLog)
+        {
+            if (_stderrRollingLog.Count > 0)
+            {
+                details.StandardErrorTail = _stderrRollingLog.ToArray();
+            }
+        }
+
+        return details;
     }
 }

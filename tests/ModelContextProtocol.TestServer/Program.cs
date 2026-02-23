@@ -181,6 +181,23 @@ internal static class Program
                         {
                             TaskSupport = ToolTaskSupport.Optional
                         }
+                    },
+                    new Tool
+                    {
+                        Name = "crash",
+                        Description = "Terminates the server process with a specified exit code.",
+                        InputSchema = JsonElement.Parse("""
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "exitCode": {
+                                        "type": "number",
+                                        "description": "The exit code to terminate with"
+                                    }
+                                },
+                                "required": ["exitCode"]
+                            }
+                            """),
                     }
                 ]
             };
@@ -240,6 +257,17 @@ internal static class Program
                 {
                     Content = [new TextContentBlock { Text = $"Long-running operation completed after {durationMs}ms" }]
                 };
+            }
+            else if (request.Params?.Name == "crash")
+            {
+                if (request.Params?.Arguments is null || !request.Params.Arguments.TryGetValue("exitCode", out var exitCodeValue))
+                {
+                    throw new McpProtocolException("Missing required argument 'exitCode'", McpErrorCode.InvalidParams);
+                }
+                int exitCode = Convert.ToInt32(exitCodeValue.GetRawText());
+                Console.Error.WriteLine($"Crashing with exit code {exitCode}");
+                Environment.Exit(exitCode);
+                throw new Exception("unreachable");
             }
             else
             {

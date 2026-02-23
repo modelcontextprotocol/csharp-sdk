@@ -179,6 +179,8 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             else
             {
+                SetDisconnected(ex);
+
                 LogTransportReadMessagesFailed(Name, ex);
                 _connectionEstablished.TrySetException(ex);
                 throw;
