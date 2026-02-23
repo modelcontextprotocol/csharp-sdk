@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
+using ModelContextProtocol.Tests.Utils;
 using System.Collections;
 using System.ComponentModel;
 using System.Threading.Channels;
@@ -345,7 +345,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResources(target);
 
         McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
-        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(McpServer.Create(new TestServerTransport(), new McpServerOptions()), new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
         {
             Params = new()
             {

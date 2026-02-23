@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
+using ModelContextProtocol.Tests.Utils;
 using System.Collections;
 using System.ComponentModel;
 using System.Text.Json;
@@ -314,7 +314,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPrompts(target);
 
         McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
-        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(McpServer.Create(new TestServerTransport(), new McpServerOptions()), new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
         {
             Params = new GetPromptRequestParams
             {

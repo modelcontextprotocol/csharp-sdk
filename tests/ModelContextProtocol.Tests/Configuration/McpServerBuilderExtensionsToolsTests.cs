@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
+using ModelContextProtocol.Tests.Utils;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.ComponentModel;
@@ -594,7 +594,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer().WithTools(target, BuilderToolsJsonContext.Default.Options);
 
         McpServerTool tool = sc.BuildServiceProvider().GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "get_ctor_parameter");
-        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(McpServer.Create(new TestServerTransport(), new McpServerOptions()), new JsonRpcRequest { Method = "test", Id = new RequestId("1") }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.GetCtorParameter(), (result.Content[0] as TextContentBlock)?.Text);
     }
