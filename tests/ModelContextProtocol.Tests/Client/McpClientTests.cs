@@ -539,11 +539,9 @@ public class McpClientTests : ClientServerTestBase
             {
                 var m = await channel.Reader.ReadAsync(TestContext.Current.CancellationToken);
                 Assert.NotNull(m);
-                Assert.NotNull(m.Data);
-
                 Assert.Equal("TestLogger", m.Logger);
 
-                string? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
+                string? s = JsonSerializer.Deserialize<string>(m.Data, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(s);
 
                 if (s.Contains("Information"))

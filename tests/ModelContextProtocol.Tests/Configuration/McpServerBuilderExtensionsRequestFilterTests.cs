@@ -6,13 +6,8 @@ using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
+public class McpServerBuilderExtensionsRequestFilterTests(ITestOutputHelper testOutputHelper) : ClientServerTestBase(testOutputHelper)
 {
-    public McpServerBuilderExtensionsFilterTests(ITestOutputHelper testOutputHelper)
-        : base(testOutputHelper)
-    {
-    }
-
     private static ILogger GetLogger(IServiceProvider? services, string categoryName)
     {
         var loggerFactory = services?.GetRequiredService<ILoggerFactory>() ?? throw new InvalidOperationException("LoggerFactory not available");
@@ -22,101 +17,116 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder
-            .AddListResourceTemplatesFilter((next) => async (request, cancellationToken) =>
+            .WithRequestFilters(filters =>
             {
-                var logger = GetLogger(request.Services, "ListResourceTemplatesFilter");
-                logger.LogInformation("ListResourceTemplatesFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ListToolsFilter");
-                logger.LogInformation("ListToolsFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ListToolsOrder1");
-                logger.LogInformation("ListToolsOrder1 before");
-                var result = await next(request, cancellationToken);
-                logger.LogInformation("ListToolsOrder1 after");
-                return result;
-            })
-            .AddListToolsFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ListToolsOrder2");
-                logger.LogInformation("ListToolsOrder2 before");
-                var result = await next(request, cancellationToken);
-                logger.LogInformation("ListToolsOrder2 after");
-                return result;
-            })
-            .AddCallToolFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "CallToolFilter");
-                var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
-                logger.LogInformation($"CallToolFilter executed for tool: {primitiveId}");
-                try
+                filters.AddListResourceTemplatesFilter((next) => async (request, cancellationToken) =>
                 {
+                    var logger = GetLogger(request.Services, "ListResourceTemplatesFilter");
+                    logger.LogInformation("ListResourceTemplatesFilter executed");
                     return await next(request, cancellationToken);
-                }
-                catch (Exception ex)
+                });
+
+                filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
                 {
-                    return new CallToolResult
+                    var logger = GetLogger(request.Services, "ListToolsFilter");
+                    logger.LogInformation("ListToolsFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "ListToolsOrder1");
+                    logger.LogInformation("ListToolsOrder1 before");
+                    var result = await next(request, cancellationToken);
+                    logger.LogInformation("ListToolsOrder1 after");
+                    return result;
+                });
+
+                filters.AddListToolsFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "ListToolsOrder2");
+                    logger.LogInformation("ListToolsOrder2 before");
+                    var result = await next(request, cancellationToken);
+                    logger.LogInformation("ListToolsOrder2 after");
+                    return result;
+                });
+
+                filters.AddCallToolFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "CallToolFilter");
+                    var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
+                    logger.LogInformation($"CallToolFilter executed for tool: {primitiveId}");
+                    try
                     {
-                        Content = [new TextContentBlock { Text = $"Error from filter: {ex.Message}" }],
-                        IsError = true
-                    };
-                }
-            })
-            .AddListPromptsFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ListPromptsFilter");
-                logger.LogInformation("ListPromptsFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddGetPromptFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "GetPromptFilter");
-                var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
-                logger.LogInformation($"GetPromptFilter executed for prompt: {primitiveId}");
-                return await next(request, cancellationToken);
-            })
-            .AddListResourcesFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ListResourcesFilter");
-                logger.LogInformation("ListResourcesFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddReadResourceFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "ReadResourceFilter");
-                var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
-                logger.LogInformation($"ReadResourceFilter executed for resource: {primitiveId}");
-                return await next(request, cancellationToken);
-            })
-            .AddCompleteFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "CompleteFilter");
-                logger.LogInformation("CompleteFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddSubscribeToResourcesFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "SubscribeToResourcesFilter");
-                logger.LogInformation("SubscribeToResourcesFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddUnsubscribeFromResourcesFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "UnsubscribeFromResourcesFilter");
-                logger.LogInformation("UnsubscribeFromResourcesFilter executed");
-                return await next(request, cancellationToken);
-            })
-            .AddSetLoggingLevelFilter((next) => async (request, cancellationToken) =>
-            {
-                var logger = GetLogger(request.Services, "SetLoggingLevelFilter");
-                logger.LogInformation("SetLoggingLevelFilter executed");
-                return await next(request, cancellationToken);
+                        return await next(request, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new CallToolResult
+                        {
+                            Content = [new TextContentBlock { Text = $"Error from filter: {ex.Message}" }],
+                            IsError = true
+                        };
+                    }
+                });
+
+                filters.AddListPromptsFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "ListPromptsFilter");
+                    logger.LogInformation("ListPromptsFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddGetPromptFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "GetPromptFilter");
+                    var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
+                    logger.LogInformation($"GetPromptFilter executed for prompt: {primitiveId}");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddListResourcesFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "ListResourcesFilter");
+                    logger.LogInformation("ListResourcesFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddReadResourceFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "ReadResourceFilter");
+                    var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
+                    logger.LogInformation($"ReadResourceFilter executed for resource: {primitiveId}");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddCompleteFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "CompleteFilter");
+                    logger.LogInformation("CompleteFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddSubscribeToResourcesFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "SubscribeToResourcesFilter");
+                    logger.LogInformation("SubscribeToResourcesFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddUnsubscribeFromResourcesFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "UnsubscribeFromResourcesFilter");
+                    logger.LogInformation("UnsubscribeFromResourcesFilter executed");
+                    return await next(request, cancellationToken);
+                });
+
+                filters.AddSetLoggingLevelFilter((next) => async (request, cancellationToken) =>
+                {
+                    var logger = GetLogger(request.Services, "SetLoggingLevelFilter");
+                    logger.LogInformation("SetLoggingLevelFilter executed");
+                    return await next(request, cancellationToken);
+                });
             })
             .WithTools<TestTool>()
             .WithPrompts<TestPrompt>()

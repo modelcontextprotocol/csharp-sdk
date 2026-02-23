@@ -234,7 +234,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         AIFunction = function;
         ProtocolTool = tool;
-        ProtocolTool.McpServerTool = this;
 
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
@@ -267,7 +266,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        JsonNode? structuredContent = CreateStructuredResponse(result);
+        JsonElement? structuredContent = CreateStructuredResponse(result);
         return result switch
         {
             AIContent aiContent => new()
@@ -530,7 +529,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return outputSchema;
     }
 
-    private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
+    private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
     {
         if (ProtocolTool.OutputSchema is null)
         {
@@ -538,25 +537,29 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonNode? nodeResult = aiFunctionResult switch
+        JsonElement? elementResult = aiFunctionResult switch
         {
-            JsonNode node => node,
-            JsonElement jsonElement => JsonSerializer.SerializeToNode(jsonElement, McpJsonUtilities.JsonContext.Default.JsonElement),
-            _ => JsonSerializer.SerializeToNode(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+            JsonElement jsonElement => jsonElement,
+            JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
+            null => null,
+            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
 
         if (_structuredOutputRequiresWrapping)
         {
-            return new JsonObject
+            JsonNode? resultNode = elementResult is { } je
+                ? JsonSerializer.SerializeToNode(je, McpJsonUtilities.JsonContext.Default.JsonElement)
+                : null;
+            return JsonSerializer.SerializeToElement(new JsonObject
             {
-                ["result"] = nodeResult
-            };
+                ["result"] = resultNode
+            }, McpJsonUtilities.JsonContext.Default.JsonObject);
         }
 
-        return nodeResult;
+        return elementResult;
     }
 
-    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
+    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
     {
         List<ContentBlock> contentList = [];
         bool allErrorContent = true;

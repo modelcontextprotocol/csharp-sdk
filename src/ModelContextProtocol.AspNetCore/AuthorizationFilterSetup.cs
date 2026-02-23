@@ -43,37 +43,45 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListToolsFilter(McpServerOptions options)
     {
-        options.Filters.ListToolsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListToolsFilters.Add(next =>
         {
-            context.Items[AuthorizationFilterInvokedKey] = true;
+            var toolCollection = options.ToolCollection;
+            return async (context, cancellationToken) =>
+            {
+                context.Items[AuthorizationFilterInvokedKey] = true;
 
-            var result = await next(context, cancellationToken);
-            await FilterAuthorizedItemsAsync(
-                result.Tools, static tool => tool.McpServerTool,
-                context.User, context.Services, context);
-            return result;
+                var result = await next(context, cancellationToken);
+                await FilterAuthorizedItemsAsync(
+                    result.Tools, tool => toolCollection is not null && toolCollection.TryGetPrimitive(tool.Name, out var serverTool) ? serverTool : null,
+                    context.User, context.Services, context);
+                return result;
+            };
         });
     }
 
     private static void CheckListToolsFilter(McpServerOptions options)
     {
-        options.Filters.ListToolsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListToolsFilters.Add(next =>
         {
-            var result = await next(context, cancellationToken);
-
-            if (HasAuthorizationMetadata(result.Tools.Select(static tool => tool.McpServerTool))
-                && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+            var toolCollection = options.ToolCollection;
+            return async (context, cancellationToken) =>
             {
-                throw new InvalidOperationException("Authorization filter was not invoked for tools/list operation, but authorization metadata was found on the tools. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
-            }
+                var result = await next(context, cancellationToken);
 
-            return result;
+                if (HasAuthorizationMetadata(result.Tools.Select(tool => toolCollection is not null && toolCollection.TryGetPrimitive(tool.Name, out var serverTool) ? serverTool : null))
+                    && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+                {
+                    throw new InvalidOperationException("Authorization filter was not invoked for tools/list operation, but authorization metadata was found on the tools. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
+                }
+
+                return result;
+            };
         });
     }
 
     private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        options.Filters.CallToolFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
@@ -89,7 +97,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckCallToolFilter(McpServerOptions options)
     {
-        options.Filters.CallToolFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
@@ -103,67 +111,83 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListResourcesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourcesFilters.Add(next =>
         {
-            context.Items[AuthorizationFilterInvokedKey] = true;
+            var resourceCollection = options.ResourceCollection;
+            return async (context, cancellationToken) =>
+            {
+                context.Items[AuthorizationFilterInvokedKey] = true;
 
-            var result = await next(context, cancellationToken);
-            await FilterAuthorizedItemsAsync(
-                result.Resources, static resource => resource.McpServerResource,
-                context.User, context.Services, context);
-            return result;
+                var result = await next(context, cancellationToken);
+                await FilterAuthorizedItemsAsync(
+                    result.Resources, resource => resourceCollection is not null && resourceCollection.TryGetPrimitive(resource.Uri, out var serverResource) ? serverResource : null,
+                    context.User, context.Services, context);
+                return result;
+            };
         });
     }
 
     private static void CheckListResourcesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourcesFilters.Add(next =>
         {
-            var result = await next(context, cancellationToken);
-
-            if (HasAuthorizationMetadata(result.Resources.Select(static resource => resource.McpServerResource))
-                && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+            var resourceCollection = options.ResourceCollection;
+            return async (context, cancellationToken) =>
             {
-                throw new InvalidOperationException("Authorization filter was not invoked for resources/list operation, but authorization metadata was found on the resources. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
-            }
+                var result = await next(context, cancellationToken);
 
-            return result;
+                if (HasAuthorizationMetadata(result.Resources.Select(resource => resourceCollection is not null && resourceCollection.TryGetPrimitive(resource.Uri, out var serverResource) ? serverResource : null))
+                    && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+                {
+                    throw new InvalidOperationException("Authorization filter was not invoked for resources/list operation, but authorization metadata was found on the resources. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
+                }
+
+                return result;
+            };
         });
     }
 
     private void ConfigureListResourceTemplatesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourceTemplatesFilters.Add(next =>
         {
-            context.Items[AuthorizationFilterInvokedKey] = true;
+            var resourceCollection = options.ResourceCollection;
+            return async (context, cancellationToken) =>
+            {
+                context.Items[AuthorizationFilterInvokedKey] = true;
 
-            var result = await next(context, cancellationToken);
-            await FilterAuthorizedItemsAsync(
-                result.ResourceTemplates, static resourceTemplate => resourceTemplate.McpServerResource,
-                context.User, context.Services, context);
-            return result;
+                var result = await next(context, cancellationToken);
+                await FilterAuthorizedItemsAsync(
+                    result.ResourceTemplates, resourceTemplate => resourceCollection is not null && resourceCollection.TryGetPrimitive(resourceTemplate.UriTemplate, out var serverResource) ? serverResource : null,
+                    context.User, context.Services, context);
+                return result;
+            };
         });
     }
 
     private static void CheckListResourceTemplatesFilter(McpServerOptions options)
     {
-        options.Filters.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListResourceTemplatesFilters.Add(next =>
         {
-            var result = await next(context, cancellationToken);
-
-            if (HasAuthorizationMetadata(result.ResourceTemplates.Select(static resourceTemplate => resourceTemplate.McpServerResource))
-                && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+            var resourceCollection = options.ResourceCollection;
+            return async (context, cancellationToken) =>
             {
-                throw new InvalidOperationException("Authorization filter was not invoked for resources/templates/list operation, but authorization metadata was found on the resource templates. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
-            }
+                var result = await next(context, cancellationToken);
 
-            return result;
+                if (HasAuthorizationMetadata(result.ResourceTemplates.Select(resourceTemplate => resourceCollection is not null && resourceCollection.TryGetPrimitive(resourceTemplate.UriTemplate, out var serverResource) ? serverResource : null))
+                    && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+                {
+                    throw new InvalidOperationException("Authorization filter was not invoked for resources/templates/list operation, but authorization metadata was found on the resource templates. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
+                }
+
+                return result;
+            };
         });
     }
 
     private void ConfigureReadResourceFilter(McpServerOptions options)
     {
-        options.Filters.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -179,7 +203,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckReadResourceFilter(McpServerOptions options)
     {
-        options.Filters.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
@@ -193,37 +217,45 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureListPromptsFilter(McpServerOptions options)
     {
-        options.Filters.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListPromptsFilters.Add(next =>
         {
-            context.Items[AuthorizationFilterInvokedKey] = true;
+            var promptCollection = options.PromptCollection;
+            return async (context, cancellationToken) =>
+            {
+                context.Items[AuthorizationFilterInvokedKey] = true;
 
-            var result = await next(context, cancellationToken);
-            await FilterAuthorizedItemsAsync(
-                result.Prompts, static prompt => prompt.McpServerPrompt,
-                context.User, context.Services, context);
-            return result;
+                var result = await next(context, cancellationToken);
+                await FilterAuthorizedItemsAsync(
+                    result.Prompts, prompt => promptCollection is not null && promptCollection.TryGetPrimitive(prompt.Name, out var serverPrompt) ? serverPrompt : null,
+                    context.User, context.Services, context);
+                return result;
+            };
         });
     }
 
     private static void CheckListPromptsFilter(McpServerOptions options)
     {
-        options.Filters.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.ListPromptsFilters.Add(next =>
         {
-            var result = await next(context, cancellationToken);
-
-            if (HasAuthorizationMetadata(result.Prompts.Select(static prompt => prompt.McpServerPrompt))
-                && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+            var promptCollection = options.PromptCollection;
+            return async (context, cancellationToken) =>
             {
-                throw new InvalidOperationException("Authorization filter was not invoked for prompts/list operation, but authorization metadata was found on the prompts. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
-            }
+                var result = await next(context, cancellationToken);
 
-            return result;
+                if (HasAuthorizationMetadata(result.Prompts.Select(prompt => promptCollection is not null && promptCollection.TryGetPrimitive(prompt.Name, out var serverPrompt) ? serverPrompt : null))
+                    && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
+                {
+                    throw new InvalidOperationException("Authorization filter was not invoked for prompts/list operation, but authorization metadata was found on the prompts. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
+                }
+
+                return result;
+            };
         });
     }
 
     private void ConfigureGetPromptFilter(McpServerOptions options)
     {
-        options.Filters.GetPromptFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.GetPromptFilters.Add(next => async (context, cancellationToken) =>
         {
             context.Items[AuthorizationFilterInvokedKey] = true;
 
@@ -239,7 +271,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private static void CheckGetPromptFilter(McpServerOptions options)
     {
-        options.Filters.GetPromptFilters.Add(next => async (context, cancellationToken) =>
+        options.Filters.Request.GetPromptFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))

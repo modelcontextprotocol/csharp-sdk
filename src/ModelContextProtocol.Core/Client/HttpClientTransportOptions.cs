@@ -113,14 +113,15 @@ public sealed class HttpClientTransportOptions
     /// Gets or sets the maximum number of consecutive reconnection attempts when an SSE stream is disconnected.
     /// </summary>
     /// <value>
-    /// The maximum number of reconnection attempts. The default is 2.
+    /// The maximum number of reconnection attempts. The default is 5.
     /// </value>
     /// <remarks>
     /// When an SSE stream is disconnected (e.g., due to a network issue), the client will attempt to
     /// reconnect using the Last-Event-ID header to resume from where it left off. This property controls
-    /// how many reconnection attempts are made before giving up.
+    /// how many consecutive reconnection attempts are made before giving up. The counter resets to zero
+    /// on each successful stream read, so this value only limits consecutive failures.
     /// </remarks>
-    public int MaxReconnectionAttempts { get; set; } = 2;
+    public int MaxReconnectionAttempts { get; set; } = 5;
 
     /// <summary>
     /// Gets or sets the default interval at which the client attempts reconnection after an SSE stream is disconnected.

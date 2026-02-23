@@ -22,7 +22,7 @@ namespace ModelContextProtocol.Client;
 /// is done based on an ordinal, case-sensitive string comparison.
 /// </para>
 /// </remarks>
-public class McpClientHandlers
+public sealed class McpClientHandlers
 {
     /// <summary>Gets or sets notification handlers to register with the client.</summary>
     /// <remarks>

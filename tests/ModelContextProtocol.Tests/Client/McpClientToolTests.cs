@@ -122,7 +122,7 @@ public class McpClientToolTests : ClientServerTestBase
             new()
             {
                 Content = [new TextContentBlock { Text = "Regular content" }],
-                StructuredContent = JsonNode.Parse("{\"key\":\"value\"}")
+                StructuredContent = JsonElement.Parse("{\"key\":\"value\"}")
             };
 
         // Tool that returns CallToolResult with Meta

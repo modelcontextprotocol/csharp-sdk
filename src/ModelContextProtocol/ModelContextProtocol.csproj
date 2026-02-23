@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
   </ItemGroup>
 
   <ItemGroup>

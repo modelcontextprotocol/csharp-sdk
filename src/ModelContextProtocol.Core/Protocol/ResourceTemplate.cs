@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -94,12 +93,6 @@ public sealed class ResourceTemplate : IBaseMetadata
     [JsonIgnore]
     public bool IsTemplated => UriTemplate.Contains('{');
 
-    /// <summary>
-    /// Gets or sets the callable server resource corresponding to this metadata, if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerResource? McpServerResource { get; set; }
-
     /// <summary>Converts the <see cref="ResourceTemplate"/> into a <see cref="Resource"/>.</summary>
     /// <returns>A <see cref="Resource"/> if <see cref="IsTemplated"/> is <see langword="false"/>; otherwise, <see langword="null"/>.</returns>
     public Resource? AsResource()
@@ -119,7 +112,6 @@ public sealed class ResourceTemplate : IBaseMetadata
             Annotations = Annotations,
             Icons = Icons,
             Meta = Meta,
-            McpServerResource = McpServerResource,
         };
     }
 }

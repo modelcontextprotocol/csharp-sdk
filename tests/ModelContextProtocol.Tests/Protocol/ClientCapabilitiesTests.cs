@@ -21,7 +21,11 @@ public static class ClientCapabilitiesTests
                 Form = new FormElicitationCapability(),
                 Url = new UrlElicitationCapability()
             },
-            Tasks = new McpTasksCapability()
+            Tasks = new McpTasksCapability(),
+            Extensions = new Dictionary<string, object>
+            {
+                ["io.modelcontextprotocol/test"] = new object()
+            }
         };
 
         string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
@@ -37,6 +41,8 @@ public static class ClientCapabilitiesTests
         Assert.NotNull(deserialized.Elicitation.Form);
         Assert.NotNull(deserialized.Elicitation.Url);
         Assert.NotNull(deserialized.Tasks);
+        Assert.NotNull(deserialized.Extensions);
+        Assert.True(deserialized.Extensions.ContainsKey("io.modelcontextprotocol/test"));
     }
 
     [Fact]
@@ -53,5 +59,42 @@ public static class ClientCapabilitiesTests
         Assert.Null(deserialized.Sampling);
         Assert.Null(deserialized.Elicitation);
         Assert.Null(deserialized.Tasks);
+        Assert.Null(deserialized.Extensions);
+    }
+
+    [Fact]
+    public static void ClientCapabilities_Extensions_DeserializesFromJson()
+    {
+        string json = """
+            {
+                "extensions": {
+                    "io.modelcontextprotocol/oauth-client-credentials": {},
+                    "io.modelcontextprotocol/test-extension": {
+                        "setting1": "value1",
+                        "setting2": 42
+                    }
+                }
+            }
+            """;
+
+        var deserialized = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(deserialized);
+        Assert.NotNull(deserialized.Extensions);
+        Assert.Equal(2, deserialized.Extensions.Count);
+        Assert.True(deserialized.Extensions.ContainsKey("io.modelcontextprotocol/oauth-client-credentials"));
+        Assert.True(deserialized.Extensions.ContainsKey("io.modelcontextprotocol/test-extension"));
+    }
+
+    [Fact]
+    public static void ClientCapabilities_Extensions_EmptyObjectDeserializesAsEmptyDictionary()
+    {
+        string json = """{"extensions": {}}""";
+
+        var deserialized = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(deserialized);
+        Assert.NotNull(deserialized.Extensions);
+        Assert.Empty(deserialized.Extensions);
     }
 }

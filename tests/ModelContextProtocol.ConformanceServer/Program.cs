@@ -38,7 +38,7 @@ public class Program
             })
             .WithTools<ConformanceTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
-            .AddCallToolFilter(next => async (request, cancellationToken) =>
+            .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
             {
                 var result = await next(request, cancellationToken);
 
@@ -51,7 +51,7 @@ public class Program
                 }
 
                 return result;
-            })
+            }))
             .WithPrompts<ConformancePrompts>()
             .WithResources<ConformanceResources>()
             .WithSubscribeToResourcesHandler(async (ctx, ct) =>

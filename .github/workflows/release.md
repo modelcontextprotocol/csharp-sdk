@@ -7,24 +7,13 @@ The following process is used when publishing new releases to NuGet.org:
     - Once the state of the branch is known to be good, a release can proceed
     - **The release workflow _does not_ run tests**
 
-2. **Create a new Release in GitHub**
-    - Use the link on the repo home page to [Create a new release](https://github.com/modelcontextprotocol/csharp-sdk/releases/new)
-    - Click the 'Choose a tag' dropdown button
-        - Type the name using the `v{major}.{minor}.{patch}-{suffix}` pattern
-        - Click 'Create new tag: ... on publish'
-    - Click the 'Target' dropdown button
-        - Choose the 'Recent Commits' tab
-        - Select the commit to use for the release, ensuring it's one from above where CI is known to be green
-    - The 'Previous tag' dropdown can remain on 'Auto' unless the previous release deviated from this process
-    - Click the 'Generate release notes button'
-        - This will add release notes into the Release description
-        - The generated release notes include what has changed and the list of new contributors
-    - Verify the Release title
-        - It will be populated to match the tag name to be created
-        - This should be retained, using the release title format matching the `v{major}.{minor}.{patch}-{suffix}` format
-    - Augment the Release description as desired
-        - This content is presented used on GitHub and is not persisted into any artifacts
-    - Check the 'Set as a pre-release' button under the release description if appropriate
+2. **Prepare release notes using Copilot CLI**
+    - From a local clone of the repository, use Copilot CLI to invoke the `release-notes` skill
+    - Provide the target commit (SHA, branch, or tag) when prompted, ensuring it's one from above where CI is known to be green
+    - The skill will determine the version from `src/Directory.Build.props`, gather PRs, categorize changes, audit breaking changes, identify acknowledgements, and create a **draft** GitHub release
+    - Review each section as the skill presents it and confirm or adjust as needed
+    - After the draft release is created, review it on GitHub
+    - Check the 'Set as a pre-release' checkbox if appropriate
     - Click 'Publish release'
 
 3. **Monitor the Release workflow**
@@ -33,4 +22,5 @@ The following process is used when publishing new releases to NuGet.org:
     - Verify the package version becomes listed on at [https://nuget.org/packages/ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol)
 
 4. **Update the source to increment the version number**
-    - Immediately after publishing a new release, the [`/src/Directory.Build.Props`](../../src/Directory.Build.props) file needs to be updated to bump the version to the next expected release version
+    - The `release-notes` skill will offer to invoke the `bump-version` skill to create a pull request bumping the version
+    - Alternatively, manually update [`/src/Directory.Build.Props`](../../src/Directory.Build.props) to bump the version to the next expected release version
