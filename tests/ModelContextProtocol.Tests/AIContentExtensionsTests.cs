@@ -431,26 +431,15 @@ public class AIContentExtensionsTests
 
     [Theory]
     [MemberData(nameof(Base64TestData))]
-    public void ImageContentBlock_ToAIContent_PreservesData(byte[] originalBytes)
-    {
-        var image = ImageContentBlock.FromBytes(originalBytes, "image/png");
-
-        var aiContent = image.ToAIContent();
-
-        var dataContent = Assert.IsType<DataContent>(aiContent);
-        Assert.Equal("image/png", dataContent.MediaType);
-        Assert.Equal(originalBytes, dataContent.Data.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
     public void ImageContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         var image = ImageContentBlock.FromBytes(originalBytes, "image/png");
 
         var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
-        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("image/png", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
 
+        var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
         Assert.Equal("image/png", roundTripped.MimeType);
         Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
     }
@@ -467,6 +456,7 @@ public class AIContentExtensionsTests
         };
 
         var aiContent = Assert.IsType<DataContent>(image.ToAIContent());
+        Assert.Equal("image/jpeg", aiContent.MediaType);
         Assert.Equal(originalBytes, aiContent.Data.ToArray());
 
         var roundTripped = Assert.IsType<ImageContentBlock>(aiContent.ToContentBlock());
@@ -476,26 +466,15 @@ public class AIContentExtensionsTests
 
     [Theory]
     [MemberData(nameof(Base64TestData))]
-    public void AudioContentBlock_ToAIContent_PreservesData(byte[] originalBytes)
-    {
-        var audio = AudioContentBlock.FromBytes(originalBytes, "audio/wav");
-
-        var aiContent = audio.ToAIContent();
-
-        var dataContent = Assert.IsType<DataContent>(aiContent);
-        Assert.Equal("audio/wav", dataContent.MediaType);
-        Assert.Equal(originalBytes, dataContent.Data.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
     public void AudioContentBlock_ToAIContent_RoundTrips(byte[] originalBytes)
     {
         var audio = AudioContentBlock.FromBytes(originalBytes, "audio/wav");
 
         var aiContent = Assert.IsType<DataContent>(audio.ToAIContent());
-        var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
+        Assert.Equal("audio/wav", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
 
+        var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
         Assert.Equal("audio/wav", roundTripped.MimeType);
         Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
     }
@@ -512,25 +491,12 @@ public class AIContentExtensionsTests
         };
 
         var aiContent = Assert.IsType<DataContent>(audio.ToAIContent());
+        Assert.Equal("audio/mp3", aiContent.MediaType);
         Assert.Equal(originalBytes, aiContent.Data.ToArray());
 
         var roundTripped = Assert.IsType<AudioContentBlock>(aiContent.ToContentBlock());
         Assert.Equal("audio/mp3", roundTripped.MimeType);
         Assert.Equal(originalBytes, roundTripped.DecodedData.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
-    public void BlobResourceContents_ToAIContent_PreservesData(byte[] originalBytes)
-    {
-        var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin", "application/octet-stream");
-        var embedded = new EmbeddedResourceBlock { Resource = blob };
-
-        var aiContent = embedded.ToAIContent();
-
-        var dataContent = Assert.IsType<DataContent>(aiContent);
-        Assert.Equal("application/octet-stream", dataContent.MediaType);
-        Assert.Equal(originalBytes, dataContent.Data.ToArray());
     }
 
     [Theory]
@@ -541,9 +507,11 @@ public class AIContentExtensionsTests
         var embedded = new EmbeddedResourceBlock { Resource = blob };
 
         var aiContent = Assert.IsType<DataContent>(embedded.ToAIContent());
+        Assert.Equal("application/octet-stream", aiContent.MediaType);
+        Assert.Equal(originalBytes, aiContent.Data.ToArray());
+
         var roundTripped = Assert.IsType<EmbeddedResourceBlock>(aiContent.ToContentBlock());
         var roundTrippedBlob = Assert.IsType<BlobResourceContents>(roundTripped.Resource);
-
         Assert.Equal("application/octet-stream", roundTrippedBlob.MimeType);
         Assert.Equal(originalBytes, roundTrippedBlob.DecodedData.ToArray());
     }
@@ -562,52 +530,13 @@ public class AIContentExtensionsTests
         var embedded = new EmbeddedResourceBlock { Resource = blob };
 
         var aiContent = Assert.IsType<DataContent>(embedded.ToAIContent());
+        Assert.Equal("application/octet-stream", aiContent.MediaType);
         Assert.Equal(originalBytes, aiContent.Data.ToArray());
 
         var roundTripped = Assert.IsType<EmbeddedResourceBlock>(aiContent.ToContentBlock());
         var roundTrippedBlob = Assert.IsType<BlobResourceContents>(roundTripped.Resource);
         Assert.Equal("application/octet-stream", roundTrippedBlob.MimeType);
         Assert.Equal(originalBytes, roundTrippedBlob.DecodedData.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
-    public void DataContent_ImageToContentBlock_PreservesData(byte[] originalBytes)
-    {
-        var dataContent = new DataContent(originalBytes, "image/png");
-
-        var contentBlock = dataContent.ToContentBlock();
-
-        var image = Assert.IsType<ImageContentBlock>(contentBlock);
-        Assert.Equal("image/png", image.MimeType);
-        Assert.Equal(originalBytes, image.DecodedData.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
-    public void DataContent_AudioToContentBlock_PreservesData(byte[] originalBytes)
-    {
-        var dataContent = new DataContent(originalBytes, "audio/wav");
-
-        var contentBlock = dataContent.ToContentBlock();
-
-        var audio = Assert.IsType<AudioContentBlock>(contentBlock);
-        Assert.Equal("audio/wav", audio.MimeType);
-        Assert.Equal(originalBytes, audio.DecodedData.ToArray());
-    }
-
-    [Theory]
-    [MemberData(nameof(Base64TestData))]
-    public void DataContent_BlobToContentBlock_PreservesData(byte[] originalBytes)
-    {
-        var dataContent = new DataContent(originalBytes, "application/octet-stream");
-
-        var contentBlock = dataContent.ToContentBlock();
-
-        var embedded = Assert.IsType<EmbeddedResourceBlock>(contentBlock);
-        var blob = Assert.IsType<BlobResourceContents>(embedded.Resource);
-        Assert.Equal("application/octet-stream", blob.MimeType);
-        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
     }
 
     [Theory]
