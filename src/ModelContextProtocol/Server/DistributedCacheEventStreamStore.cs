@@ -40,9 +40,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
 
         var optionsValue = options.Value;
         _cache = optionsValue.Cache ?? throw new InvalidOperationException(
-            $"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}' property must be set. " +
-            $"When using 'WithDistributedCacheEventStreamStore()', the cache will be automatically configured from DI. " +
-            $"When constructing manually, set the '{nameof(DistributedCacheEventStreamStoreOptions.Cache)}' property on the options object.");
+            $"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}' property must be set.");
         _options = optionsValue;
         _logger = logger ?? NullLogger<DistributedCacheEventStreamStore>.Instance;
     }

@@ -62,6 +62,21 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     }
 
     [Fact]
+    public void WithDistributedCacheEventStreamStore_ThrowsOptionsValidationException_WhenNoCacheConfigured()
+    {
+        Builder.Services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .WithDistributedCacheEventStreamStore();
+
+        using var app = Builder.Build();
+
+        var ex = Assert.Throws<OptionsValidationException>(
+            () => app.Services.GetRequiredService<ISseEventStreamStore>());
+        Assert.StartsWith($"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}'", ex.Message);
+    }
+
+    [Fact]
     public void EventStreamStore_IsPopulatedFromDI_ViaPostConfigure()
     {
         Builder.Services.AddDistributedMemoryCache();

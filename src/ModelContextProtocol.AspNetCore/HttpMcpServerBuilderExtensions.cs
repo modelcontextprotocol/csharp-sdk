@@ -89,6 +89,7 @@ public static class HttpMcpServerBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsValidator>());
         builder.Services.AddSingleton<ISseEventStreamStore, DistributedCacheEventStreamStore>();
 
         if (configureOptions is not null)

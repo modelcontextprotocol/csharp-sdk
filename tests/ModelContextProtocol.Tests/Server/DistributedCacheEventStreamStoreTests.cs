@@ -35,6 +35,14 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
+    public void Constructor_ThrowsInvalidOperationException_WhenCacheIsNull()
+    {
+        var options = Options.Create(new DistributedCacheEventStreamStoreOptions());
+        var ex = Assert.Throws<InvalidOperationException>(() => new DistributedCacheEventStreamStore(options));
+        Assert.StartsWith($"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}'", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateStreamAsync_ThrowsArgumentNullException_WhenOptionsIsNull()
     {
         // Arrange
