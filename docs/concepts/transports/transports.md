@@ -17,18 +17,15 @@ The stdio transport communicates over standard input and output streams. It is b
 
 #### stdio client
 
-Use <xref:ModelContextProtocol.Client.StdioClientTransport> to launch a server process and communicate over its stdin/stdout:
+Use <xref:ModelContextProtocol.Client.StdioClientTransport> to launch a server process and communicate over its stdin/stdout. This example connects to the [NuGet MCP Server]:
+
+[NuGet MCP Server]: https://learn.microsoft.com/nuget/concepts/nuget-mcp-server
 
 ```csharp
 var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
-    Command = "dotnet",
-    Arguments = ["run", "--project", "path/to/McpServer"],
-    WorkingDirectory = "/home/user/projects",
-    EnvironmentVariables = new Dictionary<string, string?>
-    {
-        ["API_KEY"] = Environment.GetEnvironmentVariable("API_KEY")
-    },
+    Command = "dnx",
+    Arguments = ["NuGet.Mcp.Server"],
     ShutdownTimeout = TimeSpan.FromSeconds(10)
 });
 
