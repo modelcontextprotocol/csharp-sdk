@@ -535,24 +535,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // sending a response) is still blocked waiting for data. Without this, the foreground
             // await at SendToRelatedTransportAsync would hang indefinitely.
             using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _ = tcs.Task.ContinueWith(
-                static (_, state) =>
-                {
-                    try { ((CancellationTokenSource)state!).Cancel(); }
-                    catch (ObjectDisposedException) { }
-                },
-                sendCts,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+
+            Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
+            Task cancelTask = Task.CompletedTask;
+            if (!sendTask.IsCompleted)
+            {
+                cancelTask = tcs.Task.ContinueWith(static (_, sendCts) => ((CancellationTokenSource)sendCts!).Cancel(), sendCts, sendCts.Token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
 
             try
             {
-                await SendToRelatedTransportAsync(request, sendCts.Token).ConfigureAwait(false);
+                await sendTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 // The send was canceled because the response arrived through another channel.
+            }
+            finally
+            {
+                sendCts.Cancel();
             }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
