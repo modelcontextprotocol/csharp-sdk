@@ -50,14 +50,10 @@ public class CodePrompts
     [McpServerPrompt, Description("Generates a code review prompt")]
     public static IEnumerable<ChatMessage> CodeReview(
         [Description("The programming language")] string language,
-        [Description("The code to review")] string code)
-    {
-        return
+        [Description("The code to review")] string code) =>
         [
-            new ChatMessage(ChatRole.User,
-                $"Please review the following {language} code:\n\n```{language}\n{code}\n```"),
-            new ChatMessage(ChatRole.Assistant,
-                "I'll review the code for correctness, style, and potential improvements.")
+            new(ChatRole.User, $"Please review the following {language} code:\n\n```{language}\n{code}\n```"),
+            new(ChatRole.Assistant, "I'll review the code for correctness, style, and potential improvements.")
         ];
     }
 }

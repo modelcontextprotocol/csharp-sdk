@@ -96,3 +96,6 @@ builder.Services.AddMcpServer()
 
 > [!NOTE]
 > The cursor format is opaque to the client. Servers can use any encoding scheme (numeric offsets, encoded tokens, database cursors, etc.) as long as they can parse their own cursors on subsequent requests.
+
+> [!NOTE]
+> Because the cursor format is opaque to the client, _any_ value specified in the cursor, including the empty string, signals that more results are available. If an MCP server erroneously sends an empty string cursor with the final page of results, clients can implement their own low-level pagination scheme to work around this case.

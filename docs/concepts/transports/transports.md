@@ -13,7 +13,7 @@ MCP uses a [transport layer] to handle the communication between clients and ser
 
 ### stdio transport
 
-The stdio transport communicates over standard input and output streams. It is best suited for local integrations where the MCP server runs as a child process of the client.
+The stdio transport communicates over standard input and output streams. It is best suited for local integrations, as the MCP server runs as a child process of the client.
 
 #### stdio client
 
