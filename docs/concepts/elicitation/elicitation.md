@@ -34,6 +34,82 @@ For enum types, the SDK supports several schema formats:
 - **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option.
 - **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility.
 
+#### Default values
+
+Each schema type supports a `Default` property that specifies a pre-populated value for the form field.
+Clients should use defaults to pre-fill form fields, making it easier for users to accept common values or see expected input formats.
+
+```csharp
+var result = await server.ElicitAsync(new ElicitRequestParams
+{
+    Message = "Configure your preferences",
+    RequestedSchema = new ElicitRequestParams.RequestSchema
+    {
+        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+        {
+            ["name"] = new ElicitRequestParams.StringSchema
+            {
+                Description = "Your display name",
+                Default = "User"
+            },
+            ["maxResults"] = new ElicitRequestParams.NumberSchema
+            {
+                Description = "Maximum number of results",
+                Default = 25
+            },
+            ["enableNotifications"] = new ElicitRequestParams.BooleanSchema
+            {
+                Description = "Enable push notifications",
+                Default = true
+            },
+            ["theme"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema
+            {
+                Description = "UI theme",
+                Enum = ["light", "dark", "system"],
+                Default = "system"
+            }
+        }
+    }
+}, cancellationToken);
+```
+
+If the client returns accepted content with missing fields, the server automatically fills those fields with their schema defaults. This ensures tools always receive complete data regardless of client behavior.
+
+#### Enum schema formats
+
+Enum schemas allow the server to present a set of choices to the user.
+
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.UntitledSingleSelectEnumSchema>: Simple single-select where enum values serve as both the value and display text.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.TitledSingleSelectEnumSchema>: Single-select with separate display titles for each option using JSON Schema `oneOf` with `const` and `title`.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.UntitledMultiSelectEnumSchema>: Multi-select allowing multiple values.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.TitledMultiSelectEnumSchema>: Multi-select with display titles.
+
+```csharp
+// Titled single-select: display titles differ from values
+["priority"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+{
+    Description = "Task priority",
+    OneOf =
+    [
+        new ElicitRequestParams.EnumSchemaOption { Const = "p0", Title = "Critical (P0)" },
+        new ElicitRequestParams.EnumSchemaOption { Const = "p1", Title = "High (P1)" },
+        new ElicitRequestParams.EnumSchemaOption { Const = "p2", Title = "Normal (P2)" },
+    ],
+    Default = "p2"
+},
+
+// Multi-select: user can select multiple values
+["tags"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
+{
+    Description = "Tags to apply",
+    Items = new ElicitRequestParams.UntitledEnumItemsSchema
+    {
+        Enum = ["bug", "feature", "docs", "test"]
+    },
+    Default = ["bug"]
+}
+```
+
 The server can request a single input or multiple inputs at once.
 To help distinguish multiple inputs, each input has a unique name.
 
