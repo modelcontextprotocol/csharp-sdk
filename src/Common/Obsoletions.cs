@@ -1,10 +1,10 @@
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Defines diagnostic IDs, Messages, and Urls for APIs annotated with <see cref="ObsoleteAttribute"/>.
+/// Defines diagnostic IDs, messages, and URLs for APIs annotated with <see cref="ObsoleteAttribute"/>.
 /// </summary>
 /// <remarks>
-/// When a deprecated API is associated with an specification change, the message
+/// When a deprecated API is associated with a specification change, the message
 /// should refer to the specification version that introduces the change and the SEP
 /// when available. If there is a SEP associated with the experimental API, the Url should
 /// point to the SEP issue.

@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Defines diagnostic IDs, Messages, and Urls for APIs annotated with <see cref="ExperimentalAttribute"/>.
+/// Defines diagnostic IDs, messages, and URLs for APIs annotated with <see cref="ExperimentalAttribute"/>.
 /// </summary>
 /// <remarks>
 /// When an experimental API is associated with an experimental specification, the message

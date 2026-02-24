@@ -17,7 +17,7 @@ public static partial class McpServerBuilderExtensions
 {
     #region WithTools
     private const string WithToolsRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata" +
+        $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithTools)} method instead.";
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -202,7 +202,7 @@ public static partial class McpServerBuilderExtensions
 
     #region WithPrompts
     private const string WithPromptsRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithPrompts)} and {nameof(WithPromptsFromAssembly)} methods require dynamic lookup of method metadata" +
+        $"The non-generic {nameof(WithPrompts)} and {nameof(WithPromptsFromAssembly)} methods require dynamic lookup of method metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithPrompts)} method instead.";
 
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -360,7 +360,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// Prompts registered through this method can be discovered by clients using the <c>list_prompts</c> request
-    /// and invoked using the <c>call_prompt</c> request.
+    /// and invoked using the <c>prompts/get</c> request.
     /// </para>
     /// <para>
     /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
@@ -384,7 +384,7 @@ public static partial class McpServerBuilderExtensions
 
     #region WithResources
     private const string WithResourcesRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata" +
+        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
 
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -421,7 +421,7 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TResourceType">The resource type.</typeparam>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <param name="target">The target instance from which the resources should be sourced.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -945,7 +945,6 @@ public static partial class McpServerBuilderExtensions
     /// when the parent process disconnects.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithStdioServerTransport(this IMcpServerBuilder builder)
     {
         Throw.IfNull(builder);

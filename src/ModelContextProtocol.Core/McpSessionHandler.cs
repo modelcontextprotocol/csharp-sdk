@@ -47,7 +47,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Checks if the given protocol version supports priming events.
     /// </summary>
     /// <param name="protocolVersion">The protocol version to check.</param>
-    /// <returns>True if the protocol version supports resumability.</returns>
+    /// <returns>True if the protocol version supports priming events.</returns>
     /// <remarks>
     /// Priming events are only supported in protocol version &gt;= 2025-11-25.
     /// Older clients may crash when receiving SSE events with empty data.
@@ -463,7 +463,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Sends a JSON-RPC request to the server.
-    /// It is strongly recommended use the capability-specific methods instead of this one.
+    /// It is strongly recommended to use the capability-specific methods instead of this one.
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>

@@ -772,7 +772,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
+    /// <exception cref="McpException">Thrown when the metadata can't be fetched or the resource URI doesn't match the server URL.</exception>
     private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         Uri resourceUri = _serverUrl;

@@ -17,8 +17,8 @@ namespace ModelContextProtocol;
 /// </list>
 /// </para>
 /// <para>
-/// <see cref="McpSession"/> serves as the base interface for both <see cref="McpClient"/> and
-/// <see cref="McpServer"/> interfaces, providing the common functionality needed for MCP protocol
+/// <see cref="McpSession"/> serves as the base class for both <see cref="McpClient"/> and
+/// <see cref="McpServer"/>, providing the common functionality needed for MCP protocol
 /// communication. Most applications will use these more specific interfaces rather than working with
 /// <see cref="McpSession"/> directly.
 /// </para>
@@ -85,7 +85,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <summary>Registers a handler to be invoked when a notification for the specified method is received.</summary>
     /// <param name="method">The notification method.</param>
     /// <param name="handler">The handler to be invoked.</param>
-    /// <returns>An <see cref="IDisposable"/> that will remove the registered handler when disposed.</returns>
+    /// <returns>An <see cref="IAsyncDisposable"/> that will remove the registered handler when disposed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     public abstract IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler);
