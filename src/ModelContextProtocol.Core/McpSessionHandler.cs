@@ -544,8 +544,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 await sendTask.ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (tcs.Task.IsCompleted && !cancellationToken.IsCancellationRequested)
             {
+                // The response arrived via a concurrent channel (e.g., background GET SSE stream),
+                // which cancelled the transport send. Proceed to retrieve the already-completed response.
             }
             finally
             {
