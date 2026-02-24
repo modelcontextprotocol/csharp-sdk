@@ -189,6 +189,66 @@ foreach (var content in result.Content)
 }
 ```
 
+### Error handling
+
+Tool errors in MCP are distinct from protocol errors. When a tool encounters an error during execution, the error is reported inside the <xref:ModelContextProtocol.Protocol.CallToolResult> with <xref:ModelContextProtocol.Protocol.CallToolResult.IsError> set to `true`, rather than as a protocol-level exception. This allows the LLM to see the error and potentially recover.
+
+#### Automatic exception handling
+
+When a tool method throws an exception, the server automatically catches it and returns a `CallToolResult` with `IsError = true`. <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error, and <xref:System.OperationCanceledException> is re-thrown when the cancellation token was triggered. All other exceptions are returned as tool error results. For <xref:ModelContextProtocol.McpException> subclasses, the exception message is included in the error text; for other exceptions, a generic message is returned to avoid leaking internal details.
+
+```csharp
+[McpServerTool, Description("Divides two numbers")]
+public static double Divide(double a, double b)
+{
+    if (b == 0)
+    {
+        // ArgumentException is not an McpException, so the client receives a generic message:
+        // "An error occurred invoking 'divide'."
+        throw new ArgumentException("Cannot divide by zero");
+    }
+
+    return a / b;
+}
+```
+
+#### Protocol errors
+
+Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (e.g., invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
+
+```csharp
+[McpServerTool, Description("Processes the input")]
+public static string Process(string input)
+{
+    if (string.IsNullOrEmpty(input))
+    {
+        // Propagates as a JSON-RPC error with code -32602 (InvalidParams)
+        // and message "Missing required input"
+        throw new McpProtocolException("Missing required input", McpErrorCode.InvalidParams);
+    }
+
+    return $"Processed: {input}";
+}
+```
+
+#### Checking for errors on the client
+
+On the client side, inspect the <xref:ModelContextProtocol.Protocol.CallToolResult.IsError> property after calling a tool:
+
+```csharp
+CallToolResult result = await client.CallToolAsync("divide", new Dictionary<string, object?>
+{
+    ["a"] = 10,
+    ["b"] = 0
+});
+
+if (result.IsError is true)
+{
+    // Prints: "Tool error: An error occurred invoking 'divide'."
+    Console.WriteLine($"Tool error: {result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}");
+}
+```
+
 ### Tool list change notifications
 
 Servers can dynamically add, remove, or modify tools at runtime. When the tool list changes, the server notifies connected clients so they can refresh their tool list.
