@@ -3,6 +3,8 @@ items:
   href: concepts/index.md
 - name: API Reference
   href: api/ModelContextProtocol.yml
+- name: Roadmap
+  href: roadmap.md
 - name: Versioning
   href: versioning.md
 - name: Experimental APIs
