@@ -23,7 +23,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
     protected abstract HttpClientTransportOptions ClientTransportOptions { get; }
 
-    private Task<McpClient> GetClientAsync(McpClientOptions? options = null)
+    protected Task<McpClient> GetClientAsync(McpClientOptions? options = null)
     {
         return _fixture.ConnectMcpClientAsync(options, LoggerFactory);
     }

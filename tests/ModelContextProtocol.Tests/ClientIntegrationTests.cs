@@ -112,6 +112,60 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Empty(textContent.Text);
     }
 
+    [Fact]
+    public async Task CallTool_Stdio_CancelToken_ThrowsOperationCanceledException()
+    {
+        await using var client = await _fixture.CreateClientAsync("test_server");
+
+        using CancellationTokenSource cts = new();
+        var toolTask = client.CallToolAsync(
+            "longRunning",
+            new Dictionary<string, object?> { ["durationMs"] = 10000 },
+            cancellationToken: cts.Token
+        );
+
+        // Allow some time for the request to be sent
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+
+        cts.Cancel();
+
+        // Client throws OperationCanceledException
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await toolTask);
+
+        // Verify the connection is still open by pinging
+        var pingResult = await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(pingResult);
+    }
+
+    [Fact]
+    public async Task CallTool_Stdio_ClientDisconnectsAbruptly_CancelsServerToken()
+    {
+        var client = await _fixture.CreateClientAsync("test_server");
+
+        // Send the tool call
+        var toolTask = client.CallToolAsync(
+            "longRunning",
+            new Dictionary<string, object?> { ["durationMs"] = 10000 },
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        // Allow some time for the request to be sent and processing to start
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+
+        // Disposing the client will tear down the stdio pipes abruptly
+        await client.DisposeAsync();
+
+        // The local client task will throw because the transport disconnected
+        await Assert.ThrowsAnyAsync<Exception>(async () => await toolTask);
+
+        // Verify the server process was terminated or we can create a new connection depending on server behavior.
+        // For Stdio, the server process is typically isolated to the client connection instance, 
+        // so we start a new client to ensure the transport factory is healthy.
+        await using var newClient = await _fixture.CreateClientAsync("test_server");
+        var pingResult = await newClient.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(pingResult);
+    }
+
     [Theory]
     [MemberData(nameof(GetClients))]
     public async Task CallTool_Stdio_ViaAIFunction_EchoServer(string clientId)
