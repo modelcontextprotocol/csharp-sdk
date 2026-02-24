@@ -20,7 +20,7 @@ public static class HttpMcpServerBuilderExtensions
     /// <see cref="McpServerOptions"/> and running logic before and after a session.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <remarks>For more information on configuring the underlying HTTP server
-    /// to control things like port binding, custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
+    /// to control things like port binding and custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
