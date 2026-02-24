@@ -195,7 +195,7 @@ Tool errors in MCP are distinct from protocol errors. When a tool encounters an 
 
 #### Automatic exception handling
 
-When a tool method throws an exception, the server automatically catches it and returns a `CallToolResult` with `IsError = true`. <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error, and <xref:System.OperationCanceledException> is re-thrown when the cancellation token was triggered. All other exceptions are returned as tool error results. For <xref:ModelContextProtocol.McpException> subclasses, the exception message is included in the error text; for other exceptions, a generic message is returned to avoid leaking internal details.
+When a tool method throws an exception, the server automatically catches it and returns a `CallToolResult` with `IsError = true`. <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error, and `OperationCanceledException` is re-thrown when the cancellation token was triggered. All other exceptions are returned as tool error results. For <xref:ModelContextProtocol.McpException> subclasses, the exception message is included in the error text; for other exceptions, a generic message is returned to avoid leaking internal details.
 
 ```csharp
 [McpServerTool, Description("Divides two numbers")]
