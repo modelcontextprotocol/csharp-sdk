@@ -528,30 +528,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            // Use a linked CTS so that we can cancel the transport send if the response TCS completes
-            // from a concurrent channel (e.g. the background GET SSE stream in Streamable HTTP).
-            // Without this, the foreground transport send could block indefinitely waiting for a response
+            // Wait for either the transport send to complete or for the response to arrive via a
+            // concurrent channel (e.g. the background GET SSE stream in Streamable HTTP). Without
+            // this, the foreground transport send could block indefinitely waiting for a response
             // that was already delivered via a different stream.
-            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
-            if (!sendTask.IsCompleted)
+            Task sendTask = SendToRelatedTransportAsync(request, cancellationToken);
+            if (sendTask != await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
             {
-                _ = tcs.Task.ContinueWith(static (_, state) => ((CancellationTokenSource)state!).Cancel(), sendCts, sendCts.Token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                // The response arrived via a concurrent channel before the transport send completed.
+                // Observe any exception from the still-running send to prevent unobserved task exceptions.
+                _ = sendTask.ContinueWith(
+                    static (t, _) => _ = t.Exception,
+                    null,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
             }
-
-            try
+            else
             {
                 await sendTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (tcs.Task.IsCompleted && !cancellationToken.IsCancellationRequested)
-            {
-                // The response arrived via a concurrent channel (e.g., background GET SSE stream),
-                // which cancelled the transport send. Proceed to retrieve the already-completed response.
-            }
-            finally
-            {
-                sendCts.Cancel();
             }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
