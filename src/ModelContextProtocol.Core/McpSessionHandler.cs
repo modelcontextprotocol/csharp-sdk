@@ -528,7 +528,32 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
+            // Cancel the transport send when the response TCS completes. This handles the case
+            // where a concurrent background stream (e.g., Streamable HTTP's background GET SSE)
+            // already delivered the response to the session via the shared message channel,
+            // while the foreground transport send (a retry GET that the server left open without
+            // sending a response) is still blocked waiting for data. Without this, the foreground
+            // await at SendToRelatedTransportAsync would hang indefinitely.
+            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _ = tcs.Task.ContinueWith(
+                static (_, state) =>
+                {
+                    try { ((CancellationTokenSource)state!).Cancel(); }
+                    catch (ObjectDisposedException) { }
+                },
+                sendCts,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+            try
+            {
+                await SendToRelatedTransportAsync(request, sendCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The send was canceled because the response arrived through another channel.
+            }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
