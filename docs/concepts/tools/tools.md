@@ -15,7 +15,15 @@ This document covers tool content types, change notifications, and schema genera
 
 ### Defining tools on the server
 
-Tools are defined as methods marked with the <xref:ModelContextProtocol.Server.McpServerToolAttribute> attribute within a class marked with <xref:ModelContextProtocol.Server.McpServerToolTypeAttribute>. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes.
+Tools can be defined in several ways:
+
+- Using the <xref:ModelContextProtocol.Server.McpServerToolAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerToolTypeAttribute>
+- Using <xref:ModelContextProtocol.Server.McpServerTool.Create*> factory methods from a delegate, `MethodInfo`, or `AIFunction`
+- Deriving from <xref:ModelContextProtocol.Server.McpServerTool> or <xref:ModelContextProtocol.Server.DelegatingMcpServerTool>
+- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>
+- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>
+
+The attribute-based approach is the most common and is shown throughout this document. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes. In addition to tool arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, `ClaimsPrincipal`, and any service registered through dependency injection.
 
 ```csharp
 [McpServerToolType]
@@ -37,7 +45,7 @@ builder.Services.AddMcpServer()
 
 ### Content types
 
-Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances.
+Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return `DataContent` from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
 
 #### Text content
 
@@ -160,9 +168,9 @@ foreach (var tool in tools)
     Console.WriteLine($"{tool.Name}: {tool.Description}");
 }
 
-// Call a tool
-CallToolResult result = await client.CallToolAsync(
-    "echo",
+// Call a tool by finding it in the list
+McpClientTool echoTool = tools.First(t => t.Name == "echo");
+CallToolResult result = await echoTool.CallAsync(
     new Dictionary<string, object?> { ["message"] = "Hello!" });
 
 // Process the result content blocks
@@ -174,11 +182,9 @@ foreach (var content in result.Content)
             Console.WriteLine(text.Text);
             break;
         case ImageContentBlock image:
-            // image.DecodedData contains the raw bytes
             File.WriteAllBytes("output.png", image.DecodedData.ToArray());
             break;
         case AudioContentBlock audio:
-            // audio.DecodedData contains the raw bytes
             File.WriteAllBytes("output.wav", audio.DecodedData.ToArray());
             break;
         case EmbeddedResourceBlock resource:
@@ -195,7 +201,12 @@ Tool errors in MCP are distinct from protocol errors. When a tool encounters an 
 
 #### Automatic exception handling
 
-When a tool method throws an exception, the server automatically catches it and returns a `CallToolResult` with `IsError = true`. <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error, and `OperationCanceledException` is re-thrown when the cancellation token was triggered. All other exceptions are returned as tool error results. For <xref:ModelContextProtocol.McpException> subclasses, the exception message is included in the error text; for other exceptions, a generic message is returned to avoid leaking internal details.
+When a tool method throws an exception, the server catches it and returns a `CallToolResult` with `IsError = true`, with the following exceptions:
+
+- <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error response (not a tool error result).
+- `OperationCanceledException` is re-thrown when the cancellation token was triggered.
+
+For all other exceptions, the error is returned as a tool result. If the exception derives from <xref:ModelContextProtocol.McpException> (excluding `McpProtocolException`, which is re-thrown above), its message is included in the error text; otherwise, a generic message is returned to avoid leaking internal details.
 
 ```csharp
 [McpServerTool, Description("Divides two numbers")]

@@ -7,13 +7,9 @@ uid: capabilities
 
 ## Capabilities
 
-MCP uses a [capability negotiation] mechanism during connection initialization. Clients and servers exchange their supported capabilities, allowing each side to understand what features the other supports and adapt behavior accordingly.
+MCP uses a [capability negotiation] mechanism during connection setup. Clients and servers exchange their supported capabilities so each side can adapt its behavior accordingly. Both sides should check the other's capabilities before using optional features.
 
 [capability negotiation]: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#initialization
-
-### Overview
-
-During connection setup, clients and servers exchange their supported capabilities so each side can adapt its behavior accordingly. After initialization, both sides should check the other's capabilities before using optional features.
 
 ### Client capabilities
 

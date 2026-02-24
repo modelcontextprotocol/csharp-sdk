@@ -44,7 +44,7 @@ The cancellation notification includes:
 - **RequestId**: The ID of the request to cancel, allowing the receiver to correlate the cancellation with the correct in-flight request.
 - **Reason**: An optional human-readable reason for the cancellation.
 
-Cancellation notifications can be observed by registering a handler:
+Cancellation notifications can be observed by registering a handler. For broader interception of notifications and other messages, <xref:ModelContextProtocol.Server.McpMessageFilter> delegates can be added to the <xref:ModelContextProtocol.Server.McpMessageFilters.IncomingFilters> collection in <xref:ModelContextProtocol.Server.McpServerOptions.Filters>.
 
 ```csharp
 mcpClient.RegisterNotificationHandler(

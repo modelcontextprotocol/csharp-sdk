@@ -15,7 +15,15 @@ This document covers implementing resources on the server, consuming them from t
 
 ### Defining resources on the server
 
-Resources are defined as methods marked with the <xref:ModelContextProtocol.Server.McpServerResourceAttribute> attribute within a class marked with <xref:ModelContextProtocol.Server.McpServerResourceTypeAttribute>. The attribute specifies the URI template that identifies the resource.
+Resources can be defined in several ways:
+
+- Using the <xref:ModelContextProtocol.Server.McpServerResourceAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerResourceTypeAttribute>
+- Using <xref:ModelContextProtocol.Server.McpServerResource.Create*> factory methods from a delegate, `MethodInfo`, or `AIFunction`
+- Deriving from <xref:ModelContextProtocol.Server.McpServerResource> or <xref:ModelContextProtocol.Server.DelegatingMcpServerResource>
+- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>
+- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>
+
+The attribute-based approach is the most common and is shown throughout this document.
 
 #### Direct resources
 

@@ -73,8 +73,6 @@ var result = await server.ElicitAsync(new ElicitRequestParams
 }, cancellationToken);
 ```
 
-If the client returns accepted content with missing fields, the server automatically fills those fields with their schema defaults. This ensures tools always receive complete data regardless of client behavior.
-
 #### Enum schema formats
 
 Enum schemas allow the server to present a set of choices to the user.
@@ -91,9 +89,9 @@ Enum schemas allow the server to present a set of choices to the user.
     Description = "Task priority",
     OneOf =
     [
-        new ElicitRequestParams.EnumSchemaOption { Const = "p0", Title = "Critical (P0)" },
-        new ElicitRequestParams.EnumSchemaOption { Const = "p1", Title = "High (P1)" },
-        new ElicitRequestParams.EnumSchemaOption { Const = "p2", Title = "Normal (P2)" },
+        new() { Const = "p0", Title = "Critical (P0)" },
+        new() { Const = "p1", Title = "High (P1)" },
+        new() { Const = "p2", Title = "Normal (P2)" },
     ],
     Default = "p2"
 },
