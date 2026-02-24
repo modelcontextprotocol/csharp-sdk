@@ -68,7 +68,7 @@ public sealed class Program
     public bool ClientIdMetadataDocumentSupported { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a value indicating whether the authorization server requires a resource parameter.
+    /// Gets or sets a value indicating whether the authorization server expects a resource parameter.
     /// When <c>true</c>, the resource parameter must be present and match a valid resource.
     /// When <c>false</c>, the resource parameter must be absent to simulate legacy servers that
     /// do not support RFC 8707 resource indicators.
@@ -76,7 +76,7 @@ public sealed class Program
     /// <remarks>
     /// The default value is <c>true</c>.
     /// </remarks>
-    public bool RequireResource { get; set; } = true;
+    public bool ExpectResource { get; set; } = true;
 
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
@@ -301,8 +301,8 @@ public sealed class Program
             }
 
             // Validate resource in accordance with RFC 8707.
-            // When RequireResource is false, the resource parameter must be absent (legacy mode).
-            if (RequireResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
+            // When ExpectResource is false, the resource parameter must be absent (legacy mode).
+            if (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -349,9 +349,9 @@ public sealed class Program
             }
 
             // Validate resource in accordance with RFC 8707.
-            // When RequireResource is false, the resource parameter must be absent (legacy mode).
+            // When ExpectResource is false, the resource parameter must be absent (legacy mode).
             var resource = form["resource"].ToString();
-            if (RequireResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
+            if (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {

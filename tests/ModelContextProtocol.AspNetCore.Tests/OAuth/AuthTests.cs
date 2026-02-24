@@ -586,7 +586,7 @@ public class AuthTests : OAuthTestBase
     [Fact]
     public async Task CannotAuthenticate_WhenProtectedResourceMetadataMissingResource()
     {
-        TestOAuthServer.RequireResource = false;
+        TestOAuthServer.ExpectResource = false;
 
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
@@ -1051,7 +1051,7 @@ public class AuthTests : OAuthTestBase
         // 2025-03-26 backcompat: server does NOT serve PRM, but DOES serve auth server metadata.
         // The client should fall back to using the MCP server's origin as the auth server
         // and discover auth metadata from well-known URLs on that origin.
-        TestOAuthServer.RequireResource = false;
+        TestOAuthServer.ExpectResource = false;
 
         // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
@@ -1166,7 +1166,7 @@ public class AuthTests : OAuthTestBase
         // 2025-03-26 backcompat: server does NOT serve PRM AND does NOT serve auth server metadata.
         // The client should fall back to default endpoint paths (/authorize, /token, /register)
         // on the MCP server's origin.
-        TestOAuthServer.RequireResource = false;
+        TestOAuthServer.ExpectResource = false;
 
         // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
