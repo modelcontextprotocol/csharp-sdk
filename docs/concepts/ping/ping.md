@@ -11,45 +11,12 @@ MCP includes a [ping mechanism] that allows either side of a connection to verif
 
 [ping mechanism]: https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/ping
 
-### Overview
-
-The ping operation is a simple request/response exchange. Either the client or the server can initiate a ping, and the other side responds automatically. Ping responses are handled automatically&mdash;callers only need to invoke the method to send a ping.
-
 ### Pinging from the client
 
 Use the <xref:ModelContextProtocol.Client.McpClient.PingAsync*> method to verify the server is responsive:
 
 ```csharp
-await using var client = await McpClient.CreateAsync(transport);
-
-try
-{
-    await client.PingAsync();
-    Console.WriteLine("Server is responsive.");
-}
-catch (OperationCanceledException)
-{
-    Console.WriteLine("Ping timed out - server may be unresponsive.");
-}
-catch (McpException ex)
-{
-    Console.WriteLine($"Ping failed: {ex.Message}");
-}
-```
-
-A timeout can also be specified using a `CancellationToken`:
-
-```csharp
-using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-try
-{
-    await client.PingAsync(cancellationToken: cts.Token);
-}
-catch (OperationCanceledException)
-{
-    Console.WriteLine("Server did not respond within 5 seconds.");
-}
+await client.PingAsync(cancellationToken);
 ```
 
 ### Automatic ping handling

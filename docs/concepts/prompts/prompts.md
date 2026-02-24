@@ -94,11 +94,11 @@ public static IEnumerable<ChatMessage> AnalyzeImage(
 For protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock>, use <xref:ModelContextProtocol.Protocol.PromptMessage> instead of `ChatMessage`. `PromptMessage` has a `Role` property and a single `Content` property of type <xref:ModelContextProtocol.Protocol.ContentBlock>:
 
 ```csharp
-[McpServerPrompt, Description("A prompt that includes a file resource")]
+[McpServerPrompt, Description("A prompt that includes a document resource")]
 public static IEnumerable<PromptMessage> ReviewDocument(
-    [Description("Path to the document to review")] string path)
+    [Description("The document ID to review")] string documentId)
 {
-    string content = File.ReadAllText(path);
+    string content = LoadDocument(documentId); // application logic to load by ID
     return
     [
         new PromptMessage
@@ -113,7 +113,7 @@ public static IEnumerable<PromptMessage> ReviewDocument(
             {
                 Resource = new TextResourceContents
                 {
-                    Uri = $"file:///{path}",
+                    Uri = $"docs://documents/{documentId}",
                     MimeType = "text/plain",
                     Text = content
                 }

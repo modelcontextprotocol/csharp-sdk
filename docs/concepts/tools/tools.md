@@ -84,16 +84,16 @@ Return an <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> to embed a 
 The resource can contain either text or binary data through <xref:ModelContextProtocol.Protocol.TextResourceContents> or <xref:ModelContextProtocol.Protocol.BlobResourceContents>:
 
 ```csharp
-[McpServerTool, Description("Returns a file as an embedded resource")]
-public static EmbeddedResourceBlock ReadFile(string path)
+[McpServerTool, Description("Returns a document as an embedded resource")]
+public static EmbeddedResourceBlock GetDocument()
 {
     return new EmbeddedResourceBlock
     {
         Resource = new TextResourceContents
         {
-            Uri = $"file:///{path}",
+            Uri = "docs://readme",
             MimeType = "text/plain",
-            Text = File.ReadAllText(path)
+            Text = "This is the document content."
         }
     };
 }
@@ -102,13 +102,13 @@ public static EmbeddedResourceBlock ReadFile(string path)
 For binary resources, use <xref:ModelContextProtocol.Protocol.BlobResourceContents>:
 
 ```csharp
-[McpServerTool, Description("Returns a binary file as an embedded resource")]
-public static EmbeddedResourceBlock ReadBinaryFile(string path)
+[McpServerTool, Description("Returns a binary resource")]
+public static EmbeddedResourceBlock GetBinaryData(string id)
 {
+    byte[] data = LoadData(id); // application logic to load data by ID
     return new EmbeddedResourceBlock
     {
-        Resource = BlobResourceContents.FromBytes(
-            File.ReadAllBytes(path), $"file:///{path}", "application/octet-stream")
+        Resource = BlobResourceContents.FromBytes(data, $"data://items/{id}", "application/octet-stream")
     };
 }
 ```
@@ -291,7 +291,6 @@ Tool parameters are described using [JSON Schema 2020-12]. JSON schemas are auto
 | `int`, `long` | `integer` |
 | `float`, `double` | `number` |
 | `bool` | `boolean` |
-| `enum` | `string` with `enum` values |
 | Complex types | `object` with `properties` |
 
 Use `[Description]` attributes on parameters to populate the `description` field in the generated schema. This helps LLMs understand what each parameter expects.

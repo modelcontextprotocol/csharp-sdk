@@ -13,13 +13,7 @@ MCP uses a [capability negotiation] mechanism during connection initialization. 
 
 ### Overview
 
-When a client connects to a server, the initialization handshake includes:
-
-1. The **client** sends an `initialize` request with its <xref:ModelContextProtocol.Protocol.ClientCapabilities> and protocol version.
-2. The **server** responds with its <xref:ModelContextProtocol.Protocol.ServerCapabilities> and the negotiated protocol version.
-3. The client sends an `initialized` notification to confirm the session is ready.
-
-Both sides should check the other's capabilities before using optional features.
+During connection setup, clients and servers exchange their supported capabilities so each side can adapt its behavior accordingly. After initialization, both sides should check the other's capabilities before using optional features.
 
 ### Client capabilities
 
@@ -119,9 +113,7 @@ if (client.ServerCapabilities.Completions is not null)
 
 ### Protocol version negotiation
 
-The client specifies the MCP protocol version it supports in the `initialize` request. The server responds with the negotiated protocol version, which may differ from the client's requested version if the server supports an earlier version.
-
-After initialization, the negotiated version is available on both sides:
+During connection setup, the client and server negotiate a mutually supported MCP protocol version. After initialization, the negotiated version is available on both sides:
 
 ```csharp
 // On the client
