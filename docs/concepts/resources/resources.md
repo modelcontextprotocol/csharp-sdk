@@ -41,17 +41,34 @@ Template resources use [URI templates (RFC 6570)] with parameters. They are retu
 [McpServerResourceType]
 public class FileResources
 {
+    // Configure a root directory for all file:// resources
+    private static readonly string RootDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+
     [McpServerResource(UriTemplate = "file:///{path}", Name = "File Resource")]
-    [Description("Reads a file by its path")]
+    [Description("Reads a file by its path within the configured root directory")]
     public static ResourceContents ReadFile(string path)
     {
-        if (File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new McpException("Path must be provided.");
+        }
+
+        // Combine the requested path with the root directory and canonicalize it
+        var fullPath = Path.GetFullPath(Path.Combine(RootDirectory, path));
+
+        // Ensure the final path is still under the allowed root directory
+        if (!fullPath.StartsWith(RootDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new McpException("Requested file path is outside the allowed directory.");
+        }
+
+        if (File.Exists(fullPath))
         {
             return new TextResourceContents
             {
                 Uri = $"file:///{path}",
                 MimeType = "text/plain",
-                Text = File.ReadAllText(path)
+                Text = File.ReadAllText(fullPath)
             };
         }
 

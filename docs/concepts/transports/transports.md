@@ -130,7 +130,7 @@ See the `ModelContextProtocol.AspNetCore` package [README](https://github.com/mo
 
 The [SSE (Server-Sent Events)] transport is a legacy mechanism that uses unidirectional server-to-client streaming with a separate HTTP endpoint for client-to-server messages. New implementations should prefer Streamable HTTP.
 
-[SSE (Server-Sent Events)]: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#http-with-sse
+[SSE (Server-Sent Events)]: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
 
 > [!NOTE]
 > The SSE transport is considered legacy. The [Streamable HTTP](#streamable-http-transport) transport is the recommended approach for HTTP-based communication and supports bidirectional streaming.

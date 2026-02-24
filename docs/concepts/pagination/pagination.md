@@ -7,7 +7,7 @@ uid: pagination
 
 ## Pagination
 
-MCP uses [cursor-based pagination] for list operations that may return large result sets. This applies to listing tools, prompts, resources, and resource templates.
+MCP uses [cursor-based pagination] for all list operations that may return large result sets.
 
 [cursor-based pagination]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/pagination
 
