@@ -78,11 +78,13 @@ public sealed class McpClientResourceTemplate
     /// <param name="arguments">A dictionary of arguments to pass to the tool. Each key represents a parameter name,
     /// and its associated value represents the argument value.
     /// </param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource template's result with content and messages.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(UriTemplate, arguments, cancellationToken: cancellationToken);
+        _client.ReadResourceAsync(UriTemplate, arguments, options, cancellationToken);
 }
