@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
@@ -33,6 +34,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
         {
@@ -61,6 +63,39 @@ public static class HttpMcpServerBuilderExtensions
 
         // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers a <see cref="DistributedCacheEventStreamStore"/> as the <see cref="ISseEventStreamStore"/> for SSE resumability.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureOptions">An optional action to configure <see cref="DistributedCacheEventStreamStoreOptions"/>.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// An <see cref="IDistributedCache"/> implementation must be registered in the service collection before calling this method.
+    /// The registered cache is automatically assigned to <see cref="DistributedCacheEventStreamStoreOptions.Cache"/>.
+    /// </para>
+    /// <para>
+    /// To use a specific <see cref="IDistributedCache"/> instance instead of the one registered in DI,
+    /// set the <see cref="DistributedCacheEventStreamStoreOptions.Cache"/> property in the <paramref name="configureOptions"/> callback.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithDistributedCacheEventStreamStore(this IMcpServerBuilder builder, Action<DistributedCacheEventStreamStoreOptions>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsValidator>());
+        builder.Services.AddSingleton<ISseEventStreamStore, DistributedCacheEventStreamStore>();
+
+        if (configureOptions is not null)
+        {
+            builder.Services.Configure(configureOptions);
+        }
 
         return builder;
     }
