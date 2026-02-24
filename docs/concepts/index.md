@@ -19,6 +19,7 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 | Title | Description |
 | - | - |
+| [Sampling](sampling/sampling.md) | Learn how servers request LLM completions from the client using the sampling feature. |
 | [Roots](roots/roots.md) | Learn how clients provide filesystem roots to servers for context-aware operations. |
 | [Elicitation](elicitation/elicitation.md) | Learn how to request additional information from users during interactions. |
 
