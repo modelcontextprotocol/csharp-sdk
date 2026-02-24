@@ -270,17 +270,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         LogSelectedAuthorizationServer(selectedAuthServer, availableAuthorizationServers.Count);
 
         // Get auth server metadata
-        AuthorizationServerMetadata authServerMetadata;
-        try
-        {
-            authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
-        }
-        catch (McpException) when (protectedResourceMetadata.Resource is null)
-        {
-            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
-            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
-            authServerMetadata = BuildDefaultAuthServerMetadata(selectedAuthServer);
-        }
+        var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, protectedResourceMetadata.Resource, cancellationToken).ConfigureAwait(false);
 
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetResourceUri(protectedResourceMetadata);
@@ -342,7 +332,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             && uri.AbsolutePath.Length > 1; // AbsolutePath always starts with "/"
     }
 
-    private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
+    private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
         foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
@@ -384,6 +374,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
             }
+        }
+
+        if (resourceUri is null)
+        {
+            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
+            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
+            return BuildDefaultAuthServerMetadata(authServerUri);
         }
 
         throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
