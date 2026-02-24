@@ -23,7 +23,7 @@ Each root is represented by a <xref:ModelContextProtocol.Protocol.Root> with a U
 
 ### Declaring roots capability on the client
 
-Clients advertise their support for roots in the capabilities sent during initialization. The roots capability is created automatically when a roots handler is provided. Configure the handler through <xref:ModelContextProtocol.McpClientHandlers.RootsHandler>:
+Clients advertise their support for roots in the capabilities sent during initialization. The roots capability is created automatically when a roots handler is provided. Configure the handler through <xref:ModelContextProtocol.Client.McpClientHandlers.RootsHandler>:
 
 ```csharp
 var options = new McpClientOptions
