@@ -65,12 +65,14 @@
     <File Path="src/Directory.Build.props" />
     <Project Path="src/ModelContextProtocol.Analyzers/ModelContextProtocol.Analyzers.csproj" />
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
+    <Project Path="src/ModelContextProtocol.AspNetCore.Distributed/ModelContextProtocol.AspNetCore.Distributed.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj" />
+    <Project Path="tests/ModelContextProtocol.AspNetCore.Distributed.Tests/ModelContextProtocol.AspNetCore.Distributed.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.ConformanceClient/ModelContextProtocol.ConformanceClient.csproj" />
     <Project Path="tests/ModelContextProtocol.ConformanceServer/ModelContextProtocol.ConformanceServer.csproj" />
