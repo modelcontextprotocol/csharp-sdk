@@ -74,7 +74,9 @@ public sealed class McpClientPrompt
     /// Gets this prompt's content by sending a request to the server with optional arguments.
     /// </summary>
     /// <param name="arguments">Optional arguments to pass to the prompt. Keys are parameter names, and values are the argument values.</param>
-    /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
+    /// <param name="serializerOptions">The serialization options governing argument serialization. If both this and
+    /// <see cref="RequestOptions.JsonSerializerOptions"/> on <paramref name="options"/> are provided, this parameter takes precedence.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask"/> containing the prompt's result with content and messages.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
@@ -92,12 +94,19 @@ public sealed class McpClientPrompt
     public async ValueTask<GetPromptResult> GetAsync(
         IEnumerable<KeyValuePair<string, object?>>? arguments = null,
         JsonSerializerOptions? serializerOptions = null,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         IReadOnlyDictionary<string, object?>? argDict =
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments?.ToDictionary();
 
-        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, new RequestOptions() { JsonSerializerOptions = serializerOptions }, cancellationToken).ConfigureAwait(false);
+        if (serializerOptions is not null)
+        {
+            options = options?.Clone() ?? new();
+            options.JsonSerializerOptions = serializerOptions;
+        }
+
+        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, options, cancellationToken).ConfigureAwait(false);
     }
 }
