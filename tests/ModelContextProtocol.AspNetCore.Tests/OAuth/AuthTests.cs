@@ -1064,6 +1064,9 @@ public class AuthTests : OAuthTestBase
 
         await using var app = Builder.Build();
 
+        // Capture HttpClient for use in the proxy middleware.
+        var httpClient = HttpClient;
+
         app.Use(async (context, next) =>
         {
             // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
@@ -1073,7 +1076,7 @@ public class AuthTests : OAuthTestBase
                 return;
             }
 
-            // Serve auth server metadata pointing to the real OAuth server endpoints.
+            // Serve auth server metadata pointing to the MCP server's own endpoints.
             // In a real 2025-03-26 deployment, the MCP server itself would be the auth server.
             if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
                 context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
@@ -1082,15 +1085,54 @@ public class AuthTests : OAuthTestBase
                 await context.Response.WriteAsync($$"""
                     {
                         "issuer": "{{OAuthServerUrl}}",
-                        "authorization_endpoint": "{{OAuthServerUrl}}/authorize",
-                        "token_endpoint": "{{OAuthServerUrl}}/token",
-                        "registration_endpoint": "{{OAuthServerUrl}}/register",
+                        "authorization_endpoint": "{{McpServerUrl}}/authorize",
+                        "token_endpoint": "{{McpServerUrl}}/token",
+                        "registration_endpoint": "{{McpServerUrl}}/register",
                         "response_types_supported": ["code"],
                         "grant_types_supported": ["authorization_code", "refresh_token"],
                         "token_endpoint_auth_methods_supported": ["client_secret_post"],
                         "code_challenge_methods_supported": ["S256"]
                     }
                     """);
+                return;
+            }
+
+            // Proxy OAuth endpoints to the real OAuth server.
+            // In a real 2025-03-26 deployment, the MCP server itself would host these endpoints.
+            var path = context.Request.Path.Value;
+            if (path is "/authorize" or "/token" or "/register")
+            {
+                var targetUrl = $"{OAuthServerUrl}{path}{context.Request.QueryString}";
+                using var proxyRequest = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
+
+                if (context.Request.ContentLength > 0 || context.Request.ContentType is not null)
+                {
+                    proxyRequest.Content = new StreamContent(context.Request.Body);
+                    if (context.Request.ContentType is not null)
+                    {
+                        proxyRequest.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(context.Request.ContentType);
+                    }
+                }
+
+                if (context.Request.Headers.Authorization.Count > 0)
+                {
+                    proxyRequest.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToString());
+                }
+
+                using var response = await httpClient.SendAsync(proxyRequest);
+                context.Response.StatusCode = (int)response.StatusCode;
+
+                if (response.Headers.Location is not null)
+                {
+                    context.Response.Headers.Location = response.Headers.Location.ToString();
+                }
+
+                if (response.Content.Headers.ContentType is not null)
+                {
+                    context.Response.ContentType = response.Content.Headers.ContentType.ToString();
+                }
+
+                await response.Content.CopyToAsync(context.Response.Body);
                 return;
             }
 

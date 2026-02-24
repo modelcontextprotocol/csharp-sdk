@@ -69,6 +69,9 @@ public sealed class Program
 
     /// <summary>
     /// Gets or sets a value indicating whether the authorization server requires a resource parameter.
+    /// When <c>true</c>, the resource parameter must be present and match a valid resource.
+    /// When <c>false</c>, the resource parameter must be absent to simulate legacy servers that
+    /// do not support RFC 8707 resource indicators.
     /// </summary>
     /// <remarks>
     /// The default value is <c>true</c>.
@@ -297,8 +300,9 @@ public sealed class Program
                 return Results.Redirect($"{redirect_uri}?error=invalid_request&error_description=Only+S256+code_challenge_method+is+supported&state={state}");
             }
 
-            // Validate resource in accordance with RFC 8707
-            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
+            // Validate resource in accordance with RFC 8707.
+            // When RequireResource is false, the resource parameter must be absent (legacy mode).
+            if (RequireResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -344,9 +348,10 @@ public sealed class Program
                     type: "https://tools.ietf.org/html/rfc6749#section-5.2");
             }
 
-            // Validate resource in accordance with RFC 8707
+            // Validate resource in accordance with RFC 8707.
+            // When RequireResource is false, the resource parameter must be absent (legacy mode).
             var resource = form["resource"].ToString();
-            if (RequireResource && (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)))
+            if (RequireResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {
