@@ -21,10 +21,25 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         return new MemoryDistributedCache(options);
     }
 
-    [Fact]
-    public void Constructor_ThrowsArgumentNullException_WhenCacheIsNull()
+    private static DistributedCacheEventStreamStore CreateStore(IDistributedCache? cache = null, DistributedCacheEventStreamStoreOptions? storeOptions = null)
     {
-        Assert.Throws<ArgumentNullException>("cache", () => new DistributedCacheEventStreamStore(null!));
+        storeOptions ??= new();
+        storeOptions.Cache ??= cache ?? CreateMemoryCache();
+        return new DistributedCacheEventStreamStore(Options.Create(storeOptions));
+    }
+
+    [Fact]
+    public void Constructor_ThrowsArgumentNullException_WhenOptionsIsNull()
+    {
+        Assert.Throws<ArgumentNullException>("options", () => new DistributedCacheEventStreamStore(null!));
+    }
+
+    [Fact]
+    public void Constructor_ThrowsInvalidOperationException_WhenCacheIsNull()
+    {
+        var options = Options.Create(new DistributedCacheEventStreamStoreOptions());
+        var ex = Assert.Throws<InvalidOperationException>(() => new DistributedCacheEventStreamStore(options));
+        Assert.StartsWith($"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}'", ex.Message);
     }
 
     [Fact]
@@ -32,7 +47,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>("options",
@@ -44,7 +59,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -67,7 +82,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -90,7 +105,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -113,7 +128,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -135,7 +150,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -187,7 +202,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -224,7 +239,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -254,7 +269,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             EventSlidingExpiration = TimeSpan.FromMinutes(15)
         };
-        var store = new DistributedCacheEventStreamStore(mockCache, customOptions);
+        var store = CreateStore(mockCache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -282,7 +297,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             EventAbsoluteExpiration = TimeSpan.FromHours(3)
         };
-        var store = new DistributedCacheEventStreamStore(mockCache, customOptions);
+        var store = CreateStore(mockCache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -306,7 +321,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var mockCache = new TestDistributedCache();
-        var store = new DistributedCacheEventStreamStore(mockCache);
+        var store = CreateStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -328,7 +343,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var mockCache = new TestDistributedCache();
-        var store = new DistributedCacheEventStreamStore(mockCache);
+        var store = CreateStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -354,7 +369,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10)
         };
-        var store = new DistributedCacheEventStreamStore(cache, customOptions);
+        var store = CreateStore(cache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -390,7 +405,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -425,7 +440,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -447,7 +462,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var mockCache = new TestDistributedCache();
-        var store = new DistributedCacheEventStreamStore(mockCache);
+        var store = CreateStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -469,7 +484,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>("lastEventId",
@@ -481,7 +496,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Act - Try various invalid event ID formats
         var result1 = await store.GetStreamReaderAsync("invalid-format", CancellationToken);
@@ -499,7 +514,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Create a valid-looking event ID for a stream that doesn't exist
         var fakeEventId = DistributedCacheEventIdFormatter.Format("nonexistent-session", "nonexistent-stream", 1);
@@ -516,7 +531,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "my-session",
@@ -542,7 +557,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -579,7 +594,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -610,7 +625,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -648,7 +663,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -681,7 +696,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -717,7 +732,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -751,7 +766,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -780,7 +795,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -812,7 +827,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -869,7 +884,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -927,7 +942,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -965,7 +980,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -1029,7 +1044,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -1074,7 +1089,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange - Start in default mode, write some events, switch to polling, reader should return remaining events
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
+        var store = CreateStore(cache, new DistributedCacheEventStreamStoreOptions
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
@@ -1120,7 +1135,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Create two streams with different session/stream IDs
         var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
@@ -1178,7 +1193,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         // Create two streams with same session but different stream IDs
         var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
@@ -1231,7 +1246,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange
         var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
+        var store = CreateStore(cache);
 
         var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -1267,7 +1282,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             EventSlidingExpiration = TimeSpan.FromMinutes(30)
         };
-        var store = new DistributedCacheEventStreamStore(mockCache, customOptions);
+        var store = CreateStore(mockCache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -1295,7 +1310,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             EventAbsoluteExpiration = TimeSpan.FromHours(6)
         };
-        var store = new DistributedCacheEventStreamStore(mockCache, customOptions);
+        var store = CreateStore(mockCache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -1325,7 +1340,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             MetadataSlidingExpiration = TimeSpan.FromMinutes(45),
             MetadataAbsoluteExpiration = TimeSpan.FromHours(12)
         };
-        var store = new DistributedCacheEventStreamStore(mockCache, customOptions);
+        var store = CreateStore(mockCache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
@@ -1366,7 +1381,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10) // Fast polling to detect the bug quickly
         };
-        var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
+        var store = CreateStore(trackingCache, customOptions);
 
         // Create a stream and write an event
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
@@ -1405,7 +1420,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     {
         // Arrange - Use a cache that allows us to simulate event expiration
         var trackingCache = new TestDistributedCache();
-        var store = new DistributedCacheEventStreamStore(trackingCache);
+        var store = CreateStore(trackingCache);
 
         // Create a stream and write multiple events
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
@@ -1450,7 +1465,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10)
         };
-        var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
+        var store = CreateStore(trackingCache, customOptions);
 
         // Create a stream in POLLING mode - this allows the reader to exit after reading available events
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
