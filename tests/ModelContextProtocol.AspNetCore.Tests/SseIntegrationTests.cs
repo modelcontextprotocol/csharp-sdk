@@ -83,6 +83,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Builder.Services.AddMcpServer()
             .WithHttpTransport(httpTransportOptions =>
             {
+#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
                 httpTransportOptions.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
                     // We could also use ServerCapabilities.NotificationHandlers, but it's good to have some test coverage of RunSessionHandler.
@@ -93,6 +94,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                     });
                     return mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP003
             });
 
         await using var app = Builder.Build();

@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
   </ItemGroup>
 

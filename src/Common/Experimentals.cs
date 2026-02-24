@@ -71,4 +71,19 @@ internal static class Experimentals
     /// URL for experimental subclassing of McpClient and McpServer.
     /// </summary>
     public const string Subclassing_Url = "https://github.com/modelcontextprotocol/csharp-sdk/pull/1363";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental <c>RunSessionHandler</c> API.
+    /// </summary>
+    public const string RunSessionHandler_DiagnosticId = "MCPEXP003";
+
+    /// <summary>
+    /// Message for the experimental <c>RunSessionHandler</c> API.
+    /// </summary>
+    public const string RunSessionHandler_Message = "RunSessionHandler is experimental and may be removed or changed in a future release. Consider using ConfigureSessionOptions instead.";
+
+    /// <summary>
+    /// URL for the experimental <c>RunSessionHandler</c> API.
+    /// </summary>
+    public const string RunSessionHandler_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp003";
 }

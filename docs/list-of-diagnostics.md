@@ -25,6 +25,7 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | :------------ | :---------- |
 | `MCPEXP001` | MCP experimental APIs including Tasks and Extensions. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results (see [MCP Tasks specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)). Extensions provide a framework for extending the Model Context Protocol while maintaining interoperability (see [SEP-2133](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133)). |
 | `MCPEXP002` | Subclassing `McpClient` and `McpServer` is experimental and subject to change (see [#1363](https://github.com/modelcontextprotocol/csharp-sdk/pull/1363)). |
+| `MCPEXP003` | `RunSessionHandler` is experimental and may be removed or change signatures in a future release. Consider using `ConfigureSessionOptions` instead, which provides access to the `HttpContext` of the initializing request with fewer known issues. |
 
 ## Obsolete APIs
 

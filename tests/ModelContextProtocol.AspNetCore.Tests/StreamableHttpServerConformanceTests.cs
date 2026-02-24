@@ -325,11 +325,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
+#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
                 options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
                     server = mcpServer;
                     return mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP003
             });
 
         await StartAsync();
@@ -365,11 +367,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
+#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
                 options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
                     server = mcpServer;
                     return mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP003
             });
 
         await StartAsync();
@@ -502,11 +506,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             .WithHttpTransport(options =>
             {
                 options.PerSessionExecutionContext = true;
+#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
                 options.RunSessionHandler = async (httpContext, mcpServer, cancellationToken) =>
                 {
                     asyncLocal.Value = $"RunSessionHandler ({totalSessionCount++})";
                     await mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP003
             });
 
         Builder.Services.AddSingleton(McpServerTool.Create([McpServerTool(Name = "async-local-session")] () => asyncLocal.Value));

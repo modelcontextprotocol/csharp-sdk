@@ -24,7 +24,15 @@ public class HttpServerTransportOptions
     /// </summary>
     /// <remarks>
     /// This callback is useful for running logic before a session starts and after it completes.
+    /// <para>
+    /// Consider using <see cref="ConfigureSessionOptions"/> instead, which provides access to the
+    /// <see cref="HttpContext"/> of the initializing request with fewer known issues.
+    /// </para>
+    /// <para>
+    /// This API is experimental and may be removed or change signatures in a future release.
+    /// </para>
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(Experimentals.RunSessionHandler_DiagnosticId, UrlFormat = Experimentals.RunSessionHandler_Url)]
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>

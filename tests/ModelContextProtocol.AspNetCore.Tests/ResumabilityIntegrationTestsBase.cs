@@ -253,11 +253,13 @@ public abstract class ResumabilityIntegrationTestsBase(ITestOutputHelper testOut
 
         await using var app = await CreateServerAsync(configureTransport: options =>
         {
+#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
             options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
             {
                 serverTcs.TrySetResult(mcpServer);
                 return mcpServer.RunAsync(cancellationToken);
             };
+#pragma warning restore MCPEXP003
         });
 
         await using var client = await ConnectClientAsync();
