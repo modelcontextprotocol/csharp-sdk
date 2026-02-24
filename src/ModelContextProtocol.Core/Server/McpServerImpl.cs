@@ -297,20 +297,12 @@ internal sealed partial class McpServerImpl : McpServer
                     string partialValue = request.Params!.Argument.Value;
                     var filtered = Array.FindAll(allowedValues, v => v.StartsWith(partialValue, StringComparison.OrdinalIgnoreCase));
 
-                    if (result.Completion.Values.Count > 0)
+                    foreach (var v in filtered)
                     {
-                        foreach (var v in filtered)
-                        {
-                            result.Completion.Values.Add(v);
-                        }
-                    }
-                    else
-                    {
-                        result.Completion.Values = filtered;
+                        result.Completion.Values.Add(v);
                     }
 
                     result.Completion.Total = result.Completion.Values.Count;
-                    result.Completion.HasMore = false;
                 }
 
                 return result;
