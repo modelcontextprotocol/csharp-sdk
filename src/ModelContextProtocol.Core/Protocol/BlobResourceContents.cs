@@ -32,13 +32,12 @@ public sealed class BlobResourceContents : ResourceContents
     private ReadOnlyMemory<byte>? _blob;
 
     /// <summary>
-    /// Creates an <see cref="BlobResourceContents"/> from raw data.
+    /// Creates a <see cref="BlobResourceContents"/> from raw data.
     /// </summary>
     /// <param name="bytes">The raw unencoded data.</param>
     /// <param name="uri">The URI of the blob resource.</param>
     /// <param name="mimeType">The optional MIME type of the data.</param>
     /// <returns>A new <see cref="BlobResourceContents"/> instance.</returns>
-    /// <exception cref="InvalidOperationException"></exception>
     public static BlobResourceContents FromBytes(ReadOnlyMemory<byte> bytes, string uri, string? mimeType = null)
     {
         return new(bytes, uri, mimeType);
