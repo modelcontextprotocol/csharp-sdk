@@ -66,7 +66,7 @@ Use the results (confirmed breaking changes with impact ordering and detail bull
 Verify that all C# code samples in the package README files compile against the current SDK at the target commit. Follow [references/readme-snippets.md](references/readme-snippets.md) for the full procedure.
 
 1. Extract `csharp`-fenced code blocks from `README.md`, `src/ModelContextProtocol.Core/README.md`, and `src/ModelContextProtocol.AspNetCore/README.md`
-2. Create a temporary test project at `tests/ReadmeSnippetValidation/` that references all three SDK projects
+2. Create a temporary test project at `tests/ReadmeSnippetValidation/` that references the SDK projects
 3. Wrap each code block in a compilable method, applying fixups for incomplete snippets (replace `...` with `null!`, add common usings)
 4. Build the project with `dotnet build`
 5. Report results — classify any failures as API mismatches (README bugs) or structural fragments

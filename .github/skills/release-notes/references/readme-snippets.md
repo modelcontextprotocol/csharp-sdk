@@ -36,7 +36,7 @@ Some code blocks are illustrative fragments that cannot compile even with wrappe
 
 ## Test Project Approach
 
-Create a **temporary** test project that references all three SDK projects, wraps each README's code samples in compilable methods, and builds.
+Create a **temporary** test project that references the SDK projects, wraps each README's code samples in compilable methods, and builds.
 
 ### Project File Template
 
@@ -107,11 +107,10 @@ public static class RootReadmeSamples
 
 ### Build Commands
 
-```powershell
+```sh
 # Restore and build the validation project
 dotnet restore tests/ReadmeSnippetValidation/ReadmeSnippetValidation.csproj
 dotnet build tests/ReadmeSnippetValidation/ReadmeSnippetValidation.csproj
-```
 
 ### Cleanup
 
