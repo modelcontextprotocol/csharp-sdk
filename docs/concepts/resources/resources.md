@@ -39,40 +39,25 @@ Template resources use [URI templates (RFC 6570)] with parameters. They are retu
 
 ```csharp
 [McpServerResourceType]
-public class FileResources
+public class DocumentResources
 {
-    // Configure a root directory for all file:// resources
-    private static readonly string RootDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-
-    [McpServerResource(UriTemplate = "file:///{path}", Name = "File Resource")]
-    [Description("Reads a file by its path within the configured root directory")]
-    public static ResourceContents ReadFile(string path)
+    [McpServerResource(UriTemplate = "docs://articles/{id}", Name = "Article")]
+    [Description("Returns an article by its ID")]
+    public static ResourceContents GetArticle(string id)
     {
-        if (string.IsNullOrWhiteSpace(path))
+        string? content = LoadArticle(id); // application logic to load by ID
+
+        if (content is null)
         {
-            throw new McpException("Path must be provided.");
+            throw new McpException($"Article not found: {id}");
         }
 
-        // Combine the requested path with the root directory and canonicalize it
-        var fullPath = Path.GetFullPath(Path.Combine(RootDirectory, path));
-
-        // Ensure the final path is still under the allowed root directory
-        if (!fullPath.StartsWith(RootDirectory, StringComparison.OrdinalIgnoreCase))
+        return new TextResourceContents
         {
-            throw new McpException("Requested file path is outside the allowed directory.");
-        }
-
-        if (File.Exists(fullPath))
-        {
-            return new TextResourceContents
-            {
-                Uri = $"file:///{path}",
-                MimeType = "text/plain",
-                Text = File.ReadAllText(fullPath)
-            };
-        }
-
-        throw new McpException($"File not found: {path}");
+            Uri = $"docs://articles/{id}",
+            MimeType = "text/plain",
+            Text = content
+        };
     }
 }
 ```
@@ -83,7 +68,7 @@ Register resource types when building the server:
 builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithResources<MyResources>()
-    .WithResources<FileResources>();
+    .WithResources<DocumentResources>();
 ```
 
 ### Reading text resources
