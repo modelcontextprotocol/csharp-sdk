@@ -73,7 +73,7 @@ internal static class Experimentals
 
     /// <summary>
     /// Diagnostic ID for experimental SDK APIs unrelated to the MCP specification,
-    /// such as subclassing <c>McpClient</c>/<c>McpServer</c> and <c>RunSessionHandler</c>.
+    /// such as subclassing <c>McpClient</c>/<c>McpServer</c> or referencing <c>RunSessionHandler</c>.
     /// </summary>
     /// <remarks>
     /// This diagnostic ID covers experimental SDK-level extensibility APIs. All constants

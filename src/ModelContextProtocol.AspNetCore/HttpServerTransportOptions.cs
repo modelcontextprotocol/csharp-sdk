@@ -25,6 +25,11 @@ public class HttpServerTransportOptions
     /// <remarks>
     /// This callback is useful for running logic before a session starts and after it completes.
     /// <para>
+    /// The <see cref="HttpContext"/> parameter comes from the request that initiated the session (e.g., the
+    /// initialize request) and may not be usable after <see cref="McpServer.RunAsync"/> starts, since that
+    /// request will have already completed.
+    /// </para>
+    /// <para>
     /// Consider using <see cref="ConfigureSessionOptions"/> instead, which provides access to the
     /// <see cref="HttpContext"/> of the initializing request with fewer known issues.
     /// </para>
