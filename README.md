@@ -6,11 +6,13 @@ The official C# SDK for the [Model Context Protocol](https://modelcontextprotoco
 
 ## Packages
 
-This SDK consists of three main packages:
+This SDK consists of four main packages:
 
 - **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest) - The main package with hosting and dependency injection extensions. This is the right fit for most projects that don't need HTTP server capabilities. This README serves as documentation for this package.
 
 - **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest) - The library for HTTP-based MCP servers. [Documentation](src/ModelContextProtocol.AspNetCore/README.md)
+
+- **[ModelContextProtocol.AspNetCore.Distributed](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore.Distributed/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.AspNetCore.Distributed.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore.Distributed/absoluteLatest) - Session-aware routing for MCP servers running across multiple instances, built on ASP.NET Core HybridCache and YARP. [Documentation](src/ModelContextProtocol.AspNetCore.Distributed/README.md)
 
 - **[ModelContextProtocol.Core](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.Core.svg)](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest) - For people who only need to use the client or low-level server APIs and want the minimum number of dependencies. [Documentation](src/ModelContextProtocol.Core/README.md)
 
