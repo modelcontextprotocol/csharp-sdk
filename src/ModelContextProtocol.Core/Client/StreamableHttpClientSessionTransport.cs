@@ -174,7 +174,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
                 if (_getReceiveTask != null)
                 {
-                    await _getReceiveTask.ConfigureAwait(false);
+                    // Use a timeout to prevent hanging if cancellation doesn't
+                    // promptly interrupt the background SSE stream read. This can
+                    // occur on some platforms where Stream.ReadAsync doesn't always
+                    // respect the cancellation token immediately.
+                    await _getReceiveTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)

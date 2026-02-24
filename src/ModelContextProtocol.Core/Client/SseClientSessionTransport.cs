@@ -114,7 +114,9 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             {
                 if (_receiveTask != null)
                 {
-                    await _receiveTask.ConfigureAwait(false);
+                    // Use a timeout to prevent hanging if cancellation doesn't
+                    // promptly interrupt the SSE stream read.
+                    await _receiveTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 }
             }
             finally
