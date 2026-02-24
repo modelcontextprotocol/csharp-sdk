@@ -270,10 +270,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         LogSelectedAuthorizationServer(selectedAuthServer, availableAuthorizationServers.Count);
 
         // Get auth server metadata
-        var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
+        AuthorizationServerMetadata authServerMetadata;
+        try
+        {
+            authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
+        }
+        catch (McpException) when (protectedResourceMetadata.Resource is null)
+        {
+            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
+            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
+            authServerMetadata = BuildDefaultAuthServerMetadata(selectedAuthServer);
+        }
 
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
-        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceUri(protectedResourceMetadata);
 
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
@@ -379,6 +389,25 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
     }
 
+    /// <summary>
+    /// Constructs default authorization server metadata using conventional endpoint paths
+    /// as specified by the MCP 2025-03-26 specification for servers without metadata discovery.
+    /// </summary>
+    private static AuthorizationServerMetadata BuildDefaultAuthServerMetadata(Uri authServerUri)
+    {
+        var baseUrl = authServerUri.GetLeftPart(UriPartial.Authority);
+        return new AuthorizationServerMetadata
+        {
+            AuthorizationEndpoint = new Uri($"{baseUrl}/authorize"),
+            TokenEndpoint = new Uri($"{baseUrl}/token"),
+            RegistrationEndpoint = new Uri($"{baseUrl}/register"),
+            ResponseTypesSupported = ["code"],
+            GrantTypesSupported = ["authorization_code", "refresh_token"],
+            TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+            CodeChallengeMethodsSupported = ["S256"],
+        };
+    }
+
     private static IEnumerable<Uri> GetWellKnownAuthorizationServerMetadataUris(Uri issuer)
     {
         var builder = new UriBuilder(issuer);
@@ -398,14 +427,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private async Task<string?> RefreshTokensAsync(string refreshToken, string resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<string?> RefreshTokensAsync(string refreshToken, string? resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
         Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["resource"] = resourceUri,
         };
+
+        if (resourceUri is not null)
+        {
+            formFields["resource"] = resourceUri;
+        }
 
         using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
@@ -445,7 +478,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         AuthorizationServerMetadata authServerMetadata,
         string codeChallenge)
     {
-        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceUri(protectedResourceMetadata);
 
         var queryParamsDictionary = new Dictionary<string, string>
         {
@@ -454,8 +487,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
-            ["resource"] = resourceUri,
         };
+
+        if (resourceUri is not null)
+        {
+            queryParamsDictionary["resource"] = resourceUri;
+        }
 
         var scope = GetScopeParameter(protectedResourceMetadata);
         if (!string.IsNullOrEmpty(scope))
@@ -490,7 +527,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         string codeVerifier,
         CancellationToken cancellationToken)
     {
-        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceUri(protectedResourceMetadata);
 
         Dictionary<string, string> formFields = new()
         {
@@ -498,8 +535,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
             ["code_verifier"] = codeVerifier,
-            ["resource"] = resourceUri,
         };
+
+        if (resourceUri is not null)
+        {
+            formFields["resource"] = resourceUri;
+        }
 
         using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
@@ -671,15 +712,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private static string GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
-    {
-        if (protectedResourceMetadata.Resource is null)
-        {
-            ThrowFailedToHandleUnauthorizedResponse("Protected resource metadata did not include a 'resource' value.");
-        }
-
-        return protectedResourceMetadata.Resource;
-    }
+    private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
+        => protectedResourceMetadata.Resource;
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
@@ -801,6 +835,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         ProtectedResourceMetadata? metadata = null;
+        bool isLegacyFallback = false;
 
         if (resourceMetadataUrl is not null)
         {
@@ -822,7 +857,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
             if (metadata is null)
             {
-                throw new McpException($"Failed to find protected resource metadata at a well-known location for {_serverUrl}");
+                // 2025-03-26 backcompat: server doesn't support PRM (RFC 9728).
+                // Fall back to treating the MCP server's origin as the authorization server.
+                var serverOrigin = _serverUrl.GetLeftPart(UriPartial.Authority);
+                metadata = new ProtectedResourceMetadata
+                {
+                    AuthorizationServers = [serverOrigin],
+                };
+                isLegacyFallback = true;
             }
         }
 
@@ -833,7 +875,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server
         LogValidatingResourceMetadata(resourceUri);
 
-        if (!VerifyResourceMatch(metadata, resourceUri))
+        if (!isLegacyFallback && !VerifyResourceMatch(metadata, resourceUri))
         {
             throw new McpException($"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({resourceUri})");
         }
