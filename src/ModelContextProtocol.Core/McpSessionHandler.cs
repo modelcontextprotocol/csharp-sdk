@@ -528,7 +528,31 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
+            // Create a linked CTS that cancels when the response arrives through any channel.
+            // This prevents transport retry loops from running indefinitely when a concurrent
+            // receive stream (e.g., Streamable HTTP's background GET SSE) already delivered the
+            // response to the session via the shared message channel.
+            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _ = tcs.Task.ContinueWith(
+                static (_, state) =>
+                {
+                    try { ((CancellationTokenSource)state!).Cancel(); }
+                    catch (ObjectDisposedException) { }
+                },
+                sendCts,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+            try
+            {
+                await SendToRelatedTransportAsync(request, sendCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The send was canceled because the response arrived through another channel
+                // (e.g., a background GET SSE stream in the Streamable HTTP transport).
+            }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
