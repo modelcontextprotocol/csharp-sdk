@@ -53,7 +53,7 @@ var result = await client.CallToolAsync(
     cancellationToken: CancellationToken.None);
 
 // echo always returns one and only one text content object
-Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
+Console.WriteLine(result.Content.OfType<TextContentBlock>().First().Text);
 ```
 
 Clients can connect to any MCP server, not just ones created using this library. The protocol is designed to be server-agnostic, so you can use this library to connect to any compliant server.
@@ -68,7 +68,7 @@ IList<McpClientTool> tools = await client.ListToolsAsync();
 IChatClient chatClient = ...;
 var response = await chatClient.GetResponseAsync(
     "your prompt here",
-    new() { Tools = [.. tools] },
+    new() { Tools = [.. tools] });
 ```
 
 ## Getting Started (Server)
@@ -79,13 +79,9 @@ The core package provides the basic server functionality. Here's an example of c
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-// Create server options
-var serverOptions = new McpServerOptions();
-
-// Add tools directly
-serverOptions.Capabilities.Tools = new()
+// Create server options with tools
+var serverOptions = new McpServerOptions
 {
-    ListChanged = true,
     ToolCollection = [
         McpServerTool.Create((string message) => $"hello {message}", new()
         {
@@ -96,9 +92,9 @@ serverOptions.Capabilities.Tools = new()
 };
 
 // Create and run server with stdio transport
-var server = new McpServer(serverOptions);
-using var stdioTransport = new StdioServerTransport();
-await server.RunAsync(stdioTransport, CancellationToken.None);
+await using var stdioTransport = new StdioServerTransport("EchoServer");
+await using var server = McpServer.Create(stdioTransport, serverOptions);
+await server.RunAsync(CancellationToken.None);
 ```
 
 For more advanced scenarios with dependency injection, hosting, and automatic tool discovery, see the `ModelContextProtocol` package.
