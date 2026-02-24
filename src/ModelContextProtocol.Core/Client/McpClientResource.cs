@@ -74,6 +74,7 @@ public sealed class McpClientResource
     /// <summary>
     /// Gets this resource's content by sending a request to the server.
     /// </summary>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
@@ -83,6 +84,7 @@ public sealed class McpClientResource
     /// </para>
     /// </remarks>
     public ValueTask<ReadResourceResult> ReadAsync(
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(Uri, cancellationToken: cancellationToken);
+        _client.ReadResourceAsync(Uri, options, cancellationToken);
 }
