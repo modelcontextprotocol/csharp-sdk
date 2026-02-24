@@ -2,6 +2,7 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenTelemetry.Trace;
+using System.Collections;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text;
@@ -15,7 +16,10 @@ public class DiagnosticTests
     [Fact]
     public async Task Session_TracksActivities()
     {
-        var activities = new List<Activity>();
+        // Use a thread-safe collection to avoid race conditions between
+        // the WaitForAsync polling (reads) and fire-and-forget server tasks
+        // exporting activities via the InMemoryExporter (writes).
+        var activities = new SynchronizedList<Activity>();
         var clientToServerLog = new List<string>();
 
         using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
@@ -92,7 +96,7 @@ public class DiagnosticTests
     [Fact]
     public async Task Session_FailedToolCall()
     {
-        var activities = new List<Activity>();
+        var activities = new SynchronizedList<Activity>();
 
         using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
             .AddSource("Experimental.ModelContextProtocol")
@@ -156,7 +160,7 @@ public class DiagnosticTests
         // "execute_tool" activity, and MCP should add its attributes to that activity instead
         // of creating a new one.
         string outerSourceName = "TestOuterSource";
-        var activities = new List<Activity>();
+        var activities = new SynchronizedList<Activity>();
 
         using var outerSource = new ActivitySource(outerSourceName);
 
@@ -232,6 +236,27 @@ public class DiagnosticTests
         }
 
         await serverTask;
+    }
+
+    /// <summary>
+    /// A thread-safe ICollection wrapper. The InMemoryExporter calls Add on server
+    /// fire-and-forget threads while WaitForAsync polls via enumeration on the test thread.
+    /// GetEnumerator returns a snapshot to avoid concurrent modification issues.
+    /// </summary>
+    private sealed class SynchronizedList<T> : ICollection<T>
+    {
+        private readonly List<T> _list = [];
+        private readonly object _lock = new();
+
+        public int Count { get { lock (_lock) return _list.Count; } }
+        public bool IsReadOnly => false;
+        public void Add(T item) { lock (_lock) _list.Add(item); }
+        public void Clear() { lock (_lock) _list.Clear(); }
+        public bool Contains(T item) { lock (_lock) return _list.Contains(item); }
+        public void CopyTo(T[] array, int arrayIndex) { lock (_lock) _list.CopyTo(array, arrayIndex); }
+        public bool Remove(T item) { lock (_lock) return _list.Remove(item); }
+        public IEnumerator<T> GetEnumerator() { lock (_lock) return _list.ToList().GetEnumerator(); }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 10_000)
