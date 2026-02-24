@@ -11,7 +11,7 @@ public abstract partial class McpClient : McpSession
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClient"/> class.
     /// </summary>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     protected McpClient()
     {
     }

@@ -3,9 +3,9 @@ using System.Diagnostics;
 
 namespace ModelContextProtocol.Server;
 
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP002
 internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport) : McpServer
-#pragma warning restore MCPEXP001
+#pragma warning restore MCPEXP002
 {
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
     public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;
