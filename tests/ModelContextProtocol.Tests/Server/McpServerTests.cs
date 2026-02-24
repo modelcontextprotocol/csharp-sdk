@@ -323,6 +323,242 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Completion_AutoPopulated_FromPromptAllowedValues()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.PromptCollection = [McpServerPrompt.Create(
+            (
+                [System.ComponentModel.DataAnnotations.AllowedValues("dog", "cat", "fish")] string animal
+            ) => animal,
+            new McpServerPromptCreateOptions { Name = "test-prompt" })];
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+                receivedMessage.SetResult(response);
+        };
+
+        await transport.SendMessageAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.CompletionComplete,
+            Id = new RequestId(55),
+            Params = JsonSerializer.SerializeToNode(new CompleteRequestParams
+            {
+                Ref = new PromptReference { Name = "test-prompt" },
+                Argument = new Argument { Name = "animal", Value = "c" }
+            }, McpJsonUtilities.DefaultOptions)
+        }, TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response);
+        var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result?.Completion);
+        Assert.Equal(["cat"], result.Completion.Values);
+        Assert.Equal(1, result.Completion.Total);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task Completion_AutoPopulated_FromPromptAllowedValues_NoMatch()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.PromptCollection = [McpServerPrompt.Create(
+            (
+                [System.ComponentModel.DataAnnotations.AllowedValues("dog", "cat")] string animal
+            ) => animal,
+            new McpServerPromptCreateOptions { Name = "test-prompt" })];
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+                receivedMessage.SetResult(response);
+        };
+
+        await transport.SendMessageAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.CompletionComplete,
+            Id = new RequestId(55),
+            Params = JsonSerializer.SerializeToNode(new CompleteRequestParams
+            {
+                Ref = new PromptReference { Name = "test-prompt" },
+                Argument = new Argument { Name = "animal", Value = "z" }
+            }, McpJsonUtilities.DefaultOptions)
+        }, TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response);
+        var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result?.Completion);
+        Assert.Empty(result.Completion.Values);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task Completion_AutoPopulated_FromResourceAllowedValues()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.ResourceCollection =
+        [
+            McpServerResource.Create(
+                (
+                    [System.ComponentModel.DataAnnotations.AllowedValues("us-east-1", "us-west-2", "eu-west-1")] string region
+                ) => $"Resource for {region}",
+                new McpServerResourceCreateOptions
+                {
+                    UriTemplate = "resource://regions/{region}",
+                    Name = "regions"
+                })
+        ];
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+                receivedMessage.SetResult(response);
+        };
+
+        await transport.SendMessageAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.CompletionComplete,
+            Id = new RequestId(55),
+            Params = JsonSerializer.SerializeToNode(new CompleteRequestParams
+            {
+                Ref = new ResourceTemplateReference { Uri = "resource://regions/{region}" },
+                Argument = new Argument { Name = "region", Value = "us" }
+            }, McpJsonUtilities.DefaultOptions)
+        }, TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response);
+        var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result?.Completion);
+        Assert.Equal(["us-east-1", "us-west-2"], result.Completion.Values);
+        Assert.Equal(2, result.Completion.Total);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task Completion_AutoPopulated_CombinedWithCustomHandler()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.PromptCollection = [McpServerPrompt.Create(
+            (
+                [System.ComponentModel.DataAnnotations.AllowedValues("dog", "cat")] string animal
+            ) => animal,
+            new McpServerPromptCreateOptions { Name = "test-prompt" })];
+
+        // Add a custom handler that provides additional completions
+        options.Handlers.CompleteHandler = async (request, ct) =>
+            new CompleteResult
+            {
+                Completion = new()
+                {
+                    Values = ["custom-value"],
+                    Total = 1,
+                    HasMore = false
+                }
+            };
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+                receivedMessage.SetResult(response);
+        };
+
+        await transport.SendMessageAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.CompletionComplete,
+            Id = new RequestId(55),
+            Params = JsonSerializer.SerializeToNode(new CompleteRequestParams
+            {
+                Ref = new PromptReference { Name = "test-prompt" },
+                Argument = new Argument { Name = "animal", Value = "" }
+            }, McpJsonUtilities.DefaultOptions)
+        }, TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response);
+        var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result?.Completion);
+        // Custom handler values + auto-populated values should be combined
+        Assert.Equal(["custom-value", "dog", "cat"], result.Completion.Values);
+        Assert.Equal(3, result.Completion.Total);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task Completion_AutoPopulated_EnablesCompletionsCapabilityAutomatically()
+    {
+        // When prompts with AllowedValues are registered but no explicit Completions capability is set,
+        // the server should still handle completion requests (i.e., the capability is auto-enabled).
+        // This is verified by the fact that sending a completion request succeeds rather than failing.
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.PromptCollection = [McpServerPrompt.Create(
+            (
+                [System.ComponentModel.DataAnnotations.AllowedValues("a", "b")] string param
+            ) => param,
+            new McpServerPromptCreateOptions { Name = "test-prompt" })];
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+                receivedMessage.SetResult(response);
+        };
+
+        await transport.SendMessageAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.CompletionComplete,
+            Id = new RequestId(55),
+            Params = JsonSerializer.SerializeToNode(new CompleteRequestParams
+            {
+                Ref = new PromptReference { Name = "test-prompt" },
+                Argument = new Argument { Name = "param", Value = "" }
+            }, McpJsonUtilities.DefaultOptions)
+        }, TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response);
+        var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result?.Completion);
+        Assert.Equal(["a", "b"], result.Completion.Values);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
     public async Task Can_Handle_ResourceTemplates_List_Requests()
     {
         await Can_Handle_Requests(
