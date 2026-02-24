@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Represents the resource metadata for OAuth authorization as defined in RFC 9396.
+/// Represents the resource metadata for OAuth authorization as defined in <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
 /// </summary>
 public sealed class ProtectedResourceMetadata
 {
