@@ -90,14 +90,10 @@ public sealed class McpClientPrompt
     /// </para>
     /// </remarks>
     public async ValueTask<GetPromptResult> GetAsync(
-        IEnumerable<KeyValuePair<string, object?>>? arguments = null,
+        IReadOnlyDictionary<string, object?>? arguments = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyDictionary<string, object?>? argDict =
-            arguments as IReadOnlyDictionary<string, object?> ??
-            arguments?.ToDictionary();
-
-        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, new RequestOptions() { JsonSerializerOptions = serializerOptions }, cancellationToken).ConfigureAwait(false);
+        return await _client.GetPromptAsync(ProtocolPrompt.Name, arguments, new RequestOptions() { JsonSerializerOptions = serializerOptions }, cancellationToken).ConfigureAwait(false);
     }
 }
