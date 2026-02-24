@@ -12,7 +12,7 @@ The C# SDK tracks implementation of MCP spec components using the [modelcontextp
 
 ### Next Spec Revision
 
-The next MCP specification revision is being developed in the [protocol repository](https://github.com/modelcontextprotocol/modelcontextprotocol). The C# SDK already has experimental support for [Tasks](concepts/tasks/tasks.md), which will be updated as the specification is revised.
+The next MCP specification revision is being developed in the [protocol repository](https://github.com/modelcontextprotocol/modelcontextprotocol). The C# SDK already has experimental support for [Tasks](concepts/tasks/tasks.md) (experimental in the specification), which will be updated as the specification is revised.
 
 ### Feedback and End-to-End Scenarios
 
