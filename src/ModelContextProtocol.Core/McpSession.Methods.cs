@@ -138,7 +138,7 @@ public abstract partial class McpSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends a notification to the server with parameters.
+    /// Sends a notification to the connected session with parameters.
     /// </summary>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">The request parameters.</param>

@@ -182,10 +182,12 @@ public sealed class ElicitRequestParams : RequestParams
         public string? Description { get; set; }
 
         /// <summary>
-        /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
+        /// Provides a <see cref="JsonConverter"/> for <see cref="PrimitiveSchemaDefinition"/>.
         /// </summary>
+        /// <remarks>
         /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't require
         /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+        /// </remarks>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public sealed class Converter : JsonConverter<PrimitiveSchemaDefinition>
         {

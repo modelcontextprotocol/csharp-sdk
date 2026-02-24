@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 public static class NotificationMethods
 {
     /// <summary>
-    /// The name of notification sent by a server when the list of available tools changes.
+    /// The name of the notification sent by a server when the list of available tools changes.
     /// </summary>
     /// <remarks>
     /// This notification informs clients that the set of available tools has been modified.

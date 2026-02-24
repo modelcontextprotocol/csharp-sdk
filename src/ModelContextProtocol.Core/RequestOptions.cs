@@ -46,7 +46,7 @@ public sealed class RequestOptions
     /// Although progress tokens are propagated in MCP "_meta" objects, the <see cref="ProgressToken"/>
     /// property and the <see cref="Meta"/> property do not interact (setting <see cref="ProgressToken"/>
     /// does not affect <see cref="Meta"/>, and getting <see cref="ProgressToken"/> does not read from
-    /// <see cref="Meta"/>. To get the actual <see cref="JsonObject"/> that contains state from both
+    /// <see cref="Meta"/>). To get the actual <see cref="JsonObject"/> that contains state from both
     /// <see cref="Meta"/> and <see cref="ProgressToken"/>, use the <see cref="GetMetaForRequest"/> method.
     /// </remarks>
     public ProgressToken? ProgressToken { get; set; }

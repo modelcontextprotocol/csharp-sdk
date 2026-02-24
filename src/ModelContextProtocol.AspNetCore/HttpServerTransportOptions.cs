@@ -5,7 +5,7 @@ namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Represents configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>,
-/// which implements the Streaming HTTP transport for the Model Context Protocol.
+/// which implements the Streamable HTTP transport for the Model Context Protocol.
 /// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http"/>
 /// </summary>
 /// <remarks>
@@ -23,7 +23,7 @@ public class HttpServerTransportOptions
     /// Gets or sets an optional asynchronous callback for running new MCP sessions manually.
     /// </summary>
     /// <remarks>
-    /// This callback is useful for running logic before a sessions starts and after it completes.
+    /// This callback is useful for running logic before a session starts and after it completes.
     /// </remarks>
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
@@ -36,7 +36,7 @@ public class HttpServerTransportOptions
     /// </value>
     /// <remarks>
     /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
-    /// the <see cref="RunSessionHandler"/> will be called once for for each request, and the "/sse" endpoint will be disabled.
+    /// the <see cref="RunSessionHandler"/> will be called once for each request, and the "/sse" endpoint will be disabled.
     /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
     /// might arrive at another ASP.NET Core application process.
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
@@ -87,7 +87,7 @@ public class HttpServerTransportOptions
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
     /// <summary>
-    /// Gets or sets maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
+    /// Gets or sets the maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
     /// </summary>
     /// <value>
     /// The maximum number of idle sessions to track in memory. The default is 10,000 sessions.

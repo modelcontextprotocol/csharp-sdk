@@ -4,7 +4,7 @@ using ModelContextProtocol.Server;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Configures the McpServerOptions using addition services from DI.
+/// Configures the McpServerOptions using additional services from DI.
 /// </summary>
 /// <param name="serverTools">The individually registered tools.</param>
 /// <param name="serverPrompts">The individually registered prompts.</param>

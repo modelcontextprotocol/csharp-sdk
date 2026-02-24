@@ -25,7 +25,7 @@ public sealed class JsonRpcMessageContext
     public ITransport? RelatedTransport { get; set; }
 
     /// <summary>
-    /// Gets or sets the <see cref="ExecutionContext"/> that should be used to run any handlers
+    /// Gets or sets the <see cref="ExecutionContext"/> that should be used to run any handlers.
     /// </summary>
     /// <remarks>
     /// This property is used to support the Streamable HTTP transport in its default stateful mode. In this mode,

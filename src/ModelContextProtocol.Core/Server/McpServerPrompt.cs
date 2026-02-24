@@ -174,7 +174,7 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
         AIFunctionMcpServerPrompt.Create(method, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="McpServerPrompt"/>.</param>
     /// <param name="target">The instance if <paramref name="method"/> is an instance method; otherwise, <see langword="null"/>.</param>
@@ -189,18 +189,18 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
         AIFunctionMcpServerPrompt.Create(method, target, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via an <see cref="MethodInfo"/> for
-    /// and instance method, along with a <see cref="Type"/> representing the type of the target object to
+    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="MethodInfo"/> for
+    /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
-    /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
+    /// <param name="method">The instance method to be represented via the created <see cref="McpServerPrompt"/>.</param>
     /// <param name="createTargetFunc">
     /// Callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
     /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
     /// be disposed of after method completes its invocation.
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerPrompt"/> to control its behavior.</param>
-    /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
+    /// <returns>The created <see cref="McpServerPrompt"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerPrompt Create(
         MethodInfo method,

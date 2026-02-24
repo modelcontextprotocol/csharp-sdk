@@ -40,7 +40,7 @@ public abstract class Reference
     /// Provides a <see cref="JsonConverter"/> for <see cref="Reference"/>.
     /// </summary>
     /// <remarks>
-    /// Provides a polymorphic converter for the <see cref="Reference"/> class that doesn't  require
+    /// Provides a polymorphic converter for the <see cref="Reference"/> class that doesn't require
     /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
     /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
