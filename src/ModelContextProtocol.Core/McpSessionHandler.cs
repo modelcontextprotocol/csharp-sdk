@@ -463,7 +463,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Sends a JSON-RPC request to the server.
-    /// It is strongly recommended use the capability-specific methods instead of this one.
+    /// It is strongly recommended to use the capability-specific methods instead of this one.
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>

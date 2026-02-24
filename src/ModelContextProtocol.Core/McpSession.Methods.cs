@@ -49,7 +49,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">The request parameters.</param>
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
-    /// <param name="resultTypeInfo">The type information for request parameter deserialization.</param>
+    /// <param name="resultTypeInfo">The type information for result deserialization.</param>
     /// <param name="requestId">The request ID for the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>

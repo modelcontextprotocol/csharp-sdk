@@ -33,7 +33,7 @@ public sealed class RequestOptions
     /// Although progress tokens are propagated in MCP "_meta" objects, the <see cref="ProgressToken"/>
     /// property and the <see cref="Meta"/> property do not interact (setting <see cref="Meta"/>
     /// does not affect <see cref="ProgressToken"/>, and the object returned from <see cref="Meta"/>
-    /// is not impacting by the value of <see cref="ProgressToken"/>). To get the actual <see cref="JsonObject"/>
+    /// is not impacted by the value of <see cref="ProgressToken"/>). To get the actual <see cref="JsonObject"/>
     /// that contains state from both <see cref="Meta"/> and <see cref="ProgressToken"/>, use the
     /// <see cref="GetMetaForRequest"/> method.
     /// </remarks>
@@ -52,7 +52,7 @@ public sealed class RequestOptions
     public ProgressToken? ProgressToken { get; set; }
 
     /// <summary>
-    /// Gets or sets a <see cref="JsonSerializer"/> to use for any serialization of arguments or results in the request.
+    /// Gets or sets a <see cref="JsonSerializerOptions"/> to use for any serialization of arguments or results in the request.
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.
