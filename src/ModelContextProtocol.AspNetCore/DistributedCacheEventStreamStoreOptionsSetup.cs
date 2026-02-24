@@ -8,7 +8,7 @@ namespace ModelContextProtocol.AspNetCore;
 /// Configures <see cref="DistributedCacheEventStreamStoreOptions"/> by resolving
 /// the <see cref="IDistributedCache"/> from DI when not explicitly set.
 /// </summary>
-internal sealed class DistributedCacheEventStreamStoreOptionsSetup(IDistributedCache cache) : IConfigureOptions<DistributedCacheEventStreamStoreOptions>
+internal sealed class DistributedCacheEventStreamStoreOptionsSetup(IDistributedCache? cache = null) : IConfigureOptions<DistributedCacheEventStreamStoreOptions>
 {
     public void Configure(DistributedCacheEventStreamStoreOptions options)
     {

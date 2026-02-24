@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
@@ -41,6 +43,22 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
         _ = app.Services.GetRequiredService<IOptions<DistributedCacheEventStreamStoreOptions>>().Value;
 
         Assert.NotNull(capturedOptions);
+    }
+
+    [Fact]
+    public void WithDistributedCacheEventStreamStore_WorksWithoutDICache_WhenCacheSetViaCallback()
+    {
+        var explicitCache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+
+        Builder.Services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .WithDistributedCacheEventStreamStore(options => options.Cache = explicitCache);
+
+        using var app = Builder.Build();
+
+        var store = app.Services.GetService<ISseEventStreamStore>();
+        Assert.IsType<DistributedCacheEventStreamStore>(store);
     }
 
     [Fact]
