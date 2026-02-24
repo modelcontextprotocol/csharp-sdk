@@ -54,7 +54,7 @@ server to perform any special logic it wants to perform when a client sets the l
 SDK already takes care of setting the <xref:ModelContextProtocol.Server.McpServer.LoggingLevel> in the <xref:ModelContextProtocol.Server.McpServer>, so most servers will not need to
 implement this.
 
-MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider) from the IMcpServer <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> extension method,
+MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider) from the <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> method on <xref:ModelContextProtocol.Server.McpServer>,
 and from that can create an [ILogger](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger) instance for logging messages that should be sent to the MCP client.
 
 [!code-csharp[](samples/server/Tools/LoggingTools.cs?name=snippet_LoggingConfiguration)]

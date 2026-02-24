@@ -75,11 +75,13 @@ The `InMemoryMcpTaskStore` constructor accepts several optional parameters:
 
 ```csharp
 var taskStore = new InMemoryMcpTaskStore(
-    defaultTtl: TimeSpan.FromHours(1),      // Default task retention time
-    maxTtl: TimeSpan.FromHours(24),         // Maximum allowed TTL
-    pollInterval: TimeSpan.FromSeconds(1),  // Suggested client poll interval
+    defaultTtl: TimeSpan.FromHours(1),        // Default task retention time
+    maxTtl: TimeSpan.FromHours(24),           // Maximum allowed TTL
+    pollInterval: TimeSpan.FromSeconds(1),    // Suggested client poll interval
     cleanupInterval: TimeSpan.FromMinutes(5), // Background cleanup frequency
-    pageSize: 100                           // Tasks per page for listing
+    pageSize: 100,                            // Tasks per page for listing
+    maxTasks: 1000,                           // Maximum total tasks allowed
+    maxTasksPerSession: 100                   // Maximum tasks per session
 );
 ```
 
@@ -435,7 +437,7 @@ try
 {
     var task = await client.GetTaskAsync(taskId, cancellationToken: ct);
 }
-catch (McpException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
+catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
 {
     Console.WriteLine($"Task not found: {taskId}");
 }
