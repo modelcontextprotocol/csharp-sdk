@@ -295,11 +295,12 @@ internal sealed partial class McpServerImpl : McpServer
                 if (allowedValues is not null)
                 {
                     string partialValue = request.Params!.Argument.Value;
-                    var filtered = Array.FindAll(allowedValues, v => v.StartsWith(partialValue, StringComparison.OrdinalIgnoreCase));
-
-                    foreach (var v in filtered)
+                    foreach (var v in allowedValues)
                     {
-                        result.Completion.Values.Add(v);
+                        if (v.StartsWith(partialValue, StringComparison.OrdinalIgnoreCase))
+                        {
+                            result.Completion.Values.Add(v);
+                        }
                     }
 
                     result.Completion.Total = result.Completion.Values.Count;
@@ -352,18 +353,19 @@ internal sealed partial class McpServerImpl : McpServer
                 continue;
             }
 
-            if (schema.TryGetProperty("properties", out JsonElement properties))
+            if (schema.TryGetProperty("properties", out JsonElement properties) &&
+                properties.ValueKind is JsonValueKind.Object)
             {
                 Dictionary<string, string[]>? paramValues = null;
                 foreach (var param in properties.EnumerateObject())
                 {
                     if (param.Value.TryGetProperty("enum", out JsonElement enumValues) &&
-                        enumValues.ValueKind == JsonValueKind.Array)
+                        enumValues.ValueKind is JsonValueKind.Array)
                     {
                         List<string>? values = null;
                         foreach (var item in enumValues.EnumerateArray())
                         {
-                            if (item.GetString() is { } str)
+                            if (item.ValueKind is JsonValueKind.String && item.GetString() is { } str)
                             {
                                 values ??= [];
                                 values.Add(str);
