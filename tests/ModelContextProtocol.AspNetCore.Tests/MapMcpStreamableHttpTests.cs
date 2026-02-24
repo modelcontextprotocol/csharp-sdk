@@ -213,14 +213,14 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         }).WithHttpTransport(opts =>
         {
             ConfigureStateless(opts);
-#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
             opts.RunSessionHandler = async (context, server, cancellationToken) =>
             {
                 Interlocked.Increment(ref runSessionCount);
                 serverTcs.TrySetResult(server);
                 await server.RunAsync(cancellationToken);
             };
-#pragma warning restore MCPEXP003
+#pragma warning restore MCPEXP002
         }).WithTools<EchoHttpContextUserTools>();
 
         await using var app = Builder.Build();
@@ -483,13 +483,13 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Builder.Services.AddMcpServer().WithHttpTransport(opts =>
         {
             ConfigureStateless(opts);
-#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
             opts.RunSessionHandler = async (context, server, cancellationToken) =>
             {
                 serverTcs.TrySetResult(server);
                 await server.RunAsync(cancellationToken);
             };
-#pragma warning restore MCPEXP003
+#pragma warning restore MCPEXP002
         }).WithTools<ClaimsPrincipalTools>();
 
         await using var app = Builder.Build();

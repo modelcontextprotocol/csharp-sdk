@@ -390,9 +390,9 @@ internal sealed class StreamableHttpHandler(
         var userIdClaim = GetUserIdClaim(context.User);
         var session = new StreamableHttpSession(sessionId, transport, server, userIdClaim, sessionManager);
 
-#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
         var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
-#pragma warning restore MCPEXP003
+#pragma warning restore MCPEXP002
         session.ServerRunTask = runSessionAsync(context, server, session.SessionClosed);
 
         return session;

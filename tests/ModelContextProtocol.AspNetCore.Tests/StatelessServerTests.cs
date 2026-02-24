@@ -158,7 +158,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-#pragma warning disable MCPEXP003 // RunSessionHandler is experimental
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 options.RunSessionHandler = async (context, server, cancellationToken) =>
                 {
                     unsolicitedNotificationException = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -166,7 +166,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
                     await server.RunAsync(cancellationToken);
                 };
-#pragma warning restore MCPEXP003
+#pragma warning restore MCPEXP002
             });
 
         await StartAsync();
