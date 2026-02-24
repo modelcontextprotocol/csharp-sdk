@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 
@@ -7,15 +6,15 @@ namespace ModelContextProtocol;
 /// <summary>
 /// Configures the McpServerOptions using additional services from DI.
 /// </summary>
-/// <param name="serviceProvider">The service provider for resolving optional services.</param>
 /// <param name="serverTools">The individually registered tools.</param>
 /// <param name="serverPrompts">The individually registered prompts.</param>
 /// <param name="serverResources">The individually registered resources.</param>
+/// <param name="taskStore">The optional task store registered in DI.</param>
 internal sealed class McpServerOptionsSetup(
-    IServiceProvider serviceProvider,
     IEnumerable<McpServerTool> serverTools,
     IEnumerable<McpServerPrompt> serverPrompts,
-    IEnumerable<McpServerResource> serverResources) : IConfigureOptions<McpServerOptions>
+    IEnumerable<McpServerResource> serverResources,
+    IMcpTaskStore? taskStore = null) : IConfigureOptions<McpServerOptions>
 {
     /// <summary>
     /// Configures the given McpServerOptions instance by setting server information
@@ -26,7 +25,7 @@ internal sealed class McpServerOptionsSetup(
     {
         Throw.IfNull(options);
 
-        options.TaskStore ??= serviceProvider.GetService<IMcpTaskStore>();
+        options.TaskStore ??= taskStore;
 
         // Collect all of the provided tools into a tools collection. If the options already has
         // a collection, add to it, otherwise create a new one. We want to maintain the identity
