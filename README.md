@@ -236,6 +236,67 @@ This attribute may be placed on a method to provide for the tool, prompt, or res
 XML comments may also be used; if an `[McpServerTool]`, `[McpServerPrompt]`, or `[McpServerResource]`-attributed method is marked as `partial`,
 XML comments placed on the method will be used automatically to generate `[Description]` attributes for the method and its parameters.
 
+## Enterprise Auth / Enterprise Managed Authorization (SEP-990)
+
+The SDK provides Enterprise Auth utilities for the Identity Assertion Authorization Grant flow (SEP-990),
+enabling enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider and
+access MCP servers without per-server authorization prompts.
+
+The flow consists of two token operations:
+1. **RFC 8693 Token Exchange** at the IdP: ID Token → JWT Authorization Grant (JAG)
+2. **RFC 7523 JWT Bearer Grant** at the MCP Server: JAG → Access Token
+
+### Using the Layer 2 utilities directly
+
+```csharp
+using ModelContextProtocol.Authentication;
+
+// Step 1: Exchange ID token for a JAG at the enterprise IdP
+var jag = await EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(
+    new DiscoverAndRequestJwtAuthGrantOptions
+    {
+        IdpUrl = "https://company.okta.com",
+        Audience = "https://auth.mcp-server.example.com",
+        Resource = "https://mcp-server.example.com",
+        IdToken = myIdToken, // obtained via SSO/OIDC login
+        ClientId = "idp-client-id",
+    });
+
+// Step 2: Exchange JAG for an access token at the MCP authorization server
+var tokens = await EnterpriseAuth.ExchangeJwtBearerGrantAsync(
+    new ExchangeJwtBearerGrantOptions
+    {
+        TokenEndpoint = "https://auth.mcp-server.example.com/token",
+        Assertion = jag,
+        ClientId = "mcp-client-id",
+    });
+```
+
+### Using the EnterpriseAuthProvider (Layer 3)
+
+```csharp
+var provider = new EnterpriseAuthProvider(new EnterpriseAuthProviderOptions
+{
+    ClientId = "mcp-client-id",
+    AssertionCallback = async (context, ct) =>
+    {
+        return await EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(
+            new DiscoverAndRequestJwtAuthGrantOptions
+            {
+                IdpUrl = "https://company.okta.com",
+                Audience = context.AuthorizationServerUrl.ToString(),
+                Resource = context.ResourceUrl.ToString(),
+                IdToken = myIdToken,
+                ClientId = "idp-client-id",
+            }, ct);
+    }
+});
+
+var tokens = await provider.GetAccessTokenAsync(
+    resourceUrl: new Uri("https://mcp-server.example.com"),
+    authorizationServerUrl: new Uri("https://auth.mcp-server.example.com"));
+```
+
 ## Acknowledgements
 
 The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pedersen](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
