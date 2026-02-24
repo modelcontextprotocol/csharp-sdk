@@ -1044,4 +1044,179 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task CanAuthenticate_WithLegacyServerWithoutProtectedResourceMetadata()
+    {
+        // 2025-03-26 backcompat: server does NOT serve PRM, but DOES serve auth server metadata.
+        // The client should fall back to using the MCP server's origin as the auth server
+        // and discover auth metadata from well-known URLs on that origin.
+        TestOAuthServer.RequireResource = false;
+
+        // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+
+        // Legacy servers don't use resource-based audiences in tokens (no resource parameter is sent).
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidateAudience = false;
+        });
+
+        await using var app = Builder.Build();
+
+        app.Use(async (context, next) =>
+        {
+            // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Serve auth server metadata pointing to the real OAuth server endpoints.
+            // In a real 2025-03-26 deployment, the MCP server itself would be the auth server.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
+                context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
+            {
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync($$"""
+                    {
+                        "issuer": "{{OAuthServerUrl}}",
+                        "authorization_endpoint": "{{OAuthServerUrl}}/authorize",
+                        "token_endpoint": "{{OAuthServerUrl}}/token",
+                        "registration_endpoint": "{{OAuthServerUrl}}/register",
+                        "response_types_supported": ["code"],
+                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                        "code_challenge_methods_supported": ["S256"]
+                    }
+                    """);
+                return;
+            }
+
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithLegacyServerUsingDefaultEndpointFallback()
+    {
+        // 2025-03-26 backcompat: server does NOT serve PRM AND does NOT serve auth server metadata.
+        // The client should fall back to default endpoint paths (/authorize, /token, /register)
+        // on the MCP server's origin.
+        TestOAuthServer.RequireResource = false;
+
+        // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+
+        // Legacy servers don't use resource-based audiences in tokens (no resource parameter is sent).
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidateAudience = false;
+        });
+
+        await using var app = Builder.Build();
+
+        // Capture HttpClient for use in the proxy middleware.
+        var httpClient = HttpClient;
+
+        app.Use(async (context, next) =>
+        {
+            // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Return 404 for auth server metadata to force fallback to default endpoints.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
+                context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Proxy default OAuth endpoints to the real OAuth server.
+            // In a real 2025-03-26 deployment, the MCP server itself would host these endpoints.
+            var path = context.Request.Path.Value;
+            if (path is "/authorize" or "/token" or "/register")
+            {
+                var targetUrl = $"{OAuthServerUrl}{path}{context.Request.QueryString}";
+                using var proxyRequest = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
+
+                if (context.Request.ContentLength > 0 || context.Request.ContentType is not null)
+                {
+                    proxyRequest.Content = new StreamContent(context.Request.Body);
+                    if (context.Request.ContentType is not null)
+                    {
+                        proxyRequest.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(context.Request.ContentType);
+                    }
+                }
+
+                if (context.Request.Headers.Authorization.Count > 0)
+                {
+                    proxyRequest.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToString());
+                }
+
+                using var response = await httpClient.SendAsync(proxyRequest);
+                context.Response.StatusCode = (int)response.StatusCode;
+
+                if (response.Headers.Location is not null)
+                {
+                    context.Response.Headers.Location = response.Headers.Location.ToString();
+                }
+
+                if (response.Content.Headers.ContentType is not null)
+                {
+                    context.Response.ContentType = response.Content.Headers.ContentType.ToString();
+                }
+
+                await response.Content.CopyToAsync(context.Response.Body);
+                return;
+            }
+
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
 }
