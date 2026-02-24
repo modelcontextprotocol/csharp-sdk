@@ -193,7 +193,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         // out of order.
                         if (messageWithId is not null)
                         {
-                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            var requestCancellationToken = message.Context?.CancellationToken;
+                            if (requestCancellationToken is { CanBeCanceled: true })
+                            {
+                                combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, requestCancellationToken.Value);
+                            }
+                            else
+                            {
+                                combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            }
+                            
                             _handlingRequests[messageWithId.Id] = combinedCts;
                         }
 
@@ -523,8 +532,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
-
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
@@ -532,7 +539,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             JsonRpcMessage? response;
             using (var registration = RegisterCancellation(cancellationToken, request))
             {
-                response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try 
+                {
+                    await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
+                    response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch(TaskCanceledException)
+                {
+                    await Task.Delay(500).ConfigureAwait(false); //give it time to start the cancel notification to send before we dispose it
+                    throw;
+                }
             }
 
             if (response is JsonRpcError error)

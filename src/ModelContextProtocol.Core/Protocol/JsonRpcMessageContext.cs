@@ -74,4 +74,13 @@ public sealed class JsonRpcMessageContext
     /// </para>
     /// </remarks>
     public IDictionary<string, object?>? Items { get; set; }
+
+    /// <summary>
+    /// Gets or sets the cancellation token associated with the transport request that carried this JSON-RPC message.
+    /// </summary>
+    /// <remarks>
+    /// For HTTP transports, this can be linked to the underlying HTTP request's aborted cancellation token (e.g. HttpContext.RequestAborted)
+    /// to propagate transport-level cancellations to tool executions.
+    /// </remarks>
+    public CancellationToken? CancellationToken { get; set; }
 }

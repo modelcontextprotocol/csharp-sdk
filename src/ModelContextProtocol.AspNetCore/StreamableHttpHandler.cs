@@ -479,12 +479,19 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is null)
         {
-            message.Context = new()
-            {
-                User = context.User,
-            };
+            return null;
+        }
+
+        message.Context = new()
+        {
+            CancellationToken = context.RequestAborted,
+        };
+
+        if (context.User?.Identity?.IsAuthenticated == true)
+        {
+            message.Context.User = context.User;
         }
 
         return message;
