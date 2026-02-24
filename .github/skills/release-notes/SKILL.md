@@ -61,7 +61,19 @@ When **editing an existing release**, also extract any breaking changes already 
 
 Use the results (confirmed breaking changes with impact ordering and detail bullets) in the remaining steps.
 
-### Step 4: Review Sections
+### Step 4: Validate README Code Samples
+
+Verify that all C# code samples in the package README files compile against the current SDK at the target commit. Follow [references/readme-snippets.md](references/readme-snippets.md) for the full procedure.
+
+1. Extract `csharp`-fenced code blocks from `README.md`, `src/ModelContextProtocol.Core/README.md`, and `src/ModelContextProtocol.AspNetCore/README.md`
+2. Create a temporary test project at `tests/ReadmeSnippetValidation/` that references the SDK projects
+3. Wrap each code block in a compilable method, applying fixups for incomplete snippets (replace `...` with `null!`, add common usings)
+4. Build the project with `dotnet build`
+5. Report results — classify any failures as API mismatches (README bugs) or structural fragments
+6. If API mismatches are found, propose fixes and get user confirmation before editing READMEs
+7. Delete the temporary `tests/ReadmeSnippetValidation/` directory
+
+### Step 5: Review Sections
 
 Present each section for user review:
 1. **Breaking Changes** — sorted most → least impactful (from Step 3 results)
@@ -70,7 +82,7 @@ Present each section for user review:
 4. **Test Improvements** — chronological
 5. **Repository Infrastructure Updates** — chronological
 
-### Step 5: Acknowledgements
+### Step 6: Acknowledgements
 
 Identify contributors beyond PR authors:
 1. **New contributors** — first contribution to the repository in this release
@@ -85,7 +97,7 @@ Exclude anyone already listed as a PR author. Format:
 ```
 Reviewers go on a single bullet, sorted by number of PRs reviewed (most first), without citing the count.
 
-### Step 6: Preamble
+### Step 7: Preamble
 
 Every release **must** have a preamble — a short paragraph summarizing the release theme that appears before the first `##` heading. The preamble is not optional. The preamble may mention the presence of breaking changes as part of the theme summary, but the versioning documentation link belongs under the Breaking Changes heading (see template), not in the preamble.
 
@@ -94,7 +106,7 @@ Every release **must** have a preamble — a short paragraph summarizing the rel
 
 Present the options and let the user choose one, edit one, or enter their own text or markdown.
 
-### Step 7: Final Assembly
+### Step 8: Final Assembly
 
 1. Combine the confirmed preamble with all sections from previous steps.
 2. **Notable callouts** — only if something is extraordinarily noteworthy.
@@ -102,7 +114,7 @@ Present the options and let the user choose one, edit one, or enter their own te
 
 Follow [references/formatting.md](references/formatting.md) when composing and updating the release body.
 
-### Step 8: Create or Update Draft Release
+### Step 9: Create or Update Draft Release
 
 Display release metadata for user review:
 - **Title / Tag**: e.g. `v0.9.0-preview.1`
@@ -117,7 +129,7 @@ After confirmation:
 
 When the user requests revisions after the initial update, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
 
-### Step 9: Bump Version
+### Step 10: Bump Version
 
 After the draft release is created or updated, inform the user that the draft release is now associated with a known target commit (state the short SHA and commit message) and recommend proceeding with a version bump. Ask if they want to create a pull request to bump the version for the next release. If yes, invoke the **bump-version** skill and let it handle determining or requesting the target version number.
 
