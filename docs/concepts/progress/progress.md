@@ -37,7 +37,7 @@ The client should also provide a notification handler to process "notifications/
 There are two ways to do this. The first is to register a notification handler using the <xref:ModelContextProtocol.McpSession.RegisterNotificationHandler*> method on the <xref:ModelContextProtocol.Client.McpClient> instance. A handler registered this way will receive all progress notifications sent by the server.
 
 ```csharp
-mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
+await using var handler = mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
     (notification, cancellationToken) =>
     {
         if (JsonSerializer.Deserialize<ProgressNotificationParams>(notification.Params) is { } pn &&
@@ -47,7 +47,7 @@ mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
             Console.WriteLine($"Tool progress: {pn.Progress.Progress} of {pn.Progress.Total} - {pn.Progress.Message}");
         }
         return ValueTask.CompletedTask;
-    }).ConfigureAwait(false);
+    });
 ```
 
 The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress<T>` is a standard .NET type that provides a way to receive progress updates.
