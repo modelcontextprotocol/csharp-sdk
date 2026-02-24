@@ -254,12 +254,69 @@ internal sealed partial class McpServerImpl : McpServer
         var completeHandler = options.Handlers.CompleteHandler;
         var completionsCapability = options.Capabilities?.Completions;
 
-        if (completeHandler is null && completionsCapability is null)
+        // Build completion value lookups from prompt/resource collections' [AllowedValues]-attributed parameters.
+        Dictionary<string, Dictionary<string, string[]>>? promptCompletions = BuildAllowedValueCompletions(options.PromptCollection);
+        Dictionary<string, Dictionary<string, string[]>>? resourceCompletions = BuildAllowedValueCompletions(options.ResourceCollection);
+        bool hasCollectionCompletions = promptCompletions is not null || resourceCompletions is not null;
+
+        if (completeHandler is null && completionsCapability is null && !hasCollectionCompletions)
         {
             return;
         }
 
         completeHandler ??= (static async (_, __) => new CompleteResult());
+
+        // Augment the completion handler with allowed values from prompt/resource collections.
+        if (hasCollectionCompletions)
+        {
+            var originalCompleteHandler = completeHandler;
+            completeHandler = async (request, cancellationToken) =>
+            {
+                CompleteResult result = await originalCompleteHandler(request, cancellationToken).ConfigureAwait(false);
+
+                string[]? allowedValues = null;
+                switch (request.Params?.Ref)
+                {
+                    case PromptReference pr when promptCompletions is not null:
+                        if (promptCompletions.TryGetValue(pr.Name, out var promptParams))
+                        {
+                            promptParams.TryGetValue(request.Params.Argument.Name, out allowedValues);
+                        }
+                        break;
+
+                    case ResourceTemplateReference rtr when resourceCompletions is not null:
+                        if (rtr.Uri is not null && resourceCompletions.TryGetValue(rtr.Uri, out var resourceParams))
+                        {
+                            resourceParams.TryGetValue(request.Params.Argument.Name, out allowedValues);
+                        }
+                        break;
+                }
+
+                if (allowedValues is not null)
+                {
+                    string partialValue = request.Params!.Argument.Value;
+                    var filtered = Array.FindAll(allowedValues, v => v.StartsWith(partialValue, StringComparison.OrdinalIgnoreCase));
+
+                    if (result.Completion.Values.Count > 0)
+                    {
+                        foreach (var v in filtered)
+                        {
+                            result.Completion.Values.Add(v);
+                        }
+                    }
+                    else
+                    {
+                        result.Completion.Values = filtered;
+                    }
+
+                    result.Completion.Total = result.Completion.Values.Count;
+                    result.Completion.HasMore = false;
+                }
+
+                return result;
+            };
+        }
+
         completeHandler = BuildFilterPipeline(completeHandler, options.Filters.Request.CompleteFilters);
 
         ServerCapabilities.Completions = new();
@@ -269,6 +326,75 @@ internal sealed partial class McpServerImpl : McpServer
             completeHandler,
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult);
+    }
+
+    /// <summary>
+    /// Builds a lookup of primitive name/URI → (parameter name → allowed values) from the enum values
+    /// in the JSON schemas of AIFunction-based prompts or resources.
+    /// </summary>
+    private static Dictionary<string, Dictionary<string, string[]>>? BuildAllowedValueCompletions<T>(
+        McpServerPrimitiveCollection<T>? primitives) where T : class, IMcpServerPrimitive
+    {
+        if (primitives is null)
+        {
+            return null;
+        }
+
+        Dictionary<string, Dictionary<string, string[]>>? result = null;
+        foreach (var primitive in primitives)
+        {
+            JsonElement schema;
+            string id;
+            if (primitive is AIFunctionMcpServerPrompt aiPrompt)
+            {
+                schema = aiPrompt.AIFunction.JsonSchema;
+                id = aiPrompt.ProtocolPrompt.Name;
+            }
+            else if (primitive is AIFunctionMcpServerResource aiResource && aiResource.IsTemplated)
+            {
+                schema = aiResource.AIFunction.JsonSchema;
+                id = aiResource.ProtocolResourceTemplate.UriTemplate;
+            }
+            else
+            {
+                continue;
+            }
+
+            if (schema.TryGetProperty("properties", out JsonElement properties))
+            {
+                Dictionary<string, string[]>? paramValues = null;
+                foreach (var param in properties.EnumerateObject())
+                {
+                    if (param.Value.TryGetProperty("enum", out JsonElement enumValues) &&
+                        enumValues.ValueKind == JsonValueKind.Array)
+                    {
+                        List<string>? values = null;
+                        foreach (var item in enumValues.EnumerateArray())
+                        {
+                            if (item.GetString() is { } str)
+                            {
+                                values ??= [];
+                                values.Add(str);
+                            }
+                        }
+
+                        if (values is not null)
+                        {
+                            paramValues ??= new(StringComparer.Ordinal);
+                            paramValues[param.Name] = [.. values];
+                        }
+                    }
+                }
+
+                if (paramValues is not null)
+                {
+                    result ??= new(StringComparer.Ordinal);
+                    result[id] = paramValues;
+                }
+            }
+        }
+
+        return result;
     }
 
     private void ConfigureExperimental(McpServerOptions options)
