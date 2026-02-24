@@ -3,7 +3,7 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Represents an exception that is thrown when an Model Context Protocol (MCP) error occurs.
+/// Represents an exception that is thrown when a Model Context Protocol (MCP) error occurs.
 /// </summary>
 /// <remarks>
 /// The <see cref="Exception.Message"/> from a <see cref="McpException"/> might be propagated to the remote
