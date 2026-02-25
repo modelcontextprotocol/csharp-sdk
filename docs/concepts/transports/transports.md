@@ -113,7 +113,7 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 
 #### Streamable HTTP server (ASP.NET Core)
 
-Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP:
+Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:ModelContextProtocol.AspNetCore.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default). It also maps legacy SSE endpoints at `{route}/sse` and `{route}/message` for backward compatibility.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -126,6 +126,16 @@ var app = builder.Build();
 app.MapMcp();
 app.Run();
 ```
+
+A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
+
+[AspNetCoreMcpPerSessionTools]: https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/AspNetCoreMcpPerSessionTools
+
+```csharp
+app.MapMcp("/mcp");
+```
+
+When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
 See the `ModelContextProtocol.AspNetCore` package [README](https://github.com/modelcontextprotocol/csharp-sdk/blob/main/src/ModelContextProtocol.AspNetCore/README.md) for more configuration options.
 
