@@ -1,8 +1,8 @@
-# MCP C# SDK Core
+# MCP C# SDK
 
-[![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Core.svg)](https://www.nuget.org/packages/ModelContextProtocol.Core)
+[![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol)
 
-Core .NET SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. This is the main package with hosting and dependency injection extensions. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 ## About MCP
 
@@ -16,11 +16,50 @@ For more information about MCP:
 
 ## Installation
 
-To get started, install the core package from NuGet
+To get started, install the package from NuGet
 
 ```
-dotnet add package ModelContextProtocol.Core
+dotnet add package ModelContextProtocol
 ```
+
+## Getting Started (Server)
+
+Create a new console app, add the required packages, and replace `Program.cs` with the code below to get a working MCP server that exposes a single tool over stdio:
+
+```
+dotnet new console
+dotnet add package ModelContextProtocol
+dotnet add package Microsoft.Extensions.Hosting
+```
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
+
+var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    // Configure all logs to go to stderr
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
+});
+builder.Services
+    .AddMcpServer()
+    .WithStdioServerTransport()
+    .WithToolsFromAssembly();
+await builder.Build().RunAsync();
+
+[McpServerToolType]
+public static class EchoTool
+{
+    [McpServerTool, Description("Echoes the message back to the client.")]
+    public static string Echo(string message) => $"hello {message}";
+}
+```
+
+The call to `WithToolsFromAssembly` discovers every class marked with `[McpServerToolType]` in the assembly and registers every `[McpServerTool]` method as a tool. Prompts and resources work the same way with `[McpServerPromptType]` / `[McpServerPrompt]` and `[McpServerResourceType]` / `[McpServerResource]`.
 
 ## Getting Started (Client)
 
@@ -67,31 +106,3 @@ var response = await chatClient.GetResponseAsync(
     "your prompt here",
     new() { Tools = [.. tools] });
 ```
-
-## Getting Started (Server)
-
-The core package provides the basic server functionality. Here's an example of creating a simple MCP server without dependency injection:
-
-```csharp
-using ModelContextProtocol.Server;
-using System.ComponentModel;
-
-// Create server options with tools
-var serverOptions = new McpServerOptions
-{
-    ToolCollection = [
-        McpServerTool.Create((string message) => $"hello {message}", new()
-        {
-            Name = "echo",
-            Description = "Echoes the message back to the client."
-        })
-    ]
-};
-
-// Create and run server with stdio transport
-await using var stdioTransport = new StdioServerTransport("EchoServer");
-await using var server = McpServer.Create(stdioTransport, serverOptions);
-await server.RunAsync(CancellationToken.None);
-```
-
-For more advanced scenarios with dependency injection, hosting, and automatic tool discovery, see the `ModelContextProtocol` package.

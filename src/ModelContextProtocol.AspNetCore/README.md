@@ -1,11 +1,8 @@
 # ASP.NET Core extensions for the MCP C# SDK
 
-[![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)
+[![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore)
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
-
-> [!NOTE]
-> This project is in preview; breaking changes can be introduced without prior notice.
+ASP.NET Core extensions for the official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 ## About MCP
 
@@ -23,7 +20,7 @@ To get started, install the package from NuGet
 
 ```
 dotnet new web
-dotnet add package ModelContextProtocol.AspNetCore --prerelease
+dotnet add package ModelContextProtocol.AspNetCore
 ```
 
 ## Getting Started
