@@ -16,6 +16,8 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <AssemblyOriginatorKeyFile>$(RepoRoot)\Open.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>
