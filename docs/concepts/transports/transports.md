@@ -95,13 +95,19 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 
 #### Resuming sessions
 
-Streamable HTTP supports session resumption. Save the session ID and reuse it to reconnect:
+Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:
 
 ```csharp
 var transport = new HttpClientTransport(new HttpClientTransportOptions
 {
     Endpoint = new Uri("https://my-mcp-server.example.com/mcp"),
     KnownSessionId = previousSessionId
+});
+
+await using var client = await McpClient.ResumeSessionAsync(transport, new ResumeClientSessionOptions
+{
+    ServerCapabilities = previousServerCapabilities,
+    ServerInfo = previousServerInfo
 });
 ```
 
