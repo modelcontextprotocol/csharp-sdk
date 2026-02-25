@@ -322,6 +322,7 @@ public class McpServerTests : LoggedTest
             });
     }
 
+#if NET
     [Fact]
     public async Task Completion_AutoPopulated_FromPromptAllowedValues()
     {
@@ -557,6 +558,7 @@ public class McpServerTests : LoggedTest
         await transport.DisposeAsync();
         await runTask;
     }
+#endif
 
     [Fact]
     public async Task Can_Handle_ResourceTemplates_List_Requests()
