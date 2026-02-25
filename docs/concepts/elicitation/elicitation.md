@@ -100,7 +100,7 @@ Enum schemas allow the server to present a set of choices to the user.
 ["tags"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
 {
     Description = "Tags to apply",
-    Items = new ElicitRequestParams.UntitledEnumItemsSchema
+    Items = new()
     {
         Enum = ["bug", "feature", "docs", "test"]
     },
