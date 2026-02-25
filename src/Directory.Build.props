@@ -17,7 +17,7 @@
     <AssemblyOriginatorKeyFile>$(RepoRoot)\Open.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion>0.9.0-preview.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>
