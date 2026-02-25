@@ -1,6 +1,8 @@
 items:
 - name: Overview
   href: index.md
+- name: Getting Started
+  uid: getting-started
 - name: Base Protocol
   items:
   - name: Capabilities
