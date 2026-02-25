@@ -16,7 +16,7 @@ MCP includes a [ping mechanism] that allows either side of a connection to verif
 Use the <xref:ModelContextProtocol.Client.McpClient.PingAsync*> method to verify the server is responsive:
 
 ```csharp
-await client.PingAsync(cancellationToken);
+await client.PingAsync(cancellationToken: cancellationToken);
 ```
 
 ### Automatic ping handling

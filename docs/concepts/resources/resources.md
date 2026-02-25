@@ -215,7 +215,7 @@ builder.Services.AddMcpServer()
         if (ctx.Params?.Uri is { } uri)
         {
             // Track the subscription (e.g., in a concurrent dictionary)
-            subscriptions[context.Server.SessionId].TryAdd(uri, 0);
+            subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
         }
         return new EmptyResult();
     })

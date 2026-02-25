@@ -100,11 +100,8 @@ McpClientOptions options = new()
         SamplingHandler = async (request, progress, cancellationToken) =>
         {
             // Forward to your LLM, apply content filtering, etc.
-            string prompt = request?.Messages?.LastOrDefault()?.Content switch
-            {
-                TextContentBlock text => text.Text,
-                _ => string.Empty
-            };
+            string prompt = request?.Messages?.LastOrDefault()?.Content
+                .OfType<TextContentBlock>().FirstOrDefault()?.Text ?? string.Empty;
 
             return new CreateMessageResult
             {
