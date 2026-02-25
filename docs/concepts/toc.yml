@@ -3,16 +3,36 @@ items:
   href: index.md
 - name: Base Protocol
   items:
+  - name: Capabilities
+    uid: capabilities
+  - name: Transports
+    uid: transports
+  - name: Ping
+    uid: ping
   - name: Progress
     uid: progress
+  - name: Cancellation
+    uid: cancellation
+  - name: Pagination
+    uid: pagination
   - name: Tasks
     uid: tasks
 - name: Client Features
   items:
+  - name: Roots
+    uid: roots
   - name: Elicitation
     uid: elicitation
 - name: Server Features
   items:
+  - name: Tools
+    uid: tools
+  - name: Resources
+    uid: resources
+  - name: Prompts
+    uid: prompts
+  - name: Completions
+    uid: completions
   - name: Logging
     uid: logging
   - name: HTTP Context
