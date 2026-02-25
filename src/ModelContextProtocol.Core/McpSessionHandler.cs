@@ -916,9 +916,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 await _messageProcessingTask.ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                // Ignore cancellation
+                // Ignore exceptions from the message processing loop. It may fault with
+                // OperationCanceledException on normal shutdown or TransportClosedException
+                // when the transport's channel completes with an error.
             }
         }
 

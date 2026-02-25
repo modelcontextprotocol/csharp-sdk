@@ -322,7 +322,8 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         await app.StopAsync(TestContext.Current.CancellationToken);
 
         var details = await mcpClient.Completion.WaitAsync(TestContext.Current.CancellationToken);
-        Assert.IsType<ClientCompletionDetails>(details);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 
     public class Envelope

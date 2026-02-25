@@ -61,4 +61,35 @@ public class ClientCompletionDetailsTests
         Assert.Equal(1, stdio.ExitCode);
     }
 
+    [Fact]
+    public void HttpClientCompletionDetails_PropertiesRoundtrip()
+    {
+        var exception = new HttpRequestException("connection refused");
+
+        var details = new HttpClientCompletionDetails
+        {
+            Exception = exception,
+            HttpStatusCode = System.Net.HttpStatusCode.NotFound,
+        };
+
+        Assert.Same(exception, details.Exception);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, details.HttpStatusCode);
+    }
+
+    [Fact]
+    public void HttpClientCompletionDetails_DefaultsToNull()
+    {
+        var details = new HttpClientCompletionDetails();
+        Assert.Null(details.Exception);
+        Assert.Null(details.HttpStatusCode);
+    }
+
+    [Fact]
+    public void HttpClientCompletionDetails_IsClientCompletionDetails()
+    {
+        ClientCompletionDetails details = new HttpClientCompletionDetails { HttpStatusCode = System.Net.HttpStatusCode.NotFound };
+        var http = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, http.HttpStatusCode);
+    }
+
 }

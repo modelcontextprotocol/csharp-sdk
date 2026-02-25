@@ -314,6 +314,8 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.True(client.Completion.IsCompleted);
 
         var details = await client.Completion;
-        Assert.Null(details.Exception);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.Exception);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 }
