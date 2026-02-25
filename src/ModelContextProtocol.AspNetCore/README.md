@@ -2,7 +2,17 @@
 
 [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore)
 
-ASP.NET Core extensions for the official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+ASP.NET Core extensions for the official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), providing HTTP-based MCP server support. References `ModelContextProtocol`. Please visit the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+
+## Installation
+
+```
+dotnet add package ModelContextProtocol.AspNetCore
+```
+
+## Getting Started
+
+To get started, see the [Getting Started](https://modelcontextprotocol.github.io/csharp-sdk/concepts/getting-started.html) guide for installation instructions, package-selection guidance, and complete examples for both clients and servers.
 
 ## About MCP
 
@@ -13,37 +23,3 @@ For more information about MCP:
 - [Official Documentation](https://modelcontextprotocol.io/)
 - [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
-
-## Installation
-
-To get started, install the package from NuGet
-
-```
-dotnet new web
-dotnet add package ModelContextProtocol.AspNetCore
-```
-
-## Getting Started
-
-```csharp
-// Program.cs
-using ModelContextProtocol.Server;
-using System.ComponentModel;
-
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddMcpServer()
-    .WithHttpTransport()
-    .WithToolsFromAssembly();
-var app = builder.Build();
-
-app.MapMcp();
-
-app.Run("http://localhost:3001");
-
-[McpServerToolType]
-public static class EchoTool
-{
-    [McpServerTool, Description("Echoes the message back to the client.")]
-    public static string Echo(string message) => $"hello {message}";
-}
-```
