@@ -223,7 +223,7 @@ builder.Services.AddMcpServer()
     {
         if (ctx.Params?.Uri is { } uri)
         {
-            subscriptions.TryRemove(uri, out _);
+            subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
         }
         return new EmptyResult();
     });
