@@ -176,7 +176,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// <param name="responseStream">The POST response body to write MCP JSON-RPC messages to.</param>
     /// <returns>
     /// <see langword="true"/> if data was written to the response body.
-    /// <see false="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
+    /// <see langword="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>

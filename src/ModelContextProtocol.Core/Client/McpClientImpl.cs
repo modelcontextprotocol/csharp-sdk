@@ -6,6 +6,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <inheritdoc/>
+#pragma warning disable MCPEXP002
 internal sealed partial class McpClientImpl : McpClient
 {
     private static Implementation DefaultImplementation { get; } = new()
@@ -37,6 +38,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
     /// <param name="loggerFactory">The logger factory.</param>
     internal McpClientImpl(ITransport transport, string endpointName, McpClientOptions? options, ILoggerFactory? loggerFactory)
+#pragma warning restore MCPEXP002
     {
         options ??= new();
 

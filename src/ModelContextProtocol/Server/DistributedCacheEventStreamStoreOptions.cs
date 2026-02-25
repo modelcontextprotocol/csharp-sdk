@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Caching.Distributed;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -5,6 +7,16 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public sealed class DistributedCacheEventStreamStoreOptions
 {
+    /// <summary>
+    /// Gets or sets the <see cref="IDistributedCache"/> to use for event storage.
+    /// </summary>
+    /// <remarks>
+    /// When using dependency injection with <c>WithDistributedCacheEventStreamStore()</c>, this is
+    /// automatically populated from the <see cref="IDistributedCache"/> registered in DI.
+    /// Set this property explicitly to use a specific cache instance.
+    /// </remarks>
+    public IDistributedCache? Cache { get; set; }
+
     /// <summary>
     /// Gets or sets the sliding expiration for individual events in the cache.
     /// </summary>

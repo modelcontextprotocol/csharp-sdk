@@ -40,7 +40,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <param name="name">The name of the primitive to retrieve.</param>
     /// <returns>The <typeparamref name="T"/> with the specified name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
-    /// <exception cref="KeyNotFoundException">An primitive with the specified name does not exist in the collection.</exception>
+    /// <exception cref="KeyNotFoundException">A primitive with the specified name does not exist in the collection.</exception>
     public T this[string name]
     {
         get

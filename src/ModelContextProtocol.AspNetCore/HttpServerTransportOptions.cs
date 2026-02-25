@@ -5,7 +5,7 @@ namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Represents configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>,
-/// which implements the Streaming HTTP transport for the Model Context Protocol.
+/// which implements the Streamable HTTP transport for the Model Context Protocol.
 /// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http"/>
 /// </summary>
 /// <remarks>
@@ -23,8 +23,21 @@ public class HttpServerTransportOptions
     /// Gets or sets an optional asynchronous callback for running new MCP sessions manually.
     /// </summary>
     /// <remarks>
-    /// This callback is useful for running logic before a sessions starts and after it completes.
+    /// This callback is useful for running logic before a session starts and after it completes.
+    /// <para>
+    /// The <see cref="HttpContext"/> parameter comes from the request that initiated the session (e.g., the
+    /// initialize request) and may not be usable after <see cref="McpServer.RunAsync"/> starts, since that
+    /// request will have already completed.
+    /// </para>
+    /// <para>
+    /// Consider using <see cref="ConfigureSessionOptions"/> instead, which provides access to the
+    /// <see cref="HttpContext"/> of the initializing request with fewer known issues.
+    /// </para>
+    /// <para>
+    /// This API is experimental and may be removed or change signatures in a future release.
+    /// </para>
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(Experimentals.RunSessionHandler_DiagnosticId, UrlFormat = Experimentals.RunSessionHandler_Url)]
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
@@ -36,7 +49,7 @@ public class HttpServerTransportOptions
     /// </value>
     /// <remarks>
     /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
-    /// the <see cref="RunSessionHandler"/> will be called once for for each request, and the "/sse" endpoint will be disabled.
+    /// the <see cref="RunSessionHandler"/> will be called once for each request, and the "/sse" endpoint will be disabled.
     /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
     /// might arrive at another ASP.NET Core application process.
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
@@ -55,8 +68,28 @@ public class HttpServerTransportOptions
     /// <item><description>Replay missed events when a client reconnects with a Last-Event-ID header</description></item>
     /// <item><description>Send priming events to establish resumability before any actual messages</description></item>
     /// </list>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISseEventStreamStore"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISseEventStreamStore"/> from DI.
+    /// </para>
     /// </remarks>
     public ISseEventStreamStore? EventStreamStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets the session migration handler for cross-instance session migration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When configured, the server will support session migration between instances.
+    /// If a request arrives with a session ID that is not found locally, the handler
+    /// is consulted to determine if the session can be migrated from another instance.
+    /// </para>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISessionMigrationHandler"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISessionMigrationHandler"/> from DI.
+    /// </para>
+    /// </remarks>
+    public ISessionMigrationHandler? SessionMigrationHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a value that indicates whether the server uses a single execution context for the entire session.
@@ -87,7 +120,7 @@ public class HttpServerTransportOptions
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
     /// <summary>
-    /// Gets or sets maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
+    /// Gets or sets the maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
     /// </summary>
     /// <value>
     /// The maximum number of idle sessions to track in memory. The default is 10,000 sessions.

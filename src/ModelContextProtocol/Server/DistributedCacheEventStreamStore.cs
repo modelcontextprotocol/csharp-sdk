@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
@@ -31,14 +32,16 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
     /// <summary>
     /// Initializes a new instance of the <see cref="DistributedCacheEventStreamStore"/> class.
     /// </summary>
-    /// <param name="cache">The distributed cache to use for storage.</param>
-    /// <param name="options">Optional configuration options for the store.</param>
+    /// <param name="options">Configuration options for the store, including the <see cref="IDistributedCache"/> to use.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
-    public DistributedCacheEventStreamStore(IDistributedCache cache, DistributedCacheEventStreamStoreOptions? options = null, ILogger<DistributedCacheEventStreamStore>? logger = null)
+    public DistributedCacheEventStreamStore(IOptions<DistributedCacheEventStreamStoreOptions> options, ILogger<DistributedCacheEventStreamStore>? logger = null)
     {
-        Throw.IfNull(cache);
-        _cache = cache;
-        _options = options ?? new();
+        Throw.IfNull(options);
+
+        var optionsValue = options.Value;
+        _cache = optionsValue.Cache ?? throw new InvalidOperationException(
+            $"The '{nameof(DistributedCacheEventStreamStoreOptions)}.{nameof(DistributedCacheEventStreamStoreOptions.Cache)}' property must be set.");
+        _options = optionsValue;
         _logger = logger ?? NullLogger<DistributedCacheEventStreamStore>.Instance;
     }
 

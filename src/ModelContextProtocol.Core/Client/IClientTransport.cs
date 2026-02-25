@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Client;
 /// and servers, allowing different transport protocols to be used interchangeably.
 /// </para>
 /// <para>
-/// When creating an <see cref="McpClient"/>, <see cref="McpClient"/> is typically used, and is
+/// When creating an <see cref="McpClient"/>, <see cref="McpClient.CreateAsync"/> is typically used, and is
 /// provided with the <see cref="IClientTransport"/> based on expected server configuration.
 /// </para>
 /// </remarks>

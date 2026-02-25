@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// Each handler in this class corresponds to a specific client endpoint in the Model Context Protocol and
 /// is responsible for processing a particular type of message. The handlers are used to customize
-/// the behavior of the MCP server by providing implementations for the various protocol operations.
+/// the behavior of the MCP client by providing implementations for the various protocol operations.
 /// </para>
 /// <para>
 /// When a server sends a message to the client, the appropriate handler is invoked to process it
@@ -47,7 +47,7 @@ public sealed class McpClientHandlers
     /// Gets or sets the handler for <see cref="RequestMethods.RootsList"/> requests.
     /// </summary>
     /// <remarks>
-    /// This handler is invoked when a client sends a <see cref="RequestMethods.RootsList"/> request to retrieve available roots.
+    /// This handler is invoked when the server sends a <see cref="RequestMethods.RootsList"/> request to retrieve available roots.
     /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
     /// </remarks>
     public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }

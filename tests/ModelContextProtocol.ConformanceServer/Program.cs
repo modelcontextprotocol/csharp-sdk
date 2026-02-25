@@ -1,9 +1,6 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
-using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
@@ -28,14 +25,11 @@ public class Program
         // because .NET does not have a built-in concurrent HashSet
         ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
+        builder.Services.AddDistributedMemoryCache();
         builder.Services
             .AddMcpServer()
-            .WithHttpTransport(options =>
-            {
-                // Enable resumability for SSE polling conformance test
-                options.EventStreamStore = new DistributedCacheEventStreamStore(
-                    new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
-            })
+            .WithHttpTransport()
+            .WithDistributedCacheEventStreamStore()
             .WithTools<ConformanceTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
             .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>

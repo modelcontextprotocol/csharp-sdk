@@ -4,12 +4,12 @@ using ModelContextProtocol.AspNetCore.Authentication;
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Extension methods for adding MCP authorization support to ASP.NET Core applications.
+/// Extension methods for adding MCP authentication support to ASP.NET Core applications.
 /// </summary>
 public static class McpAuthenticationExtensions
 {
     /// <summary>
-    /// Adds MCP authorization support to the application.
+    /// Adds MCP authentication support to the application.
     /// </summary>
     /// <param name="builder">The authentication builder.</param>
     /// <param name="configureOptions">An action to configure MCP authentication options.</param>
@@ -26,7 +26,7 @@ public static class McpAuthenticationExtensions
     }
 
     /// <summary>
-    /// Adds MCP authorization support to the application with a custom scheme name.
+    /// Adds MCP authentication support to the application with a custom scheme name.
     /// </summary>
     /// <param name="builder">The authentication builder.</param>
     /// <param name="authenticationScheme">The authentication scheme name to use.</param>

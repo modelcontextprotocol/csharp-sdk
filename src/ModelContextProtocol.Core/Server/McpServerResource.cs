@@ -136,7 +136,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <remarks>
     /// <para>
     /// The <see cref="ProtocolResourceTemplate"/> property represents the underlying resource template definition as defined in the
-    /// Model Context Protocol specification. It contains metadata like the resource templates's URI template, name, and description.
+    /// Model Context Protocol specification. It contains metadata like the resource template's URI template, name, and description.
     /// </para>
     /// <para>
     /// Every valid resource URI is a valid resource URI template, and thus this property always returns an instance.
@@ -148,8 +148,8 @@ public abstract class McpServerResource : IMcpServerPrimitive
 
     /// <summary>Gets the protocol <see cref="Resource"/> type for this instance.</summary>
     /// <remarks>
-    /// The ProtocolResourceTemplate property represents the underlying resource template definition as defined in the
-    /// Model Context Protocol specification. It contains metadata like the resource templates's URI template, name, and description.
+    /// The ProtocolResource property represents the underlying resource definition as defined in the
+    /// Model Context Protocol specification. It contains metadata like the resource template's URI template, name, and description.
     /// </remarks>
     public virtual Resource? ProtocolResource => ProtocolResourceTemplate.AsResource();
 
@@ -209,7 +209,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
         AIFunctionMcpServerResource.Create(method, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="McpServerResource"/>.</param>
     /// <param name="target">The instance if <paramref name="method"/> is an instance method; otherwise, <see langword="null"/>.</param>
@@ -224,18 +224,18 @@ public abstract class McpServerResource : IMcpServerPrimitive
         AIFunctionMcpServerResource.Create(method, target, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via an <see cref="MethodInfo"/> for
+    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="MethodInfo"/> for
     /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
-    /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
+    /// <param name="method">The instance method to be represented via the created <see cref="McpServerResource"/>.</param>
     /// <param name="createTargetFunc">
     /// The callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
     /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
     /// be disposed of after method completes its invocation.
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerResource"/> to control its behavior.</param>
-    /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
+    /// <returns>The created <see cref="McpServerResource"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
         MethodInfo method,
