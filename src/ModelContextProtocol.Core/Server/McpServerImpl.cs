@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
+#pragma warning disable MCPEXP002
 internal sealed partial class McpServerImpl : McpServer
 {
     internal static Implementation DefaultImplementation { get; } = new()
@@ -54,6 +55,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpException">The server was incorrectly configured.</exception>
     public McpServerImpl(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+#pragma warning restore MCPEXP002
     {
         Throw.IfNull(transport);
         Throw.IfNull(options);

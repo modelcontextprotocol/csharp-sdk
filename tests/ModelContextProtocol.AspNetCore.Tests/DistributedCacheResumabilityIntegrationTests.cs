@@ -22,17 +22,18 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </remarks>
 public class DistributedCacheResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : ResumabilityIntegrationTestsBase(testOutputHelper)
 {
-    private MemoryDistributedCache? _cache;
-
     /// <inheritdoc />
     protected override ValueTask<ISseEventStreamStore> CreateEventStreamStoreAsync()
     {
         // Create a new in-memory distributed cache for each test
-        _cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
+        var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
 
         // Configure the store with shorter expiration times suitable for testing
         var options = new DistributedCacheEventStreamStoreOptions
         {
+            // Use the in-memory distributed cache
+            Cache = cache,
+
             // Use shorter polling interval for faster test execution
             StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50),
 
@@ -43,7 +44,7 @@ public class DistributedCacheResumabilityIntegrationTests(ITestOutputHelper test
             MetadataAbsoluteExpiration = TimeSpan.FromMinutes(10),
         };
 
-        var store = new DistributedCacheEventStreamStore(_cache, options, LoggerFactory.CreateLogger<DistributedCacheEventStreamStore>());
+        var store = new DistributedCacheEventStreamStore(Options.Create(options), LoggerFactory.CreateLogger<DistributedCacheEventStreamStore>());
         return new ValueTask<ISseEventStreamStore>(store);
     }
 }

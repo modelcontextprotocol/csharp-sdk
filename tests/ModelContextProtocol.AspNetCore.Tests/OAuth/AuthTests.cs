@@ -586,7 +586,7 @@ public class AuthTests : OAuthTestBase
     [Fact]
     public async Task CannotAuthenticate_WhenProtectedResourceMetadataMissingResource()
     {
-        TestOAuthServer.RequireResource = false;
+        TestOAuthServer.ExpectResource = false;
 
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
@@ -894,6 +894,101 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public void CloneResourceMetadataClonesAllProperties()
+    {
+        var propertyNames = typeof(ProtectedResourceMetadata).GetProperties().Select(property => property.Name).ToList();
+
+        // Set metadata properties to non-default values to verify they're copied.
+        var metadata = new ProtectedResourceMetadata
+        {
+            Resource = "https://example.com/resource",
+            AuthorizationServers = ["https://auth1.example.com", "https://auth2.example.com"],
+            BearerMethodsSupported = ["header", "body", "query"],
+            ScopesSupported = ["read", "write", "admin"],
+            JwksUri = "https://example.com/.well-known/jwks.json",
+            ResourceSigningAlgValuesSupported = ["RS256", "ES256"],
+            ResourceName = "Test Resource",
+            ResourceDocumentation = "https://docs.example.com",
+            ResourcePolicyUri = "https://example.com/policy",
+            ResourceTosUri = "https://example.com/terms",
+            TlsClientCertificateBoundAccessTokens = true,
+            AuthorizationDetailsTypesSupported = ["payment_initiation", "account_information"],
+            DpopSigningAlgValuesSupported = ["RS256", "PS256"],
+            DpopBoundAccessTokensRequired = true
+        };
+
+        var clonedMetadata = metadata.Clone();
+
+        // Ensure the cloned metadata is not the same instance
+        Assert.NotSame(metadata, clonedMetadata);
+
+        // Verify Resource property
+        Assert.Equal(metadata.Resource, clonedMetadata.Resource);
+        Assert.True(propertyNames.Remove(nameof(metadata.Resource)));
+
+        // Verify AuthorizationServers list is cloned and contains the same values
+        Assert.NotSame(metadata.AuthorizationServers, clonedMetadata.AuthorizationServers);
+        Assert.Equal(metadata.AuthorizationServers, clonedMetadata.AuthorizationServers);
+        Assert.True(propertyNames.Remove(nameof(metadata.AuthorizationServers)));
+
+        // Verify BearerMethodsSupported list is cloned and contains the same values
+        Assert.NotSame(metadata.BearerMethodsSupported, clonedMetadata.BearerMethodsSupported);
+        Assert.Equal(metadata.BearerMethodsSupported, clonedMetadata.BearerMethodsSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.BearerMethodsSupported)));
+
+        // Verify ScopesSupported list is cloned and contains the same values
+        Assert.NotSame(metadata.ScopesSupported, clonedMetadata.ScopesSupported);
+        Assert.Equal(metadata.ScopesSupported, clonedMetadata.ScopesSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.ScopesSupported)));
+
+        // Verify JwksUri property
+        Assert.Equal(metadata.JwksUri, clonedMetadata.JwksUri);
+        Assert.True(propertyNames.Remove(nameof(metadata.JwksUri)));
+
+        // Verify ResourceSigningAlgValuesSupported list is cloned (nullable list)
+        Assert.NotSame(metadata.ResourceSigningAlgValuesSupported, clonedMetadata.ResourceSigningAlgValuesSupported);
+        Assert.Equal(metadata.ResourceSigningAlgValuesSupported, clonedMetadata.ResourceSigningAlgValuesSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourceSigningAlgValuesSupported)));
+
+        // Verify ResourceName property
+        Assert.Equal(metadata.ResourceName, clonedMetadata.ResourceName);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourceName)));
+
+        // Verify ResourceDocumentation property
+        Assert.Equal(metadata.ResourceDocumentation, clonedMetadata.ResourceDocumentation);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourceDocumentation)));
+
+        // Verify ResourcePolicyUri property
+        Assert.Equal(metadata.ResourcePolicyUri, clonedMetadata.ResourcePolicyUri);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourcePolicyUri)));
+
+        // Verify ResourceTosUri property
+        Assert.Equal(metadata.ResourceTosUri, clonedMetadata.ResourceTosUri);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourceTosUri)));
+
+        // Verify TlsClientCertificateBoundAccessTokens property
+        Assert.Equal(metadata.TlsClientCertificateBoundAccessTokens, clonedMetadata.TlsClientCertificateBoundAccessTokens);
+        Assert.True(propertyNames.Remove(nameof(metadata.TlsClientCertificateBoundAccessTokens)));
+
+        // Verify AuthorizationDetailsTypesSupported list is cloned (nullable list)
+        Assert.NotSame(metadata.AuthorizationDetailsTypesSupported, clonedMetadata.AuthorizationDetailsTypesSupported);
+        Assert.Equal(metadata.AuthorizationDetailsTypesSupported, clonedMetadata.AuthorizationDetailsTypesSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.AuthorizationDetailsTypesSupported)));
+
+        // Verify DpopSigningAlgValuesSupported list is cloned (nullable list)
+        Assert.NotSame(metadata.DpopSigningAlgValuesSupported, clonedMetadata.DpopSigningAlgValuesSupported);
+        Assert.Equal(metadata.DpopSigningAlgValuesSupported, clonedMetadata.DpopSigningAlgValuesSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.DpopSigningAlgValuesSupported)));
+
+        // Verify DpopBoundAccessTokensRequired property
+        Assert.Equal(metadata.DpopBoundAccessTokensRequired, clonedMetadata.DpopBoundAccessTokensRequired);
+        Assert.True(propertyNames.Remove(nameof(metadata.DpopBoundAccessTokensRequired)));
+
+        // Ensure we've checked every property. When new properties get added, we'll have to update this test along with the Clone implementation.
+        Assert.Empty(propertyNames);
+    }
+
+    [Fact]
     public async Task ResourceMetadata_PreservesExplicitTrailingSlash()
     {
         // This test verifies that explicitly configured trailing slashes are preserved
@@ -946,6 +1041,223 @@ public class AuthTests : OAuthTestBase
 
         // This should succeed with the explicitly configured trailing slash
         // If the client incorrectly trimmed the slash, ValidResources would reject it
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithLegacyServerWithoutProtectedResourceMetadata()
+    {
+        // 2025-03-26 backcompat: server does NOT serve PRM, but DOES serve auth server metadata.
+        // The client should fall back to using the MCP server's origin as the auth server
+        // and discover auth metadata from well-known URLs on that origin.
+        TestOAuthServer.ExpectResource = false;
+
+        // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+
+        // Legacy servers don't use resource-based audiences in tokens (no resource parameter is sent).
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidateAudience = false;
+        });
+
+        await using var app = Builder.Build();
+
+        // Capture HttpClient for use in the proxy middleware.
+        var httpClient = HttpClient;
+
+        app.Use(async (context, next) =>
+        {
+            // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Serve auth server metadata pointing to the MCP server's own endpoints.
+            // In a real 2025-03-26 deployment, the MCP server itself would be the auth server.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
+                context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
+            {
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync($$"""
+                    {
+                        "issuer": "{{OAuthServerUrl}}",
+                        "authorization_endpoint": "{{McpServerUrl}}/authorize",
+                        "token_endpoint": "{{McpServerUrl}}/token",
+                        "registration_endpoint": "{{McpServerUrl}}/register",
+                        "response_types_supported": ["code"],
+                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                        "code_challenge_methods_supported": ["S256"]
+                    }
+                    """);
+                return;
+            }
+
+            // Proxy OAuth endpoints to the real OAuth server.
+            // In a real 2025-03-26 deployment, the MCP server itself would host these endpoints.
+            var path = context.Request.Path.Value;
+            if (path is "/authorize" or "/token" or "/register")
+            {
+                var targetUrl = $"{OAuthServerUrl}{path}{context.Request.QueryString}";
+                using var proxyRequest = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
+
+                if (context.Request.ContentLength > 0 || context.Request.ContentType is not null)
+                {
+                    proxyRequest.Content = new StreamContent(context.Request.Body);
+                    if (context.Request.ContentType is not null)
+                    {
+                        proxyRequest.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(context.Request.ContentType);
+                    }
+                }
+
+                if (context.Request.Headers.Authorization.Count > 0)
+                {
+                    proxyRequest.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToString());
+                }
+
+                using var response = await httpClient.SendAsync(proxyRequest);
+                context.Response.StatusCode = (int)response.StatusCode;
+
+                if (response.Headers.Location is not null)
+                {
+                    context.Response.Headers.Location = response.Headers.Location.ToString();
+                }
+
+                if (response.Content.Headers.ContentType is not null)
+                {
+                    context.Response.ContentType = response.Content.Headers.ContentType.ToString();
+                }
+
+                await response.Content.CopyToAsync(context.Response.Body);
+                return;
+            }
+
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithLegacyServerUsingDefaultEndpointFallback()
+    {
+        // 2025-03-26 backcompat: server does NOT serve PRM AND does NOT serve auth server metadata.
+        // The client should fall back to default endpoint paths (/authorize, /token, /register)
+        // on the MCP server's origin.
+        TestOAuthServer.ExpectResource = false;
+
+        // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+
+        // Legacy servers don't use resource-based audiences in tokens (no resource parameter is sent).
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidateAudience = false;
+        });
+
+        await using var app = Builder.Build();
+
+        // Capture HttpClient for use in the proxy middleware.
+        var httpClient = HttpClient;
+
+        app.Use(async (context, next) =>
+        {
+            // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Return 404 for auth server metadata to force fallback to default endpoints.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
+                context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Proxy default OAuth endpoints to the real OAuth server.
+            // In a real 2025-03-26 deployment, the MCP server itself would host these endpoints.
+            var path = context.Request.Path.Value;
+            if (path is "/authorize" or "/token" or "/register")
+            {
+                var targetUrl = $"{OAuthServerUrl}{path}{context.Request.QueryString}";
+                using var proxyRequest = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
+
+                if (context.Request.ContentLength > 0 || context.Request.ContentType is not null)
+                {
+                    proxyRequest.Content = new StreamContent(context.Request.Body);
+                    if (context.Request.ContentType is not null)
+                    {
+                        proxyRequest.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(context.Request.ContentType);
+                    }
+                }
+
+                if (context.Request.Headers.Authorization.Count > 0)
+                {
+                    proxyRequest.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToString());
+                }
+
+                using var response = await httpClient.SendAsync(proxyRequest);
+                context.Response.StatusCode = (int)response.StatusCode;
+
+                if (response.Headers.Location is not null)
+                {
+                    context.Response.Headers.Location = response.Headers.Location.ToString();
+                }
+
+                if (response.Content.Headers.ContentType is not null)
+                {
+                    context.Response.ContentType = response.Content.Headers.ContentType.ToString();
+                }
+
+                await response.Content.CopyToAsync(context.Response.Body);
+                return;
+            }
+
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }

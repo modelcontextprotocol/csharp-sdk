@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -23,6 +24,10 @@ public class McpClientResourceTemplateConstructorTests : ClientServerTestBase
     {
         [McpServerResource, Description("A file template")]
         public static string FileTemplate([Description("The file path")] string path) => $"Content for {path}";
+
+        [McpServerResource, Description("Echoes back the metadata it receives")]
+        public static string MetadataEcho(RequestContext<ReadResourceRequestParams> context, [Description("An ID")] string id) =>
+            context.Params?.Meta?.ToJsonString() ?? "{}";
     }
 
     [Fact]
@@ -31,7 +36,7 @@ public class McpClientResourceTemplateConstructorTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var templates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalTemplate = templates.First();
+        var originalTemplate = templates.First(t => t.Name == "file_template");
         var templateDefinition = originalTemplate.ProtocolResourceTemplate;
 
         var newTemplate = new McpClientResourceTemplate(client, templateDefinition);
@@ -69,7 +74,7 @@ public class McpClientResourceTemplateConstructorTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
         
         var templates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalTemplate = templates.First();
+        var originalTemplate = templates.First(t => t.Name == "file_template");
         var templateDefinition = originalTemplate.ProtocolResourceTemplate;
 
         var reusedTemplate = new McpClientResourceTemplate(client, templateDefinition);
@@ -99,5 +104,35 @@ public class McpClientResourceTemplateConstructorTests : ClientServerTestBase
         Assert.Equal("file_template", clientTemplate.Name);
         Assert.Equal("A file template", clientTemplate.Description);
         Assert.Equal("file:///{path}", clientTemplate.UriTemplate);
+    }
+
+    [Fact]
+    public async Task ReadAsync_WithRequestOptions_PassesMetaToServer()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var templates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var template = templates.Single(t => t.Name == "metadata_echo");
+
+        RequestOptions requestOptions = new()
+        {
+            Meta = new JsonObject
+            {
+                ["traceId"] = "test-trace-123",
+                ["customKey"] = "customValue"
+            }
+        };
+
+        var result = await template.ReadAsync(
+            new Dictionary<string, object?> { ["id"] = "test-id" },
+            options: requestOptions,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var content = Assert.IsType<TextResourceContents>(result.Contents.First());
+        var receivedMetadata = JsonNode.Parse(content.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("test-trace-123", receivedMetadata["traceId"]?.GetValue<string>());
+        Assert.Equal("customValue", receivedMetadata["customKey"]?.GetValue<string>());
     }
 }

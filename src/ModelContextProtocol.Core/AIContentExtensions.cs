@@ -367,7 +367,7 @@ public static class AIContentExtensions
     /// </para>
     /// <para>
     /// Each <see cref="ResourceContents"/> object is converted using <see cref="ToAIContent(ResourceContents)"/>,
-    /// preserving the type-specific conversion logic: text resources become <see cref="TextContentBlock"/> objects and
+    /// preserving the type-specific conversion logic: text resources become <see cref="TextContent"/> objects and
     /// binary resources become <see cref="DataContent"/> objects.
     /// </para>
     /// </remarks>

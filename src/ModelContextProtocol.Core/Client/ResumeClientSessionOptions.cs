@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Client;
 public sealed class ResumeClientSessionOptions
 {
     /// <summary>
-    /// Gets or sets the server capabilities that were negotiated during the original session setialization.
+    /// Gets or sets the server capabilities that were negotiated during the original session initialization.
     /// </summary>
     public required ServerCapabilities ServerCapabilities { get; set; }
 

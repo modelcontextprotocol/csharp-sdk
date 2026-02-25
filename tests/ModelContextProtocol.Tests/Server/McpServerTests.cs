@@ -861,6 +861,59 @@ public class McpServerTests : LoggedTest
         Assert.Same(logNotification, transport.SentMessages[0]);
     }
 
+    [Fact]
+    public async Task Server_IgnoresCancellationNotificationForInitializeRequest()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using McpServer server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        // Set up to capture the initialize response
+        var initializeRequest = new JsonRpcRequest
+        {
+            Id = new RequestId("init-cancel-test"),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = "2024-11-05",
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" }
+            }, McpJsonUtilities.DefaultOptions)
+        };
+
+        var initResponseTcs = new TaskCompletionSource<JsonRpcResponse>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id == initializeRequest.Id)
+            {
+                initResponseTcs.TrySetResult(response);
+            }
+        };
+
+        // Act: Send initialize request and immediately send a cancellation notification for it.
+        // Per spec, "The initialize request MUST NOT be cancelled by clients", so the server
+        // should ignore the cancellation and still complete the initialize request.
+        await transport.SendClientMessageAsync(initializeRequest, TestContext.Current.CancellationToken);
+        await transport.SendClientMessageAsync(new JsonRpcNotification
+        {
+            Method = NotificationMethods.CancelledNotification,
+            Params = JsonSerializer.SerializeToNode(
+                new CancelledNotificationParams { RequestId = initializeRequest.Id },
+                McpJsonUtilities.DefaultOptions),
+        }, TestContext.Current.CancellationToken);
+
+        // Assert: The initialize response should still arrive (not cancelled)
+        var response = await initResponseTcs.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.NotNull(response.Result);
+        var initResult = JsonSerializer.Deserialize<InitializeResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(initResult);
+        Assert.NotNull(initResult.ServerInfo);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     private static async Task InitializeServerAsync(TestServerTransport transport, ClientCapabilities capabilities, CancellationToken cancellationToken = default)
     {
         var initializeRequest = new JsonRpcRequest
@@ -890,7 +943,9 @@ public class McpServerTests : LoggedTest
         await tcs.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
     }
 
+#pragma warning disable MCPEXP002
     private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer
+#pragma warning restore MCPEXP002
     {
         public override ClientCapabilities? ClientCapabilities =>
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :

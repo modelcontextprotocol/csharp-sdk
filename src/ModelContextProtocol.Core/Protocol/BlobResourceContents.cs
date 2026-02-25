@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
@@ -28,27 +29,31 @@ namespace ModelContextProtocol.Protocol;
 public sealed class BlobResourceContents : ResourceContents
 {
     private ReadOnlyMemory<byte>? _decodedData;
-    private ReadOnlyMemory<byte> _blob;
+    private ReadOnlyMemory<byte>? _blob;
 
     /// <summary>
-    /// Creates an <see cref="BlobResourceContents"/> from raw data.
+    /// Creates a <see cref="BlobResourceContents"/> from raw data.
     /// </summary>
     /// <param name="bytes">The raw unencoded data.</param>
     /// <param name="uri">The URI of the blob resource.</param>
     /// <param name="mimeType">The optional MIME type of the data.</param>
     /// <returns>A new <see cref="BlobResourceContents"/> instance.</returns>
-    /// <exception cref="InvalidOperationException"></exception>
     public static BlobResourceContents FromBytes(ReadOnlyMemory<byte> bytes, string uri, string? mimeType = null)
     {
-        ReadOnlyMemory<byte> blob = EncodingUtilities.EncodeToBase64Utf8(bytes);
-        
-        return new()
-        {
-            _decodedData = bytes,
-            Blob = blob,
-            MimeType = mimeType,
-            Uri = uri
-        };
+        return new(bytes, uri, mimeType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="BlobResourceContents"/> class.</summary>
+    public BlobResourceContents()
+    {
+    }
+
+    [SetsRequiredMembers]
+    private BlobResourceContents(ReadOnlyMemory<byte> decodedData, string uri, string? mimeType)
+    {
+        _decodedData = decodedData;
+        Uri = uri;
+        MimeType = mimeType;
     }
 
     /// <summary>
@@ -60,7 +65,16 @@ public sealed class BlobResourceContents : ResourceContents
     [JsonPropertyName("blob")]
     public required ReadOnlyMemory<byte> Blob
     {
-        get => _blob;
+        get
+        {
+            if (_blob is null)
+            {
+                Debug.Assert(_decodedData is not null);
+                _blob = EncodingUtilities.EncodeToBase64Utf8(_decodedData!.Value);
+            }
+
+            return _blob.Value;
+        }
         set
         {
             _blob = value;

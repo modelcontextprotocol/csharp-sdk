@@ -23,4 +23,16 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 
 | Diagnostic ID | Description |
 | :------------ | :---------- |
-| `MCPEXP001` | MCP task-related APIs are experimental. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results. See [MCP Tasks specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks) for details. |
+| `MCPEXP001` | Experimental APIs for features in the MCP specification itself, including Tasks and Extensions. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results (see [MCP Tasks specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)). Extensions provide a framework for extending the Model Context Protocol while maintaining interoperability (see [SEP-2133](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2133)). |
+| `MCPEXP002` | Experimental SDK APIs unrelated to the MCP specification itself, including subclassing `McpClient`/`McpServer` (see [#1363](https://github.com/modelcontextprotocol/csharp-sdk/pull/1363)) and `RunSessionHandler`, which may be removed or change signatures in a future release (consider using `ConfigureSessionOptions` instead). |
+
+## Obsolete APIs
+
+Obsolete diagnostic IDs are in the format `MCP9###`.
+
+When APIs are marked as obsolete, a diagnostic is emitted to warn users that the API will be removed in a future version. Diagnostic IDs are never reused, even after an obsolete API has been removed, to avoid suppressing warnings for different APIs.
+
+| Diagnostic ID | Status | Description |
+| :------------ | :----- | :---------- |
+| `MCP9001` | In place | The `EnumSchema` and `LegacyTitledEnumSchema` APIs are deprecated as of specification version 2025-11-25. Use the current schema APIs instead. |
+| `MCP9002` | Removed | The `AddXxxFilter` extension methods on `IMcpServerBuilder` (e.g., `AddListToolsFilter`, `AddCallToolFilter`, `AddIncomingMessageFilter`) were superseded by `WithRequestFilters()` and `WithMessageFilters()`. |

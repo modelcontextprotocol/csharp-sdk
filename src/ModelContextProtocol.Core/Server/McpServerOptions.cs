@@ -33,8 +33,8 @@ public sealed class McpServerOptions
     /// <remarks>
     /// The protocol version defines which features and message formats this server supports.
     /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertize to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertize the latest
+    /// If <see langword="null"/>, the server will advertise to the client the version requested
+    /// by the client if that version is known to be supported, and otherwise will advertise the latest
     /// version supported by the server.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
@@ -97,17 +97,33 @@ public sealed class McpServerOptions
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
-    public McpServerHandlers Handlers { get; } = new();
+    public McpServerHandlers Handlers
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the filter collections for MCP server handlers.
+    /// Gets or sets the filter collections for MCP server handlers.
     /// </summary>
     /// <remarks>
     /// This property provides access to filter collections that can be used to modify the behavior
     /// of various MCP server handlers. The first filter added is the outermost (first to execute),
     /// and each subsequent filter wraps closer to the handler.
     /// </remarks>
-    public McpServerFilters Filters { get; } = new();
+    public McpServerFilters Filters
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a collection of tools served by the server.

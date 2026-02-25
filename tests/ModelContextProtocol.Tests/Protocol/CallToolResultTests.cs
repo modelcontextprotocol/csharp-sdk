@@ -12,7 +12,7 @@ public static class CallToolResultTests
         var original = new CallToolResult
         {
             Content = [new TextContentBlock { Text = "Result text" }],
-            StructuredContent = JsonNode.Parse("""{"temperature":72}"""),
+            StructuredContent = JsonElement.Parse("""{"temperature":72}"""),
             IsError = false,
             Task = new McpTask
             {
@@ -32,7 +32,7 @@ public static class CallToolResultTests
         var textBlock = Assert.IsType<TextContentBlock>(deserialized.Content[0]);
         Assert.Equal("Result text", textBlock.Text);
         Assert.NotNull(deserialized.StructuredContent);
-        Assert.Equal(72, deserialized.StructuredContent["temperature"]!.GetValue<int>());
+        Assert.Equal(72, deserialized.StructuredContent.Value.GetProperty("temperature").GetInt32());
         Assert.False(deserialized.IsError);
         Assert.NotNull(deserialized.Task);
         Assert.Equal("task-1", deserialized.Task.TaskId);

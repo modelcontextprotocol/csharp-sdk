@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -23,6 +24,10 @@ public class McpClientResourceTests : ClientServerTestBase
     {
         [McpServerResource, Description("A sample resource")]
         public static string Sample() => "Sample content";
+
+        [McpServerResource, Description("Echoes back the metadata it receives")]
+        public static string MetadataEcho(RequestContext<ReadResourceRequestParams> context) =>
+            context.Params?.Meta?.ToJsonString() ?? "{}";
     }
 
     [Fact]
@@ -31,7 +36,7 @@ public class McpClientResourceTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalResource = resources.First();
+        var originalResource = resources.First(r => r.Name == "sample");
         var resourceDefinition = originalResource.ProtocolResource;
 
         var newResource = new McpClientResource(client, resourceDefinition);
@@ -94,7 +99,7 @@ public class McpClientResourceTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
         
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalResource = resources.First();
+        var originalResource = resources.First(r => r.Name == "sample");
         var resourceDefinition = originalResource.ProtocolResource;
 
         var reusedResource = new McpClientResource(client, resourceDefinition);
@@ -124,5 +129,32 @@ public class McpClientResourceTests : ClientServerTestBase
         Assert.Equal("sample", clientResource.Name);
         Assert.Equal("A sample resource", clientResource.Description);
         Assert.Equal("file:///sample.txt", clientResource.Uri);
+    }
+
+    [Fact]
+    public async Task ReadAsync_WithRequestOptions_PassesMetaToServer()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var resource = resources.Single(r => r.Name == "metadata_echo");
+
+        RequestOptions requestOptions = new()
+        {
+            Meta = new JsonObject
+            {
+                ["traceId"] = "test-trace-123",
+                ["customKey"] = "customValue"
+            }
+        };
+
+        var result = await resource.ReadAsync(options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var content = Assert.IsType<TextResourceContents>(result.Contents.First());
+        var receivedMetadata = JsonNode.Parse(content.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("test-trace-123", receivedMetadata["traceId"]?.GetValue<string>());
+        Assert.Equal("customValue", receivedMetadata["customKey"]?.GetValue<string>());
     }
 }

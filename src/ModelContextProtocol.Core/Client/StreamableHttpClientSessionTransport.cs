@@ -228,7 +228,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         SseStreamState state,
         CancellationToken cancellationToken)
     {
-        int attempt = 0;
+        // When LastEventId is null, the first attempt is the initial GET SSE connection (not a reconnection),
+        // so we start at -1 to avoid counting it against MaxReconnectionAttempts.
+        // When LastEventId is already set, all attempts are true reconnections, so we start at 0.
+        int attempt = state.LastEventId is null ? -1 : 0;
 
         // Delay before first attempt if we're reconnecting (have a Last-Event-ID)
         bool shouldDelay = state.LastEventId is not null;

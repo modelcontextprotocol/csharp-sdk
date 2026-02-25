@@ -317,7 +317,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
     {
         var logger = context.Services?.GetService<ILogger<Program>>();
 
-        logger?.LogInformation($"Processing request from {context.Meta.ProgressToken}");
+        logger?.LogInformation($"Processing request from {context.Params?.ProgressToken}");
         var result = await next(context, cancellationToken);
         logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools");
         return result;
@@ -339,11 +339,11 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
         catch (Exception ex)
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
-            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Meta.ProgressToken);
+            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Params?.ProgressToken);
 
             return new CallToolResult
             {
-                Content = new[] { new TextContent { Type = "text", Text = "An unexpected error occurred while processing the tool call." } },
+                Content = [new TextContentBlock { Text = "An unexpected error occurred while processing the tool call." }],
                 IsError = true
             };
         }
@@ -576,7 +576,7 @@ You can also create custom authorization filters using the filter methods:
         {
             return new CallToolResult
             {
-                Content = [new TextContent { Text = "Custom: Authentication required" }],
+                Content = [new TextContentBlock { Text = "Custom: Authentication required" }],
                 IsError = true
             };
         }

@@ -1066,6 +1066,7 @@ public abstract partial class McpServer : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous notification operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="task"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The notification failed or the client returned an error response.</exception>
     /// <remarks>
     /// <para>
     /// This method sends an optional status notification to inform the client of task state changes.

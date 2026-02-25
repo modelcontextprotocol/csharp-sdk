@@ -40,7 +40,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <param name="name">The name of the primitive to retrieve.</param>
     /// <returns>The <typeparamref name="T"/> with the specified name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
-    /// <exception cref="KeyNotFoundException">An primitive with the specified name does not exist in the collection.</exception>
+    /// <exception cref="KeyNotFoundException">A primitive with the specified name does not exist in the collection.</exception>
     public T this[string name]
     {
         get
@@ -120,7 +120,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     /// <summary>Checks if a specific primitive is present in the collection of primitives.</summary>
     /// <param name="primitive">The primitive to search for in the collection.</param>
-    /// <see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.
+    /// <returns><see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="primitive"/> is <see langword="null"/>.</exception>
     public virtual bool Contains(T primitive)
     {

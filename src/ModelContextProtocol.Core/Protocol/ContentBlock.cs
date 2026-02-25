@@ -69,8 +69,10 @@ public abstract class ContentBlock
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
-    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// <remarks>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't require
     /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ContentBlock>
     {
@@ -92,6 +94,7 @@ public abstract class ContentBlock
             string? name = null;
             string? title = null;
             ReadOnlyMemory<byte>? data = null;
+            ReadOnlyMemory<byte>? decodedData = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -137,7 +140,14 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            decodedData = reader.GetBytesFromBase64();
+                        }
                         break;
 
                     case "mimeType":
@@ -230,17 +240,23 @@ public abstract class ContentBlock
                     Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
                 },
 
-                "image" => new ImageContentBlock
-                {
-                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                },
+                "image" => decodedData is not null ?
+                    ImageContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'image' type.")) :
+                    new ImageContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
+                    },
 
-                "audio" => new AudioContentBlock
-                {
-                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                },
+                "audio" => decodedData is not null ?
+                    AudioContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type.")) :
+                    new AudioContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
+                    },
 
                 "resource" => new EmbeddedResourceBlock
                 {
@@ -414,7 +430,7 @@ public sealed class TextContentBlock : ContentBlock
 public sealed class ImageContentBlock : ContentBlock
 {
     private ReadOnlyMemory<byte>? _decodedData;
-    private ReadOnlyMemory<byte> _data;
+    private ReadOnlyMemory<byte>? _data;
 
     /// <summary>
     /// Creates an <see cref="ImageContentBlock"/> from decoded image bytes.
@@ -423,7 +439,7 @@ public sealed class ImageContentBlock : ContentBlock
     /// <param name="mimeType">The MIME type of the image.</param>
     /// <returns>A new <see cref="ImageContentBlock"/> instance.</returns>
     /// <remarks>
-    /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and lazily encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
@@ -431,14 +447,19 @@ public sealed class ImageContentBlock : ContentBlock
     {
         Throw.IfNullOrWhiteSpace(mimeType);
 
-        ReadOnlyMemory<byte> data = EncodingUtilities.EncodeToBase64Utf8(bytes);
-        
-        return new()
-        {
-            _decodedData = bytes,
-            Data = data,
-            MimeType = mimeType
-        };
+        return new(bytes, mimeType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="ImageContentBlock"/> class.</summary>
+    public ImageContentBlock()
+    {
+    }
+
+    [SetsRequiredMembers]
+    private ImageContentBlock(ReadOnlyMemory<byte> decodedData, string mimeType)
+    {
+        _decodedData = decodedData;
+        MimeType = mimeType;
     }
 
     /// <inheritdoc/>
@@ -453,7 +474,16 @@ public sealed class ImageContentBlock : ContentBlock
     [JsonPropertyName("data")]
     public required ReadOnlyMemory<byte> Data
     {
-        get => _data;
+        get
+        {
+            if (_data is null)
+            {
+                Debug.Assert(_decodedData is not null);
+                _data = EncodingUtilities.EncodeToBase64Utf8(_decodedData!.Value);
+            }
+
+            return _data.Value;
+        }
         set
         {
             _data = value;
@@ -494,7 +524,14 @@ public sealed class ImageContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = _decodedData is not null ? $"{_decodedData.Value.Length} bytes" : DebuggerDisplayHelper.GetBase64LengthDisplay(Data);
+            return $"MimeType = {MimeType}, Length = {lengthDisplay}";
+        }
+    }
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
@@ -502,7 +539,7 @@ public sealed class ImageContentBlock : ContentBlock
 public sealed class AudioContentBlock : ContentBlock
 {
     private ReadOnlyMemory<byte>? _decodedData;
-    private ReadOnlyMemory<byte> _data;
+    private ReadOnlyMemory<byte>? _data;
 
     /// <summary>
     /// Creates an <see cref="AudioContentBlock"/> from decoded audio bytes.
@@ -511,7 +548,7 @@ public sealed class AudioContentBlock : ContentBlock
     /// <param name="mimeType">The MIME type of the audio.</param>
     /// <returns>A new <see cref="AudioContentBlock"/> instance.</returns>
     /// <remarks>
-    /// This method stores the provided bytes as <see cref="DecodedData"/> and encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and lazily encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
@@ -519,14 +556,19 @@ public sealed class AudioContentBlock : ContentBlock
     {
         Throw.IfNullOrWhiteSpace(mimeType);
 
-        ReadOnlyMemory<byte> data = EncodingUtilities.EncodeToBase64Utf8(bytes);
-        
-        return new()
-        {
-            _decodedData = bytes,
-            Data = data,
-            MimeType = mimeType
-        };
+        return new(bytes, mimeType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="AudioContentBlock"/> class.</summary>
+    public AudioContentBlock()
+    {
+    }
+
+    [SetsRequiredMembers]
+    private AudioContentBlock(ReadOnlyMemory<byte> decodedData, string mimeType)
+    {
+        _decodedData = decodedData;
+        MimeType = mimeType;
     }
 
     /// <inheritdoc/>
@@ -541,7 +583,16 @@ public sealed class AudioContentBlock : ContentBlock
     [JsonPropertyName("data")]
     public required ReadOnlyMemory<byte> Data
     {
-        get => _data;
+        get
+        {
+            if (_data is null)
+            {
+                Debug.Assert(_decodedData is not null);
+                _data = EncodingUtilities.EncodeToBase64Utf8(_decodedData!.Value);
+            }
+
+            return _data.Value;
+        }
         set
         {
             _data = value;
@@ -582,7 +633,14 @@ public sealed class AudioContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = _decodedData is not null ? $"{_decodedData.Value.Length} bytes" : DebuggerDisplayHelper.GetBase64LengthDisplay(Data);
+            return $"MimeType = {MimeType}, Length = {lengthDisplay}";
+        }
+    }
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>

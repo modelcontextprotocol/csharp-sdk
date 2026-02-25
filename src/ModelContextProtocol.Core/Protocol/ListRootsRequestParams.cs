@@ -1,7 +1,7 @@
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// Represents the parameters used with a <see cref="RequestMethods.ResourcesTemplatesList"/> request from a server to request
+/// Represents the parameters used with a <see cref="RequestMethods.RootsList"/> request from a server to request
 /// a list of roots available from the client.
 /// </summary>
 /// <remarks>

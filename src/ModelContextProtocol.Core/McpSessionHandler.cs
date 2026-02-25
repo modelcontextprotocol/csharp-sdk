@@ -47,7 +47,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Checks if the given protocol version supports priming events.
     /// </summary>
     /// <param name="protocolVersion">The protocol version to check.</param>
-    /// <returns>True if the protocol version supports resumability.</returns>
+    /// <returns>True if the protocol version supports priming events.</returns>
     /// <remarks>
     /// Priming events are only supported in protocol version &gt;= 2025-11-25.
     /// Older clients may crash when receiving SSE events with empty data.
@@ -190,11 +190,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     {
                         // Register before we yield, so that the tracking is guaranteed to be there
                         // when subsequent messages arrive, even if the asynchronous processing happens
-                        // out of order.
+                        // out of order. Per spec, "The initialize request MUST NOT be cancelled by clients",
+                        // so we don't track it in _handlingRequests to prevent cancellation notifications from
+                        // canceling it.
                         if (messageWithId is not null)
                         {
                             combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            _handlingRequests[messageWithId.Id] = combinedCts;
+                            if (message is not JsonRpcRequest { Method: RequestMethods.Initialize })
+                            {
+                                _handlingRequests[messageWithId.Id] = combinedCts;
+                            }
                         }
 
                         // If we await the handler without yielding first, the transport may not be able to read more messages,
@@ -458,7 +463,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Sends a JSON-RPC request to the server.
-    /// It is strongly recommended use the capability-specific methods instead of this one.
+    /// It is strongly recommended to use the capability-specific methods instead of this one.
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
@@ -528,9 +533,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
+            // Per spec, "The initialize request MUST NOT be cancelled by clients", so skip registration for initialize.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             JsonRpcMessage? response;
-            using (var registration = RegisterCancellation(cancellationToken, request))
+            using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(cancellationToken, request) : default)
             {
                 response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }

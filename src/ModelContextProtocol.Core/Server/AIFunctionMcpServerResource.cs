@@ -294,7 +294,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     {
         AIFunction = function;
         ProtocolResourceTemplate = resourceTemplate;
-        ProtocolResourceTemplate.McpServerResource = this;
         ProtocolResource = resourceTemplate.AsResource();
         _metadata = metadata;
 

@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Protocol;
@@ -488,5 +489,130 @@ public static class ResourceContentsTests
         var json = JsonSerializer.Serialize<ResourceContents>(resource, McpJsonUtilities.DefaultOptions);
 
         Assert.DoesNotContain("mimeType", json);
+    }
+
+    [Fact]
+    public static void BlobResourceContents_Deserialization_HandlesEscapedForwardSlashInBase64()
+    {
+        // Base64 uses '/' which some JSON encoders escape as '\/' (valid JSON).
+        // The converter must unescape before storing the base64 UTF-8 bytes.
+        byte[] originalBytes = [0xFF, 0xD8, 0xFF, 0xE0]; // sample bytes that produce '/' in base64
+        string base64 = Convert.ToBase64String(originalBytes); // "/9j/4A=="
+        Assert.Contains("/", base64);
+
+        // Simulate a JSON encoder that escapes '/' as '\/'
+        string json = $$"""{"uri":"file:///test.bin","blob":"{{base64.Replace("/", "\\/")}}","mimeType":"application/octet-stream"}""";
+
+        var deserialized = JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions);
+        var blob = Assert.IsType<BlobResourceContents>(deserialized);
+        Assert.Equal(base64, System.Text.Encoding.UTF8.GetString(blob.Blob.ToArray()));
+        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_FromBytes_RoundtripsCorrectly(byte[] originalBytes)
+    {
+        string expectedBase64 = Convert.ToBase64String(originalBytes);
+
+        var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin", "application/octet-stream");
+
+        Assert.Equal("file:///test.bin", blob.Uri);
+        Assert.Equal("application/octet-stream", blob.MimeType);
+        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+        Assert.Equal(expectedBase64, Encoding.UTF8.GetString(blob.Blob.ToArray()));
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_BlobSetter_RoundtripsCorrectly(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        byte[] base64Utf8 = Encoding.UTF8.GetBytes(base64);
+
+        var blob = new BlobResourceContents { Blob = base64Utf8, Uri = "file:///test.bin" };
+
+        Assert.Equal(base64Utf8, blob.Blob.ToArray());
+        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_JsonRoundtrip_PreservesData(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+        byte[] base64Utf8 = Encoding.UTF8.GetBytes(base64);
+
+        var original = new BlobResourceContents
+        {
+            Blob = base64Utf8,
+            Uri = "file:///test.bin",
+            MimeType = "application/octet-stream"
+        };
+        string json = JsonSerializer.Serialize<ResourceContents>(original, McpJsonUtilities.DefaultOptions);
+        var deserialized = Assert.IsType<BlobResourceContents>(
+            JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions));
+
+        Assert.Equal(base64Utf8, deserialized.Blob.ToArray());
+        Assert.Equal(originalBytes, deserialized.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_FromBytes_JsonRoundtrip_PreservesData(byte[] originalBytes)
+    {
+        string expectedBase64 = Convert.ToBase64String(originalBytes);
+
+        var original = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin", "application/octet-stream");
+        string json = JsonSerializer.Serialize<ResourceContents>(original, McpJsonUtilities.DefaultOptions);
+        var deserialized = Assert.IsType<BlobResourceContents>(
+            JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions));
+
+        Assert.Equal(expectedBase64, Encoding.UTF8.GetString(deserialized.Blob.ToArray()));
+        Assert.Equal(originalBytes, deserialized.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_EscapedJsonRoundtrip_PreservesData(byte[] originalBytes)
+    {
+        string base64 = Convert.ToBase64String(originalBytes);
+
+        string json = $$"""{"uri":"file:///test.bin","blob":"{{base64.Replace("/", "\\/")}}","mimeType":"application/octet-stream"}""";
+
+        var deserialized = Assert.IsType<BlobResourceContents>(
+            JsonSerializer.Deserialize<ResourceContents>(json, McpJsonUtilities.DefaultOptions));
+
+        Assert.Equal(base64, Encoding.UTF8.GetString(deserialized.Blob.ToArray()));
+        Assert.Equal(originalBytes, deserialized.DecodedData.ToArray());
+    }
+
+    [Fact]
+    public static void BlobResourceContents_BlobSetterInvalidatesCachedDecodedData()
+    {
+        byte[] bytes1 = [1, 2, 3];
+        var blob = BlobResourceContents.FromBytes(bytes1, "file:///test.bin");
+
+        Assert.Equal(bytes1, blob.DecodedData.ToArray());
+
+        byte[] newBytes = [4, 5, 6];
+        string newBase64 = Convert.ToBase64String(newBytes);
+        blob.Blob = Encoding.UTF8.GetBytes(newBase64);
+
+        Assert.Equal(newBytes, blob.DecodedData.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(ContentBlockTests.Base64TestData), MemberType = typeof(ContentBlockTests))]
+    public static void BlobResourceContents_FromBytes_LazilyEncodesBlob(byte[] originalBytes)
+    {
+        var blob = BlobResourceContents.FromBytes(originalBytes, "file:///test.bin");
+
+        // Access DecodedData first without touching Blob
+        Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+
+        // Now access Blob and verify lazy encoding
+        string expectedBase64 = Convert.ToBase64String(originalBytes);
+        Assert.Equal(expectedBase64, Encoding.UTF8.GetString(blob.Blob.ToArray()));
     }
 }

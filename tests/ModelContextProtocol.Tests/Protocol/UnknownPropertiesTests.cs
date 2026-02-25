@@ -252,7 +252,7 @@ public class UnknownPropertiesTests
         // Assert
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.StructuredContent);
-        Assert.Equal("correctly placed here", deserialized.StructuredContent["result"]?.ToString());
-        Assert.Equal(42, (int?)deserialized.StructuredContent["value"]);
+        Assert.Equal("correctly placed here", deserialized.StructuredContent.Value.GetProperty("result").GetString());
+        Assert.Equal(42, deserialized.StructuredContent.Value.GetProperty("value").GetInt32());
     }
 }

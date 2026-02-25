@@ -43,7 +43,7 @@ public sealed class McpClientOptions
     /// If non-<see langword="null"/>, this version will be sent to the server, and the handshake
     /// will fail if the version in the server's response does not match this version.
     /// If <see langword="null"/>, the client will request the latest version supported by the server
-    /// but will allow any supported version that the server advertizes in its response.
+    /// but will allow any supported version that the server advertises in its response.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }

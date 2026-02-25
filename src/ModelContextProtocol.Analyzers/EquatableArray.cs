@@ -15,7 +15,7 @@ internal readonly struct EquatableArray<T> : IEnumerable<T>, IEquatable<Equatabl
     /// <param name="source">The source to enumerate and wrap.</param>
     public EquatableArray(IEnumerable<T> source) => _array = source.ToArray();
 
-    /// <param name="source">The source to wrap.</param>
+    /// <param name="array">The source to wrap.</param>
     public EquatableArray(T[] array) => _array = array;
 
     /// <summary>Gets a reference to an item at a specified position within the array.</summary>
