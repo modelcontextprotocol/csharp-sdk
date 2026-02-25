@@ -2,7 +2,7 @@
 
 [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol)
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), with hosting and dependency injection extensions. References `ModelContextProtocol.Core`. Please visit the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 ## Packages
 
@@ -14,15 +14,11 @@ This SDK consists of three main packages:
 
 - **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore) - The library for HTTP-based MCP servers. References `ModelContextProtocol`. [Documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.AspNetCore.html)
 
-## Installation
-
-```
-dotnet add package ModelContextProtocol
-```
-
 ## Getting Started
 
 To get started, see the [Getting Started](https://modelcontextprotocol.github.io/csharp-sdk/concepts/getting-started.html) guide for installation instructions, package-selection guidance, and complete examples for both clients and servers.
+
+You can also browse the [samples](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples) directory and the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 ## About MCP
 
