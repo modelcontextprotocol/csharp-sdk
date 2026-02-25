@@ -175,6 +175,21 @@ SSE-specific configuration options:
 
 The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. The same `MapMcp()` endpoint handles both protocols — clients connecting with SSE are automatically served using the legacy SSE mechanism:
 
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithTools<MyTools>();
+
+var app = builder.Build();
+
+// MapMcp() serves both Streamable HTTP and legacy SSE.
+// SSE clients connect to /sse (or {route}/sse for custom routes).
+app.MapMcp();
+app.Run();
+```
+
 No additional configuration is needed. When a client connects using the SSE protocol, the server responds with an SSE stream for server-to-client messages and accepts client-to-server messages via a separate POST endpoint.
 
 ### Transport mode comparison
