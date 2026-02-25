@@ -18,5 +18,5 @@ public sealed class StdioClientCompletionDetails : ClientCompletionDetails
     /// <summary>
     /// Gets the last lines of the server process's standard error output, or <see langword="null"/> if unavailable.
     /// </summary>
-    public IEnumerable<string>? StandardErrorTail { get; set; }
+    public IReadOnlyList<string>? StandardErrorTail { get; set; }
 }
