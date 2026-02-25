@@ -782,4 +782,16 @@ public class McpClientTests : ClientServerTestBase
         await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
             () => client.SetLoggingLevelAsync((SetLevelRequestParams)null!, TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task ServerCanPingClient()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var pingRequest = new JsonRpcRequest { Method = RequestMethods.Ping };
+        var response = await Server.SendRequestAsync(pingRequest, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(response);
+        Assert.NotNull(response.Result);
+    }
 }
