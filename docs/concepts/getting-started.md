@@ -95,7 +95,7 @@ public static class EchoTool
 
 ### Building an MCP client
 
-Create a new console app, add the package, and replace `Program.cs` with the code below. This client connects to the [MCP "everything" reference server](https://www.npmjs.com/package/@modelcontextprotocol/server-everything), lists its tools, and calls one:
+Create a new console app, add the package, and replace `Program.cs` with the code below. This client connects to the MCP "everything" reference server, lists its tools, and calls one:
 
 ```
 dotnet new console
