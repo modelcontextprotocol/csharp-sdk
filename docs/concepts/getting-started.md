@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-author: jeffhandley
+author: stephentoub
 description: Install the MCP C# SDK and build your first MCP client and server.
 uid: getting-started
 ---
