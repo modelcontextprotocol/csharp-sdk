@@ -85,12 +85,6 @@ internal sealed partial class McpClientImpl : McpClient
             notificationHandlers.RegisterRange(notificationHandlersFromOptions);
         }
 
-        requestHandlers.Set(
-            RequestMethods.Ping,
-            (request, _, cancellationToken) => new ValueTask<PingResult>(new PingResult()),
-            McpJsonUtilities.JsonContext.Default.JsonNode,
-            McpJsonUtilities.JsonContext.Default.PingResult);
-
         if (taskStatusHandler is not null)
         {
             notificationHandlers.Register(
