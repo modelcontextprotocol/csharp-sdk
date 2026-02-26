@@ -137,8 +137,6 @@ app.MapMcp("/mcp");
 
 When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
-See the `ModelContextProtocol.AspNetCore` package [README](https://github.com/modelcontextprotocol/csharp-sdk/blob/main/src/ModelContextProtocol.AspNetCore/README.md) for more configuration options.
-
 ### SSE transport (legacy)
 
 The [SSE (Server-Sent Events)] transport is a legacy mechanism that uses unidirectional server-to-client streaming with a separate HTTP endpoint for client-to-server messages. New implementations should prefer Streamable HTTP.
