@@ -1,14 +1,18 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ProtectedMcpServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
+const int maxConcurrentToolCallsPerUser = 10;
 
 builder.Services.AddAuthentication(options =>
 {
@@ -65,7 +69,36 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<PartitionedRateLimiter<RequestContext<CallToolRequestParams>>>(_ =>
+    PartitionedRateLimiter.Create<RequestContext<CallToolRequestParams>, string>(context =>
+        RateLimitPartition.GetConcurrencyLimiter(
+            context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            context.User?.Identity?.Name ??
+            context.JsonRpcMessage.Context?.RelatedTransport?.SessionId ??
+            "anonymous",
+            _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = maxConcurrentToolCallsPerUser,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            })));
 builder.Services.AddMcpServer()
+    .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
+    {
+        var services = request.Services ?? throw new InvalidOperationException("Request context does not have an associated service provider.");
+        var toolCallConcurrencyLimiter = services.GetRequiredService<PartitionedRateLimiter<RequestContext<CallToolRequestParams>>>();
+        using var lease = await toolCallConcurrencyLimiter.AcquireAsync(request, 1, cancellationToken).ConfigureAwait(false);
+        if (!lease.IsAcquired)
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = $"Maximum concurrent tool calls ({maxConcurrentToolCallsPerUser}) exceeded. Try again after in-progress calls complete." }]
+            };
+        }
+
+        return await next(request, cancellationToken).ConfigureAwait(false);
+    }))
     .WithTools<WeatherTools>()
     .WithHttpTransport();
 
