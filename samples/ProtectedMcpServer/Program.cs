@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
+const int maxConcurrentToolCallsPerUser = 10;
 
 builder.Services.AddAuthentication(options =>
 {
@@ -68,25 +69,31 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
-var toolCallConcurrencyLimiter = PartitionedRateLimiter.Create<RequestContext<CallToolRequestParams>, string>(context =>
-    RateLimitPartition.GetConcurrencyLimiter(
-        context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User?.Identity?.Name ?? "anonymous",
-        _ => new ConcurrencyLimiterOptions
-        {
-            PermitLimit = 10,
-            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            QueueLimit = 0
-        }));
+builder.Services.AddSingleton<PartitionedRateLimiter<RequestContext<CallToolRequestParams>>>(_ =>
+    PartitionedRateLimiter.Create<RequestContext<CallToolRequestParams>, string>(context =>
+        RateLimitPartition.GetConcurrencyLimiter(
+            context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            context.User?.Identity?.Name ??
+            context.JsonRpcMessage.Context?.RelatedTransport?.SessionId ??
+            "anonymous",
+            _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = maxConcurrentToolCallsPerUser,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            })));
 builder.Services.AddMcpServer()
     .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
     {
+        var services = request.Services ?? throw new InvalidOperationException("Request context does not have an associated service provider.");
+        var toolCallConcurrencyLimiter = services.GetRequiredService<PartitionedRateLimiter<RequestContext<CallToolRequestParams>>>();
         using var lease = await toolCallConcurrencyLimiter.AcquireAsync(request, 1, cancellationToken).ConfigureAwait(false);
         if (!lease.IsAcquired)
         {
             return new CallToolResult
             {
                 IsError = true,
-                Content = [new TextContentBlock { Text = "Too many concurrent tool calls for this user. Try again later." }]
+                Content = [new TextContentBlock { Text = $"Maximum concurrent tool calls ({maxConcurrentToolCallsPerUser}) exceeded. Try again after in-progress calls complete." }]
             };
         }
 
