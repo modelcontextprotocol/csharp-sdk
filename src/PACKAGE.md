@@ -16,9 +16,9 @@ This SDK consists of three main packages:
 
 ## Getting Started
 
-To get started, see the [Getting Started](https://modelcontextprotocol.github.io/csharp-sdk/concepts/getting-started.html) guide in the conceptual documentation for installation instructions, package-selection guidance, and complete examples for both clients and servers.
+To get started, see the [Getting Started](https://modelcontextprotocol.github.io/csharp-sdk/concepts/getting-started.html) guide for installation instructions, package-selection guidance, and complete examples for both clients and servers.
 
-You can also browse the [samples](samples) directory and the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+You can also browse the [samples](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples) directory and the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 ## About MCP
 
@@ -30,7 +30,3 @@ For more information about MCP:
 - [MCP C# SDK Documentation](https://modelcontextprotocol.github.io/csharp-sdk/)
 - [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
-
-## License
-
-This project is licensed under the [Apache License 2.0](LICENSE).
