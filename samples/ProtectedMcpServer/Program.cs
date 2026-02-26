@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ProtectedMcpServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,7 +68,30 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
+var toolCallConcurrencyLimiter = PartitionedRateLimiter.Create<RequestContext<CallToolRequestParams>, string>(context =>
+    RateLimitPartition.GetConcurrencyLimiter(
+        context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User?.Identity?.Name ?? "anonymous",
+        _ => new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 10,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        }));
 builder.Services.AddMcpServer()
+    .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
+    {
+        using var lease = await toolCallConcurrencyLimiter.AcquireAsync(request, 1, cancellationToken).ConfigureAwait(false);
+        if (!lease.IsAcquired)
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = "Too many concurrent tool calls for this user. Try again later." }]
+            };
+        }
+
+        return await next(request, cancellationToken).ConfigureAwait(false);
+    }))
     .WithTools<WeatherTools>()
     .WithHttpTransport();
 
