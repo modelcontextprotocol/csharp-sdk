@@ -100,6 +100,21 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
 
         var rpcRequest = message as JsonRpcRequest;
+
+        // For initialize requests, capture session metadata from response headers immediately,
+        // before processing the response body. McpSessionHandler.SendRequestAsync races the
+        // transport send against the response TCS and may cancel this task once the response
+        // arrives during SSE stream processing, so session state must be set before that.
+        if (rpcRequest?.Method == RequestMethods.Initialize)
+        {
+            if (response.Headers.TryGetValues("Mcp-Session-Id", out var sessionIdValues))
+            {
+                SessionId = sessionIdValues.FirstOrDefault();
+            }
+
+            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
+        }
+
         JsonRpcMessageWithId? rpcResponseOrError = null;
 
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
@@ -135,16 +150,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse initResponse)
         {
-            // We've successfully initialized! Copy session-id and protocol version, then start GET request if any.
-            if (response.Headers.TryGetValues("Mcp-Session-Id", out var sessionIdValues))
-            {
-                SessionId = sessionIdValues.FirstOrDefault();
-            }
-
             var initializeResult = JsonSerializer.Deserialize(initResponse.Result, McpJsonUtilities.JsonContext.Default.InitializeResult);
             _negotiatedProtocolVersion = initializeResult?.ProtocolVersion;
-
-            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
         }
 
         return response;
