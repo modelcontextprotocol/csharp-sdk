@@ -540,11 +540,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // concurrent channel (e.g. the background GET SSE stream in Streamable HTTP). Without
             // this, the foreground transport send could block indefinitely waiting for a response
             // that was already delivered via a different stream.
-            Task sendTask = SendToRelatedTransportAsync(request, cancellationToken);
+            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
             if (sendTask != await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
             {
                 // The response arrived via a concurrent channel before the transport send completed.
-                // Observe any exception from the still-running send to prevent unobserved task exceptions.
+                // Cancel the still-running send and observe any exception to prevent unobserved task exceptions.
+                sendCts.Cancel();
                 _ = sendTask.ContinueWith(
                     static (t, _) => _ = t.Exception,
                     null,
