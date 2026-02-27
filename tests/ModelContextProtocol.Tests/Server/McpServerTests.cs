@@ -334,7 +334,8 @@ public class McpServerTests : LoggedTest
     {
         // Set every public property on ServerCapabilities to a non-null value.
         // If a new property is added to ServerCapabilities in the future but the
-        // server fails to copy it, this test will fail as a reminder.
+        // server fails to copy it, this reflection-based test will automatically
+        // detect the missing property and fail.
         var inputCapabilities = new ServerCapabilities
         {
             Experimental = new Dictionary<string, object> { ["test"] = new JsonObject() },
