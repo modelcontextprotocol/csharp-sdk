@@ -81,6 +81,42 @@ builder.Services.AddMcpServer()
     });
 ```
 
+### Automatic completions with AllowedValuesAttribute
+
+For parameters with a known set of valid values, you can use `System.ComponentModel.DataAnnotations.AllowedValuesAttribute` on `string` parameters of prompts or resource templates. The server will automatically surface those values as completions without needing a custom completion handler.
+
+#### Prompt parameters
+
+```csharp
+[McpServerPromptType]
+public class MyPrompts
+{
+    [McpServerPrompt, Description("Generates a code review prompt")]
+    public static ChatMessage CodeReview(
+        [Description("The programming language")]
+        [AllowedValues("csharp", "python", "javascript", "typescript", "go", "rust")]
+        string language,
+        [Description("The code to review")] string code)
+        => new(ChatRole.User, $"Please review the following {language} code:\n\n```{language}\n{code}\n```");
+}
+```
+
+#### Resource template parameters
+
+```csharp
+[McpServerResourceType]
+public class MyResources
+{
+    [McpServerResource("config://settings/{section}"), Description("Reads a configuration section")]
+    public static string ReadConfig(
+        [AllowedValues("general", "network", "security", "logging")]
+        string section)
+        => GetConfig(section);
+}
+```
+
+With these attributes in place, when a client sends a `completion/complete` request for the `language` or `section` argument, the server will automatically filter and return matching values based on what the user has typed so far. This approach can be combined with a custom completion handler registered via `WithCompleteHandler`; the handler's results are returned first, followed by any matching `AllowedValues`.
+
 ### Requesting completions on the client
 
 Clients request completions using <xref:ModelContextProtocol.Client.McpClient.CompleteAsync*>. Provide a reference to the prompt or resource template, the argument name, and the current partial value:
