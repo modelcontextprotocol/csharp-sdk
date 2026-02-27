@@ -536,23 +536,26 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            // Wait for either the transport send to complete or for the response to arrive via a
-            // concurrent channel (e.g. the background GET SSE stream in Streamable HTTP). Without
-            // this, the foreground transport send could block indefinitely waiting for a response
-            // that was already delivered via a different stream.
+            // For most requests, wait for either the transport send to complete or for the
+            // response to arrive via a concurrent channel (e.g. the background GET SSE stream
+            // in Streamable HTTP). Without this, the foreground transport send could block
+            // indefinitely waiting for a response that was already delivered via a different stream.
+            //
+            // For the initialize request, always await the send to completion. The transport's
+            // SendMessageAsync has side effects (setting SessionId, starting background tasks)
+            // that must complete before subsequent messages are sent.
             if (!tcs.Task.IsCompleted)
             {
-                using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
-                if (sendTask == await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
+                Task sendTask = SendToRelatedTransportAsync(request, cancellationToken);
+                if (method == RequestMethods.Initialize ||
+                    sendTask == await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
                 {
                     await sendTask.ConfigureAwait(false);
                 }
                 else
                 {
                     // The response arrived via a concurrent channel before the transport send completed.
-                    // Cancel the still-running send and log any exception at debug level.
-                    sendCts.Cancel();
+                    // Let the send finish naturally but observe any faults at debug level.
                     _ = sendTask.ContinueWith(
                         static (t, s) =>
                         {
