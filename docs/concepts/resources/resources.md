@@ -43,7 +43,7 @@ public class MyResources
 
 Template resources use [URI templates (RFC 6570)] with parameters. They are returned separately in the resource templates list and can match a range of URIs:
 
-[URI templates (RFC 6570)]: https://tools.ietf.org/html/rfc6570
+[URI templates (RFC 6570)]: https://datatracker.ietf.org/doc/html/rfc6570
 
 ```csharp
 [McpServerResourceType]

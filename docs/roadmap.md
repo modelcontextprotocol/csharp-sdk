@@ -6,7 +6,7 @@ uid: roadmap
 ---
 ## Spec Implementation Tracking
 
-The C# SDK tracks implementation of MCP spec components using the [modelcontextprotocol project boards](https://github.com/orgs/modelcontextprotocol/projects), with a dedicated project board for each spec revision. For example, see the [2025-11-25 spec revision board](https://github.com/orgs/modelcontextprotocol/projects/26).
+The C# SDK tracks implementation of MCP spec components using the [modelcontextprotocol project boards](https://github.com/orgs/modelcontextprotocol/projects?query=is%3Aopen), with a dedicated project board for each spec revision. For example, see the [2025-11-25 spec revision board](https://github.com/orgs/modelcontextprotocol/projects/26).
 
 ## Current Focus Areas
 
