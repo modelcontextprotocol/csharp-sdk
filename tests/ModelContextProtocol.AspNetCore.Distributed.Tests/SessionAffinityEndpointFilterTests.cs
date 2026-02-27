@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore.Distributed;
 using ModelContextProtocol.AspNetCore.Distributed.Abstractions;
-using NSubstitute;
+using Moq;
 using Xunit;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -30,12 +30,12 @@ public sealed class SessionAffinityEndpointFilterTests
         httpContext.Request.Scheme = "http";
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
+        var mockSessionStore = new Mock<ISessionStore>();
         using var forwarder = new TestHttpForwarder();
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -49,10 +49,10 @@ public sealed class SessionAffinityEndpointFilterTests
 
         Assert.Null(result);
         Assert.True(nextCalled);
-        await sessionStore.DidNotReceive().GetOrClaimOwnershipAsync(
-            Arg.Any<string>(),
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
+            It.IsAny<string>(),
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Never());
         Assert.Empty(forwarder.Calls);
     }
 
@@ -70,16 +70,14 @@ public sealed class SessionAffinityEndpointFilterTests
         // We need to capture and return whatever owner info the filter creates
         SessionOwnerInfo? capturedOwnerInfo = null;
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<SessionOwnerInfo>> factory, CancellationToken ct) =>
             {
-                var factory = callInfo.ArgAt<Func<CancellationToken, Task<SessionOwnerInfo>>>(1);
-                var ct = callInfo.ArgAt<CancellationToken>(2);
                 // Call the factory to get the owner info that the filter would create
                 capturedOwnerInfo = factory(ct).GetAwaiter().GetResult();
                 return Task.FromResult(capturedOwnerInfo);
@@ -89,7 +87,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://localhost:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -108,10 +106,10 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal("http://localhost:5000", capturedOwnerInfo.Address);
 
         // Verify the session ownership was checked/claimed
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
 
         Assert.Empty(forwarder.Calls);
     }
@@ -132,19 +130,19 @@ public sealed class SessionAffinityEndpointFilterTests
         httpContext.Request.Headers["Mcp-Session-Id"] = sessionId;
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(remoteOwner));
 
         using var forwarder = new TestHttpForwarder();
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -158,10 +156,10 @@ public sealed class SessionAffinityEndpointFilterTests
 
         Assert.Null(result);
         Assert.False(nextCalled);
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
         Assert.Single(forwarder.Calls);
         Assert.Equal("http://remotehost:8080", forwarder.Calls[0].Destination);
     }
@@ -176,12 +174,12 @@ public sealed class SessionAffinityEndpointFilterTests
         httpContext.Request.Headers["Mcp-Session-Id"] = sessionId;
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(
                 new SessionOwnerInfo
                 {
@@ -194,7 +192,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var result = await filter.InvokeAsync(
             invocationContext,
@@ -207,10 +205,10 @@ public sealed class SessionAffinityEndpointFilterTests
         await ((IResult)result!).ExecuteAsync(httpContext);
         Assert.Equal(StatusCodes.Status502BadGateway, httpContext.Response.StatusCode);
 
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
         Assert.Single(forwarder.Calls);
         Assert.Equal("http://remotehost:8080", forwarder.Calls[0].Destination);
     }
@@ -241,16 +239,16 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(remoteOwner));
 
-        sessionStore
-            .RemoveAsync(sessionId, Arg.Any<CancellationToken>())
+        mockSessionStore
+            .Setup(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         using var forwarder = new TestHttpForwarder
@@ -260,7 +258,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var result = await filter.InvokeAsync(
             invocationContext,
@@ -271,12 +269,12 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal(StatusCodes.Status404NotFound, httpContext.Response.StatusCode);
 
         // Verify session was removed
-        await sessionStore.Received(1).RemoveAsync(sessionId, Arg.Any<CancellationToken>());
+        mockSessionStore.Verify(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()), Times.Once());
 
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
     }
 
     [Fact]
@@ -305,16 +303,16 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(remoteOwner));
 
-        sessionStore
-            .RemoveAsync(sessionId, Arg.Any<CancellationToken>())
+        mockSessionStore
+            .Setup(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         using var forwarder = new TestHttpForwarder
@@ -324,7 +322,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var result = await filter.InvokeAsync(
             invocationContext,
@@ -335,7 +333,7 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal(StatusCodes.Status404NotFound, httpContext.Response.StatusCode);
 
         // Verify session was removed
-        await sessionStore.Received(1).RemoveAsync(sessionId, Arg.Any<CancellationToken>());
+        mockSessionStore.Verify(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()), Times.Once());
     }
 
     [Fact]
@@ -364,12 +362,12 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(remoteOwner));
 
         using var forwarder = new TestHttpForwarder
@@ -379,7 +377,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var result = await filter.InvokeAsync(
             invocationContext,
@@ -390,11 +388,11 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal(StatusCodes.Status404NotFound, httpContext.Response.StatusCode);
 
         // Verify session was NOT removed (only GetOrClaimOwnershipAsync was called)
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
-        await sessionStore.DidNotReceive().RemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
+        mockSessionStore.Verify(x => x.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]
@@ -423,19 +421,19 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.FromResult(remoteOwner));
 
         using var forwarder = new TestHttpForwarder { NextStatusCode = StatusCodes.Status200OK };
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var result = await filter.InvokeAsync(
             invocationContext,
@@ -446,11 +444,11 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal(StatusCodes.Status200OK, httpContext.Response.StatusCode);
 
         // Verify session was NOT removed (only GetOrClaimOwnershipAsync was called)
-        await sessionStore.Received(1).GetOrClaimOwnershipAsync(
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
             sessionId,
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
-        await sessionStore.DidNotReceive().RemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Once());
+        mockSessionStore.Verify(x => x.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]
@@ -470,7 +468,7 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
+        var mockSessionStore = new Mock<ISessionStore>();
 
         using var forwarder = new TestHttpForwarder
         {
@@ -479,7 +477,7 @@ public sealed class SessionAffinityEndpointFilterTests
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer("http://127.0.0.1:5000");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -497,11 +495,11 @@ public sealed class SessionAffinityEndpointFilterTests
         Assert.Equal(StatusCodes.Status404NotFound, httpContext.Response.StatusCode);
 
         // Verify no session store operations were performed
-        await sessionStore.DidNotReceive().GetOrClaimOwnershipAsync(
-            Arg.Any<string>(),
-            Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-            Arg.Any<CancellationToken>());
-        await sessionStore.DidNotReceive().RemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        mockSessionStore.Verify(x => x.GetOrClaimOwnershipAsync(
+            It.IsAny<string>(),
+            It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+            It.IsAny<CancellationToken>()), Times.Never());
+        mockSessionStore.Verify(x => x.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]
@@ -517,16 +515,14 @@ public sealed class SessionAffinityEndpointFilterTests
         // The session store will call the factory to create owner info
         SessionOwnerInfo? capturedOwnerInfo = null;
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<SessionOwnerInfo>> factory, CancellationToken ct) =>
             {
-                var factory = callInfo.ArgAt<Func<CancellationToken, Task<SessionOwnerInfo>>>(1);
-                var ct = callInfo.ArgAt<CancellationToken>(2);
                 capturedOwnerInfo = factory(ct).GetAwaiter().GetResult();
                 return Task.FromResult(capturedOwnerInfo);
             });
@@ -536,7 +532,7 @@ public sealed class SessionAffinityEndpointFilterTests
         // Server listening on both HTTP and HTTPS
         using var server = new TestServer("http://localhost:5000", "https://localhost:5001");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -567,16 +563,14 @@ public sealed class SessionAffinityEndpointFilterTests
 
         SessionOwnerInfo? capturedOwnerInfo = null;
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<SessionOwnerInfo>> factory, CancellationToken ct) =>
             {
-                var factory = callInfo.ArgAt<Func<CancellationToken, Task<SessionOwnerInfo>>>(1);
-                var ct = callInfo.ArgAt<CancellationToken>(2);
                 capturedOwnerInfo = factory(ct).GetAwaiter().GetResult();
                 return Task.FromResult(capturedOwnerInfo);
             });
@@ -586,7 +580,7 @@ public sealed class SessionAffinityEndpointFilterTests
         // Server listening only on HTTPS
         using var server = new TestServer("https://localhost:5001");
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -618,16 +612,14 @@ public sealed class SessionAffinityEndpointFilterTests
 
         SessionOwnerInfo? capturedOwnerInfo = null;
 
-        var sessionStore = Substitute.For<ISessionStore>();
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        var mockSessionStore = new Mock<ISessionStore>();
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<SessionOwnerInfo>> factory, CancellationToken ct) =>
             {
-                var factory = callInfo.ArgAt<Func<CancellationToken, Task<SessionOwnerInfo>>>(1);
-                var ct = callInfo.ArgAt<CancellationToken>(2);
                 capturedOwnerInfo = factory(ct).GetAwaiter().GetResult();
                 return Task.FromResult(capturedOwnerInfo);
             });
@@ -639,7 +631,7 @@ public sealed class SessionAffinityEndpointFilterTests
         var options = new SessionAffinityOptions { LocalServerAddress = configuredAddress };
 
         var filter = CreateFilter(
-            sessionStore,
+            mockSessionStore.Object,
             forwarder,
             httpClientFactory,
             server,
@@ -686,19 +678,17 @@ public sealed class SessionAffinityEndpointFilterTests
 
         var invocationContext = new TestEndpointFilterInvocationContext(httpContext);
 
-        var sessionStore = Substitute.For<ISessionStore>();
+        var mockSessionStore = new Mock<ISessionStore>();
         var getOrClaimCallCount = 0;
 
         // First call returns stale ownership info
-        sessionStore
-            .GetOrClaimOwnershipAsync(
+        mockSessionStore
+            .Setup(x => x.GetOrClaimOwnershipAsync(
                 sessionId,
-                Arg.Any<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+                It.IsAny<Func<CancellationToken, Task<SessionOwnerInfo>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<SessionOwnerInfo>> factory, CancellationToken ct) =>
             {
-                var factory = callInfo.ArgAt<Func<CancellationToken, Task<SessionOwnerInfo>>>(1);
-                var ct = callInfo.ArgAt<CancellationToken>(2);
                 getOrClaimCallCount++;
                 if (getOrClaimCallCount == 1)
                 {
@@ -720,15 +710,15 @@ public sealed class SessionAffinityEndpointFilterTests
             });
 
         // Expect RemoveAsync to be called to clear stale entry
-        sessionStore
-            .RemoveAsync(sessionId, Arg.Any<CancellationToken>())
+        mockSessionStore
+            .Setup(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         using var forwarder = new TestHttpForwarder();
         using var httpClientFactory = new TestForwarderHttpClientFactory();
         using var server = new TestServer(localAddress);
 
-        var filter = CreateFilter(sessionStore, forwarder, httpClientFactory, server);
+        var filter = CreateFilter(mockSessionStore.Object, forwarder, httpClientFactory, server);
 
         var nextCalled = false;
         var result = await filter.InvokeAsync(
@@ -745,7 +735,7 @@ public sealed class SessionAffinityEndpointFilterTests
 
         // Verify interactions
         Assert.Equal(1, getOrClaimCallCount);
-        await sessionStore.Received(1).RemoveAsync(sessionId, Arg.Any<CancellationToken>());
+        mockSessionStore.Verify(x => x.RemoveAsync(sessionId, It.IsAny<CancellationToken>()), Times.Once());
 
         // Should NOT forward since we reclaimed locally
         Assert.Empty(forwarder.Calls);

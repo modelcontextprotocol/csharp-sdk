@@ -22,7 +22,7 @@ namespace ModelContextProtocol.AspNetCore.Distributed;
 /// </remarks>
 internal sealed class HybridCacheSessionStore : ISessionStore
 {
-    private static readonly TimeSpan DefaultSessionTimeout = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan DefaultSessionTimeout = TimeSpan.FromMinutes(30);
     private readonly HybridCache _cache;
     private readonly ILogger<HybridCacheSessionStore> _logger;
     private readonly HybridCacheEntryOptions _cacheEntryOptions;

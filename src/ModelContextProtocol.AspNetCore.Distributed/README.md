@@ -43,51 +43,50 @@ No distributed cache is required until you add additional instances.
 
 ## Production Checklist
 
-1. Register an L2 cache (Redis + Azure AD auth is the most battle-tested option).
+1. Register an L2 cache (Redis, SQL Server, NCache, etc.).
 2. Set `LocalServerAddress` to the routable address other replicas use (scheme, host, port).
 3. Tune `ForwarderRequestConfig` and `HttpClientConfig` for your downstream SLAs.
-4. Use `DefaultAzureCredential` locally and deployment-specific credentials in production.
-5. Monitor HybridCache hit rate and distributed cache availability for early warning.
+4. Monitor HybridCache hit rate and distributed cache availability for early warning.
 
 ### Minimal Redis Configuration
 
 ```csharp
-using Azure.Identity;
-using Microsoft.Extensions.Caching.StackExchangeRedis;
-using StackExchange.Redis;
+using ModelContextProtocol.AspNetCore.Distributed;
 
-var redisCredential = builder.Environment.IsDevelopment()
-    ? new DefaultAzureCredential()
-    : new ManagedIdentityCredential();
+var builder = WebApplication.CreateBuilder(args);
 
-var endpoint = builder.Configuration["Redis:Endpoint"]
-    ?? throw new InvalidOperationException("Redis:Endpoint is required.");
-
-var redisConfig = await ConfigurationOptions
-    .Parse(endpoint)
-    .ConfigureForAzureWithTokenCredentialAsync(redisCredential);
-
-redisConfig.Ssl = true; // Always require TLS in production
-
+// Register your distributed cache provider (e.g. Redis, SQL Server, NCache)
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.ConfigurationOptions = redisConfig;
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
     options.InstanceName = "MCP:";
 });
+
+builder.Services
+    .AddMcpServer()
+    .WithToolsFromAssembly()
+    .WithHttpTransport();
 
 builder.Services.AddMcpHttpSessionAffinity(options =>
 {
     options.LocalServerAddress = builder.Configuration["Server:InternalAddress"]
         ?? throw new InvalidOperationException("Server:InternalAddress is required.");
 });
+
+var app = builder.Build();
+
+app.MapMcp()
+   .WithSessionAffinity();
+
+app.Run();
 ```
 
 `appsettings.json`
 
 ```json
 {
-  "Redis": {
-    "Endpoint": "your-mcp-session-affinity.region.redis.azure.net:6380"
+  "ConnectionStrings": {
+    "Redis": "your-redis-host:6379"
   },
   "Server": {
     "InternalAddress": "http://pod-1.mcp.default.svc.cluster.local:8080"

@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http.Features;
 using ModelContextProtocol.AspNetCore.Distributed;
 using ModelContextProtocol.AspNetCore.Distributed.Abstractions;
-using NSubstitute;
+using Moq;
 using Xunit;
 
 namespace ModelContextProtocol.AspNetCore.Distributed.Tests;
@@ -484,8 +484,8 @@ public sealed class ListeningEndpointResolverTests
     public void ResolveListeningEndpoint_WithInvalidBindings_SkipsInvalidAndUsesValid()
     {
         // Arrange
-        var mockFeature = Substitute.For<IServerAddressesFeature>();
-        mockFeature.Addresses.Returns(
+        var mockFeature = new Mock<IServerAddressesFeature>();
+        mockFeature.Setup(x => x.Addresses).Returns(
             new List<string>
             {
                 "not-a-valid-uri",
@@ -494,15 +494,15 @@ public sealed class ListeningEndpointResolverTests
             }
         );
 
-        var server = Substitute.For<IServer>();
+        var mockServer = new Mock<IServer>();
         var features = new FeatureCollection();
-        features.Set(mockFeature);
-        server.Features.Returns(features);
+        features.Set(mockFeature.Object);
+        mockServer.Setup(x => x.Features).Returns(features);
 
         var options = new SessionAffinityOptions();
 
         // Act
-        var result = _resolver.ResolveListeningEndpoint(server, options);
+        var result = _resolver.ResolveListeningEndpoint(mockServer.Object, options);
 
         // Assert
         Assert.Equal("http://valid.example.com:5000", result);
@@ -512,18 +512,18 @@ public sealed class ListeningEndpointResolverTests
     public void ResolveListeningEndpoint_WithAllInvalidBindings_ReturnsFallback()
     {
         // Arrange
-        var mockFeature = Substitute.For<IServerAddressesFeature>();
-        mockFeature.Addresses.Returns(new List<string> { "not-a-valid-uri", "also-invalid", "still-not-valid" });
+        var mockFeature = new Mock<IServerAddressesFeature>();
+        mockFeature.Setup(x => x.Addresses).Returns(new List<string> { "not-a-valid-uri", "also-invalid", "still-not-valid" });
 
-        var server = Substitute.For<IServer>();
+        var mockServer = new Mock<IServer>();
         var features = new FeatureCollection();
-        features.Set(mockFeature);
-        server.Features.Returns(features);
+        features.Set(mockFeature.Object);
+        mockServer.Setup(x => x.Features).Returns(features);
 
         var options = new SessionAffinityOptions();
 
         // Act
-        var result = _resolver.ResolveListeningEndpoint(server, options);
+        var result = _resolver.ResolveListeningEndpoint(mockServer.Object, options);
 
         // Assert
         Assert.Equal("http://localhost:80", result);
@@ -680,25 +680,25 @@ public sealed class ListeningEndpointResolverTests
 
     private static IServer CreateServer(params string[] addresses)
     {
-        var mockFeature = Substitute.For<IServerAddressesFeature>();
-        mockFeature.Addresses.Returns(new List<string>(addresses));
+        var mockFeature = new Mock<IServerAddressesFeature>();
+        mockFeature.Setup(x => x.Addresses).Returns(new List<string>(addresses));
 
-        var server = Substitute.For<IServer>();
+        var mockServer = new Mock<IServer>();
         var features = new FeatureCollection();
-        features.Set(mockFeature);
-        server.Features.Returns(features);
+        features.Set(mockFeature.Object);
+        mockServer.Setup(x => x.Features).Returns(features);
 
-        return server;
+        return mockServer.Object;
     }
 
     private static IServer CreateServerWithoutAddressesFeature()
     {
-        var server = Substitute.For<IServer>();
+        var mockServer = new Mock<IServer>();
         var features = new FeatureCollection();
         // Deliberately not setting IServerAddressesFeature
-        server.Features.Returns(features);
+        mockServer.Setup(x => x.Features).Returns(features);
 
-        return server;
+        return mockServer.Object;
     }
 
     #endregion
