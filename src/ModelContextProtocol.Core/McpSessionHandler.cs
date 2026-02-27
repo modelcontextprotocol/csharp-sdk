@@ -542,21 +542,39 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // that was already delivered via a different stream.
             using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
-            if (sendTask != await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
+            if (sendTask == await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
             {
-                // The response arrived via a concurrent channel before the transport send completed.
-                // Cancel the still-running send and observe any exception to prevent unobserved task exceptions.
-                sendCts.Cancel();
-                _ = sendTask.ContinueWith(
-                    static (t, _) => _ = t.Exception,
-                    null,
-                    CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted,
-                    TaskScheduler.Default);
+                await sendTask.ConfigureAwait(false);
             }
             else
             {
-                await sendTask.ConfigureAwait(false);
+                // The response arrived via a concurrent channel before the transport send completed.
+                // Cancel the still-running send and log any exception at debug level.
+                sendCts.Cancel();
+                _ = ObserveSendFaults(this, sendTask);
+
+#if NET
+                static async Task ObserveSendFaults(McpSessionHandler self, Task task)
+                {
+                    await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    if (task.IsFaulted)
+                    {
+                        self.LogTransportSendFaulted(self.EndpointName, task.Exception);
+                    }
+                }
+#else
+                static Task ObserveSendFaults(McpSessionHandler self, Task task) =>
+                    task.ContinueWith(
+                        static (t, s) =>
+                        {
+                            var handler = (McpSessionHandler)s!;
+                            handler.LogTransportSendFaulted(handler.EndpointName, t.Exception!);
+                        },
+                        self,
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
+#endif
             }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
@@ -1099,4 +1117,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} session {SessionId} disposed with transport {TransportKind}")]
     private partial void LogSessionDisposed(string endpointName, string sessionId, string transportKind);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} transport send faulted after response was already received.")]
+    private partial void LogTransportSendFaulted(string endpointName, Exception exception);
 }
