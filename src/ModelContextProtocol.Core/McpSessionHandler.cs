@@ -553,30 +553,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     // The response arrived via a concurrent channel before the transport send completed.
                     // Cancel the still-running send and log any exception at debug level.
                     sendCts.Cancel();
-                    _ = ObserveSendFaults(this, sendTask);
-
-#if NET
-                    static async Task ObserveSendFaults(McpSessionHandler self, Task task)
-                    {
-                        await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-                        if (task.IsFaulted)
+                    _ = sendTask.ContinueWith(
+                        static (t, s) =>
                         {
-                            self.LogTransportSendFaulted(self.EndpointName, task.Exception);
-                        }
-                    }
-#else
-                    static Task ObserveSendFaults(McpSessionHandler self, Task task) =>
-                        task.ContinueWith(
-                            static (t, s) =>
-                            {
-                                var handler = (McpSessionHandler)s!;
-                                handler.LogTransportSendFaulted(handler.EndpointName, t.Exception!);
-                            },
-                            self,
-                            CancellationToken.None,
-                            TaskContinuationOptions.OnlyOnFaulted,
-                            TaskScheduler.Default);
-#endif
+                            var handler = (McpSessionHandler)s!;
+                            handler.LogTransportSendFaulted(handler.EndpointName, t.Exception!);
+                        },
+                        this,
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
                 }
             }
 
