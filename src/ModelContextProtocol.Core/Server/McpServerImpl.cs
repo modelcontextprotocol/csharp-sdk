@@ -91,7 +91,6 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureLogging(options);
         ConfigureCompletion(options);
         ConfigureExperimental(options);
-        ConfigurePing();
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -202,14 +201,6 @@ internal sealed partial class McpServerImpl : McpServer
         _taskCancellationTokenProvider?.Dispose();
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
-    }
-
-    private void ConfigurePing()
-    {
-        SetHandler(RequestMethods.Ping,
-            async (request, _) => new PingResult(),
-            McpJsonUtilities.JsonContext.Default.JsonNode,
-            McpJsonUtilities.JsonContext.Default.PingResult);
     }
 
     private void ConfigureInitialize(McpServerOptions options)

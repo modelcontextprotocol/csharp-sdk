@@ -132,6 +132,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         _incomingMessageFilter = incomingMessageFilter ?? (next => next);
         _outgoingMessageFilter = outgoingMessageFilter ?? (next => next);
         _logger = logger;
+
+        // Per the MCP spec, ping may be initiated by either party and must always be handled.
+        _requestHandlers.Set(
+            RequestMethods.Ping,
+            (request, _, cancellationToken) => new ValueTask<PingResult>(new PingResult()),
+            McpJsonUtilities.JsonContext.Default.JsonNode,
+            McpJsonUtilities.JsonContext.Default.PingResult);
+
         LogSessionCreated(EndpointName, _sessionId, _transportKind);
     }
 
