@@ -69,8 +69,10 @@ public abstract class ContentBlock
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
-    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// <remarks>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't require
     /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ContentBlock>
     {

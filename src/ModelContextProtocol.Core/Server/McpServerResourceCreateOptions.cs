@@ -46,7 +46,7 @@ public sealed class McpServerResourceCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerResourceAttribute"/> is applied to the member,
-    /// the name from the attribute is used. If that's not present, a name based on the members's name is used.
+    /// the name from the attribute is used. If that's not present, a name based on the member's name is used.
     /// </remarks>
     public string? Name { get; set; }
 

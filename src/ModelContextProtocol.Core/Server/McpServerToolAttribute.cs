@@ -58,7 +58,7 @@ namespace ModelContextProtocol.Server;
 ///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerToolCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
 ///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved
-///       from the <see cref="IServiceProvider"/> provided to when the tool is invoked rather than from the argument collection.
+///       from the <see cref="IServiceProvider"/> provided when the tool is invoked rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>

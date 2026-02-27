@@ -43,9 +43,9 @@ public class ClientConformanceTests
     [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
 
-    // Backcompat: Legacy 2025-03-26 OAuth flows (no PRM, root-location metadata) we don't implement.
-    // [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
-    // [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
+    // Backcompat: Legacy 2025-03-26 OAuth flows (no PRM, root-location metadata).
+    [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
+    [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
 
     // Extensions: Require ES256 JWT signing (private_key_jwt) and client_credentials grant support.
     // [InlineData("auth/client-credentials-jwt")]

@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -25,6 +26,10 @@ public class McpClientPromptTests : ClientServerTestBase
         [McpServerPrompt, Description("Generates a greeting prompt")]
         public static ChatMessage Greeting([Description("The name to greet")] string name) =>
             new(ChatRole.User, $"Hello, {name}!");
+
+        [McpServerPrompt, Description("Echoes back the metadata it receives")]
+        public static ChatMessage MetadataEcho(RequestContext<GetPromptRequestParams> context) =>
+            new(ChatRole.User, context.Params?.Meta?.ToJsonString() ?? "{}");
     }
 
     [Fact]
@@ -33,7 +38,7 @@ public class McpClientPromptTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalPrompt = prompts.First();
+        var originalPrompt = prompts.First(p => p.Name == "greeting");
         var promptDefinition = originalPrompt.ProtocolPrompt;
 
         var newPrompt = new McpClientPrompt(client, promptDefinition);
@@ -98,7 +103,7 @@ public class McpClientPromptTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
         
         var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalPrompt = prompts.First();
+        var originalPrompt = prompts.First(p => p.Name == "greeting");
         var promptDefinition = originalPrompt.ProtocolPrompt;
 
         var reusedPrompt = new McpClientPrompt(client, promptDefinition);
@@ -133,5 +138,33 @@ public class McpClientPromptTests : ClientServerTestBase
         var textContent = message.Content as TextContentBlock;
         Assert.NotNull(textContent);
         Assert.Equal("Hello, Test!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task GetAsync_WithRequestOptions_PassesMetaToServer()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var prompt = prompts.Single(p => p.Name == "metadata_echo");
+
+        RequestOptions requestOptions = new()
+        {
+            Meta = new JsonObject
+            {
+                ["traceId"] = "test-trace-123",
+                ["customKey"] = "customValue"
+            }
+        };
+
+        var result = await prompt.GetAsync(options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var message = result.Messages.First();
+        var textContent = Assert.IsType<TextContentBlock>(message.Content);
+        var receivedMetadata = JsonNode.Parse(textContent.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("test-trace-123", receivedMetadata["traceId"]?.GetValue<string>());
+        Assert.Equal("customValue", receivedMetadata["customKey"]?.GetValue<string>());
     }
 }

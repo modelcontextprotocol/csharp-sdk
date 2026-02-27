@@ -17,7 +17,7 @@ public static partial class McpServerBuilderExtensions
 {
     #region WithTools
     private const string WithToolsRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata" +
+        $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithTools)} method instead.";
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -202,7 +202,7 @@ public static partial class McpServerBuilderExtensions
 
     #region WithPrompts
     private const string WithPromptsRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithPrompts)} and {nameof(WithPromptsFromAssembly)} methods require dynamic lookup of method metadata" +
+        $"The non-generic {nameof(WithPrompts)} and {nameof(WithPromptsFromAssembly)} methods require dynamic lookup of method metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithPrompts)} method instead.";
 
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -360,7 +360,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// Prompts registered through this method can be discovered by clients using the <c>list_prompts</c> request
-    /// and invoked using the <c>call_prompt</c> request.
+    /// and invoked using the <c>prompts/get</c> request.
     /// </para>
     /// <para>
     /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
@@ -384,7 +384,7 @@ public static partial class McpServerBuilderExtensions
 
     #region WithResources
     private const string WithResourcesRequiresUnreferencedCodeMessage =
-        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata" +
+        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata " +
         $"and might not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
 
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
@@ -421,7 +421,7 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TResourceType">The resource type.</typeparam>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <param name="target">The target instance from which the resources should be sourced.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -925,139 +925,6 @@ public static partial class McpServerBuilderExtensions
         return builder;
     }
 
-    #pragma warning disable CS0436 // ObsoleteAttribute polyfill conflicts with framework type on netstandard.
-
-    /// <summary>
-    /// Adds a filter to the list resource templates handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddListResourceTemplatesFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the list tools handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddListToolsFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the call tool handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddCallToolFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the list prompts handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddListPromptsFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the get prompt handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddGetPromptFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the list resources handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddListResourcesFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the read resource handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddReadResourceFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the complete handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddCompleteFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the subscribe-to-resources handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddSubscribeToResourcesFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the unsubscribe-from-resources handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddUnsubscribeFromResourcesFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to the set logging level handler pipeline.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.RequestFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter) =>
-        builder.WithRequestFilters(filters => filters.AddSetLoggingLevelFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to intercept all incoming JSON-RPC messages.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the message handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.MessageFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
-        builder.WithMessageFilters(filters => filters.AddIncomingFilter(filter));
-
-    /// <summary>
-    /// Adds a filter to intercept all outgoing JSON-RPC messages.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the message handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    [Obsolete(Obsoletions.MessageFilter_Message, DiagnosticId = Obsoletions.MessageAndRequestFilter_DiagnosticId, UrlFormat = Obsoletions.MessageAndRequestFilter_Url)]
-    public static IMcpServerBuilder AddOutgoingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter) =>
-        builder.WithMessageFilters(filters => filters.AddOutgoingFilter(filter));
-
-    #pragma warning restore CS0436
     #endregion
 
     #region Transports
@@ -1078,7 +945,6 @@ public static partial class McpServerBuilderExtensions
     /// when the parent process disconnects.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithStdioServerTransport(this IMcpServerBuilder builder)
     {
         Throw.IfNull(builder);

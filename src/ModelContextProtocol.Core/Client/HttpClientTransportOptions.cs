@@ -105,7 +105,7 @@ public sealed class HttpClientTransportOptions
     public bool OwnsSession { get; set; } = true;
 
     /// <summary>
-    /// Gets sor sets the authorization provider to use for authentication.
+    /// Gets or sets the authorization provider to use for authentication.
     /// </summary>
     public ClientOAuthOptions? OAuth { get; set; }
 
@@ -127,13 +127,13 @@ public sealed class HttpClientTransportOptions
     /// Gets or sets the default interval at which the client attempts reconnection after an SSE stream is disconnected.
     /// </summary>
     /// <remarks>
-    /// <p>
+    /// <para>
     /// The default value is 1 second.
-    /// </p>
-    /// <p>
+    /// </para>
+    /// <para>
     /// If the server sends a message specifying a different reconnection interval, that new value will be used for all
     /// subsequent reconnection attempts for that stream.
-    /// </p>
+    /// </para>
     /// </remarks>
     public TimeSpan DefaultReconnectionInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

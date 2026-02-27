@@ -33,8 +33,8 @@ public sealed class McpServerOptions
     /// <remarks>
     /// The protocol version defines which features and message formats this server supports.
     /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertize to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertize the latest
+    /// If <see langword="null"/>, the server will advertise to the client the version requested
+    /// by the client if that version is known to be supported, and otherwise will advertise the latest
     /// version supported by the server.
     /// </remarks>
     public string? ProtocolVersion { get; set; }

@@ -171,7 +171,7 @@ public sealed class McpClientTool : AIFunction
     /// </returns>
     /// <remarks>
     /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
-    /// The only difference in behavior is that <see cref="AIFunction.InvokeAsync"/> serializes the resulting <see cref="CallToolResult"/>"/>
+    /// The only difference in behavior is that <see cref="AIFunction.InvokeAsync"/> serializes the resulting <see cref="CallToolResult"/>
     /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
     /// This <see cref="CallAsync"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
     /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
@@ -247,7 +247,6 @@ public sealed class McpClientTool : AIFunction
     /// the value returned from this instance's <see cref="AITool.Name"/>.
     /// </para>
     /// </remarks>
-    /// <returns>A new instance of <see cref="McpClientTool"/> with the provided name.</returns>
     public McpClientTool WithName(string name) =>
         new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _meta);
 
