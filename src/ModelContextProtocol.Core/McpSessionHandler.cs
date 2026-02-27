@@ -540,41 +540,44 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // concurrent channel (e.g. the background GET SSE stream in Streamable HTTP). Without
             // this, the foreground transport send could block indefinitely waiting for a response
             // that was already delivered via a different stream.
-            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
-            if (sendTask == await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
+            if (!tcs.Task.IsCompleted)
             {
-                await sendTask.ConfigureAwait(false);
-            }
-            else
-            {
-                // The response arrived via a concurrent channel before the transport send completed.
-                // Cancel the still-running send and log any exception at debug level.
-                sendCts.Cancel();
-                _ = ObserveSendFaults(this, sendTask);
+                using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task sendTask = SendToRelatedTransportAsync(request, sendCts.Token);
+                if (sendTask == await Task.WhenAny(sendTask, tcs.Task).ConfigureAwait(false))
+                {
+                    await sendTask.ConfigureAwait(false);
+                }
+                else
+                {
+                    // The response arrived via a concurrent channel before the transport send completed.
+                    // Cancel the still-running send and log any exception at debug level.
+                    sendCts.Cancel();
+                    _ = ObserveSendFaults(this, sendTask);
 
 #if NET
-                static async Task ObserveSendFaults(McpSessionHandler self, Task task)
-                {
-                    await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-                    if (task.IsFaulted)
+                    static async Task ObserveSendFaults(McpSessionHandler self, Task task)
                     {
-                        self.LogTransportSendFaulted(self.EndpointName, task.Exception);
-                    }
-                }
-#else
-                static Task ObserveSendFaults(McpSessionHandler self, Task task) =>
-                    task.ContinueWith(
-                        static (t, s) =>
+                        await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                        if (task.IsFaulted)
                         {
-                            var handler = (McpSessionHandler)s!;
-                            handler.LogTransportSendFaulted(handler.EndpointName, t.Exception!);
-                        },
-                        self,
-                        CancellationToken.None,
-                        TaskContinuationOptions.OnlyOnFaulted,
-                        TaskScheduler.Default);
+                            self.LogTransportSendFaulted(self.EndpointName, task.Exception);
+                        }
+                    }
+#else
+                    static Task ObserveSendFaults(McpSessionHandler self, Task task) =>
+                        task.ContinueWith(
+                            static (t, s) =>
+                            {
+                                var handler = (McpSessionHandler)s!;
+                                handler.LogTransportSendFaulted(handler.EndpointName, t.Exception!);
+                            },
+                            self,
+                            CancellationToken.None,
+                            TaskContinuationOptions.OnlyOnFaulted,
+                            TaskScheduler.Default);
 #endif
+                }
             }
 
             // Now that the request has been sent, register for cancellation. If we registered before,
