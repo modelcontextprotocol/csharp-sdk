@@ -290,7 +290,6 @@ public class McpServerTests : LoggedTest
             });
     }
 
-#pragma warning disable MCPEXP001
     [Fact]
     public async Task Initialize_IncludesExtensionsInResponse()
     {
