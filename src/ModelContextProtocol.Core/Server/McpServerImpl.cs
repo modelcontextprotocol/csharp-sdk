@@ -265,6 +265,7 @@ internal sealed partial class McpServerImpl : McpServer
     private void ConfigureExperimental(McpServerOptions options)
     {
         ServerCapabilities.Experimental = options.Capabilities?.Experimental;
+        ServerCapabilities.ExtensionsCore = options.Capabilities?.ExtensionsCore;
     }
 
     private void ConfigureResources(McpServerOptions options)
