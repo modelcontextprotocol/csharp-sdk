@@ -9,7 +9,7 @@ Analyzer diagnostic IDs are in the format `MCP###`.
 | Diagnostic ID | Description |
 | :------------ | :---------- |
 | `MCP001` | Invalid XML documentation for MCP method |
-| `MCP002` | MCP method must be partial to generate [Description] attributes |
+| `MCP002` | MCP method must be partial to generate `[Description]` attributes |
 
 ## Experimental APIs
 

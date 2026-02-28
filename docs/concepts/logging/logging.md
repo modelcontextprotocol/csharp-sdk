@@ -15,7 +15,7 @@ This document describes how to implement logging in MCP servers and how clients 
 
 ### Logging Levels
 
-MCP uses the logging levels defined in [RFC 5424](https://tools.ietf.org/html/rfc5424).
+MCP uses the logging levels defined in [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424).
 
 The MCP C# SDK uses the standard .NET [ILogger] and [ILoggerProvider] abstractions, which support a slightly
 different set of logging levels. The following table shows the levels and how they map to standard .NET logging levels.

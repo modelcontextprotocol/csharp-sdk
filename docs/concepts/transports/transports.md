@@ -143,6 +143,7 @@ The [SSE (Server-Sent Events)] transport is a legacy mechanism that uses unidire
 
 [SSE (Server-Sent Events)]: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
 
+<!-- mlc-disable-next-line -->
 > [!NOTE]
 > The SSE transport is considered legacy. The [Streamable HTTP](#streamable-http-transport) transport is the recommended approach for HTTP-based communication and supports bidirectional streaming.
 

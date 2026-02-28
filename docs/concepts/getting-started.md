@@ -19,11 +19,13 @@ The SDK ships as three NuGet packages. Pick the one that matches your scenario:
 | **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)** | You're building a client or a **stdio-based** server and want hosting, dependency injection, and attribute-based tool/prompt/resource discovery. References `ModelContextProtocol.Core`. **This is the right starting point for most projects.** |
 | **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** | You're building an **HTTP-based** MCP server hosted in ASP.NET Core. References `ModelContextProtocol`, so you get everything above plus the HTTP transport. |
 
+<!-- mlc-disable-next-line -->
 > [!TIP]
 > If you're unsure, start with the **ModelContextProtocol** package. You can always add **ModelContextProtocol.AspNetCore** later if you need HTTP transport support.
 
 ### Building an MCP server
 
+<!-- mlc-disable-next-line -->
 > [!TIP]
 > You can also use the [MCP Server project template](https://learn.microsoft.com/dotnet/ai/quickstarts/build-mcp-server) to quickly scaffold a new MCP server project.
 

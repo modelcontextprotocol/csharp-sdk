@@ -7,6 +7,7 @@ uid: tasks
 
 # MCP Tasks
 
+<!-- mlc-disable-next-line -->
 > [!WARNING]
 > Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
@@ -207,6 +208,7 @@ public class MyTools(IMcpTaskStore taskStore)
 
 When a tool returns `McpTask`, the SDK bypasses automatic task wrapping and returns the task directly to the client.
 
+<!-- mlc-disable-next-line -->
 > [!IMPORTANT]
 > **No Fault Tolerance Guarantees**: Both `InMemoryMcpTaskStore` and the automatic task support for `Task`-returning tool methods do **not** provide fault tolerance. Task state and execution are bounded by the memory of the server process. If the server crashes or restarts:
 > - All in-memory task metadata is lost
@@ -359,6 +361,7 @@ var options = new McpClientOptions
 var client = await McpClient.CreateAsync(transport, options);
 ```
 
+<!-- mlc-disable-next-line -->
 > [!NOTE]
 > Clients should not rely on receiving status notifications. Notifications are optional and may not be sent in all scenarios. Always use polling as the primary mechanism for tracking task status.
 
