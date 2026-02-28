@@ -173,22 +173,29 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task ProcessMessagesCoreAsync(CancellationToken cancellationToken)
     {
+        List<Task>? pendingHandlers = null;
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 LogMessageRead(EndpointName, message.GetType().Name);
 
+                Task handlerTask;
+
                 // Fire and forget the message handling to avoid blocking the transport.
                 if (message.Context?.ExecutionContext is null)
                 {
-                    _ = ProcessMessageAsync();
+                    handlerTask = ProcessMessageAsync();
                 }
                 else
                 {
                     // Flow the execution context from the HTTP request corresponding to this message if provided.
-                    ExecutionContext.Run(message.Context.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
+                    Task? taskFromExecutionContext = null;
+                    ExecutionContext.Run(message.Context.ExecutionContext, _ => taskFromExecutionContext = ProcessMessageAsync(), null);
+                    handlerTask = taskFromExecutionContext!;
                 }
+
+                (pendingHandlers ??= []).Add(handlerTask);
 
                 async Task ProcessMessageAsync()
                 {
@@ -297,6 +304,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
+            // Wait for all in-flight message handlers to complete before disposing.
+            // In stateless HTTP mode, the HTTP request's IServiceProvider (and any scoped services
+            // like DbContext) remains alive only as long as the request handler hasn't returned.
+            // Since ProcessMessagesCoreAsync is awaited (indirectly) by the HTTP request handler
+            // via ServerRunTask, waiting here keeps the request scope alive until all handlers finish.
+            // This prevents ObjectDisposedException when the HTTP connection is aborted while
+            // tool handlers are still executing (see https://github.com/modelcontextprotocol/csharp-sdk/issues/1269).
+            if (pendingHandlers is not null)
+            {
+                try
+                {
+                    await Task.WhenAll(pendingHandlers).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Exceptions from handlers are already logged individually in ProcessMessageAsync.
+                }
+            }
+
             // Fail any pending requests, as they'll never be satisfied.
             foreach (var entry in _pendingRequests)
             {

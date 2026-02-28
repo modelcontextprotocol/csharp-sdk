@@ -189,6 +189,78 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Assert.Equal("From request middleware!", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
+    [Fact]
+    public async Task ScopedServices_AccessibleInToolHandler_AfterConnectionAbort()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1269
+        // Verifies that scoped services (like DbContext) remain accessible in tool handlers
+        // even when the HTTP connection is aborted before the handler completes.
+        var abortTestState = new AbortTestState();
+
+        Builder.Services.AddMcpServer(mcpServerOptions =>
+            {
+                mcpServerOptions.ServerInfo = new Implementation
+                {
+                    Name = nameof(StatelessServerTests),
+                    Version = "73",
+                };
+            })
+            .WithHttpTransport(httpServerTransportOptions =>
+            {
+                httpServerTransportOptions.Stateless = true;
+            })
+            .WithTools<StatelessServerTests>();
+
+        Builder.Services.AddScoped<ScopedService>();
+        Builder.Services.AddSingleton(abortTestState);
+
+        _app = Builder.Build();
+
+        _app.Use(next =>
+        {
+            return context =>
+            {
+                context.RequestServices.GetRequiredService<ScopedService>().State = "From request middleware!";
+                return next(context);
+            };
+        });
+
+        _app.MapMcp();
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        using var cts = new CancellationTokenSource();
+
+        // Start the tool call - it will block in the handler until we release ContinueToolExecution.
+        var callTask = client.CallToolAsync("testAbortedConnectionScope", cancellationToken: cts.Token);
+
+        // Wait for the handler to start executing.
+        await abortTestState.ToolStarted.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Abort the connection by cancelling the token. This triggers context.RequestAborted
+        // on the server, which starts the session disposal chain.
+        await cts.CancelAsync();
+
+        // Let the handler continue - it will now try to access the scoped service.
+        // Before the fix, this would throw ObjectDisposedException because the request scope
+        // was disposed when the HTTP connection was aborted.
+        abortTestState.ContinueToolExecution.Release();
+
+        // Verify through the side channel that the handler accessed the scoped service
+        // without ObjectDisposedException. The client call itself was aborted, so we can't
+        // rely on the return value.
+        var result = await abortTestState.ScopeAccessResult.Task.WaitAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("From request middleware!", result);
+
+        // Clean up the aborted client call.
+        try { await callTask; } catch { }
+    }
+
     [McpServerTool(Name = "testSamplingErrors")]
     public static async Task<string> TestSamplingErrors(McpServer server)
     {
@@ -248,6 +320,40 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
     [McpServerTool(Name = "testScope")]
     public static string? TestScope(ScopedService scopedService) => scopedService.State;
+
+    [McpServerTool(Name = "testAbortedConnectionScope")]
+    public static async Task<string?> TestAbortedConnectionScope(ScopedService scopedService, AbortTestState abortTestState)
+    {
+        // Signal the test that the handler has started.
+        abortTestState.ToolStarted.Release();
+
+        // Wait for the test to abort the connection. Use CancellationToken.None so this
+        // handler continues executing even after the HTTP request is aborted.
+        await abortTestState.ContinueToolExecution.WaitAsync(CancellationToken.None);
+
+        try
+        {
+            // Access the scoped service AFTER the connection was aborted.
+            // Before the fix for https://github.com/modelcontextprotocol/csharp-sdk/issues/1269,
+            // this would throw ObjectDisposedException because ASP.NET Core disposed
+            // the request's IServiceProvider while the handler was still executing.
+            var result = scopedService.State;
+            abortTestState.ScopeAccessResult.TrySetResult(result);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            abortTestState.ScopeAccessResult.TrySetException(ex);
+            throw;
+        }
+    }
+
+    public class AbortTestState
+    {
+        public SemaphoreSlim ToolStarted { get; } = new(0, 1);
+        public SemaphoreSlim ContinueToolExecution { get; } = new(0, 1);
+        public TaskCompletionSource<string?> ScopeAccessResult { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 
     public class ScopedService
     {
