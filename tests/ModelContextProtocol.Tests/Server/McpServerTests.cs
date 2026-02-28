@@ -291,6 +291,95 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Initialize_IncludesExtensionsInResponse()
+    {
+        await Can_Handle_Requests(
+            serverCapabilities: new ServerCapabilities
+            {
+                Extensions = new Dictionary<string, object> { ["io.myext"] = new JsonObject { ["required"] = true } },
+            },
+            method: RequestMethods.Initialize,
+            configureOptions: null,
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.NotNull(result.Capabilities.Extensions);
+                Assert.True(result.Capabilities.Extensions.ContainsKey("io.myext"));
+            });
+    }
+
+    [Fact]
+    public async Task Initialize_IncludesExperimentalInResponse()
+    {
+        await Can_Handle_Requests(
+            serverCapabilities: new ServerCapabilities
+            {
+                Experimental = new Dictionary<string, object> { ["customFeature"] = new JsonObject { ["enabled"] = true } },
+            },
+            method: RequestMethods.Initialize,
+            configureOptions: null,
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.NotNull(result.Capabilities.Experimental);
+                Assert.True(result.Capabilities.Experimental.ContainsKey("customFeature"));
+            });
+    }
+
+    [Fact]
+    public async Task Initialize_CopiesAllCapabilityProperties()
+    {
+        // Set every public property on ServerCapabilities to a non-null value.
+        // If a new property is added to ServerCapabilities in the future but the
+        // server fails to copy it, this reflection-based test will automatically
+        // detect the missing property and fail.
+        var inputCapabilities = new ServerCapabilities
+        {
+            Experimental = new Dictionary<string, object> { ["test"] = new JsonObject() },
+            Logging = new LoggingCapability(),
+            Prompts = new PromptsCapability(),
+            Resources = new ResourcesCapability(),
+            Tools = new ToolsCapability(),
+            Completions = new CompletionsCapability(),
+            Tasks = new McpTasksCapability(),
+            Extensions = new Dictionary<string, object> { ["io.test"] = new JsonObject() },
+        };
+
+        await Can_Handle_Requests(
+            serverCapabilities: inputCapabilities,
+            method: RequestMethods.Initialize,
+            configureOptions: options =>
+            {
+                // Tasks capability requires a TaskStore
+                options.TaskStore = new InMemoryMcpTaskStore();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+
+                // Use reflection to verify every public property on ServerCapabilities is non-null.
+                // This catches cases where new capability properties are added but not copied
+                // from options in McpServerImpl.
+                foreach (var property in typeof(ServerCapabilities).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (!property.CanRead)
+                    {
+                        continue;
+                    }
+
+                    Assert.True(
+                        property.GetValue(result.Capabilities) is not null,
+                        $"ServerCapabilities.{property.Name} was set on options but is null in the initialize response. " +
+                        $"Ensure the property is copied in McpServerImpl's Configure* methods.");
+                }
+            });
+    }
+#pragma warning restore MCPEXP001
+
+    [Fact]
     public async Task Can_Handle_Completion_Requests()
     {
         await Can_Handle_Requests(
