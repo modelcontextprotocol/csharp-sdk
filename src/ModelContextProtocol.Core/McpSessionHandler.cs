@@ -173,21 +173,42 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task ProcessMessagesCoreAsync(CancellationToken cancellationToken)
     {
+        // Track handler tasks so we can await them during shutdown. This ensures
+        // that service scopes (e.g., from ASP.NET Core request services in stateless mode)
+        // are not disposed while handlers are still executing.
+        List<Task> pendingHandlerTasks = [];
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 LogMessageRead(EndpointName, message.GetType().Name);
 
-                // Fire and forget the message handling to avoid blocking the transport.
+                // Launch the message handler without blocking the transport read loop.
+                Task handlerTask;
                 if (message.Context?.ExecutionContext is null)
                 {
-                    _ = ProcessMessageAsync();
+                    handlerTask = ProcessMessageAsync();
                 }
                 else
                 {
                     // Flow the execution context from the HTTP request corresponding to this message if provided.
-                    ExecutionContext.Run(message.Context.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
+                    Task? capturedTask = null;
+                    ExecutionContext.Run(message.Context.ExecutionContext, _ => capturedTask = ProcessMessageAsync(), null);
+                    handlerTask = capturedTask!;
+                }
+
+                pendingHandlerTasks.Add(handlerTask);
+
+                // Periodically prune completed tasks to avoid unbounded list growth.
+                if (pendingHandlerTasks.Count > 50)
+                {
+                    for (int i = pendingHandlerTasks.Count - 1; i >= 0; i--)
+                    {
+                        if (pendingHandlerTasks[i].IsCompleted)
+                        {
+                            pendingHandlerTasks.RemoveAt(i);
+                        }
+                    }
                 }
 
                 async Task ProcessMessageAsync()
@@ -297,6 +318,23 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
+            // Wait for all outstanding message handlers to complete before returning.
+            // This is critical in stateless HTTP mode where the service scope from the
+            // ASP.NET Core request is disposed after the message processing task completes.
+            // Without this, handlers could get ObjectDisposedException when trying to
+            // resolve scoped services.
+            if (pendingHandlerTasks.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(pendingHandlerTasks).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Exceptions from individual handlers are already logged within ProcessMessageAsync.
+                }
+            }
+
             // Fail any pending requests, as they'll never be satisfied.
             foreach (var entry in _pendingRequests)
             {
