@@ -156,7 +156,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Try to refresh the access token if it is invalid and we have a refresh token.
         if (_authServerMetadata is not null && tokens?.RefreshToken is { Length: > 0 } refreshToken)
         {
-            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var accessToken = await RefreshTokensAsync(refreshToken, _includeResourceIndicator ? resourceUri.ToString() : null, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 

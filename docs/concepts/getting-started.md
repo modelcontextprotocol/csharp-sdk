@@ -154,6 +154,9 @@ builder.Services.AddSingleton(sp =>
         Command = "dotnet",
         Arguments = ["run", "--project", "path/to/server"],
     });
+    // Note: .GetAwaiter().GetResult() is used here for simplicity in console apps.
+    // In ASP.NET Core or other environments with a SynchronizationContext,
+    // use an IHostedService to initialize async resources instead.
     return McpClient.CreateAsync(transport, loggerFactory: loggerFactory)
         .GetAwaiter().GetResult();
 });
