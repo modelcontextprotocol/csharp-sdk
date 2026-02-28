@@ -41,6 +41,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
+    private readonly bool _includeResourceIndicator;
 
     private string? _clientId;
     private string? _clientSecret;
@@ -90,6 +91,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
+        _includeResourceIndicator = options.IncludeResourceIndicator;
     }
 
     /// <summary>
@@ -709,8 +711,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
-        => protectedResourceMetadata.Resource;
+    private string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
+        => _includeResourceIndicator ? protectedResourceMetadata.Resource : null;
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {

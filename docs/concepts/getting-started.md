@@ -133,6 +133,52 @@ Console.WriteLine(result.Content.OfType<TextContentBlock>().First().Text);
 
 Clients can connect to any MCP server, not just ones created with this library. The protocol is server-agnostic.
 
+#### Using dependency injection with MCP clients
+
+To use an MCP client in an application with dependency injection, register it as a singleton service and consume it from hosted services or other DI-managed components:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddSingleton(sp =>
+{
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+    var transport = new StdioClientTransport(new()
+    {
+        Name = "My Server",
+        Command = "dotnet",
+        Arguments = ["run", "--project", "path/to/server"],
+    });
+    return McpClient.CreateAsync(transport, loggerFactory: loggerFactory)
+        .GetAwaiter().GetResult();
+});
+
+builder.Services.AddHostedService<MyWorker>();
+await builder.Build().RunAsync();
+```
+
+For Docker-based MCP servers, configure the transport with `docker run`:
+
+```csharp
+var transport = new StdioClientTransport(new()
+{
+    Name = "my-mcp-server",
+    Command = "docker",
+    Arguments = ["run", "-i", "--rm", "mcp/my-server"],
+    EnvironmentVariables = new Dictionary<string, string>
+    {
+        ["API_KEY"] = configuration["ApiKey"]!,
+    },
+});
+```
+
+See the [`DependencyInjectionClient`](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/DependencyInjectionClient) sample for a complete example.
+
 #### Using tools with an LLM
 
 `McpClientTool` inherits from `AIFunction`, so the tools returned by `ListToolsAsync` can be handed directly to any `IChatClient`:

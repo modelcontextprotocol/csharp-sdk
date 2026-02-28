@@ -1261,4 +1261,40 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task CanAuthenticate_WithoutResourceIndicator()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        Uri? capturedAuthorizationUrl = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                IncludeResourceIndicator = false,
+                AuthorizationRedirectDelegate = (authorizationUri, redirectUri, cancellationToken) =>
+                {
+                    capturedAuthorizationUrl = authorizationUri;
+                    // Return null to signal that authorization was not completed.
+                    return Task.FromResult<string?>(null);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        // The auth flow will fail because we return null from the delegate,
+        // but we only need to verify the authorization URL was constructed correctly.
+        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.NotNull(capturedAuthorizationUrl);
+        var query = QueryHelpers.ParseQuery(capturedAuthorizationUrl.Query);
+        Assert.False(query.ContainsKey("resource"), "The 'resource' query parameter should not be present when IncludeResourceIndicator is false.");
+        Assert.True(query.ContainsKey("scope"), "The 'scope' query parameter should still be present.");
+    }
 }
