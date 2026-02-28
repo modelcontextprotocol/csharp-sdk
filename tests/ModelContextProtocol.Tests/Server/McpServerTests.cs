@@ -1045,7 +1045,7 @@ public class McpServerTests : LoggedTest
         var ct = TestContext.Current.CancellationToken;
         _ = Task.Run(async () =>
         {
-            await Task.Delay(500, ct);
+            await Task.Delay(200, ct);
             releaseHandler.SetResult();
         }, ct);
 
