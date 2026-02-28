@@ -37,6 +37,12 @@ internal static partial class DistributedCacheEventStreamStoreJsonUtilities
     public static JsonTypeInfo<DistributedCacheEventStreamStore.StoredEvent> StoredEventJsonTypeInfo { get; } =
         (JsonTypeInfo<DistributedCacheEventStreamStore.StoredEvent>)DefaultOptions.GetTypeInfo(typeof(DistributedCacheEventStreamStore.StoredEvent));
 
+    /// <summary>
+    /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="DistributedCacheEventStreamStore.SessionIndex"/>.
+    /// </summary>
+    public static JsonTypeInfo<DistributedCacheEventStreamStore.SessionIndex> SessionIndexJsonTypeInfo { get; } =
+        (JsonTypeInfo<DistributedCacheEventStreamStore.SessionIndex>)DefaultOptions.GetTypeInfo(typeof(DistributedCacheEventStreamStore.SessionIndex));
+
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from McpJsonUtilities.DefaultOptions.
@@ -56,5 +62,6 @@ internal static partial class DistributedCacheEventStreamStoreJsonUtilities
         GenerationMode = JsonSourceGenerationMode.Metadata)]
     [JsonSerializable(typeof(DistributedCacheEventStreamStore.StreamMetadata))]
     [JsonSerializable(typeof(DistributedCacheEventStreamStore.StoredEvent))]
+    [JsonSerializable(typeof(DistributedCacheEventStreamStore.SessionIndex))]
     private sealed partial class JsonContext : JsonSerializerContext;
 }

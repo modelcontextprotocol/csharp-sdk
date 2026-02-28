@@ -1683,6 +1683,133 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.False(parsed);
     }
 
+    [Fact]
+    public async Task DeleteStreamsForSessionAsync_ThrowsArgumentNullException_WhenSessionIdIsNull()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>("sessionId",
+            async () => await store.DeleteStreamsForSessionAsync(null!, CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeleteStreamsForSessionAsync_NoOp_WhenSessionDoesNotExist()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+
+        // Act - should not throw
+        await store.DeleteStreamsForSessionAsync("nonexistent-session", CancellationToken);
+    }
+
+    [Fact]
+    public async Task DeleteStreamsForSessionAsync_RemovesAllStreamsAndEvents()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Streaming
+        }, CancellationToken);
+
+        var item1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        var item2 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        await writer.DisposeAsync();
+
+        // Verify events are readable before deletion
+        var reader = await store.GetStreamReaderAsync(item1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        // Act
+        await store.DeleteStreamsForSessionAsync("session-1", CancellationToken);
+
+        // Assert - events should no longer be readable
+        var readerAfterDelete = await store.GetStreamReaderAsync(item1.EventId!, CancellationToken);
+        Assert.Null(readerAfterDelete);
+
+        var readerAfterDelete2 = await store.GetStreamReaderAsync(item2.EventId!, CancellationToken);
+        Assert.Null(readerAfterDelete2);
+    }
+
+    [Fact]
+    public async Task DeleteStreamsForSessionAsync_DoesNotAffectOtherSessions()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+
+        // Create streams for two sessions
+        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Streaming
+        }, CancellationToken);
+        var item1 = await writer1.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        await writer1.DisposeAsync();
+
+        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-2",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Streaming
+        }, CancellationToken);
+        var item2 = await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        await writer2.DisposeAsync();
+
+        // Act - delete only session-1
+        await store.DeleteStreamsForSessionAsync("session-1", CancellationToken);
+
+        // Assert - session-1 events should be gone
+        var reader1 = await store.GetStreamReaderAsync(item1.EventId!, CancellationToken);
+        Assert.Null(reader1);
+
+        // Assert - session-2 events should still be readable
+        var reader2 = await store.GetStreamReaderAsync(item2.EventId!, CancellationToken);
+        Assert.NotNull(reader2);
+    }
+
+    [Fact]
+    public async Task DeleteStreamsForSessionAsync_RemovesMultipleStreamsInSameSession()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+
+        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-a",
+            Mode = SseEventStreamMode.Streaming
+        }, CancellationToken);
+        var itemA = await writer1.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        await writer1.DisposeAsync();
+
+        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-b",
+            Mode = SseEventStreamMode.Streaming
+        }, CancellationToken);
+        var itemB = await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+        await writer2.DisposeAsync();
+
+        // Act
+        await store.DeleteStreamsForSessionAsync("session-1", CancellationToken);
+
+        // Assert - both streams should be gone
+        Assert.Null(await store.GetStreamReaderAsync(itemA.EventId!, CancellationToken));
+        Assert.Null(await store.GetStreamReaderAsync(itemB.EventId!, CancellationToken));
+    }
+
     /// <summary>
     /// A distributed cache that tracks all operations for verification in tests.
     /// Supports tracking Set calls, counting metadata reads, and simulating metadata/event expiration.

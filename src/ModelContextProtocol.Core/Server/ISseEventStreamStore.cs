@@ -20,4 +20,16 @@ public interface ISseEventStreamStore
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A reader for the event stream, or <c>null</c> if no matching stream is found.</returns>
     ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes all stored event streams and their associated events for the specified session.
+    /// </summary>
+    /// <param name="sessionId">The ID of the session whose streams should be deleted.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// This method is a best-effort operation. If the session does not exist or has no stored streams,
+    /// the method completes without error.
+    /// </remarks>
+    ValueTask DeleteStreamsForSessionAsync(string sessionId, CancellationToken cancellationToken = default);
 }

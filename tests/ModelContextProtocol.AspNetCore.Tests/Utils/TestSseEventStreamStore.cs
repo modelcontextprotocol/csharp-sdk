@@ -95,6 +95,28 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
         Interlocked.Increment(ref _storeEventCallCount);
     }
 
+    /// <inheritdoc />
+    public ValueTask DeleteStreamsForSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        // Find all streams belonging to this session
+        var keysToRemove = _streams.Keys.Where(k => k.StartsWith($"{sessionId}:", StringComparison.Ordinal)).ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            if (_streams.TryRemove(key, out var state))
+            {
+                // Remove all events belonging to this stream from the event lookup
+                var eventKeysToRemove = _eventLookup.Where(kvp => kvp.Value.Stream == state).Select(kvp => kvp.Key).ToList();
+                foreach (var eventKey in eventKeysToRemove)
+                {
+                    _eventLookup.TryRemove(eventKey, out _);
+                }
+            }
+        }
+
+        return default;
+    }
+
     private static string GetStreamKey(string sessionId, string streamId) => $"{sessionId}:{streamId}";
 
     /// <summary>

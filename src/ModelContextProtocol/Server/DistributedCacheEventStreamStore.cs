@@ -55,6 +55,48 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
     }
 
     /// <inheritdoc />
+    public async ValueTask DeleteStreamsForSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(sessionId);
+
+        // Read the session index to find all streams for this session
+        var indexKey = CacheKeys.SessionIndex(sessionId);
+        var indexBytes = await _cache.GetAsync(indexKey, cancellationToken).ConfigureAwait(false);
+        if (indexBytes is null)
+        {
+            LogSessionIndexNotFound(sessionId);
+            return;
+        }
+
+        var index = JsonSerializer.Deserialize(indexBytes, DistributedCacheEventStreamStoreJsonUtilities.SessionIndexJsonTypeInfo);
+        if (index?.Streams is null)
+        {
+            LogSessionIndexDeserializationFailed(sessionId);
+            return;
+        }
+
+        // Delete all events and metadata for each stream
+        foreach (var stream in index.Streams)
+        {
+            // Delete all event keys for this stream
+            for (long seq = 1; seq <= stream.LastSequence; seq++)
+            {
+                var eventId = DistributedCacheEventIdFormatter.Format(sessionId, stream.StreamId, seq);
+                var eventKey = CacheKeys.Event(eventId);
+                await _cache.RemoveAsync(eventKey, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Delete the stream metadata
+            var metadataKey = CacheKeys.StreamMetadata(sessionId, stream.StreamId);
+            await _cache.RemoveAsync(metadataKey, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Delete the session index itself
+        await _cache.RemoveAsync(indexKey, cancellationToken).ConfigureAwait(false);
+        LogStreamsDeletedForSession(sessionId, index.Streams.Count);
+    }
+
+    /// <inheritdoc />
     public async ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(lastEventId);
@@ -110,6 +152,12 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             return $"{Prefix}meta:{sessionIdBase64}:{streamIdBase64}";
         }
 
+        public static string SessionIndex(string sessionId)
+        {
+            var sessionIdBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sessionId));
+            return $"{Prefix}idx:{sessionIdBase64}";
+        }
+
         public static string Event(string eventId)
             => $"{Prefix}event:{eventId}";
     }
@@ -133,6 +181,23 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
         public string? EventId { get; set; }
         public int? ReconnectionIntervalMs { get; set; }
         public JsonRpcMessage? Data { get; set; }
+    }
+
+    /// <summary>
+    /// Index of all streams belonging to a session, stored in the cache.
+    /// </summary>
+    internal sealed class SessionIndex
+    {
+        public List<SessionStreamEntry> Streams { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Entry in the session index representing a single stream.
+    /// </summary>
+    internal sealed class SessionStreamEntry
+    {
+        public string StreamId { get; set; } = string.Empty;
+        public long LastSequence { get; set; }
     }
 
     private sealed partial class DistributedCacheEventStreamWriter : ISseEventStreamWriter
@@ -227,6 +292,36 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             var metadataKey = CacheKeys.StreamMetadata(_sessionId, _streamId);
 
             await _cache.SetAsync(metadataKey, metadataBytes, new DistributedCacheEntryOptions
+            {
+                SlidingExpiration = _options.MetadataSlidingExpiration,
+                AbsoluteExpirationRelativeToNow = _options.MetadataAbsoluteExpiration,
+            }, cancellationToken).ConfigureAwait(false);
+
+            // Update the session index with this stream's latest sequence
+            await UpdateSessionIndexAsync(metadata.LastSequence, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async ValueTask UpdateSessionIndexAsync(long lastSequence, CancellationToken cancellationToken)
+        {
+            var indexKey = CacheKeys.SessionIndex(_sessionId);
+            var indexBytes = await _cache.GetAsync(indexKey, cancellationToken).ConfigureAwait(false);
+
+            var index = indexBytes is not null
+                ? JsonSerializer.Deserialize(indexBytes, DistributedCacheEventStreamStoreJsonUtilities.SessionIndexJsonTypeInfo) ?? new SessionIndex()
+                : new SessionIndex();
+
+            var existingEntry = index.Streams.Find(s => s.StreamId == _streamId);
+            if (existingEntry is not null)
+            {
+                existingEntry.LastSequence = lastSequence;
+            }
+            else
+            {
+                index.Streams.Add(new SessionStreamEntry { StreamId = _streamId, LastSequence = lastSequence });
+            }
+
+            var updatedIndexBytes = JsonSerializer.SerializeToUtf8Bytes(index, DistributedCacheEventStreamStoreJsonUtilities.SessionIndexJsonTypeInfo);
+            await _cache.SetAsync(indexKey, updatedIndexBytes, new DistributedCacheEntryOptions
             {
                 SlidingExpiration = _options.MetadataSlidingExpiration,
                 AbsoluteExpirationRelativeToNow = _options.MetadataAbsoluteExpiration,
@@ -401,4 +496,13 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize stream metadata for session '{SessionId}', stream '{StreamId}'.")]
     private partial void LogStreamMetadataDeserializationFailed(string sessionId, string streamId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Session index not found for session '{SessionId}'. No streams to delete.")]
+    private partial void LogSessionIndexNotFound(string sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize session index for session '{SessionId}'.")]
+    private partial void LogSessionIndexDeserializationFailed(string sessionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {StreamCount} stream(s) for session '{SessionId}'.")]
+    private partial void LogStreamsDeletedForSession(string sessionId, int streamCount);
 }
