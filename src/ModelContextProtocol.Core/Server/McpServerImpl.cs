@@ -90,7 +90,7 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureTasks(options);
         ConfigureLogging(options);
         ConfigureCompletion(options);
-        ConfigureExperimental(options);
+        ConfigureExperimentalAndExtensions(options);
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -138,7 +138,7 @@ internal sealed partial class McpServerImpl : McpServer
     public override string? NegotiatedProtocolVersion => _negotiatedProtocolVersion;
 
     /// <inheritdoc/>
-    public ServerCapabilities ServerCapabilities { get; } = new();
+    public ServerCapabilities ServerCapabilities { get; }
 
     /// <inheritdoc />
     public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
@@ -262,9 +262,10 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.CompleteResult);
     }
 
-    private void ConfigureExperimental(McpServerOptions options)
+    private void ConfigureExperimentalAndExtensions(McpServerOptions options)
     {
         ServerCapabilities.Experimental = options.Capabilities?.Experimental;
+        ServerCapabilities.Extensions = options.Capabilities?.Extensions;
     }
 
     private void ConfigureResources(McpServerOptions options)
