@@ -118,16 +118,26 @@ public sealed class McpServerToolCreateOptions
     public bool? ReadOnly { get; set; }
 
     /// <summary>
-    /// Gets or sets a value that indicates whether the tool should report an output schema for structured content.
+    /// Gets or sets a JSON Schema object to use as the tool's output schema.
     /// </summary>
-    /// <value>
-    /// The default is <see langword="false"/>.
-    /// </value>
     /// <remarks>
-    /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
-    /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// <para>
+    /// When set, this schema is used directly as the <see cref="Tool.OutputSchema"/> instead of
+    /// inferring it from the method's return type. This is particularly useful when the method
+    /// returns <see cref="CallToolResult"/> directly (for example, to control
+    /// <see cref="CallToolResult.IsError"/>), but the tool should still advertise a meaningful
+    /// output schema describing the shape of <see cref="CallToolResult.StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// Setting this property to a non-<see langword="null"/> value will enable structured content
+    /// for the tool, causing the tool to populate both <see cref="Tool.OutputSchema"/> and
+    /// <see cref="CallToolResult.StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// The schema must be a valid JSON Schema object with the "type" property set to "object".
+    /// </para>
     /// </remarks>
-    public bool UseStructuredContent { get; set; }
+    public JsonElement? OutputSchema { get; set; }
 
     /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
@@ -208,7 +218,7 @@ public sealed class McpServerToolCreateOptions
             Idempotent = Idempotent,
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
-            UseStructuredContent = UseStructuredContent,
+            OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
