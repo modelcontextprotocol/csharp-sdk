@@ -1007,15 +1007,15 @@ public class McpServerTests : LoggedTest
     public async Task RunAsync_WaitsForInFlightHandlersBeforeReturning()
     {
         // Arrange: Create a tool handler that blocks until we release it.
-        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseHandler = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         bool handlerCompleted = false;
 
         await using var transport = new TestServerTransport();
         var options = CreateOptions(new ServerCapabilities { Tools = new() });
         options.Handlers.CallToolHandler = async (request, ct) =>
         {
-            handlerStarted.SetResult();
+            handlerStarted.SetResult(true);
             await releaseHandler.Task;
             handlerCompleted = true;
             return new CallToolResult { Content = [new TextContentBlock { Text = "done" }] };
@@ -1046,7 +1046,7 @@ public class McpServerTests : LoggedTest
         _ = Task.Run(async () =>
         {
             await Task.Delay(200, ct);
-            releaseHandler.SetResult();
+            releaseHandler.SetResult(true);
         }, ct);
 
         // Wait for RunAsync to complete.
