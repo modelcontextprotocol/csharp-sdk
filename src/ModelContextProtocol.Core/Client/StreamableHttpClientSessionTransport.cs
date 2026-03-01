@@ -100,7 +100,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             // indicates the session has ended. Signal completion so McpClient.Completion resolves.
             if (response.StatusCode == HttpStatusCode.NotFound && SessionId is not null)
             {
-                SetSessionExpired(response.StatusCode);
+                SetSessionExpired();
             }
 
             return response;
@@ -198,6 +198,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             // This class isn't directly exposed to public callers, so we don't have to worry about changing the _state in this case.
             if (_options.TransportMode is not HttpTransportMode.AutoDetect || _getReceiveTask is not null)
             {
+                // _disconnectError is set when the server returns 404 indicating session expiry.
+                // When null, this is a graceful client-initiated closure (no error).
                 SetDisconnected(_disconnectError ?? new TransportClosedException(new HttpClientCompletionDetails()));
             }
         }
@@ -292,7 +294,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                     // indicates the session has ended. Signal completion so McpClient.Completion resolves.
                     if (response.StatusCode == HttpStatusCode.NotFound && SessionId is not null)
                     {
-                        SetSessionExpired(response.StatusCode);
+                        SetSessionExpired();
                     }
 
                     // If the server could be reached but returned a non-success status code,
@@ -485,13 +487,13 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 #endif
     }
 
-    private void SetSessionExpired(HttpStatusCode statusCode)
+    private void SetSessionExpired()
     {
         // Store the error before canceling so DisposeAsync can use it if it races us, especially
         // after the call to Cancel below, to invoke SetDisconnected.
         _disconnectError = new TransportClosedException(new HttpClientCompletionDetails
         {
-            HttpStatusCode = statusCode,
+            HttpStatusCode = HttpStatusCode.NotFound,
             Exception = new McpException(
                 "The server returned HTTP 404 for a request with an Mcp-Session-Id, indicating the session has expired. " +
                 "To continue, create a new client session or call ResumeSessionAsync with a new connection."),
