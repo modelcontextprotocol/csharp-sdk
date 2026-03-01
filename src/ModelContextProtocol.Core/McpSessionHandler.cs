@@ -173,11 +173,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task ProcessMessagesCoreAsync(CancellationToken cancellationToken)
     {
+        // Track in-flight message handlers so we can wait for them to complete before returning.
+        // Start at 1 to represent ProcessMessagesCoreAsync itself; it's decremented after the loop exits.
+        int inFlightCount = 1;
+        var allHandlersCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 LogMessageRead(EndpointName, message.GetType().Name);
+
+                Interlocked.Increment(ref inFlightCount);
 
                 // Fire and forget the message handling to avoid blocking the transport.
                 if (message.Context?.ExecutionContext is null)
@@ -286,6 +293,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                             _handlingRequests.TryRemove(messageWithId.Id, out _);
                             combinedCts!.Dispose();
                         }
+
+                        if (Interlocked.Decrement(ref inFlightCount) == 0)
+                        {
+                            allHandlersCompleted.TrySetResult(true);
+                        }
                     }
                 }
             }
@@ -297,6 +309,12 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
+            // Decrement our own count. If all handlers have already completed, this will signal completion.
+            if (Interlocked.Decrement(ref inFlightCount) != 0)
+            {
+                await allHandlersCompleted.Task.ConfigureAwait(false);
+            }
+
             // Fail any pending requests, as they'll never be satisfied.
             foreach (var entry in _pendingRequests)
             {

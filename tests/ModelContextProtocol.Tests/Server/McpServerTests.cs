@@ -1241,6 +1241,60 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
+    [Fact]
+    public async Task RunAsync_WaitsForInFlightHandlersBeforeReturning()
+    {
+        // Arrange: Create a tool handler that blocks until we release it.
+        var handlerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool handlerCompleted = false;
+
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = async (request, ct) =>
+        {
+            handlerStarted.SetResult(true);
+            await releaseHandler.Task;
+            handlerCompleted = true;
+            return new CallToolResult { Content = [new TextContentBlock { Text = "done" }] };
+        };
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        // Send a tool call request.
+        await transport.SendClientMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(1)
+            },
+            TestContext.Current.CancellationToken);
+
+        // Wait for the handler to start executing.
+        await handlerStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // Dispose the transport to simulate client disconnect while the handler is still running.
+        await transport.DisposeAsync();
+
+        // Release the handler after a delay, giving ProcessMessagesCoreAsync time to notice the
+        // channel closed. Without the fix, RunAsync would return before the handler completes.
+        var ct = TestContext.Current.CancellationToken;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(200, ct);
+            releaseHandler.SetResult(true);
+        }, ct);
+
+        // Wait for RunAsync to complete.
+        await runTask.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // With the fix, RunAsync waits for in-flight handlers. Without it, it returns immediately
+        // after the transport closes (before the 500ms delay releases the handler).
+        Assert.True(handlerCompleted, "RunAsync should wait for in-flight handlers to complete before returning.");
+    }
+
     private static async Task InitializeServerAsync(TestServerTransport transport, ClientCapabilities capabilities, CancellationToken cancellationToken = default)
     {
         var initializeRequest = new JsonRpcRequest
