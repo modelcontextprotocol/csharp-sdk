@@ -1261,4 +1261,147 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task CanAuthenticate_WithoutResourceIndicator()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        Uri? capturedAuthorizationUrl = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                IncludeResourceIndicator = false,
+                AuthorizationRedirectDelegate = (authorizationUri, redirectUri, cancellationToken) =>
+                {
+                    capturedAuthorizationUrl = authorizationUri;
+                    // Return null to signal that authorization was not completed.
+                    return Task.FromResult<string?>(null);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        // The auth flow will fail because we return null from the delegate,
+        // but we only need to verify the authorization URL was constructed correctly.
+        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.NotNull(capturedAuthorizationUrl);
+        var query = QueryHelpers.ParseQuery(capturedAuthorizationUrl.Query);
+        Assert.False(query.ContainsKey("resource"), "The 'resource' query parameter should not be present when IncludeResourceIndicator is false.");
+        Assert.True(query.ContainsKey("scope"), "The 'scope' query parameter should still be present.");
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithoutResourceIndicator_EndToEnd()
+    {
+        // Simulate an Entra ID-like server that rejects the 'resource' parameter.
+        TestOAuthServer.ExpectResource = false;
+
+        // Without resource indicator the token audience falls back to the client ID,
+        // matching real Entra ID behavior. Configure the server to accept it.
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidAudiences = [McpServerUrl, "demo-client"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                IncludeResourceIndicator = false,
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This would fail with "invalid_target" if the resource parameter leaked through
+        // in either the authorization, token exchange, or silent refresh paths.
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithoutResourceIndicator_TokenRefresh()
+    {
+        // Simulate an Entra ID-like server that rejects the 'resource' parameter.
+        TestOAuthServer.ExpectResource = false;
+
+        var hasForcedRefresh = false;
+
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ToolCollection = new();
+        });
+
+        // Without resource indicator the token audience falls back to the client ID.
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidAudiences = [McpServerUrl, "demo-client"];
+        });
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/" && !hasForcedRefresh)
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/list")
+                    {
+                        hasForcedRefresh = true;
+
+                        // Return 401 to force token refresh
+                        await context.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
+                        await context.Response.StartAsync(context.RequestAborted);
+                        await context.Response.Body.FlushAsync(context.RequestAborted);
+                        return;
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                IncludeResourceIndicator = false,
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // This triggers the 401 → token refresh path. If the resource parameter
+        // leaks into the refresh request, the mock Entra ID server returns invalid_target.
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(TestOAuthServer.HasRefreshedToken, "Token refresh should have occurred.");
+    }
 }
