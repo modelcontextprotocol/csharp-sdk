@@ -307,6 +307,25 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         });
     }
 
+    [Fact]
+    public async Task Completion_ServerShutdown_ReturnsHttpCompletionDetails()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var mcpClient = await ConnectMcpClientAsync();
+        Assert.False(mcpClient.Completion.IsCompleted);
+
+        // Stop the server while the client is still connected.
+        await app.StopAsync(TestContext.Current.CancellationToken);
+
+        var details = await mcpClient.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.HttpStatusCode);
+    }
+
     public class Envelope
     {
         public required string Message { get; set; }

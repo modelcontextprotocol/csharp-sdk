@@ -794,4 +794,17 @@ public class McpClientTests : ClientServerTestBase
         Assert.NotNull(response);
         Assert.NotNull(response.Result);
     }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_CompletesWithNoException()
+    {
+        var client = await CreateMcpClientForServer();
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        Assert.Null(details.Exception);
+    }
 }

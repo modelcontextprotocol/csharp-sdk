@@ -213,7 +213,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     }
 
     internal static void DisposeProcess(
-        Process? process, bool processRunning, TimeSpan shutdownTimeout)
+        Process? process, bool processRunning, TimeSpan shutdownTimeout, Action? beforeDispose = null)
     {
         if (process is not null)
         {
@@ -239,6 +239,10 @@ public sealed partial class StdioClientTransport : IClientTransport
                 {
                     process.WaitForExit();
                 }
+
+                // Invoke the callback while the process handle is still valid,
+                // e.g. to read ExitCode before Dispose() invalidates it.
+                beforeDispose?.Invoke();
             }
             finally
             {

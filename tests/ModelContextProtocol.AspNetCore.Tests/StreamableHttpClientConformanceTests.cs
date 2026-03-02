@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +7,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
@@ -368,6 +369,159 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             // Dispose should not hang even though the GET stream is actively open
             await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         }
+    }
+
+    [Fact]
+    public async Task Completion_SessionExpiredOnPost_ReturnsHttpCompletionDetails()
+    {
+        bool expireSession = false;
+
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+        _app = Builder.Build();
+
+        _app.MapPost("/mcp", (JsonRpcMessage message, HttpContext context) =>
+        {
+            if (message is not JsonRpcRequest request)
+            {
+                return Results.Accepted();
+            }
+
+            context.Response.Headers.Append("mcp-session-id", "expiry-test-session");
+
+            if (expireSession)
+            {
+                return Results.NotFound();
+            }
+
+            if (request.Method == "initialize")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new InitializeResult
+                    {
+                        ProtocolVersion = "2024-11-05",
+                        Capabilities = new() { Tools = new() },
+                        ServerInfo = new Implementation { Name = "expiry-test", Version = "0.0.1" },
+                    }, McpJsonUtilities.DefaultOptions)
+                });
+            }
+
+            return Results.Accepted();
+        });
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("expiry-test-session", client.SessionId);
+        Assert.False(client.Completion.IsCompleted);
+
+        // Simulate session expiry by having the server return 404
+        expireSession = true;
+
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        var details = await client.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Equal(HttpStatusCode.NotFound, httpDetails.HttpStatusCode);
+        Assert.NotNull(httpDetails.Exception);
+    }
+
+    [Fact]
+    public async Task Completion_SessionExpiredOnGet_ReturnsHttpCompletionDetails()
+    {
+        var expireSession = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+        _app = Builder.Build();
+
+        _app.MapPost("/mcp", (JsonRpcMessage message, HttpContext context) =>
+        {
+            if (message is not JsonRpcRequest request)
+            {
+                return Results.Accepted();
+            }
+
+            context.Response.Headers.Append("mcp-session-id", "get-expiry-test");
+
+            if (request.Method == "initialize")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new InitializeResult
+                    {
+                        ProtocolVersion = "2024-11-05",
+                        Capabilities = new() { Tools = new() },
+                        ServerInfo = new Implementation { Name = "get-expiry-test", Version = "0.0.1" },
+                    }, McpJsonUtilities.DefaultOptions)
+                });
+            }
+
+            return Results.Accepted();
+        });
+
+        // GET handler waits for the signal, then returns 404 to simulate session expiry
+        _app.MapGet("/mcp", async (HttpContext context) =>
+        {
+            await expireSession.Task;
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+        });
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("get-expiry-test", client.SessionId);
+
+        // Trigger session expiry on the GET SSE stream
+        expireSession.SetResult();
+
+        var details = await client.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Equal(HttpStatusCode.NotFound, httpDetails.HttpStatusCode);
+        Assert.NotNull(httpDetails.Exception);
+    }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_ReturnsCompletionDetails()
+    {
+        await StartAsync(enableDelete: true);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.Exception);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 
     private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)
