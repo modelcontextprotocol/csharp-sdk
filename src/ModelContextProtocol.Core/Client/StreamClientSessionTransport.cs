@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
-using System.Text;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -9,10 +10,9 @@ namespace ModelContextProtocol.Client;
 internal class StreamClientSessionTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
+    private static readonly StreamPipeReaderOptions s_pipeReaderOptions = new(bufferSize: 64 * 1024);  // 64KB minimum buffer
 
-    internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
-
-    private readonly TextReader _serverOutput;
+    private readonly PipeReader _serverOutputPipe;
     private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private CancellationTokenSource? _shutdownCts = new();
@@ -27,9 +27,6 @@ internal class StreamClientSessionTransport : TransportBase
     /// <param name="serverOutput">
     /// The server's output stream. Messages read from this stream will be received from the server.
     /// </param>
-    /// <param name="encoding">
-    /// The encoding used for reading and writing messages from the input and output streams. Defaults to UTF-8 without BOM if null.
-    /// </param>
     /// <param name="endpointName">
     /// A name that identifies this transport endpoint in logs.
     /// </param>
@@ -40,18 +37,14 @@ internal class StreamClientSessionTransport : TransportBase
     /// This constructor starts a background task to read messages from the server output stream.
     /// The transport will be marked as connected once initialized.
     /// </remarks>
-    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
+    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, string endpointName, ILoggerFactory? loggerFactory)
         : base(endpointName, loggerFactory)
     {
         Throw.IfNull(serverInput);
         Throw.IfNull(serverOutput);
 
         _serverInputStream = serverInput;
-#if NET
-        _serverOutput = new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#else
-        _serverOutput = new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#endif
+        _serverOutputPipe = PipeReader.Create(serverOutput, s_pipeReaderOptions);
 
         SetConnected();
 
@@ -102,24 +95,8 @@ internal class StreamClientSessionTransport : TransportBase
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
-
-            while (true)
-            {
-                if (await _serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
-                {
-                    LogTransportEndOfStream(Name);
-                    break;
-                }
-
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                LogTransportReceivedMessageSensitive(Name, line);
-
-                await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
-            }
+            await _serverOutputPipe.ReadLinesAsync(ProcessLineAsync, cancellationToken).ConfigureAwait(false);
+            LogTransportEndOfStream(Name);
         }
         catch (OperationCanceledException)
         {
@@ -137,25 +114,43 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
-    private async Task ProcessMessageAsync(string line, CancellationToken cancellationToken)
+    private async Task ProcessLineAsync(ReadOnlySequence<byte> line, CancellationToken cancellationToken)
     {
+        if (Logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportReceivedMessageSensitive(Name, EncodingUtilities.GetUtf8String(line));
+        }
+
         try
         {
-            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
-            if (message != null)
+            JsonRpcMessage? message;
+            if (line.IsSingleSegment)
+            {
+                message = JsonSerializer.Deserialize(line.First.Span, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+            else
+            {
+                var reader = new Utf8JsonReader(line, isFinalBlock: true, state: default);
+                message = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+
+            if (message is not null)
             {
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, EncodingUtilities.GetUtf8String(line));
+                }
             }
         }
         catch (JsonException ex)
         {
             if (Logger.IsEnabled(LogLevel.Trace))
             {
-                LogTransportMessageParseFailedSensitive(Name, line, ex);
+                LogTransportMessageParseFailedSensitive(Name, EncodingUtilities.GetUtf8String(line), ex);
             }
             else
             {

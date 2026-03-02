@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
-using System.Text;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -17,10 +18,12 @@ namespace ModelContextProtocol.Server;
 public class StreamServerTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
+    private static readonly StreamPipeReaderOptions s_pipeReaderOptions = new(bufferSize: 64 * 1024);  // 64KB minimum buffer
 
     private readonly ILogger _logger;
 
-    private readonly TextReader _inputReader;
+    private readonly Stream _inputStream;
+    private readonly PipeReader _inputPipeReader;
     private readonly Stream _outputStream;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -45,11 +48,8 @@ public class StreamServerTransport : TransportBase
 
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
-#if NET
-        _inputReader = new StreamReader(inputStream, Encoding.UTF8);
-#else
-        _inputReader = new CancellableStreamReader(inputStream, Encoding.UTF8);
-#endif
+        _inputStream = inputStream;
+        _inputPipeReader = PipeReader.Create(inputStream, s_pipeReaderOptions);
         _outputStream = outputStream;
 
         SetConnected();
@@ -94,48 +94,8 @@ public class StreamServerTransport : TransportBase
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
-
-            while (!shutdownToken.IsCancellationRequested)
-            {
-                var line = await _inputReader.ReadLineAsync(shutdownToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    if (line is null)
-                    {
-                        LogTransportEndOfStream(Name);
-                        break;
-                    }
-
-                    continue;
-                }
-
-                LogTransportReceivedMessageSensitive(Name, line);
-
-                try
-                {
-                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
-                    {
-                        await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    if (Logger.IsEnabled(LogLevel.Trace))
-                    {
-                        LogTransportMessageParseFailedSensitive(Name, line, ex);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseFailed(Name, ex);
-                    }
-
-                    // Continue reading even if we fail to parse a message
-                }
-            }
+            await _inputPipeReader.ReadLinesAsync(ProcessLineAsync, shutdownToken).ConfigureAwait(false);
+            LogTransportEndOfStream(Name);
         }
         catch (OperationCanceledException)
         {
@@ -149,6 +109,53 @@ public class StreamServerTransport : TransportBase
         finally
         {
             SetDisconnected(error);
+        }
+    }
+
+    private async Task ProcessLineAsync(ReadOnlySequence<byte> line, CancellationToken cancellationToken)
+    {
+        if (Logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportReceivedMessageSensitive(Name, EncodingUtilities.GetUtf8String(line));
+        }
+
+        try
+        {
+            JsonRpcMessage? message;
+            if (line.IsSingleSegment)
+            {
+                message = JsonSerializer.Deserialize(line.First.Span, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+            else
+            {
+                var reader = new Utf8JsonReader(line, isFinalBlock: true, state: default);
+                message = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) as JsonRpcMessage;
+            }
+
+            if (message is not null)
+            {
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportMessageParseUnexpectedTypeSensitive(Name, EncodingUtilities.GetUtf8String(line));
+                }
+            }
+        }
+        catch (JsonException ex)
+        {
+            if (Logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, EncodingUtilities.GetUtf8String(line), ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
+
+            // Continue reading even if we fail to parse a message.
         }
     }
 
@@ -170,7 +177,7 @@ public class StreamServerTransport : TransportBase
 
             // Dispose of stdin/out. Cancellation may not be able to wake up operations
             // synchronously blocked in a syscall; we need to forcefully close the handle / file descriptor.
-            _inputReader?.Dispose();
+            _inputStream?.Dispose();
             _outputStream?.Dispose();
 
             // Make sure the work has quiesced.
