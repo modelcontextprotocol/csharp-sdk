@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -125,6 +126,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The schema creation options governing tool parameter/output schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="toolTypes"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -133,7 +135,7 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance is constructed for each invocation of the tool.
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder  WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null, AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(toolTypes);
@@ -147,8 +149,8 @@ public static partial class McpServerBuilderExtensions
                     if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                            services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = serializerOptions })));
+                            services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions, SchemaCreateOptions = schemaCreateOptions }) :
+                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = serializerOptions, SchemaCreateOptions = schemaCreateOptions })));
                     }
                 }
             }
@@ -163,6 +165,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
     /// <param name="toolAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly is used.</param>
+    /// <param name="schemaCreateOptions">The schema creation options governing tool parameter/output schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -186,7 +189,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null, AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -196,7 +199,8 @@ public static partial class McpServerBuilderExtensions
             from t in toolAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
             select t,
-            serializerOptions);
+            serializerOptions,
+            schemaCreateOptions);
     }
     #endregion
 
