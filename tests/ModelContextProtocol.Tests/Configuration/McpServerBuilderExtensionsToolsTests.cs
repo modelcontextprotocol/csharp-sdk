@@ -675,7 +675,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         };
         
         ServiceCollection sc = new();
-        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions: schemaCreateOptions);
+        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "static_tool");
@@ -692,7 +692,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         };
         
         ServiceCollection sc = new();
-        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions: schemaCreateOptions);
+        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "instance_tool");
@@ -709,7 +709,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         };
 
         ServiceCollection sc = new();
-        sc.AddMcpServer().WithToolsFromAssembly(schemaCreateOptions: schemaCreateOptions);
+        sc.AddMcpServer().WithToolsFromAssembly(schemaCreateOptions);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "instance_tool");
