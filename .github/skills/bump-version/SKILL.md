@@ -16,9 +16,8 @@ Assess and bump the SDK version in `src/Directory.Build.props` to prepare for th
 
 Read `src/Directory.Build.props` on the default branch and extract:
 - `<VersionPrefix>` — the `MAJOR.MINOR.PATCH` version
-- `<VersionSuffix>` — the prerelease suffix (e.g. `preview.1`), if present
 
-Display the current version to the user: `{VersionPrefix}-{VersionSuffix}` or `{VersionPrefix}` if no suffix.
+Display the current version to the user.
 
 Determine the previous release tag from `gh release list` (most recent **published** release). Draft releases must be ignored — they represent a pending release that has not yet shipped. Use `--exclude-drafts` or filter to only published releases when querying.
 
@@ -33,30 +32,28 @@ When context about queued changes is available or can be gathered, assess the ve
 1. Get the list of PRs merged between the previous release tag and the target commit (typically HEAD).
 2. Classify the release level:
    - **MAJOR** — if any confirmed breaking changes (API or behavioral), excluding `[Experimental]` APIs
-   - **MINOR** — if new public API surface, features, or obsoletion warnings are present
-   - **PATCH** — if only backward-compatible bug fixes, documentation, tests, or infrastructure changes
-3. Compute the recommended version from the previous release tag (see the assessment guide for increment rules and pre-release suffix handling).
+   - **MINOR** — if new public APIs, features, or obsoletion warnings are present
+   - **PATCH** — otherwise
+3. Compute the recommended version from the previous release tag (see the assessment guide for increment rules).
 4. Compare against the current version in `Directory.Build.props` and flag any discrepancy.
 5. Present the assessment with a summary table and rationale, then get user confirmation.
 
 #### Default Suggestion (Fallback)
 
-When a quick bump is needed without full change analysis, suggest the next **minor** version with the same suffix pattern:
+When a quick bump is needed without full change analysis, suggest the next **minor** version:
 
-- Current `0.9.0` with suffix `preview.1` → suggest `0.10.0-preview.1`
-- Current `1.0.0` with no suffix → suggest `1.1.0`
-- Current `1.2.3` with suffix `rc.1` → suggest `1.3.0-rc.1`
+- Current `1.0.0` → suggest `1.1.0`
+- Current `1.2.3` → suggest `1.3.0`
 
 Present the suggestion and let the user confirm or provide an alternative.
 
-In either case, parse the confirmed version into its `VersionPrefix` and `VersionSuffix` components.
+Parse the confirmed version into its `VersionPrefix` component.
 
 ### Step 3: Create Pull Request
 
-1. Create a new branch named `bump-version-to-{version}` (e.g. `bump-version-to-0.10.0-preview.1`) from the default branch
+1. Create a new branch named `bump-version-to-{version}` (e.g. `bump-version-to-1.1.0`) from the default branch
 2. Update `src/Directory.Build.props`:
-   - Set `<VersionPrefix>` to the new prefix
-   - Set `<VersionSuffix>` to the new suffix, or remove the element if there is no suffix
+   - Set `<VersionPrefix>` to the new version
    - Update `<PackageValidationBaselineVersion>` if the MAJOR version has changed
 3. Commit with message: `Bump version to {version}`
 4. Push the branch and create a pull request:

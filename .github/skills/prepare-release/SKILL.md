@@ -25,7 +25,7 @@ The user may provide:
 Once the target is established:
 1. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`).
 2. Get the full list of PRs merged between the previous release tag and the target commit.
-3. Read `src/Directory.Build.props` **at the target commit**. Extract `<VersionPrefix>` and `<VersionSuffix>` as the **candidate version**.
+3. Read `src/Directory.Build.props` **at the target commit**. Extract `<VersionPrefix>` as the **candidate version**.
 
 ### Step 2: Categorize and Attribute
 
@@ -62,11 +62,10 @@ Using the categorized PRs from Step 2 and confirmed breaking changes from Step 3
 
 1. **Classify the release level**:
    - **MAJOR** — if any confirmed breaking changes are present (API or behavioral), excluding changes to `[Experimental]` APIs
-   - **MINOR** — if no breaking changes but new public API surface, features, or obsoletion warnings are introduced
-   - **PATCH** — if only backward-compatible bug fixes, documentation, tests, or infrastructure changes are included
+   - **MINOR** — if no breaking changes but new public APIs, features, or obsoletion warnings are introduced
+   - **PATCH** — otherwise
 2. **Compute the recommended version** from the previous release tag:
    - Increment the appropriate component (MAJOR resets MINOR.PATCH to 0; MINOR resets PATCH to 0)
-   - Carry forward any pre-release suffix pattern from the previous release (e.g., `-preview.1`)
 3. **Compare against the candidate version** from `src/Directory.Build.props`. Flag any discrepancy:
    - **Under-versioned**: The candidate is lower than the recommended level. This is a concern that should be resolved.
    - **Over-versioned**: The candidate is higher than strictly required. This is acceptable under SemVer but worth noting.
@@ -79,8 +78,7 @@ After the version is confirmed:
 
 1. Create a local branch named `release-{version}` from the target commit (e.g., `release-1.1.0`).
 2. Update `src/Directory.Build.props`:
-   - Set `<VersionPrefix>` to the confirmed version prefix
-   - Set or remove `<VersionSuffix>` as appropriate
+   - Set `<VersionPrefix>` to the confirmed version
    - Update `<PackageValidationBaselineVersion>` if the MAJOR version has changed (set to the previous release version)
 3. Build the solution to verify the version change compiles: `dotnet build`
 

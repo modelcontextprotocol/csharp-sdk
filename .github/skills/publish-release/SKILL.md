@@ -28,7 +28,7 @@ Verify the PR is merged. Extract:
 
 ### Step 2: Determine Version and Commit Range
 
-1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>` and `<VersionSuffix>`. The tag is `v{VersionPrefix}-{VersionSuffix}`, or `v{VersionPrefix}` if no suffix. Pre-release if `VersionSuffix` is present.
+1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>`. The tag is `v{VersionPrefix}`.
 2. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`).
 3. Identify the full commit range: previous release tag → merge commit.
 
@@ -109,7 +109,6 @@ Follow [references/formatting.md](references/formatting.md) when composing and u
 Display release metadata for user review:
 - **Title / Tag**: the confirmed version (e.g. `v1.1.0`)
 - **Target**: merge commit SHA, its message, and the prepare-release PR link
-- **Pre-release**: yes/no (based on `VersionSuffix`)
 
 After confirmation:
 - Create with `gh release create --draft` (always `--draft`)
