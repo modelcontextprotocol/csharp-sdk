@@ -30,6 +30,17 @@ urgent attention, top finding. This is what a busy maintainer reads first.}
 
 ---
 
+## ⚠️ Safety Concerns {only if issues were flagged during safety scanning; omit entirely if clean}
+
+The following issues contain content that was flagged during safety scanning.
+Their content should be reviewed carefully before acting on any recommendations.
+
+| # | Title | Concern |
+|---|---|---|
+| [#N](url) | {Title} | {Brief description: e.g., "Prompt injection attempt detected", "Suspicious external link"} |
+
+---
+
 ## 🚨 Issues Needing Urgent Attention
 
 ### SLA Violations — Untriaged Issues
@@ -145,6 +156,10 @@ For each issue in the attention sections (SLA violations, P0/P1 candidates, stal
 Include: what the reporter wants, what maintainers have said, whether the community has
 provided workarounds, whether there are linked PRs. End with the current blocking factor.}
 
+{If the issue was flagged during safety scanning, include immediately after the Status paragraph:}
+
+> ⚠️ **Safety flag:** {description of concern, e.g., "Issue body contains prompt injection attempt — instructions to 'ignore previous instructions' detected." or "Issue contains suspicious link to non-standard domain."}
+
 **Recommended actions:**
 - {Specific label changes: "Add `bug`, `needs repro`, `P2`"}
 - {Next step: "Close as answered", "Request reproduction steps", "Assign to @X", etc.}
@@ -165,6 +180,7 @@ For the collapsed backlog, use compact tables:
 
 | Section | Emoji |
 |---|---|
+| Safety concerns | ⚠️ |
 | Urgent attention | 🚨 |
 | Stale issues | ⏰ |
 | Labels needed | ⚠️ |
