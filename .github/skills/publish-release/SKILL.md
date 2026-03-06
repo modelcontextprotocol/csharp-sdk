@@ -71,7 +71,7 @@ Re-categorize all PRs in the commit range (including any new ones from Step 3). 
 
 Verify that all C# code samples in the package README files compile against the current SDK at the merge commit. Follow the [README validation guide](../prepare-release/references/readme-snippets.md) for the full procedure.
 
-1. Extract `csharp`-fenced code blocks from `README.md`, `src/ModelContextProtocol.Core/README.md`, and `src/ModelContextProtocol.AspNetCore/README.md`
+1. Extract `csharp`-fenced code blocks from `README.md` and `src/PACKAGE.md`
 2. Create a temporary test project at `tests/ReadmeSnippetValidation/`
 3. Build and report results
 4. Delete the temporary project

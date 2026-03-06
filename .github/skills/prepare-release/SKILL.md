@@ -113,7 +113,7 @@ Generate a human-readable diff of the public API surface between the previous re
 
 Review repository documentation for changes needed to compensate for or adapt to this release:
 
-1. **NuGet package READMEs** — Validate that code samples in `README.md`, `src/ModelContextProtocol.Core/README.md`, and `src/ModelContextProtocol.AspNetCore/README.md` compile against the current SDK. Follow [references/readme-snippets.md](references/readme-snippets.md) for the validation procedure. Propose fixes for any API mismatches.
+1. **NuGet package READMEs** — Validate that code samples in `README.md` and `src/PACKAGE.md` compile against the current SDK. Follow [references/readme-snippets.md](references/readme-snippets.md) for the validation procedure. Propose fixes for any API mismatches.
 2. **Conceptual documentation** — Review `docs/` for content affected by the changes in this release. Update references to changed APIs, new features, or removed functionality.
 3. **Versioning documentation** — If the release introduces new versioning-relevant policies (new experimental APIs, obsoletion changes), verify `docs/versioning.md` reflects them.
 4. **Changelogs** — If the repository contains changelog files (e.g., `CHANGELOG.md`), update them with the release information. If no changelogs exist, skip this sub-step and note it in the summary.
