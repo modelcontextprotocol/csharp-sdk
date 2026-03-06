@@ -7,6 +7,7 @@ This sample demonstrates how to create an MCP server that requires OAuth 2.0 aut
 The Protected MCP Server sample shows how to:
 - Create an MCP server with OAuth 2.0 protection
 - Configure JWT bearer token authentication
+- Apply a per-user concurrent tool-call limit (10 in-flight calls) with a call-tool request filter
 - Implement protected MCP tools and resources
 - Integrate with ASP.NET Core authentication and authorization
 - Provide OAuth resource metadata for client discovery
