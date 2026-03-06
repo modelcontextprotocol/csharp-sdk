@@ -17,9 +17,9 @@ The report follows a **BLUF (Bottom Line Up Front)** pattern — the most critic
 
 **Date:** {YYYY-MM-DD}
 **Repository:** [modelcontextprotocol/csharp-sdk](https://github.com/modelcontextprotocol/csharp-sdk)
-**SDK Tier:** {Tier N} ([tracking issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/{N}))
-**Triage SLA:** Within **{N} business days** ({Tier} requirement)
-**Critical Bug SLA:** Resolution within **{N} days** ({Tier} requirement)
+**SDK Tier:** {Tier} ([tracking issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/{TierTrackingIssueNumber}))
+**Triage SLA:** Within **{TriageSlaBusinessDays} business days** ({Tier} requirement)
+**Critical Bug SLA:** Resolution within **{CriticalBugSlaDays} days** ({Tier} requirement)
 
 ---
 

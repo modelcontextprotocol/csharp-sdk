@@ -6,7 +6,7 @@ compatibility: Requires GitHub API access for issues, comments, labels, and pull
 
 # Issue Triage Report
 
-Generate a comprehensive, prioritized issue triage report for the `modelcontextprotocol/csharp-sdk` repository. The C# SDK is **Tier 1** ([tracking issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2261)), so apply the Tier 1 SLA thresholds throughout: **triage within 2 business days**, **P0 resolution within 7 days**. **Triage** means the issue has at least one type label (`bug`, `enhancement`, `question`, `documentation`) or status label (`needs confirmation`, `needs repro`, `ready for work`, `good first issue`, `help wanted`).
+Generate a comprehensive, prioritized issue triage report for the `modelcontextprotocol/csharp-sdk` repository. The C# SDK is **Tier 1** ([tracking issue](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2261)), so apply the Tier 1 SLA thresholds (for triage, P0 resolution, and other applicable timelines) as defined in the live Tier 1 requirements fetched from `sdk-tiers.mdx` in Step 1. **Triage** means the issue has at least one type label (`bug`, `enhancement`, `question`, `documentation`) or status label (`needs confirmation`, `needs repro`, `ready for work`, `good first issue`, `help wanted`).
 
 The report follows a **BLUF (Bottom Line Up Front)** structure — leading with the most critical findings and progressing to less-urgent items, with the full backlog collapsed to keep attention on what matters.
 
@@ -37,16 +37,16 @@ Paginate through all open issues in `modelcontextprotocol/csharp-sdk` via the Gi
 
 ### Step 3: Classify Triage Status
 
-For each issue, determine:
+Using the label definitions extracted from `sdk-tiers.mdx` in Step 1, classify each issue:
 
 | Classification | Criteria |
 |---------------|---------|
-| **Has type label** | One of: `bug`, `enhancement`, `question`, `documentation` |
-| **Has status label** | One of: `needs confirmation`, `needs repro`, `ready for work`, `good first issue`, `help wanted` |
-| **Has priority label** | One of: `P0`, `P1`, `P2`, `P3` |
+| **Has type label** | Has one of the type labels defined in the tier document |
+| **Has status label** | Has one of the status labels defined in the tier document |
+| **Has priority label** | Has one of the priority labels defined in the tier document |
 | **Is triaged** | Has at least one type OR status label |
-| **Business days since creation** | Calendar days × 5/7 (approximate, excluding weekends) |
-| **SLA compliant** | Triaged within the tier's required window |
+| **Business days since creation** | `floor(calendar_days × 5 / 7)` (approximate, excluding weekends) |
+| **SLA compliant** | Triaged within the tier's required window using the business-day calculation above |
 
 Compute aggregate metrics:
 - Total open issues
@@ -61,7 +61,7 @@ Build prioritized lists of issues that need action. These are the issues that wi
 
 **4a. SLA Violations** — Untriaged issues exceeding the tier's triage SLA threshold.
 
-**4b. Missing Type Label** — Issues that have a status or priority label but no type label. These are technically triaged but incompletely labeled.
+**4b. Missing Type Label** — Issues that have a status label but no type label. These are technically triaged but incompletely labeled.
 
 **4c. Potential P0/P1 Candidates** — Bugs (or unlabeled issues that appear to be bugs) that may warrant P0 or P1 priority based on keywords or patterns:
 - Core transport failures (SSE hanging, Streamable HTTP broken, connection drops)
