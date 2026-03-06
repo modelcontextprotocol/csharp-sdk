@@ -71,6 +71,17 @@ The classification rules above are derived from the dotnet/runtime breaking chan
 
 APIs annotated with `[Experimental]` (using `MCP`-prefixed diagnostic codes) can change at any time, including within PATCH or MINOR updates. Changes to experimental APIs should still be **noted** in the audit, but classified as **Bucket 3 (Unlikely Grey Area)** or lower unless the API has been widely adopted despite its experimental status.
 
+#### APIs exclusively reachable through `[Experimental]` gates
+
+A change to a non-experimental public API is **not considered breaking** if it only affects consumers who have already opted into an `[Experimental]` code path. The key question is: *can a consumer reach the breaking impact without suppressing an experimental diagnostic?*
+
+For example, adding an abstract member to a public abstract class is normally a Bucket 1 break (anyone deriving from the class must implement the new member). However, if the class's only accessible constructor is marked `[Experimental]`, then deriving from it already requires suppressing the experimental diagnostic — meaning the consumer has explicitly accepted that the API is subject to change.
+
+**How to identify this pattern:**
+1. A change would normally be classified as a breaking change (e.g., CP0005 — adding abstract member to abstract type)
+2. Trace the code path a consumer must follow to be affected by the break
+3. If **every** such path requires the consumer to use an `[Experimental]`-annotated API (constructor, method, type, etc.), the break is dismissed
+
 ### Obsoletion Lifecycle
 
 The SDK follows a three-step obsoletion process:
@@ -98,14 +109,34 @@ When a breaking change includes an `AppContext` switch or other opt-in/opt-out m
 * Compat switch: `ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests` = `true` restores previous behavior
 ```
 
+## Dismissing Potential Breaking Changes
+
+When a change appears to be breaking but is dismissed (e.g., as a bug fix, clearly non-public, or exclusively gated by `[Experimental]` APIs), the audit must present the full rationale to the user for verification.
+
+### Gathering Supporting Evidence
+
+Before dismissing a potential break, review the PR description and all PR comments (both review comments and general comments) for discussion about the breaking change. Authors and reviewers often explain *why* a change is acceptable — for example, noting that the affected type is gated by an experimental constructor, that the previous behavior was incorrect per the spec, that no external consumers exist yet, or that compatibility suppressions were added intentionally. This discussion serves as supporting evidence for the dismissal and should be cited in the audit findings.
+
+### Presenting Dismissals
+
+Every dismissed potential break must be reported to the user with enough detail for them to verify the conclusion. The audit must:
+
+1. **Identify what would normally be breaking and why** (e.g., "CP0005 — adding abstract member `Completion` to abstract class `McpClient`")
+2. **Explain the specific reason for dismissal** (e.g., "Bug fix correcting incorrect behavior per the MCP spec" or "`McpClient`'s only accessible constructor is `protected` and marked `[Experimental(MCPEXP002)]` with message 'Subclassing McpClient and McpServer is experimental and subject to change.'")
+3. **Cite any supporting discussion** from the PR description or comments (e.g., "Reviewers discussed the addition and did not flag it as a breaking concern; compatibility suppressions were added for CP0005")
+4. **Conclude with the dismissal and its category** (e.g., "Dismissed — bug fix correcting spec-non-compliant behavior" or "Dismissed — exclusively gated by `[Experimental]` API. Do not apply the `breaking-change` label.")
+
+This transparency allows the user to verify each dismissal rationale and override it if the justification is insufficient.
+
 ## What to Study for Each PR
 
 For every PR in the range, examine:
 
-1. **PR description** — Authors often describe breaking changes here
+1. **PR description** — Authors often describe breaking changes here, or explain why a potentially breaking change is acceptable
 2. **Linked issues** — May contain discussion about breaking impact
-3. **Review comments** — Reviewers may have flagged breaking concerns
-4. **Code diff** — Look at changes to:
+3. **Review comments** — Reviewers may have flagged breaking concerns or discussed why a change is acceptable despite appearing breaking (e.g., experimental gates, no external consumers, compatibility suppressions). These discussions are critical evidence when dismissing potential breaks.
+4. **General comments** — Authors and reviewers sometimes discuss breaking change justification in the PR conversation thread rather than in review comments
+5. **Code diff** — Look at changes to:
    - Public type/member signatures
    - Exception throwing patterns
    - Default values and constants
@@ -113,4 +144,5 @@ For every PR in the range, examine:
    - Parameter validation changes
    - Attribute changes (`[Obsolete]`, `[Experimental]`, etc.)
    - `AppContext.TryGetSwitch` or environment variable compat switches
-5. **Labels** — Check if `breaking-change` is already applied
+   - Compatibility suppressions (e.g., `CompatibilitySuppressions.xml` for ApiCompat CP0005 etc.)
+6. **Labels** — Check if `breaking-change` is already applied

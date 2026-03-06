@@ -31,7 +31,7 @@ Recommend a MAJOR version increment if **any** of the following are present:
 - Escalation of `[Obsolete]` from warning to error
 - Removal of previously obsolete APIs
 
-**Exception — Experimental APIs**: Changes to APIs annotated with `[Experimental]` do not require a MAJOR increment, even if they would otherwise be considered breaking. Note these changes but classify the release level based on the non-experimental changes.
+**Exception — Experimental APIs**: Changes to APIs annotated with `[Experimental]` do not require a MAJOR increment, even if they would otherwise be considered breaking. This includes changes that only affect consumers who have opted into an `[Experimental]` code path — for example, adding an abstract member to a public abstract class whose only accessible constructor is `[Experimental]`. If every path to the breaking impact requires suppressing an experimental diagnostic, the change is not considered breaking for versioning purposes. Note these changes but classify the release level based on the non-experimental changes.
 
 ### MINOR — Backward-Compatible New Functionality
 
