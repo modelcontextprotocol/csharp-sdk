@@ -33,7 +33,7 @@ Look for both categories of breaking changes:
 - **API (compile-time)** — changes to public type signatures, parameter types, return types, removed members, sealed types, new obsoletion attributes, etc.
 - **Behavioral (runtime)** — new/changed exceptions, altered return values, changed defaults, modified event ordering, serialization changes, etc.
 
-See [references/classification.md](references/classification.md) for the full classification guide, including SDK-specific versioning policies (pre-1.0 preview flexibility, experimental APIs, obsoletion lifecycle, and spec-driven changes) that influence how breaks are assessed.
+See [references/classification.md](references/classification.md) for the full classification guide, including SDK-specific versioning policies (experimental APIs, obsoletion lifecycle, and spec-driven changes) that influence how breaks are assessed.
 
 ### Step 2: Assess Impact
 
@@ -63,7 +63,7 @@ Present the final list of confirmed breaking changes, sorted from most impactful
 
 ## Output
 
-The audit produces a structured list of breaking changes that can be consumed by other skills (e.g. the release-notes skill) or presented directly to the user.
+The audit produces a structured list of breaking changes that can be consumed by other skills (e.g. the **prepare-release** and **publish-release** skills) or presented directly to the user.
 
 Each entry contains:
 - PR number and description

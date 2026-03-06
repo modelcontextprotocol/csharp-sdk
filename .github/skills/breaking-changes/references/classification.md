@@ -67,10 +67,6 @@ Changes to internal surface or behavior (e.g., internal APIs, private reflection
 
 The classification rules above are derived from the dotnet/runtime breaking change guidelines, but the MCP SDK has its own versioning policy (see `docs/versioning.md`) that provides additional context for classification decisions.
 
-### Pre-1.0 Preview Status
-
-Prior to a stable 1.0.0 release, the SDK is in preview and breaking changes can be introduced without prior notice. This does **not** change how breaks are classified — they should still be flagged, labeled, and documented — but it affects the **severity assessment**. Preview consumers expect breaks, so migration guidance matters more than avoidance.
-
 ### Experimental APIs
 
 APIs annotated with `[Experimental]` (using `MCP`-prefixed diagnostic codes) can change at any time, including within PATCH or MINOR updates. Changes to experimental APIs should still be **noted** in the audit, but classified as **Bucket 3 (Unlikely Grey Area)** or lower unless the API has been widely adopted despite its experimental status.
@@ -88,7 +84,7 @@ When auditing, classify each step appropriately:
 - Step 2 (escalating to error) → API breaking change (previously working code now fails)
 - Step 3 (removal) → API breaking change; migration guidance should note prior deprecation
 
-In exceptional circumstances — especially during the pre-1.0 preview period — the obsoletion lifecycle may be compressed (e.g., marking obsolete and removing in the same MINOR release). This should still be flagged as a breaking change but the migration guidance should explain the rationale.
+In exceptional circumstances, the obsoletion lifecycle may be compressed (e.g., marking obsolete and removing in the same MINOR release). This should still be flagged as a breaking change but the migration guidance should explain the rationale.
 
 ### Spec-Driven Changes
 
