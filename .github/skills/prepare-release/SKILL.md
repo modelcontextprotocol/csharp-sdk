@@ -214,7 +214,7 @@ The PR description combines release notes, ApiCompat, and ApiDiff into a single 
 
 ### Breaking Changes
 
-Refer to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break
@@ -275,7 +275,7 @@ Omit empty sections. The preamble is **always required** — it is not inside a 
 
 ## Breaking Changes
 
-Refer to the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break

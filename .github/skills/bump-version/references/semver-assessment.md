@@ -4,7 +4,7 @@ This reference describes how to assess the appropriate [Semantic Versioning 2.0.
 
 ## SemVer Summary
 
-The SDK follows SemVer 2.0.0 as documented in the [C# SDK Versioning](https://modelcontextprotocol.github.io/csharp-sdk/versioning.html) documentation. Given a version `MAJOR.MINOR.PATCH`:
+The SDK follows SemVer 2.0.0 as documented in the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation. Given a version `MAJOR.MINOR.PATCH`:
 
 - **MAJOR**: Increment when incompatible API changes are included
 - **MINOR**: Increment when functionality is added in a backward-compatible manner
