@@ -554,6 +554,44 @@ public partial class McpServerToolTests
         Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
     }
 
+    [Fact]
+    public async Task Create_WithJsonSerializerOptionsWithoutTypeInfoResolver_Works()
+    {
+        // Arrange - Create options without a TypeInfoResolver (simulates issue #1150)
+        JsonSerializerOptions options = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        };
+
+        // Act - Should not throw when creating a tool with these options
+        McpServerTool tool = McpServerTool.Create((string name) => $"Hello, {name}!", new() { SerializerOptions = options });
+
+        // Assert - Verify the tool works correctly
+        var mockServer = new Mock<McpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams
+            {
+                Name = "tool",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["name"] = JsonDocument.Parse("\"World\"").RootElement.Clone()
+                }
+            },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Content);
+        Assert.Equal("Hello, World!", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+        // Verify that the options now have a TypeInfoResolver and are read-only
+        Assert.NotNull(options.TypeInfoResolver);
+        Assert.True(options.IsReadOnly);
+    }
+
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
     {
         yield return new object[] { "string" };
