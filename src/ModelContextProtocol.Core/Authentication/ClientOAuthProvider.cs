@@ -714,7 +714,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
-        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        if (_configuredScopes is not null)
+        {
+            return _configuredScopes;
+        } 
+        else if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
         {
             return protectedResourceMetadata.WwwAuthenticateScope;
         }
@@ -722,8 +726,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             return string.Join(" ", protectedResourceMetadata.ScopesSupported);
         }
-
-        return _configuredScopes;
+        else
+        {
+            return null;
+        }
     }
 
     /// <summary>
