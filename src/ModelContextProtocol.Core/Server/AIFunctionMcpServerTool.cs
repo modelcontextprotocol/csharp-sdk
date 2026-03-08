@@ -174,7 +174,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         McpServerToolCreateOptions newOptions = options?.Clone() ?? new();
 
-        bool useStructuredContent = false;
         if (method.GetCustomAttribute<McpServerToolAttribute>() is { } toolAttr)
         {
             newOptions.Name ??= toolAttr.Name;
@@ -211,7 +210,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Execution.TaskSupport ??= taskSupport;
             }
 
-            useStructuredContent = toolAttr.UseStructuredContent;
+            if (toolAttr.UseStructuredContent)
+            {
+                newOptions.UseStructuredContent = true;
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -223,10 +225,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         newOptions.Metadata ??= CreateMetadata(method);
 
         // Generate the output schema from the return type if needed.
-        // UseStructuredContent on the attribute uses T from CallToolResult<T> or the return type directly.
+        // UseStructuredContent on the attribute or options uses T from CallToolResult<T> or the return type directly.
         // CallToolResult<T> return types automatically infer the schema from T even without UseStructuredContent.
         Type? outputSchemaType = GetCallToolResultContentType(method.ReturnType);
-        if (outputSchemaType is null && useStructuredContent)
+        if (outputSchemaType is null && newOptions.UseStructuredContent)
         {
             outputSchemaType = method.ReturnType;
         }

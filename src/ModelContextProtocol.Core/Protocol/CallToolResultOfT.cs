@@ -57,7 +57,9 @@ public sealed class CallToolResult<T> : Result, ICallToolResultTyped
         return new()
         {
             Content = [new TextContentBlock { Text = structuredContent?.ToString() ?? "null" }],
-            StructuredContent = structuredContent,
+            StructuredContent = structuredContent is not null
+                ? JsonSerializer.Deserialize<JsonElement>(structuredContent, McpJsonUtilities.JsonContext.Default.JsonElement)
+                : null,
             IsError = IsError,
             Meta = Meta,
         };

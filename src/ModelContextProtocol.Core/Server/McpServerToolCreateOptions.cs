@@ -118,6 +118,18 @@ public sealed class McpServerToolCreateOptions
     public bool? ReadOnly { get; set; }
 
     /// <summary>
+    /// Gets or sets a value that indicates whether the tool should report an output schema for structured content.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
+    /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </remarks>
+    public bool UseStructuredContent { get; set; }
+
+    /// <summary>
     /// Gets or sets a JSON Schema object to use as the tool's output schema.
     /// </summary>
     /// <remarks>
@@ -218,6 +230,7 @@ public sealed class McpServerToolCreateOptions
             Idempotent = Idempotent,
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
+            UseStructuredContent = UseStructuredContent,
             OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
