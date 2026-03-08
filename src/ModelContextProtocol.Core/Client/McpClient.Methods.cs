@@ -950,8 +950,10 @@ public abstract partial class McpClient : McpSession
 
         if (result.IsError is true)
         {
-            string errorMessage = result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "Tool call failed.";
-            throw new McpException(errorMessage);
+            string errorMessage = string.Join(
+                "\n",
+                result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+            throw new McpException(errorMessage.Length > 0 ? errorMessage : "Tool call failed.");
         }
 
         var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;

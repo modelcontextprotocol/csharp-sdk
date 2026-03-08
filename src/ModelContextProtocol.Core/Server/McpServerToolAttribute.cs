@@ -138,17 +138,10 @@ namespace ModelContextProtocol.Server;
 ///     <description>Returned directly without modification.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="CallToolResult{T}"/></term>
-///     <description>
-///     The <c>T</c> content is serialized to JSON and used as both a <see cref="TextContentBlock"/>
-///     and as the <see cref="CallToolResult.StructuredContent"/>. The <see cref="CallToolResult{T}.IsError"/>
-///     and <see cref="Result.Meta"/> properties are propagated to the resulting <see cref="CallToolResult"/>.
-///     The <c>T</c> type argument is also used to infer the <see cref="Tool.OutputSchema"/>.
-///     </description>
-///   </item>
-///   <item>
 ///     <term>Other types</term>
-///     <description>Serialized to JSON and returned as a single <see cref="ContentBlock"/> object with <see cref="ContentBlock.Type"/> set to "text".</description>
+///     <description>Serialized to JSON and returned as a single <see cref="ContentBlock"/> object with <see cref="ContentBlock.Type"/> set to "text".
+///     When <see cref="UseStructuredContent"/> is enabled, the serialized value is also set as <see cref="CallToolResult.StructuredContent"/>
+///     and used to generate the <see cref="Tool.OutputSchema"/>.</description>
 ///   </item>
 /// </list>
 /// </remarks>
@@ -269,10 +262,41 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
+    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </para>
+    /// <para>
+    /// Setting <see cref="OutputSchemaType"/> will automatically enable structured content.
+    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the type to use for generating the tool's <see cref="Tool.OutputSchema"/>.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set, the specified type is used to generate a JSON Schema that is advertised as the tool's
+    /// <see cref="Tool.OutputSchema"/>. This is particularly useful when the method returns
+    /// <see cref="CallToolResult"/> directly (for example, to control <see cref="CallToolResult.IsError"/>),
+    /// but the tool should still advertise a meaningful output schema describing the shape of
+    /// <see cref="CallToolResult.StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// Setting this property automatically enables structured content behavior, equivalent to
+    /// setting <see cref="UseStructuredContent"/> to <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// For Native AOT scenarios, use <see cref="McpServerToolCreateOptions.OutputSchema"/> to provide
+    /// a pre-generated JSON Schema instead.
+    /// </para>
+    /// </remarks>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
+    public Type? OutputSchemaType { get; set; }
 
     /// <summary>
     /// Gets or sets the source URI for the tool's icon.

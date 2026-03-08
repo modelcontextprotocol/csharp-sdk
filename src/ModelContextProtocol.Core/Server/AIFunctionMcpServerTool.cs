@@ -174,6 +174,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         McpServerToolCreateOptions newOptions = options?.Clone() ?? new();
 
+        Type? outputSchemaType = null;
         if (method.GetCustomAttribute<McpServerToolAttribute>() is { } toolAttr)
         {
             newOptions.Name ??= toolAttr.Name;
@@ -214,6 +215,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 newOptions.UseStructuredContent = true;
             }
+
+            outputSchemaType = toolAttr.OutputSchemaType;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -224,10 +227,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Set metadata if not already provided
         newOptions.Metadata ??= CreateMetadata(method);
 
-        // Generate the output schema from the return type if needed.
-        // UseStructuredContent on the attribute or options uses T from CallToolResult<T> or the return type directly.
-        // CallToolResult<T> return types automatically infer the schema from T even without UseStructuredContent.
-        Type? outputSchemaType = GetCallToolResultContentType(method.ReturnType);
+        // Generate the output schema from the specified type or the return type.
+        // Priority: OutputSchemaType (explicit) > UseStructuredContent (infer from return type).
         if (outputSchemaType is null && newOptions.UseStructuredContent)
         {
             outputSchemaType = method.ReturnType;
@@ -323,8 +324,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             CallToolResult callToolResponse => callToolResponse,
 
-            ICallToolResultTyped typed => typed.ToCallToolResult(AIFunction.JsonSerializerOptions),
-
             _ => new()
             {
                 Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
@@ -381,28 +380,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return false;
     }
 
-    /// <summary>
-    /// If the specified type is <see cref="CallToolResult{T}"/> (possibly wrapped in <see cref="Task{TResult}"/>
-    /// or <see cref="ValueTask{TResult}"/>), returns the <c>T</c> type argument. Otherwise, returns <see langword="null"/>.
-    /// </summary>
-    private static Type? GetCallToolResultContentType(Type returnType)
-    {
-        if (returnType.IsGenericType)
-        {
-            Type genericDef = returnType.GetGenericTypeDefinition();
-            if (genericDef == typeof(Task<>) || genericDef == typeof(ValueTask<>))
-            {
-                returnType = returnType.GetGenericArguments()[0];
-            }
-        }
-
-        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(CallToolResult<>))
-        {
-            return returnType.GetGenericArguments()[0];
-        }
-
-        return null;
-    }
 
     /// <summary>Creates metadata from attributes on the specified method and its declaring class, with the MethodInfo as the first item.</summary>
     internal static IReadOnlyList<object> CreateMetadata(MethodInfo method)
