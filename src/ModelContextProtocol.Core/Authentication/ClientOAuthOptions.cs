@@ -103,4 +103,17 @@ public sealed class ClientOAuthOptions
     /// If none is provided, tokens will be cached with the transport.
     /// </summary>
     public ITokenCache? TokenCache { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to include the <c>resource</c> parameter in OAuth authorization
+    /// and token requests as defined by <see href="https://datatracker.ietf.org/doc/rfc8707/">RFC 8707</see>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The default value is <see langword="true"/>. Set to <see langword="false"/> when using an OAuth provider
+    /// that does not support the <c>resource</c> parameter, such as Microsoft Entra ID (Azure AD v2.0),
+    /// which returns error <c>AADSTS901002</c> when the parameter is present.
+    /// </para>
+    /// </remarks>
+    public bool IncludeResourceIndicator { get; set; } = true;
 }
