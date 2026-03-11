@@ -206,6 +206,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
 
+            if (toolAttr.OutputSchema is Type outputSchemaType)
+            {
+                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
+                    serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+                    inferenceOptions: newOptions.SchemaCreateOptions);
+            }
+
             if (toolAttr._taskSupport is { } taskSupport)
             {
                 newOptions.Execution ??= new ToolExecution();
@@ -487,7 +494,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        if (function.ReturnJsonSchema is not JsonElement outputSchema)
+        // Explicit OutputSchema takes precedence over AIFunction's return schema.
+        JsonElement outputSchema;
+        if (toolCreateOptions.OutputSchema is { } explicitSchema)
+        {
+            outputSchema = explicitSchema;
+        }
+        else if (function.ReturnJsonSchema is { } returnSchema)
+        {
+            outputSchema = returnSchema;
+        }
+        else
         {
             return null;
         }

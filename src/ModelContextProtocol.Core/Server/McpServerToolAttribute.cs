@@ -266,6 +266,27 @@ public sealed class McpServerToolAttribute : Attribute
     public bool UseStructuredContent { get; set; }
 
     /// <summary>
+    /// Gets or sets a <see cref="Type"/> from which to generate the tool's output schema.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the output schema is inferred from the return type.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set, a JSON schema is generated from the specified <see cref="Type"/> and used as the
+    /// <see cref="Tool.OutputSchema"/> instead of the schema inferred from the tool method's return type.
+    /// This is particularly useful when a tool method returns <see cref="CallToolResult"/> directly
+    /// (to control properties like <see cref="Result.Meta"/>, <see cref="CallToolResult.IsError"/>,
+    /// or <see cref="CallToolResult.StructuredContent"/>) but still needs to advertise a meaningful output
+    /// schema to clients.
+    /// </para>
+    /// <para>
+    /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
+    /// </para>
+    /// </remarks>
+    public Type? OutputSchema { get; set; }
+
+    /// <summary>
     /// Gets or sets the source URI for the tool's icon.
     /// </summary>
     /// <remarks>
