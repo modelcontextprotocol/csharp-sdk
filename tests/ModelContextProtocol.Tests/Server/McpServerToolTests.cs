@@ -659,7 +659,7 @@ public partial class McpServerToolTests
     [Fact]
     public async Task OutputSchema_Attribute_CallToolResult_PreservesStructuredContent()
     {
-        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaReturningCallToolResult);
+        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaAttribute);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
@@ -782,17 +782,6 @@ public partial class McpServerToolTests
 
     [McpServerTool(UseStructuredContent = true, OutputSchema = typeof(Person))]
     private static CallToolResult ToolWithOutputSchemaAttribute()
-    {
-        var person = new Person("John", 27);
-        return new CallToolResult()
-        {
-            Content = [new TextContentBlock { Text = $"{person.Name}, {person.Age}" }],
-            StructuredContent = JsonSerializer.SerializeToElement(person, McpJsonUtilities.DefaultOptions),
-        };
-    }
-
-    [McpServerTool(UseStructuredContent = true, OutputSchema = typeof(Person))]
-    private static CallToolResult ToolWithOutputSchemaReturningCallToolResult()
     {
         var person = new Person("John", 27);
         return new CallToolResult()
