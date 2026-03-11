@@ -780,7 +780,7 @@ public partial class McpServerToolTests
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
 
-    [McpServerTool(UseStructuredContent = true, OutputSchema = typeof(Person))]
+    [McpServerTool(UseStructuredContent = true, OutputSchemaType = typeof(Person))]
     private static CallToolResult ToolWithOutputSchemaAttribute()
     {
         var person = new Person("John", 27);
@@ -791,7 +791,7 @@ public partial class McpServerToolTests
         };
     }
 
-    [McpServerTool(UseStructuredContent = false, OutputSchema = typeof(Person))]
+    [McpServerTool(UseStructuredContent = false, OutputSchemaType = typeof(Person))]
     private static CallToolResult ToolWithOutputSchemaButNoStructuredContent()
     {
         return new CallToolResult()

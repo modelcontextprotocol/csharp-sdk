@@ -284,7 +284,7 @@ public sealed class McpServerToolAttribute : Attribute
     /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
     /// </para>
     /// </remarks>
-    public Type? OutputSchema { get; set; }
+    public Type? OutputSchemaType { get; set; }
 
     /// <summary>
     /// Gets or sets the source URI for the tool's icon.
