@@ -115,7 +115,23 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             {
                 if (_receiveTask != null)
                 {
-                    await _receiveTask.ConfigureAwait(false);
+                    // Swallow exceptions from _receiveTask so that callers (e.g. ConnectAsync's
+                    // catch block) are not disrupted. The exception was already observed and
+                    // forwarded via _connectionEstablished.TrySetException in ReceiveMessagesAsync.
+                    try
+                    {
+                        await _receiveTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected during normal shutdown via _connectionCts cancellation.
+                    }
+                    catch (Exception)
+                    {
+                        // Already observed by ReceiveMessagesAsync — logged and set on
+                        // _connectionEstablished. Swallowing here prevents the exception
+                        // from escaping CloseAsync and preempting the caller's own throw.
+                    }
                 }
             }
             finally
