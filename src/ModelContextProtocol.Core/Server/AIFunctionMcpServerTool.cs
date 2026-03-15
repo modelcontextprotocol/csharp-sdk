@@ -538,6 +538,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 refNode?.GetValue<string>() is string refValue &&
                 refValue.StartsWith("#/", StringComparison.Ordinal))
             {
+                // Replace the leading "#/" with the new root while preserving the referenced path segments.
                 obj["$ref"] = newRoot + refValue[1..];
             }
 

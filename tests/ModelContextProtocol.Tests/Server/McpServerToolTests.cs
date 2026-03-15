@@ -480,6 +480,9 @@ public partial class McpServerToolTests
     [Fact]
     public async Task StructuredOutput_Enabled_WrappedSchema_RewritesInternalRefs()
     {
+        const string ExpectedWrappedPhoneNumberRef = "#/properties/result/items/properties/ContactMechanism/properties/PhoneNumbers/items";
+
+        // Use reflection-based metadata here so the schema exporter can emit duplicate-type $ref pointers.
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         IReadOnlyList<Contact> contacts =
         [
@@ -498,7 +501,7 @@ public partial class McpServerToolTests
 
         string[] refs = EnumerateSchemaRefs(outputSchema.Value).ToArray();
         string rewrittenRef = Assert.Single(refs);
-        Assert.StartsWith("#/properties/result/", rewrittenRef, StringComparison.Ordinal);
+        Assert.Equal(ExpectedWrappedPhoneNumberRef, rewrittenRef);
         Assert.DoesNotContain(refs, refValue => refValue.StartsWith("#/items/", StringComparison.Ordinal));
 
         var mockServer = new Mock<McpServer>();
@@ -721,7 +724,11 @@ public partial class McpServerToolTests
             {
                 if (property.NameEquals("$ref"))
                 {
-                    yield return property.Value.GetString()!;
+                    if (property.Value.ValueKind is JsonValueKind.String &&
+                        property.Value.GetString() is string refValue)
+                    {
+                        yield return refValue;
+                    }
                 }
                 else
                 {
