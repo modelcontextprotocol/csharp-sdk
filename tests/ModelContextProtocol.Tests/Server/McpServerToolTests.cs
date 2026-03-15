@@ -481,8 +481,15 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Enabled_WrappedSchema_RewritesInternalRefs()
     {
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        IReadOnlyList<Contact> contacts =
+        [
+            new Contact("John", new ContactMechanism(
+                [new PhoneNumber("home", "111-1111")],
+                [new PhoneNumber("sms", "222-2222")]))
+        ];
+
         McpServerTool tool = McpServerTool.Create(
-            static () => GetContactsResult,
+            () => contacts,
             new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
 
         JsonElement? outputSchema = tool.ProtocolTool.OutputSchema;
@@ -738,13 +745,6 @@ public partial class McpServerToolTests
     }
 
     record Person(string Name, int Age);
-
-    private static readonly IReadOnlyList<Contact> GetContactsResult =
-    [
-        new Contact("John", new ContactMechanism(
-            [new PhoneNumber("home", "111-1111")],
-            [new PhoneNumber("sms", "222-2222")]))
-    ];
 
     private sealed record PhoneNumber(string Label, string Number);
 

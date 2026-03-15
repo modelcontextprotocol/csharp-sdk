@@ -541,7 +541,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 obj["$ref"] = newRoot + refValue[1..];
             }
 
-            foreach (KeyValuePair<string, JsonNode?> property in obj.ToList())
+            foreach (KeyValuePair<string, JsonNode?> property in obj)
             {
                 RewriteInternalRefs(property.Value, newRoot);
             }
