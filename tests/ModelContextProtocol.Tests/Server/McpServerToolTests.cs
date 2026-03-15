@@ -554,6 +554,72 @@ public partial class McpServerToolTests
         Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
     }
 
+    [Fact]
+    public async Task StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers()
+    {
+        // When a non-object return type contains the same type at multiple locations,
+        // System.Text.Json's schema exporter emits $ref pointers for deduplication.
+        // After wrapping the schema under properties.result, those $ref pointers must
+        // be rewritten to remain valid. This test verifies that fix.
+        var data = new List<ContactInfo>
+        {
+            new()
+            {
+                WorkPhones = [new() { Number = "555-0100", Type = "work" }],
+                HomePhones = [new() { Number = "555-0200", Type = "home" }],
+            }
+        };
+
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+        var mockServer = new Mock<McpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.NotNull(result.StructuredContent);
+
+        // Verify $ref pointers in the schema point to valid locations after wrapping.
+        // Without the fix, $ref values like "#/items/..." would be unresolvable because
+        // the original schema was moved under "#/properties/result".
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+
+        // Also verify that any $ref in the schema starts with #/properties/result
+        // (confirming the rewrite happened).
+        string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
+        var schemaNode = JsonNode.Parse(schemaJson)!;
+        AssertAllRefsStartWith(schemaNode, "#/properties/result");
+    }
+
+    private static void AssertAllRefsStartWith(JsonNode? node, string expectedPrefix)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue)
+            {
+                Assert.StartsWith(expectedPrefix, refValue);
+            }
+
+            foreach (var property in obj)
+            {
+                AssertAllRefsStartWith(property.Value, expectedPrefix);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                AssertAllRefsStartWith(item, expectedPrefix);
+            }
+        }
+    }
+
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
     {
         yield return new object[] { "string" };
@@ -678,6 +744,21 @@ public partial class McpServerToolTests
     }
 
     record Person(string Name, int Age);
+
+    // Types used by StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers.
+    // ContactInfo has two properties of the same type (PhoneNumber) which causes
+    // System.Text.Json's schema exporter to emit $ref pointers for deduplication.
+    private sealed class PhoneNumber
+    {
+        public string? Number { get; set; }
+        public string? Type { get; set; }
+    }
+
+    private sealed class ContactInfo
+    {
+        public List<PhoneNumber>? WorkPhones { get; set; }
+        public List<PhoneNumber>? HomePhones { get; set; }
+    }
 
     [Fact]
     public void SupportsIconsInCreateOptions()
