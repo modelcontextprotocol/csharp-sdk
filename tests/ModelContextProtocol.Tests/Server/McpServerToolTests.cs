@@ -478,6 +478,35 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_WrappedSchema_RewritesInternalRefs()
+    {
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(
+            static () => GetContactsResult,
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+
+        JsonElement? outputSchema = tool.ProtocolTool.OutputSchema;
+        Assert.NotNull(outputSchema);
+        Assert.Equal("object", outputSchema.Value.GetProperty("type").GetString());
+
+        string[] refs = EnumerateSchemaRefs(outputSchema.Value).ToArray();
+        string rewrittenRef = Assert.Single(refs);
+        Assert.StartsWith("#/properties/result/", rewrittenRef, StringComparison.Ordinal);
+        Assert.DoesNotContain(refs, refValue => refValue.StartsWith("#/items/", StringComparison.Ordinal));
+
+        var mockServer = new Mock<McpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        AssertMatchesJsonSchema(outputSchema.Value, result.StructuredContent);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
     {
         McpServerTool tool = McpServerTool.Create(() => { });
@@ -677,7 +706,51 @@ public partial class McpServerToolTests
         }
     }
 
+    private static IEnumerable<string> EnumerateSchemaRefs(JsonElement node)
+    {
+        if (node.ValueKind is JsonValueKind.Object)
+        {
+            foreach (JsonProperty property in node.EnumerateObject())
+            {
+                if (property.NameEquals("$ref"))
+                {
+                    yield return property.Value.GetString()!;
+                }
+                else
+                {
+                    foreach (string nestedRef in EnumerateSchemaRefs(property.Value))
+                    {
+                        yield return nestedRef;
+                    }
+                }
+            }
+        }
+        else if (node.ValueKind is JsonValueKind.Array)
+        {
+            foreach (JsonElement item in node.EnumerateArray())
+            {
+                foreach (string nestedRef in EnumerateSchemaRefs(item))
+                {
+                    yield return nestedRef;
+                }
+            }
+        }
+    }
+
     record Person(string Name, int Age);
+
+    private static readonly IReadOnlyList<Contact> GetContactsResult =
+    [
+        new Contact("John", new ContactMechanism(
+            [new PhoneNumber("home", "111-1111")],
+            [new PhoneNumber("sms", "222-2222")]))
+    ];
+
+    private sealed record PhoneNumber(string Label, string Number);
+
+    private sealed record ContactMechanism(IReadOnlyList<PhoneNumber> PhoneNumbers, IReadOnlyList<PhoneNumber> SmsNumbers);
+
+    private sealed record Contact(string Name, ContactMechanism ContactMechanism);
 
     [Fact]
     public void SupportsIconsInCreateOptions()

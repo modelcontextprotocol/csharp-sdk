@@ -520,6 +520,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ["required"] = new JsonArray { (JsonNode)"result" }
                 };
 
+                RewriteInternalRefs(schemaNode, "#/properties/result");
                 structuredOutputRequiresWrapping = true;
             }
 
@@ -527,6 +528,31 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return outputSchema;
+    }
+
+    private static void RewriteInternalRefs(JsonNode? node, string newRoot)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue &&
+                refValue.StartsWith("#/", StringComparison.Ordinal))
+            {
+                obj["$ref"] = newRoot + refValue[1..];
+            }
+
+            foreach (KeyValuePair<string, JsonNode?> property in obj.ToList())
+            {
+                RewriteInternalRefs(property.Value, newRoot);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (JsonNode? item in array)
+            {
+                RewriteInternalRefs(item, newRoot);
+            }
+        }
     }
 
     private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
