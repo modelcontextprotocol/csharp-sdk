@@ -73,9 +73,21 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
             }
+            else if (IsAuthError(response.StatusCode))
+            {
+                // Authentication/authorization errors (401, 403) are not transport-related —
+                // the server understood the request but rejected the credentials. Falling back
+                // to SSE would fail with the same credentials and mask the real error.
+                await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
+
+                LogStreamableHttpAuthError(_name, response.StatusCode);
+
+                await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
+            }
             else
             {
-                // If the status code is not success, fall back to SSE
+                // Non-auth, non-success status codes (404, 405, 501, etc.) suggest the server
+                // may not support Streamable HTTP — fall back to SSE.
                 LogStreamableHttpFailed(_name, response.StatusCode);
 
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
@@ -90,6 +102,9 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             throw;
         }
     }
+
+    private static bool IsAuthError(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
 
     private async Task InitializeSseTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
@@ -138,6 +153,9 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} streamable HTTP transport failed with status code {StatusCode}, falling back to SSE transport.")]
     private partial void LogStreamableHttpFailed(string endpointName, HttpStatusCode statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} streamable HTTP transport received authentication error {StatusCode}. Not falling back to SSE.")]
+    private partial void LogStreamableHttpAuthError(string endpointName, HttpStatusCode statusCode);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using Streamable HTTP transport.")]
     private partial void LogUsingStreamableHttp(string endpointName);
