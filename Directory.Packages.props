@@ -3,8 +3,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
-    <System10Version>10.0.3</System10Version>
-    <MicrosoftExtensionsVersion>10.3.0</MicrosoftExtensionsVersion>
+    <System10Version>10.0.4</System10Version>
+    <MicrosoftExtensionsVersion>10.4.0</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
