@@ -647,7 +647,7 @@ public partial class McpServerToolTests
     [Fact]
     public void OutputSchema_Attribute_WithType_GeneratesSchema()
     {
-        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaAttribute);
+        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaAttribute, new() { SerializerOptions = CreateSerializerOptionsWithPerson() });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
@@ -659,7 +659,7 @@ public partial class McpServerToolTests
     [Fact]
     public async Task OutputSchema_Attribute_CallToolResult_PreservesStructuredContent()
     {
-        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaAttribute);
+        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaAttribute, new() { SerializerOptions = CreateSerializerOptionsWithPerson() });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
@@ -682,7 +682,7 @@ public partial class McpServerToolTests
     public void OutputSchema_Attribute_WithoutUseStructuredContent_NoSchema()
     {
         // If UseStructuredContent is false but OutputSchema type is set, no output schema should be generated
-        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaButNoStructuredContent);
+        McpServerTool tool = McpServerTool.Create(ToolWithOutputSchemaButNoStructuredContent, new() { SerializerOptions = CreateSerializerOptionsWithPerson() });
 
         Assert.Null(tool.ProtocolTool.OutputSchema);
     }
@@ -787,7 +787,7 @@ public partial class McpServerToolTests
         return new CallToolResult()
         {
             Content = [new TextContentBlock { Text = $"{person.Name}, {person.Age}" }],
-            StructuredContent = JsonSerializer.SerializeToElement(person, McpJsonUtilities.DefaultOptions),
+            StructuredContent = JsonSerializer.SerializeToElement(person, JsonContext2.Default.Person),
         };
     }
 
@@ -945,6 +945,13 @@ public partial class McpServerToolTests
     }
 
     record Person(string Name, int Age);
+
+    private static JsonSerializerOptions CreateSerializerOptionsWithPerson()
+    {
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions);
+        options.TypeInfoResolverChain.Add(JsonContext2.Default);
+        return options;
+    }
 
     [Fact]
     public void SupportsIconsInCreateOptions()
@@ -1195,5 +1202,6 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(List<string>))]
     [JsonSerializable(typeof(int?))]
     [JsonSerializable(typeof(DateTimeOffset?))]
+    [JsonSerializable(typeof(Person))]
     partial class JsonContext2 : JsonSerializerContext;
 }
