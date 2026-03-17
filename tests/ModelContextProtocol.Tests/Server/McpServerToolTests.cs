@@ -593,8 +593,10 @@ public partial class McpServerToolTests
         // (confirming the rewrite happened).
         string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
         var schemaNode = JsonNode.Parse(schemaJson)!;
-        AssertAllRefsStartWith(schemaNode, "#/properties/result");
-        AssertAllRefsResolvable(schemaNode, schemaNode);
+        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
+        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
+        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
+        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
     }
 
     [Fact]
@@ -631,39 +633,46 @@ public partial class McpServerToolTests
 
         string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
         var schemaNode = JsonNode.Parse(schemaJson)!;
-        AssertAllRefsStartWith(schemaNode, "#/properties/result");
-        AssertAllRefsResolvable(schemaNode, schemaNode);
+        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
+        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
+        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
+        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
     }
 
-    private static void AssertAllRefsStartWith(JsonNode? node, string expectedPrefix)
+    private static int AssertAllRefsStartWith(JsonNode? node, string expectedPrefix)
     {
+        int count = 0;
         if (node is JsonObject obj)
         {
             if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
                 refNode?.GetValue<string>() is string refValue)
             {
                 Assert.StartsWith(expectedPrefix, refValue);
+                count++;
             }
 
             foreach (var property in obj)
             {
-                AssertAllRefsStartWith(property.Value, expectedPrefix);
+                count += AssertAllRefsStartWith(property.Value, expectedPrefix);
             }
         }
         else if (node is JsonArray arr)
         {
             foreach (var item in arr)
             {
-                AssertAllRefsStartWith(item, expectedPrefix);
+                count += AssertAllRefsStartWith(item, expectedPrefix);
             }
         }
+
+        return count;
     }
 
     /// <summary>
     /// Walks the JSON tree and verifies that every <c>$ref</c> pointer resolves to a valid node.
     /// </summary>
-    private static void AssertAllRefsResolvable(JsonNode root, JsonNode? node)
+    private static int AssertAllRefsResolvable(JsonNode root, JsonNode? node)
     {
+        int count = 0;
         if (node is JsonObject obj)
         {
             if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
@@ -672,20 +681,23 @@ public partial class McpServerToolTests
             {
                 var resolved = ResolveJsonPointer(root, refValue);
                 Assert.True(resolved is not null, $"$ref \"{refValue}\" does not resolve to a valid node in the schema.");
+                count++;
             }
 
             foreach (var property in obj)
             {
-                AssertAllRefsResolvable(root, property.Value);
+                count += AssertAllRefsResolvable(root, property.Value);
             }
         }
         else if (node is JsonArray arr)
         {
             foreach (var item in arr)
             {
-                AssertAllRefsResolvable(root, item);
+                count += AssertAllRefsResolvable(root, item);
             }
         }
+
+        return count;
     }
 
     /// <summary>
