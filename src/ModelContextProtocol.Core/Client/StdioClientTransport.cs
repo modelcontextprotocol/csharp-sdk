@@ -151,7 +151,17 @@ public sealed partial class StdioClientTransport : IClientTransport
                         stderrRollingLog.Enqueue(data);
                     }
 
-                    _options.StandardErrorLines?.Invoke(data);
+                    try
+                    {
+                        _options.StandardErrorLines?.Invoke(data);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Prevent exceptions in the user callback from propagating
+                        // to the background thread that dispatches ErrorDataReceived,
+                        // which would crash the process.
+                        LogStderrCallbackFailed(logger, endpointName, ex);
+                    }
 
                     LogReadStderr(logger, endpointName, data);
                 }
@@ -230,12 +240,10 @@ public sealed partial class StdioClientTransport : IClientTransport
 
                 // Ensure all redirected stderr/stdout events have been dispatched
                 // before disposing. Only the no-arg WaitForExit() guarantees this;
-                // WaitForExit(int) (as used by KillTree) does not.
-                // This should not hang: either the process already exited on its own
-                // (no child processes holding handles), or KillTree killed the entire
-                // process tree. If it does take too long, the test infrastructure's
-                // own timeout will catch it.
-                if (!processRunning && HasExited(process))
+                // WaitForExit(int) (as used by KillTree) does not. We must call
+                // this whether the process exited on its own or was killed above,
+                // otherwise ErrorDataReceived handlers may fire after Dispose().
+                if (HasExited(process))
                 {
                     process.WaitForExit();
                 }
@@ -298,6 +306,9 @@ public sealed partial class StdioClientTransport : IClientTransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received stderr log: '{Data}'.")]
     private static partial void LogReadStderr(ILogger logger, string endpointName, string data);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} StandardErrorLines callback failed.")]
+    private static partial void LogStderrCallbackFailed(ILogger logger, string endpointName, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} started server process with PID {ProcessId}.")]
     private static partial void LogTransportProcessStarted(ILogger logger, string endpointName, int processId);
