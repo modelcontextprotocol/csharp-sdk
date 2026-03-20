@@ -96,7 +96,7 @@ Return an <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> to embed a 
 The resource can contain either text or binary data through <xref:ModelContextProtocol.Protocol.TextResourceContents> or <xref:ModelContextProtocol.Protocol.BlobResourceContents>:
 
 ```csharp
-[McpServerTool, Description("Returns a article as an embedded resource")]
+[McpServerTool, Description("Returns a document as an embedded resource")]
 public static EmbeddedResourceBlock GetDocument()
 {
     return new EmbeddedResourceBlock
@@ -105,7 +105,7 @@ public static EmbeddedResourceBlock GetDocument()
         {
             Uri = "docs://readme",
             MimeType = "text/plain",
-            Text = "This is the article content."
+            Text = "This is the document content."
         }
     };
 }
