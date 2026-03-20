@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -486,6 +488,10 @@ internal sealed partial class McpClientImpl : McpClient
 
         // Advertise task capabilities
         _options.Capabilities ??= new();
+
+        // Advertise MRTR support so servers can use IncompleteResult instead of legacy JSON-RPC requests.
+        var experimental = _options.Capabilities.Experimental ??= new Dictionary<string, object>();
+        experimental[MrtrContext.ExperimentalCapabilityKey] = new JsonObject();
         var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
         tasksCapability.List ??= new ListMcpTasksCapability();
         tasksCapability.Cancel ??= new CancelMcpTasksCapability();
@@ -523,6 +529,74 @@ internal sealed partial class McpClientImpl : McpClient
 
     /// <inheritdoc/>
     public override Task<ClientCompletionDetails> Completion => _sessionHandler.CompletionTask;
+
+    /// <inheritdoc/>
+    internal override async ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests,
+        CancellationToken cancellationToken)
+    {
+        var responses = new Dictionary<string, InputResponse>(inputRequests.Count);
+
+        // Resolve all input requests concurrently
+        var tasks = new List<(string Key, Task<InputResponse> Task)>(inputRequests.Count);
+        foreach (var kvp in inputRequests)
+        {
+            tasks.Add((kvp.Key, ResolveInputRequestAsync(kvp.Value, cancellationToken)));
+        }
+
+        foreach (var entry in tasks)
+        {
+            responses[entry.Key] = await entry.Task.ConfigureAwait(false);
+        }
+
+        return responses;
+    }
+
+    private async Task<InputResponse> ResolveInputRequestAsync(InputRequest inputRequest, CancellationToken cancellationToken)
+    {
+        switch (inputRequest.Method)
+        {
+            case RequestMethods.SamplingCreateMessage:
+                if (_options.Handlers.SamplingHandler is { } samplingHandler)
+                {
+                    var samplingParams = inputRequest.SamplingParams;
+                    var result = await samplingHandler(
+                        samplingParams,
+                        samplingParams?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        cancellationToken).ConfigureAwait(false);
+                    return InputResponse.FromSamplingResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent a sampling input request, but no {nameof(McpClientHandlers.SamplingHandler)} is registered.");
+
+            case RequestMethods.ElicitationCreate:
+                if (_options.Handlers.ElicitationHandler is { } elicitationHandler)
+                {
+                    var elicitParams = inputRequest.ElicitationParams;
+                    var result = await elicitationHandler(elicitParams, cancellationToken).ConfigureAwait(false);
+                    result = ElicitResult.WithDefaults(elicitParams, result);
+                    return InputResponse.FromElicitResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent an elicitation input request, but no {nameof(McpClientHandlers.ElicitationHandler)} is registered.");
+
+            case RequestMethods.RootsList:
+                if (_options.Handlers.RootsHandler is { } rootsHandler)
+                {
+                    var rootsParams = inputRequest.RootsParams;
+                    var result = await rootsHandler(rootsParams, cancellationToken).ConfigureAwait(false);
+                    return InputResponse.FromRootsResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent a roots list input request, but no {nameof(McpClientHandlers.RootsHandler)} is registered.");
+
+            default:
+                throw new NotSupportedException($"Unsupported input request method: '{inputRequest.Method}'.");
+        }
+    }
 
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.

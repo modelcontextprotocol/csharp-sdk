@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Client;
 
@@ -183,12 +184,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.ToolsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -239,12 +240,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.PromptsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -293,12 +294,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.PromptsGet,
             requestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -349,12 +350,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.ResourcesTemplatesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -405,12 +406,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.ResourcesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
         
     /// <summary>
@@ -489,12 +490,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.ResourcesRead,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -540,12 +541,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.CompletionComplete,
             requestParams,
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -905,12 +906,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return SendRequestWithMrtrAsync(
             RequestMethods.ToolsCall,
             requestParams,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult,
-            cancellationToken: cancellationToken);
+            cancellationToken);
     }
 
     /// <summary>
@@ -1287,6 +1288,108 @@ public abstract partial class McpClient : McpSession
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Sends a request with MRTR (Multi Round-Trip Request) support. If the server returns an
+    /// <see cref="IncompleteResult"/>, this method automatically resolves the input requests
+    /// via the client's handlers and retries until a complete result is obtained.
+    /// </summary>
+    private async ValueTask<TResult> SendRequestWithMrtrAsync<TParams, TResult>(
+        string method,
+        TParams parameters,
+        JsonTypeInfo<TParams> parametersTypeInfo,
+        JsonTypeInfo<TResult> resultTypeInfo,
+        CancellationToken cancellationToken)
+        where TParams : RequestParams
+        where TResult : Result
+    {
+        const int maxRetries = 10;
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            JsonRpcRequest jsonRpcRequest = new()
+            {
+                Method = method,
+                Params = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo),
+            };
+
+            JsonRpcResponse response = await SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+
+            // Check if the result is an IncompleteResult by looking at result_type
+            if (response.Result is JsonObject resultObj &&
+                resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
+                resultTypeNode?.GetValue<string>() is "incomplete")
+            {
+                var incompleteResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.IncompleteResult)
+                    ?? throw new JsonException("Failed to deserialize IncompleteResult.");
+
+                if (incompleteResult.InputRequests is { Count: > 0 } inputRequests)
+                {
+                    IDictionary<string, InputResponse> inputResponses;
+                    try
+                    {
+                        inputResponses = await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (McpException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Wrap handler exceptions in McpProtocolException to match the legacy behavior
+                        // where handler exceptions are encoded as JSON-RPC errors and decoded as McpProtocolException.
+                        throw new McpProtocolException(ex.Message, ex, McpErrorCode.InternalError);
+                    }
+
+                    // Serialize input responses into the parameters for the retry
+                    var paramsNode = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo) as JsonObject
+                        ?? throw new JsonException("Failed to serialize request parameters as JsonObject.");
+
+                    paramsNode["inputResponses"] = JsonSerializer.SerializeToNode(
+                        inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+
+                    if (incompleteResult.RequestState is { } requestState)
+                    {
+                        paramsNode["requestState"] = requestState;
+                    }
+
+                    // Deserialize back to TParams to pick up the inputResponses and requestState
+                    parameters = JsonSerializer.Deserialize(paramsNode, parametersTypeInfo)
+                        ?? throw new JsonException("Failed to deserialize retry parameters.");
+                }
+                else if (incompleteResult.RequestState is not null)
+                {
+                    // No input requests but has requestState (e.g., load shedding) — just retry with state
+                    var paramsNode = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo) as JsonObject
+                        ?? throw new JsonException("Failed to serialize request parameters as JsonObject.");
+
+                    paramsNode["requestState"] = incompleteResult.RequestState;
+
+                    // Remove any old inputResponses from previous iteration
+                    paramsNode.Remove("inputResponses");
+
+                    parameters = JsonSerializer.Deserialize(paramsNode, parametersTypeInfo)
+                        ?? throw new JsonException("Failed to deserialize retry parameters.");
+                }
+                else
+                {
+                    throw new McpException("Server returned an IncompleteResult without inputRequests or requestState.");
+                }
+
+                continue; // retry with the updated parameters
+            }
+
+            // Normal complete result
+            return JsonSerializer.Deserialize(response.Result, resultTypeInfo)
+                ?? throw new JsonException("Unexpected JSON result in response.");
+        }
+
+        throw new McpException($"Server returned IncompleteResult more than {maxRetries} times.");
     }
 
     /// <summary>Converts a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>

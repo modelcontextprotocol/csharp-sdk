@@ -65,6 +65,15 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
         ThrowIfSamplingUnsupported();
 
+        // If we're in an MRTR context, use the MRTR mechanism to request input.
+        if (MrtrContext.Current is { } mrtrContext)
+        {
+            var inputRequest = InputRequest.ForSampling(requestParams);
+            var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+            return response.SamplingResult ?? throw new McpProtocolException(
+                "MRTR response did not contain a valid sampling result.", McpErrorCode.InternalError);
+        }
+
         return await SendRequestWithTaskStatusTrackingAsync(
             RequestMethods.SamplingCreateMessage,
             requestParams,
@@ -280,12 +289,28 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
         ThrowIfRootsUnsupported();
 
-        return SendRequestAsync(
+        return RequestRootsCoreAsync(requestParams, cancellationToken);
+    }
+
+    private async ValueTask<ListRootsResult> RequestRootsCoreAsync(
+        ListRootsRequestParams requestParams,
+        CancellationToken cancellationToken)
+    {
+        // If we're in an MRTR context, use the MRTR mechanism to request input.
+        if (MrtrContext.Current is { } mrtrContext)
+        {
+            var inputRequest = InputRequest.ForRootsList(requestParams);
+            var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+            return response.RootsResult ?? throw new McpProtocolException(
+                "MRTR response did not contain a valid roots result.", McpErrorCode.InternalError);
+        }
+
+        return await SendRequestAsync(
             RequestMethods.RootsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -308,6 +333,16 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
         ThrowIfElicitationUnsupported(requestParams);
+
+        // If we're in an MRTR context, use the MRTR mechanism to request input.
+        if (MrtrContext.Current is { } mrtrContext)
+        {
+            var inputRequest = InputRequest.ForElicitation(requestParams);
+            var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+            return ElicitResult.WithDefaults(requestParams,
+                response.ElicitationResult ?? throw new McpProtocolException(
+                    "MRTR response did not contain a valid elicitation result.", McpErrorCode.InternalError));
+        }
 
         var result = await SendRequestWithTaskStatusTrackingAsync(
             RequestMethods.ElicitationCreate,
