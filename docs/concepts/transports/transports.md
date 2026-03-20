@@ -19,7 +19,7 @@ The stdio transport communicates over standard input and output streams. It is b
 
 Use <xref:ModelContextProtocol.Client.StdioClientTransport> to launch a server process and communicate over its stdin/stdout. This example connects to the [NuGet MCP Server]:
 
-[NuGet MCP Server]: https://learn.microsoft.com/nuget/concepts/nuget-mcp-server
+[nuget mcp server]: https://learn.microsoft.com/nuget/concepts/nuget-mcp-server
 
 ```csharp
 var transport = new StdioClientTransport(new StdioClientTransportOptions
@@ -34,15 +34,15 @@ await using var client = await McpClient.CreateAsync(transport);
 
 Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 
-| Property | Description |
-|----------|-------------|
-| `Command` | The executable to launch (required) |
-| `Arguments` | Command-line arguments for the process |
-| `WorkingDirectory` | Working directory for the server process |
+| Property               | Description                                                                 |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `Command`              | The executable to launch (required)                                         |
+| `Arguments`            | Command-line arguments for the process                                      |
+| `WorkingDirectory`     | Working directory for the server process                                    |
 | `EnvironmentVariables` | Environment variables (merged with current; `null` values remove variables) |
-| `ShutdownTimeout` | Graceful shutdown timeout (default: 5 seconds) |
-| `StandardErrorLines` | Callback for stderr output from the server process |
-| `Name` | Optional transport identifier for logging |
+| `ShutdownTimeout`      | Graceful shutdown timeout (default: 5 seconds)                              |
+| `StandardErrorLines`   | Callback for stderr output from the server process                          |
+| `Name`                 | Optional transport identifier for logging                                   |
 
 #### stdio server
 
@@ -62,7 +62,7 @@ await builder.Build().RunAsync();
 
 The [Streamable HTTP] transport uses HTTP for bidirectional communication with optional streaming. This is the recommended transport for remote servers.
 
-[Streamable HTTP]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
+[streamable http]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
 
 #### Streamable HTTP client
 
@@ -95,7 +95,7 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 
 #### Resuming sessions
 
-Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:
+Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync\*> to reconnect:
 
 ```csharp
 var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -113,7 +113,7 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 
 #### Streamable HTTP server (ASP.NET Core)
 
-Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default). It also maps legacy SSE endpoints at `{route}/sse` and `{route}/message` for backward compatibility.
+Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp\*> method maps the Streamable HTTP endpoint at the specified route (root by default). It also maps legacy SSE endpoints at `{route}/sse` and `{route}/message` for backward compatibility.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -129,7 +129,7 @@ app.Run();
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
-[AspNetCoreMcpPerSessionTools]: https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/AspNetCoreMcpPerSessionTools
+[aspnetcoremcppersessiontools]: https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/AspNetCoreMcpPerSessionTools
 
 ```csharp
 app.MapMcp("/mcp");
@@ -137,13 +137,16 @@ app.MapMcp("/mcp");
 
 When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
+For containerized deployments of ASP.NET Core servers, see [Docker deployment](../deployment/docker.md).
+
 ### SSE transport (legacy)
 
 The [SSE (Server-Sent Events)] transport is a legacy mechanism that uses unidirectional server-to-client streaming with a separate HTTP endpoint for client-to-server messages. New implementations should prefer Streamable HTTP.
 
-[SSE (Server-Sent Events)]: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
+[sse (server-sent events)]: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
 
 <!-- mlc-disable-next-line -->
+
 > [!NOTE]
 > The SSE transport is considered legacy. The [Streamable HTTP](#streamable-http-transport) transport is the recommended approach for HTTP-based communication and supports bidirectional streaming.
 
@@ -165,10 +168,10 @@ await using var client = await McpClient.CreateAsync(transport);
 
 SSE-specific configuration options:
 
-| Property | Description |
-|----------|-------------|
-| `MaxReconnectionAttempts` | Maximum number of reconnection attempts on stream disconnect (default: 5) |
-| `DefaultReconnectionInterval` | Wait time between reconnection attempts (default: 1 second) |
+| Property                      | Description                                                               |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect (default: 5) |
+| `DefaultReconnectionInterval` | Wait time between reconnection attempts (default: 1 second)               |
 
 #### SSE server (ASP.NET Core)
 
@@ -193,10 +196,10 @@ No additional configuration is needed. When a client connects using the SSE prot
 
 ### Transport mode comparison
 
-| Feature | stdio | Streamable HTTP | SSE (Legacy) |
-|---------|-------|----------------|--------------|
-| Process model | Child process | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Bidirectional | Server→client stream + client→server POST |
-| Session resumption | N/A | ✓ | ✗ |
-| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
-| Best for | Local tools | Remote servers | Legacy compatibility |
+| Feature            | stdio         | Streamable HTTP            | SSE (Legacy)                              |
+| ------------------ | ------------- | -------------------------- | ----------------------------------------- |
+| Process model      | Child process | Remote HTTP                | Remote HTTP                               |
+| Direction          | Bidirectional | Bidirectional              | Server→client stream + client→server POST |
+| Session resumption | N/A           | ✓                          | ✗                                         |
+| Authentication     | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers)                |
+| Best for           | Local tools   | Remote servers             | Legacy compatibility                      |
