@@ -68,4 +68,16 @@ public abstract partial class McpServer : McpSession
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     public abstract Task RunAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets or sets the MRTR context for the current request, if any.
+    /// </summary>
+    /// <remarks>
+    /// Set by the request pipeline on per-request <see cref="DestinationBoundMcpServer"/> instances.
+    /// Checked by <see cref="ElicitAsync(ElicitRequestParams, CancellationToken)"/>,
+    /// <see cref="SampleAsync(CreateMessageRequestParams, CancellationToken)"/>, and
+    /// <see cref="RequestRootsAsync(ListRootsRequestParams, CancellationToken)"/> to determine
+    /// whether to use the MRTR mechanism or the legacy JSON-RPC request path.
+    /// </remarks>
+    internal MrtrContext? ActiveMrtrContext { get; set; }
 }

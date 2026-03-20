@@ -31,6 +31,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
+    private readonly ConcurrentDictionary<RequestId, MrtrContext> _pendingMrtrContexts = new();
 
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
@@ -991,7 +992,7 @@ internal sealed partial class McpServerImpl : McpServer
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, jsonRpcRequest, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
+            handler(new(CreateDestinationBoundServer(jsonRpcRequest), jsonRpcRequest) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             McpRequestHandler<TParams, TResult> handler,
@@ -1003,7 +1004,7 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest)
+                    new RequestContext<TParams>(CreateDestinationBoundServer(jsonRpcRequest), jsonRpcRequest)
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args
@@ -1018,6 +1019,22 @@ internal sealed partial class McpServerImpl : McpServer
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Creates a per-request <see cref="DestinationBoundMcpServer"/> and attaches any pending
+    /// MRTR context that was stored by <see cref="WrapHandlerWithMrtr"/>.
+    /// </summary>
+    private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
+    {
+        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport);
+
+        if (_pendingMrtrContexts.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
+        {
+            server.ActiveMrtrContext = mrtrContext;
+        }
+
+        return server;
     }
 
     private void SetHandler<TParams, TResult>(
@@ -1204,10 +1221,10 @@ internal sealed partial class McpServerImpl : McpServer
             // Start a new MRTR-aware handler invocation.
             var mrtrContext = new MrtrContext();
 
-            // Set MrtrContext.Current before calling the handler so it flows through the async execution.
-            // The handler starts executing synchronously until it hits an await (e.g., ElicitAsync),
-            // at which point it yields and we can race against the channel.
-            MrtrContext.Current = mrtrContext;
+            // Store the MrtrContext so InvokeHandlerAsync can pick it up and set it on
+            // the per-request DestinationBoundMcpServer. This is picked up synchronously
+            // before any await, so the finally cleanup is safe.
+            _pendingMrtrContexts[request.Id] = mrtrContext;
             Task<JsonNode?> handlerTask;
             try
             {
@@ -1215,7 +1232,7 @@ internal sealed partial class McpServerImpl : McpServer
             }
             finally
             {
-                MrtrContext.Current = null;
+                _pendingMrtrContexts.TryRemove(request.Id, out _);
             }
 
             return await RaceHandlerAndExchangesAsync(
@@ -1357,7 +1374,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             // Task-augmented execution is fire-and-forget; MRTR doesn't apply here because
             // the original request was already answered with CreateTaskResult.
-            MrtrContext.Current = null;
+            request.Server.ActiveMrtrContext = null;
 
             try
             {

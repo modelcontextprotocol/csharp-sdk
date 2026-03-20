@@ -66,7 +66,7 @@ public abstract partial class McpServer : McpSession
         ThrowIfSamplingUnsupported();
 
         // If we're in an MRTR context, use the MRTR mechanism to request input.
-        if (MrtrContext.Current is { } mrtrContext)
+        if (ActiveMrtrContext is { } mrtrContext)
         {
             var inputRequest = InputRequest.ForSampling(requestParams);
             var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
@@ -297,7 +297,7 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken)
     {
         // If we're in an MRTR context, use the MRTR mechanism to request input.
-        if (MrtrContext.Current is { } mrtrContext)
+        if (ActiveMrtrContext is { } mrtrContext)
         {
             var inputRequest = InputRequest.ForRootsList(requestParams);
             var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
@@ -335,7 +335,7 @@ public abstract partial class McpServer : McpSession
         ThrowIfElicitationUnsupported(requestParams);
 
         // If we're in an MRTR context, use the MRTR mechanism to request input.
-        if (MrtrContext.Current is { } mrtrContext)
+        if (ActiveMrtrContext is { } mrtrContext)
         {
             var inputRequest = InputRequest.ForElicitation(requestParams);
             var response = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);

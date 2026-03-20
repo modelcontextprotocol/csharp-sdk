@@ -18,17 +18,6 @@ internal sealed class MrtrContext
     /// </summary>
     internal const string ExperimentalCapabilityKey = "mrtr";
 
-    private static readonly AsyncLocal<MrtrContext?> s_current = new();
-
-    /// <summary>
-    /// Gets or sets the current MRTR context for the executing async flow.
-    /// </summary>
-    public static MrtrContext? Current
-    {
-        get => s_current.Value;
-        set => s_current.Value = value;
-    }
-
     private readonly Channel<MrtrExchange> _exchanges = Channel.CreateUnbounded<MrtrExchange>(
         new UnboundedChannelOptions { SingleReader = true });
 
