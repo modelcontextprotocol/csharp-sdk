@@ -1326,25 +1326,8 @@ public abstract partial class McpClient : McpSession
 
                 if (incompleteResult.InputRequests is { Count: > 0 } inputRequests)
                 {
-                    IDictionary<string, InputResponse> inputResponses;
-                    try
-                    {
-                        inputResponses = await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (McpException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        // Wrap handler exceptions in McpProtocolException to match the legacy behavior
-                        // where handler exceptions are encoded as JSON-RPC errors and decoded as McpProtocolException.
-                        throw new McpProtocolException(ex.Message, ex, McpErrorCode.InternalError);
-                    }
+                    IDictionary<string, InputResponse> inputResponses =
+                        await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
 
                     // Serialize input responses into the parameters for the retry
                     var paramsNode = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo) as JsonObject
