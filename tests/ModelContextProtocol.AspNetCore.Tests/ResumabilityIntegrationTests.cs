@@ -173,6 +173,9 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         public ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default)
             => throw new NotSupportedException("This test store does not support reading streams.");
 
+        public ValueTask DeleteStreamsForSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+            => default;
+
         private sealed class BlockingEventStreamWriter : ISseEventStreamWriter
         {
             private readonly BlockingEventStreamStore _store;
