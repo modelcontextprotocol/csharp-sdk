@@ -15,9 +15,9 @@ MCP [roots] allow clients to inform servers about the relevant locations in the 
 
 Roots provide a mechanism for the client to tell the server which directories, projects, or repositories are relevant to the current session. A server might use roots to:
 
-- Scope file searches to the user's project directories
-- Understand which repositories are being worked on
-- Limit operations to specific filesystem boundaries
+- Scope file searches to the user's project directories.
+- Understand which repositories are being worked on.
+- Limit operations to specific filesystem boundaries.
 
 Each root is represented by a <xref:ModelContextProtocol.Protocol.Root> with a URI and an optional human-readable name.
 
@@ -98,7 +98,7 @@ server.RegisterNotificationHandler(
     NotificationMethods.RootsListChangedNotification,
     async (notification, cancellationToken) =>
     {
-        // Re-request the roots list to get the updated set
+        // Re-request the roots list to get the updated set.
         var result = await server.RequestRootsAsync(new ListRootsRequestParams(), cancellationToken);
         Console.WriteLine($"Roots updated. {result.Roots.Count} roots available.");
     });

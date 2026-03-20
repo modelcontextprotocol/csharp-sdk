@@ -11,13 +11,13 @@ MCP servers can expose log messages to clients through the [Logging utility].
 
 [Logging utility]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging
 
-This document describes how to implement logging in MCP servers and how clients can consume log messages.
+This article describes how to implement logging in MCP servers and how clients can consume log messages.
 
-### Logging Levels
+### Logging levels
 
 MCP uses the logging levels defined in [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424).
 
-The MCP C# SDK uses the standard .NET [ILogger] and [ILoggerProvider] abstractions, which support a slightly
+The MCP C# SDK uses the standard .NET <xref:Microsoft.Extensions.Logging.ILogger> and <xref:Microsoft.Extensions.Logging.ILoggerProvider> abstractions, which support a slightly
 different set of logging levels. The following table shows the levels and how they map to standard .NET logging levels.
 
 | Level     | .NET | Description                       | Example Use Case             |
@@ -31,12 +31,9 @@ different set of logging levels. The following table shows the levels and how th
 | alert     |      | Action must be taken immediately  | Data corruption detected     |
 | emergency |      | System is unusable                |                              |
 
-**Note:** .NET's [ILogger] also supports a `Trace` level (more verbose than Debug) log level.
+**Note:** .NET's <xref:Microsoft.Extensions.Logging.ILogger> also supports a `Trace` level (more verbose than Debug) log level.
 As there is no equivalent level in the MCP logging levels, Trace level logs messages are silently
 dropped when sending messages to the client.
-
-[ILogger]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger
-[ILoggerProvider]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider
 
 ### Server configuration and logging
 
@@ -54,8 +51,8 @@ server to perform any special logic it wants to perform when a client sets the l
 SDK already takes care of setting the <xref:ModelContextProtocol.Server.McpServer.LoggingLevel> in the <xref:ModelContextProtocol.Server.McpServer>, so most servers will not need to
 implement this.
 
-MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider) from the <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> method on <xref:ModelContextProtocol.Server.McpServer>,
-and from that can create an [ILogger](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger) instance for logging messages that should be sent to the MCP client.
+MCP Servers using the MCP C# SDK can obtain an <xref:Microsoft.Extensions.Logging.ILoggerProvider> from the <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> method on <xref:ModelContextProtocol.Server.McpServer>,
+and from that can create an <xref:Microsoft.Extensions.Logging.ILogger> instance for logging messages that should be sent to the MCP client.
 
 [!code-csharp[](samples/server/Tools/LoggingTools.cs?name=snippet_LoggingConfiguration)]
 
@@ -74,7 +71,7 @@ to send all log messages or none&mdash;this is not specified in the protocol. So
 sets a logging level to ensure it receives the desired log messages and only those messages.
 
 The `loggingLevel` set by the client is an MCP logging level.
-See the [Logging Levels](#logging-levels) section above for the mapping between MCP and .NET logging levels.
+See the [Logging levels](#logging-levels) section above for the mapping between MCP and .NET logging levels.
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingLevel)]
 

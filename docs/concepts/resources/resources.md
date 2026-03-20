@@ -11,19 +11,19 @@ MCP [resources] allow servers to expose data and content to clients. Resources r
 
 [resources]: https://modelcontextprotocol.io/specification/2025-11-25/server/resources
 
-This document covers implementing resources on the server, consuming them from the client, resource templates, subscriptions, and change notifications.
+This article covers implementing resources on the server, consuming them from the client, resource templates, subscriptions, and change notifications.
 
 ### Defining resources on the server
 
-Resources can be defined in several ways:
+You can define resources in several ways:
 
-- Using the <xref:ModelContextProtocol.Server.McpServerResourceAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerResourceTypeAttribute>
-- Using <xref:ModelContextProtocol.Server.McpServerResource.Create*> factory methods from a delegate, `MethodInfo`, or `AIFunction`
-- Deriving from <xref:ModelContextProtocol.Server.McpServerResource> or <xref:ModelContextProtocol.Server.DelegatingMcpServerResource>
-- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>
-- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>
+- Using the <xref:ModelContextProtocol.Server.McpServerResourceAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerResourceTypeAttribute>.
+- Using <xref:ModelContextProtocol.Server.McpServerResource.Create*> factory methods from a delegate, <xref:System.Reflection.MethodInfo>, or <xref:Microsoft.Extensions.AI.AIFunction>.
+- Deriving from <xref:ModelContextProtocol.Server.McpServerResource> or <xref:ModelContextProtocol.Server.DelegatingMcpServerResource>.
+- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
+- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this document.
+The attribute-based approach is the most common and is shown throughout this article.
 
 #### Direct resources
 
@@ -53,7 +53,7 @@ public class DocumentResources
     [Description("Returns an article by its ID")]
     public static ResourceContents GetArticle(string id)
     {
-        string? content = LoadArticle(id); // application logic to load by ID
+        string? content = LoadArticle(id); // Application logic to load by ID.
 
         if (content is null)
         {
@@ -118,7 +118,7 @@ Clients can discover and read resources using <xref:ModelContextProtocol.Client.
 #### Listing resources
 
 ```csharp
-// List direct resources
+// List direct resources.
 IList<McpClientResource> resources = await client.ListResourcesAsync();
 
 foreach (var resource in resources)
@@ -132,7 +132,7 @@ foreach (var resource in resources)
 #### Listing resource templates
 
 ```csharp
-// List resource templates (parameterized URIs)
+// List resource templates (parameterized URIs).
 IList<McpClientResourceTemplate> templates = await client.ListResourceTemplatesAsync();
 
 foreach (var template in templates)
@@ -144,7 +144,7 @@ foreach (var template in templates)
 #### Reading a resource
 
 ```csharp
-// Read a direct resource by URI
+// Read a direct resource by URI.
 ReadResourceResult result = await client.ReadResourceAsync("config://app/settings");
 
 foreach (var content in result.Contents)
@@ -163,7 +163,7 @@ foreach (var content in result.Contents)
 #### Reading a template resource
 
 ```csharp
-// Read a resource using a URI template with parameter values
+// Read a resource using a URI template with parameter values.
 ReadResourceResult result = await client.ReadResourceAsync(
     "file:///{path}",
     new Dictionary<string, object?> { ["path"] = "docs/readme.md" });
@@ -176,29 +176,29 @@ Clients can subscribe to resource updates to be notified when a resource's conte
 #### Subscribing on the client
 
 ```csharp
-// Subscribe with an inline handler
+// Subscribe with an inline handler.
 IAsyncDisposable subscription = await client.SubscribeToResourceAsync(
     "config://app/settings",
     async (notification, cancellationToken) =>
     {
         Console.WriteLine($"Resource updated: {notification.Uri}");
 
-        // Re-read the resource to get updated content
+        // Re-read the resource to get updated content.
         var updated = await client.ReadResourceAsync(notification.Uri, cancellationToken: cancellationToken);
         // Process updated content...
     });
 
-// Later, unsubscribe by disposing
+// Later, unsubscribe by disposing.
 await subscription.DisposeAsync();
 ```
 
 Clients can also subscribe and unsubscribe separately:
 
 ```csharp
-// Subscribe without a handler (use a global notification handler instead)
+// Subscribe without a handler (use a global notification handler instead).
 await client.SubscribeToResourceAsync("config://app/settings");
 
-// Unsubscribe when no longer interested
+// Unsubscribe when no longer interested.
 await client.UnsubscribeFromResourceAsync("config://app/settings");
 ```
 
@@ -214,7 +214,7 @@ builder.Services.AddMcpServer()
     {
         if (ctx.Params?.Uri is { } uri)
         {
-            // Track the subscription (e.g., in a concurrent dictionary)
+            // Track the subscription (for example, in a concurrent dictionary).
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
         }
         return new EmptyResult();
@@ -234,7 +234,7 @@ builder.Services.AddMcpServer()
 When a resource's content changes, the server notifies subscribed clients:
 
 ```csharp
-// Notify that a specific resource was updated
+// Notify that a specific resource was updated.
 await server.SendNotificationAsync(
     NotificationMethods.ResourceUpdatedNotification,
     new ResourceUpdatedNotificationParams { Uri = "config://app/settings" });
@@ -242,12 +242,12 @@ await server.SendNotificationAsync(
 
 ### Resource list change notifications
 
-When the set of available resources changes (resources added or removed), the server notifies clients:
+When the set of available resources changes (resources added or removed), the server notifies clients.
 
 #### Sending notifications from the server
 
 ```csharp
-// After adding or removing resources dynamically
+// After adding or removing resources dynamically.
 await server.SendNotificationAsync(
     NotificationMethods.ResourceListChangedNotification,
     new ResourceListChangedNotificationParams());
@@ -260,7 +260,7 @@ mcpClient.RegisterNotificationHandler(
     NotificationMethods.ResourceListChangedNotification,
     async (notification, cancellationToken) =>
     {
-        // Refresh the resource list
+        // Refresh the resource list.
         var updatedResources = await mcpClient.ListResourcesAsync(cancellationToken: cancellationToken);
         Console.WriteLine($"Resource list updated. {updatedResources.Count} resources available.");
     });
