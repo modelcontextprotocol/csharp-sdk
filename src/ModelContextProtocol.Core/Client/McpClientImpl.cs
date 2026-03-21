@@ -532,7 +532,7 @@ internal sealed partial class McpClientImpl : McpClient
     public override Task<ClientCompletionDetails> Completion => _sessionHandler.CompletionTask;
 
     /// <inheritdoc/>
-    internal override async ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+    private async ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
         IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken)
     {
@@ -710,8 +710,62 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
-    public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
-        => _sessionHandler.SendRequestAsync(request, cancellationToken);
+    public override async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+    {
+        const int maxRetries = 10;
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // Check if the result is an IncompleteResult by looking at result_type.
+            if (response.Result is JsonObject resultObj &&
+                resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
+                resultTypeNode?.GetValue<string>() is "incomplete")
+            {
+                var incompleteResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.IncompleteResult)
+                    ?? throw new JsonException("Failed to deserialize IncompleteResult.");
+
+                if (incompleteResult.InputRequests is { Count: > 0 } inputRequests)
+                {
+                    IDictionary<string, InputResponse> inputResponses =
+                        await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
+
+                    // Clone the original request params and add inputResponses + requestState for the retry.
+                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+
+                    paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
+                        inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+
+                    if (incompleteResult.RequestState is { } requestState)
+                    {
+                        paramsObj["requestState"] = requestState;
+                    }
+
+                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj };
+                }
+                else if (incompleteResult.RequestState is not null)
+                {
+                    // No input requests but has requestState (e.g., load shedding) — just retry with state.
+                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+                    paramsObj["requestState"] = incompleteResult.RequestState;
+                    paramsObj.Remove("inputResponses");
+
+                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj };
+                }
+                else
+                {
+                    throw new McpException("Server returned an IncompleteResult without inputRequests or requestState.");
+                }
+
+                continue; // retry with the updated request
+            }
+
+            return response;
+        }
+
+        throw new McpException($"Server returned IncompleteResult more than {maxRetries} times.");
+    }
 
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)

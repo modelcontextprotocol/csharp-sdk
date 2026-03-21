@@ -71,14 +71,4 @@ public abstract partial class McpClient : McpSession
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
 
-    /// <summary>
-    /// Resolves input requests from an <see cref="IncompleteResult"/> by dispatching each request
-    /// to the appropriate handler (sampling, elicitation, or roots).
-    /// </summary>
-    /// <param name="inputRequests">The input requests to resolve.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
-    /// <returns>A dictionary of responses keyed by the same keys as the input requests.</returns>
-    internal abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
-        IDictionary<string, InputRequest> inputRequests,
-        CancellationToken cancellationToken);
 }

@@ -1321,7 +1321,10 @@ internal sealed partial class McpServerImpl : McpServer
 
             // Task-augmented execution is fire-and-forget; MRTR doesn't apply here because
             // the original request was already answered with CreateTaskResult.
-            request.Server.ActiveMrtrContext = null;
+            if (request.Server is DestinationBoundMcpServer destinationServer)
+            {
+                destinationServer.ActiveMrtrContext = null;
+            }
 
             try
             {
