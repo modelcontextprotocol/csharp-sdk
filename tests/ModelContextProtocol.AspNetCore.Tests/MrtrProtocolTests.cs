@@ -114,6 +114,110 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Name = "throwing-tool",
                     Description = "A tool that throws immediately"
                 }),
+            McpServerTool.Create(
+                static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+                {
+                    var requestState = context.Params!.RequestState;
+                    var inputResponses = context.Params!.InputResponses;
+
+                    if (requestState is not null && inputResponses is not null)
+                    {
+                        var elicitResult = inputResponses["user_confirm"].ElicitationResult;
+                        return $"lowlevel-confirmed:{elicitResult?.Action}:{requestState}";
+                    }
+
+                    if (!server.IsMrtrSupported)
+                    {
+                        return "lowlevel-unsupported:MRTR is not available";
+                    }
+
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["user_confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Please confirm",
+                                RequestedSchema = new()
+                            })
+                        },
+                        requestState: "lowlevel-state-1");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "lowlevel-tool",
+                    Description = "Low-level MRTR tool managing state directly"
+                }),
+            McpServerTool.Create(
+                static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+                {
+                    var requestState = context.Params!.RequestState;
+
+                    if (requestState is not null)
+                    {
+                        return $"loadshed-resumed:{requestState}";
+                    }
+
+                    throw new IncompleteResultException(requestState: "load-shedding-state");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "loadshed-tool",
+                    Description = "Low-level MRTR tool that returns requestState only (load shedding)"
+                }),
+            McpServerTool.Create(
+                static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+                {
+                    var requestState = context.Params!.RequestState;
+                    var inputResponses = context.Params!.InputResponses;
+
+                    if (requestState == "step-2" && inputResponses is not null)
+                    {
+                        var elicitResult = inputResponses["step2_input"].ElicitationResult;
+                        return $"multi-done:{elicitResult?.Action}";
+                    }
+
+                    if (requestState == "step-1" && inputResponses is not null)
+                    {
+                        var elicitResult = inputResponses["step1_input"].ElicitationResult;
+                        throw new IncompleteResultException(
+                            inputRequests: new Dictionary<string, InputRequest>
+                            {
+                                ["step2_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                                {
+                                    Message = $"Step 2 after {elicitResult?.Action}",
+                                    RequestedSchema = new()
+                                })
+                            },
+                            requestState: "step-2");
+                    }
+
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["step1_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Step 1",
+                                RequestedSchema = new()
+                            })
+                        },
+                        requestState: "step-1");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "multi-roundtrip-tool",
+                    Description = "Low-level tool requiring multiple round trips"
+                }),
+            McpServerTool.Create(
+                static string (McpServer server) =>
+                {
+                    // Throws IncompleteResultException even though MRTR may not be supported
+                    throw new IncompleteResultException(requestState: "should-fail");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "always-incomplete-tool",
+                    Description = "Tool that always throws IncompleteResultException regardless of MRTR support"
+                }),
         ]).WithHttpTransport();
 
         _app = Builder.Build();
@@ -495,6 +599,234 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         var callToolResult = AssertType<CallToolResult>(rpcResponse.Result);
         var content = Assert.Single(callToolResult.Content);
         Assert.Equal("simple-result", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    // --- Low-Level MRTR Protocol Tests ---
+
+    [Fact]
+    public async Task LowLevel_ToolReturnsIncompleteResult_WithInputRequestsAndRequestState()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        var response = await PostJsonRpcAsync(CallTool("lowlevel-tool"));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
+
+        // Verify inputRequests
+        var inputRequests = resultObj["inputRequests"]?.AsObject();
+        Assert.NotNull(inputRequests);
+        Assert.Single(inputRequests);
+        var (key, inputRequestNode) = inputRequests.Single();
+        Assert.Equal("user_confirm", key);
+        Assert.Equal("elicitation/create", inputRequestNode!["method"]?.GetValue<string>());
+        Assert.Equal("Please confirm", inputRequestNode["params"]?["message"]?.GetValue<string>());
+
+        // Verify requestState
+        Assert.Equal("lowlevel-state-1", resultObj["requestState"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task LowLevel_ToolReturnsRequestStateOnly_LoadShedding()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        var response = await PostJsonRpcAsync(CallTool("loadshed-tool"));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
+
+        // No inputRequests — this is a load shedding response
+        Assert.Null(resultObj["inputRequests"]);
+
+        // requestState must be present
+        Assert.Equal("load-shedding-state", resultObj["requestState"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task LowLevel_RetryWithInputResponses_ReturnsCompleteResult()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Step 1: Initial call returns IncompleteResult
+        var response1 = await PostJsonRpcAsync(CallTool("lowlevel-tool"));
+        var rpcResponse1 = await AssertSingleSseResponseAsync(response1);
+
+        var resultObj1 = Assert.IsType<JsonObject>(rpcResponse1.Result);
+        Assert.Equal("incomplete", resultObj1["result_type"]?.GetValue<string>());
+        var requestState = resultObj1["requestState"]!.GetValue<string>();
+
+        // Step 2: Retry with inputResponses and requestState
+        var retryParams = new JsonObject
+        {
+            ["name"] = "lowlevel-tool",
+            ["arguments"] = new JsonObject(),
+            ["inputResponses"] = new JsonObject
+            {
+                ["user_confirm"] = new JsonObject { ["action"] = "accept" }
+            },
+            ["requestState"] = requestState
+        };
+
+        var response2 = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+        var rpcResponse2 = await AssertSingleSseResponseAsync(response2);
+
+        // Should be a complete CallToolResult
+        var callToolResult = AssertType<CallToolResult>(rpcResponse2.Result);
+        var content = Assert.Single(callToolResult.Content);
+        var text = Assert.IsType<TextContentBlock>(content).Text;
+        Assert.Equal($"lowlevel-confirmed:accept:{requestState}", text);
+    }
+
+    [Fact]
+    public async Task LowLevel_RequestStateOnlyRetry_ReturnsCompleteResult()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Step 1: Get requestState-only response (load shedding)
+        var response1 = await PostJsonRpcAsync(CallTool("loadshed-tool"));
+        var rpcResponse1 = await AssertSingleSseResponseAsync(response1);
+        var resultObj1 = Assert.IsType<JsonObject>(rpcResponse1.Result);
+        var requestState = resultObj1["requestState"]!.GetValue<string>();
+
+        // Step 2: Retry with just requestState (no inputResponses since there were no inputRequests)
+        var retryParams = new JsonObject
+        {
+            ["name"] = "loadshed-tool",
+            ["arguments"] = new JsonObject(),
+            ["requestState"] = requestState
+        };
+
+        var response2 = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+        var rpcResponse2 = await AssertSingleSseResponseAsync(response2);
+
+        var callToolResult = AssertType<CallToolResult>(rpcResponse2.Result);
+        var content = Assert.Single(callToolResult.Content);
+        var text = Assert.IsType<TextContentBlock>(content).Text;
+        Assert.Equal($"loadshed-resumed:{requestState}", text);
+    }
+
+    [Fact]
+    public async Task LowLevel_MultiRoundTrip_CompletesAfterMultipleExchanges()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Round 1: Initial call
+        var response1 = await PostJsonRpcAsync(CallTool("multi-roundtrip-tool"));
+        var rpcResponse1 = await AssertSingleSseResponseAsync(response1);
+        var resultObj1 = Assert.IsType<JsonObject>(rpcResponse1.Result);
+        Assert.Equal("incomplete", resultObj1["result_type"]?.GetValue<string>());
+        Assert.Equal("step-1", resultObj1["requestState"]!.GetValue<string>());
+        var inputKey1 = resultObj1["inputRequests"]!.AsObject().Single().Key;
+        Assert.Equal("step1_input", inputKey1);
+
+        // Round 2: Retry with step 1 response → gets another IncompleteResult
+        var retry1Params = new JsonObject
+        {
+            ["name"] = "multi-roundtrip-tool",
+            ["arguments"] = new JsonObject(),
+            ["inputResponses"] = new JsonObject
+            {
+                ["step1_input"] = new JsonObject { ["action"] = "step1-done" }
+            },
+            ["requestState"] = "step-1"
+        };
+
+        var response2 = await PostJsonRpcAsync(Request("tools/call", retry1Params.ToJsonString()));
+        var rpcResponse2 = await AssertSingleSseResponseAsync(response2);
+        var resultObj2 = Assert.IsType<JsonObject>(rpcResponse2.Result);
+        Assert.Equal("incomplete", resultObj2["result_type"]?.GetValue<string>());
+        Assert.Equal("step-2", resultObj2["requestState"]!.GetValue<string>());
+        var inputKey2 = resultObj2["inputRequests"]!.AsObject().Single().Key;
+        Assert.Equal("step2_input", inputKey2);
+
+        // Round 3: Retry with step 2 response → gets final result
+        var retry2Params = new JsonObject
+        {
+            ["name"] = "multi-roundtrip-tool",
+            ["arguments"] = new JsonObject(),
+            ["inputResponses"] = new JsonObject
+            {
+                ["step2_input"] = new JsonObject { ["action"] = "step2-done" }
+            },
+            ["requestState"] = "step-2"
+        };
+
+        var response3 = await PostJsonRpcAsync(Request("tools/call", retry2Params.ToJsonString()));
+        var rpcResponse3 = await AssertSingleSseResponseAsync(response3);
+        var callToolResult = AssertType<CallToolResult>(rpcResponse3.Result);
+        var content = Assert.Single(callToolResult.Content);
+        Assert.Equal("multi-done:step2-done", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task LowLevel_IncompleteResultException_WithoutMrtr_ReturnsJsonRpcError()
+    {
+        await StartAsync();
+        await InitializeWithoutMrtrAsync();
+
+        // Call a tool that always throws IncompleteResultException regardless of MRTR support
+        var response = await PostJsonRpcAsync(CallTool("always-incomplete-tool"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
+
+        // Should be a JSON-RPC error, not an IncompleteResult
+        var errorMessage = Assert.IsType<JsonRpcError>(message);
+        Assert.NotNull(errorMessage.Error);
+        Assert.Contains("Multi Round-Trip Requests", errorMessage.Error.Message);
+    }
+
+    [Fact]
+    public async Task LowLevel_IncompleteResult_HasCorrectJsonStructure()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        var response = await PostJsonRpcAsync(CallTool("lowlevel-tool"));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+
+        // Verify result_type discriminator
+        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
+
+        // Verify inputRequests is a properly structured object
+        var inputRequests = resultObj["inputRequests"]!.AsObject();
+        Assert.NotEmpty(inputRequests);
+        foreach (var (key, inputRequest) in inputRequests)
+        {
+            Assert.NotNull(inputRequest);
+            Assert.NotNull(inputRequest["method"]);
+            Assert.NotNull(inputRequest["params"]);
+        }
+
+        // Verify requestState is a non-empty string
+        var requestState = resultObj["requestState"]!.GetValue<string>();
+        Assert.False(string.IsNullOrEmpty(requestState));
+    }
+
+    [Fact]
+    public async Task LowLevel_ToolFallsBackGracefully_WithoutMrtr()
+    {
+        await StartAsync();
+        await InitializeWithoutMrtrAsync();
+
+        // Call the lowlevel-tool that checks IsMrtrSupported and returns a fallback message
+        var response = await PostJsonRpcAsync(CallTool("lowlevel-tool"));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        var callToolResult = AssertType<CallToolResult>(rpcResponse.Result);
+        var content = Assert.Single(callToolResult.Content);
+        var text = Assert.IsType<TextContentBlock>(content).Text;
+        Assert.Equal("lowlevel-unsupported:MRTR is not available", text);
     }
 
     // --- Helpers ---

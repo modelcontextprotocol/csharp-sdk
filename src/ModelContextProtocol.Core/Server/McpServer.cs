@@ -65,6 +65,25 @@ public abstract partial class McpServer : McpSession
     public abstract LoggingLevel? LoggingLevel { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the connected client supports Multi Round-Trip Requests (MRTR).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When this property returns <see langword="true"/>, tool handlers can throw
+    /// <see cref="Protocol.IncompleteResultException"/> to return an <see cref="Protocol.IncompleteResult"/>
+    /// with <see cref="Protocol.IncompleteResult.InputRequests"/> and/or
+    /// <see cref="Protocol.IncompleteResult.RequestState"/> to the client.
+    /// </para>
+    /// <para>
+    /// When this property returns <see langword="false"/>, tool handlers should provide a fallback
+    /// experience (for example, returning a text message explaining that the client does not support
+    /// the required feature) instead of throwing <see cref="Protocol.IncompleteResultException"/>.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
+    public virtual bool IsMrtrSupported => false;
+
+    /// <summary>
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     public abstract Task RunAsync(CancellationToken cancellationToken = default);

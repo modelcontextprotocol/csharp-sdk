@@ -777,7 +777,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     ToolCallError(request.Params?.Name ?? string.Empty, e);
 
-                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException)
+                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is IncompleteResultException)
                     {
                         throw;
                     }
@@ -1146,7 +1146,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// Checks whether the negotiated protocol version enables MRTR and the server
     /// operates in a mode where MRTR continuations can be stored (i.e., not stateless).
     /// </summary>
-    private bool ClientSupportsMrtr() =>
+    internal bool ClientSupportsMrtr() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true } &&
         _negotiatedProtocolVersion is not null &&
         _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
@@ -1181,41 +1181,46 @@ internal sealed partial class McpServerImpl : McpServer
             if (request.Params is JsonObject paramsObj &&
                 paramsObj.TryGetPropertyValue("requestState", out var requestStateNode) &&
                 requestStateNode?.GetValueKind() == JsonValueKind.String &&
-                requestStateNode.GetValue<string>() is { } requestState &&
-                _mrtrContinuations.TryRemove(requestState, out var continuation))
+                requestStateNode.GetValue<string>() is { } requestState)
             {
-                // Parse inputResponses from the retry request.
-                IDictionary<string, InputResponse>? inputResponses = null;
-                if (paramsObj.TryGetPropertyValue("inputResponses", out var responsesNode) && responsesNode is not null)
+                if (_mrtrContinuations.TryRemove(requestState, out var continuation))
                 {
-                    inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+                    // High-level MRTR retry: resume the suspended handler with client responses.
+                    IDictionary<string, InputResponse>? inputResponses = null;
+                    if (paramsObj.TryGetPropertyValue("inputResponses", out var responsesNode) && responsesNode is not null)
+                    {
+                        inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+                    }
+
+                    continuation.MrtrContext.ResetForNextExchange();
+
+                    var exchange = continuation.PendingExchange;
+                    if (inputResponses is not null &&
+                        inputResponses.TryGetValue(exchange.Key, out var response))
+                    {
+                        exchange.ResponseTcs.TrySetResult(response);
+                    }
+                    else
+                    {
+                        exchange.ResponseTcs.TrySetException(
+                            new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams));
+                    }
+
+                    return await RaceHandlerAndExchangesAsync(
+                        continuation.HandlerTask, continuation.MrtrContext, cancellationToken).ConfigureAwait(false);
                 }
 
-                // Prepare for the next potential exchange before resuming the handler.
-                continuation.MrtrContext.ResetForNextExchange();
-
-                // Complete the pending exchange with the client's response.
-                var exchange = continuation.PendingExchange;
-                if (inputResponses is not null &&
-                    inputResponses.TryGetValue(exchange.Key, out var response))
-                {
-                    exchange.ResponseTcs.TrySetResult(response);
-                }
-                else
-                {
-                    exchange.ResponseTcs.TrySetException(
-                        new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams));
-                }
-
-                // Race again: handler completion vs new exchange.
-                return await RaceHandlerAndExchangesAsync(
-                    continuation.HandlerTask, continuation.MrtrContext, cancellationToken).ConfigureAwait(false);
+                // Low-level MRTR retry or invalid requestState: no continuation found.
+                // Fall through to the standard MRTR-aware invocation path below. The retry data
+                // (inputResponses, requestState) is already in the deserialized request params
+                // for low-level handlers to access, and the MrtrContext will be set up for
+                // high-level handlers that call ElicitAsync/SampleAsync.
             }
 
-            // Not a retry - check if the client supports MRTR.
+            // Not a retry, or a retry without a continuation - check if the client supports MRTR.
             if (!ClientSupportsMrtr())
             {
-                return await originalHandler(request, cancellationToken).ConfigureAwait(false);
+                return await InvokeWithIncompleteResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
 
             // Start a new MRTR-aware handler invocation.
@@ -1241,9 +1246,39 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
+    /// Invokes a handler and catches <see cref="IncompleteResultException"/> to convert it to an
+    /// <see cref="IncompleteResult"/> JSON response. If MRTR is not supported and the handler throws
+    /// <see cref="IncompleteResultException"/>, the exception is wrapped with a descriptive message.
+    /// </summary>
+    private async Task<JsonNode?> InvokeWithIncompleteResultHandlingAsync(
+        Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
+        JsonRpcRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await handler(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IncompleteResultException ex)
+        {
+            if (!ClientSupportsMrtr())
+            {
+                throw new McpException(
+                    "A tool handler returned an incomplete result, but the client does not support Multi Round-Trip Requests (MRTR). " +
+                    "Ensure both the server and client have ExperimentalProtocolVersion configured to enable MRTR.",
+                    ex);
+            }
+
+            return SerializeIncompleteResult(ex.IncompleteResult);
+        }
+    }
+
+    /// <summary>
     /// Races between handler completion and the MrtrContext exchange TCS.
     /// If the handler completes, returns its result. If an exchange arrives (handler needs input),
     /// builds and returns an IncompleteResult and stores the continuation for future retries.
+    /// If the handler throws <see cref="IncompleteResultException"/>, the result is returned directly
+    /// without storing a continuation (low-level MRTR path).
     /// </summary>
     private async Task<JsonNode?> RaceHandlerAndExchangesAsync(
         Task<JsonNode?> handlerTask,
@@ -1253,18 +1288,18 @@ internal sealed partial class McpServerImpl : McpServer
         // Fast path: handler already completed (no MRTR needed).
         if (handlerTask.IsCompleted)
         {
-            return await handlerTask.ConfigureAwait(false);
+            return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
 
         var completedTask = await Task.WhenAny(handlerTask, mrtrContext.ExchangeTask).ConfigureAwait(false);
 
         if (completedTask == handlerTask)
         {
-            // Handler completed - return its result (or propagate its exception).
-            return await handlerTask.ConfigureAwait(false);
+            // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
+            return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
 
-        // Exchange arrived - handler needs input from the client.
+        // Exchange arrived - handler needs input from the client (high-level MRTR path).
         var exchange = await mrtrContext.ExchangeTask.ConfigureAwait(false);
 
         var correlationId = Guid.NewGuid().ToString("N");
@@ -1277,8 +1312,27 @@ internal sealed partial class McpServerImpl : McpServer
         // Store the continuation so the retry can resume the handler.
         _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange);
 
-        return JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
+        return SerializeIncompleteResult(incompleteResult);
     }
+
+    /// <summary>
+    /// Awaits a handler task, catching <see cref="IncompleteResultException"/> to convert it to an
+    /// <see cref="IncompleteResult"/> JSON response without storing a continuation.
+    /// </summary>
+    private static async Task<JsonNode?> AwaitHandlerWithIncompleteResultHandlingAsync(Task<JsonNode?> handlerTask)
+    {
+        try
+        {
+            return await handlerTask.ConfigureAwait(false);
+        }
+        catch (IncompleteResultException ex)
+        {
+            return SerializeIncompleteResult(ex.IncompleteResult);
+        }
+    }
+
+    private static JsonNode? SerializeIncompleteResult(IncompleteResult incompleteResult) =>
+        JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
 
     /// <summary>
     /// Executes a tool call as a task and returns a CallToolTaskResult immediately.

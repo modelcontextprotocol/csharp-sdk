@@ -22,6 +22,8 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     /// </summary>
     internal MrtrContext? ActiveMrtrContext { get; set; }
 
+    public override bool IsMrtrSupported => server.ClientSupportsMrtr();
+
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => server.RegisterNotificationHandler(method, handler);
