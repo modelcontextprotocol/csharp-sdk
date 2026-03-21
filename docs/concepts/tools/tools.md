@@ -208,7 +208,7 @@ Tool errors in MCP are distinct from protocol errors. When a tool encounters an 
 When a tool method throws an exception, the server catches it and returns a <xref:ModelContextProtocol.Protocol.CallToolResult> with `IsError = true`, with the following exceptions:
 
 - <xref:ModelContextProtocol.McpProtocolException> is rethrown as a JSON-RPC error response (not a tool error result).
-- <xref:System.OperationCanceledException> is rethrown when the cancellation token was triggered.
+- `OperationCanceledException` is rethrown when the cancellation token was triggered.
 
 For all other exceptions, the error is returned as a tool result. If the exception derives from <xref:ModelContextProtocol.McpException> (excluding <xref:ModelContextProtocol.McpProtocolException>, which is rethrown above), its message is included in the error text; otherwise, a generic message is returned to avoid leaking internal details.
 

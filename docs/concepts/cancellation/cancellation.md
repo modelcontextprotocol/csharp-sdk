@@ -35,7 +35,7 @@ public static async Task<string> LongComputation(
 }
 ```
 
-When the client sends a cancellation notification, the <xref:System.OperationCanceledException> propagates back to the client as a cancellation response.
+When the client sends a cancellation notification, the `OperationCanceledException` propagates back to the client as a cancellation response.
 
 ### Cancellation notification details
 

@@ -39,14 +39,14 @@ Experimental properties on protocol types are fully serialized and deserialized 
 
 The behavior of experimental properties differs depending on whether you use [reflection-based or source-generated](https://learn.microsoft.com/dotnet/standard/serialization/system-text-json/source-generation) serialization:
 
-- **Reflection-based serialization** (the default when no <xref:System.Text.Json.Serialization.JsonSerializerContext> is used): Experimental properties are included. No special configuration is needed.
-- **Source-generated serialization** (using a custom <xref:System.Text.Json.Serialization.JsonSerializerContext>): Experimental properties are **not** included in your context's serialization contract. This is by design, as it protects your compiled code against binary breaking changes to experimental APIs.
+- **Reflection-based serialization** (the default when no `JsonSerializerContext` is used): Experimental properties are included. No special configuration is needed.
+- **Source-generated serialization** (using a custom `JsonSerializerContext`): Experimental properties are **not** included in your context's serialization contract. This is by design, as it protects your compiled code against binary breaking changes to experimental APIs.
 
 This means that switching between reflection-based and source-generated serialization can silently change which properties are serialized. To avoid this, source-generation users should configure a `TypeInfoResolverChain` as described below.
 
-### Custom `JsonSerializerContext`
+### Custom JsonSerializerContext
 
-If you define your own <xref:System.Text.Json.Serialization.JsonSerializerContext> that includes MCP protocol types, configure a `TypeInfoResolverChain` so the SDK's resolver handles MCP types:
+If you define your own `JsonSerializerContext` that includes MCP protocol types, configure a `TypeInfoResolverChain` so the SDK's resolver handles MCP types:
 
 ```csharp
 using ModelContextProtocol;

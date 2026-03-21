@@ -50,9 +50,9 @@ await using var handler = mcpClient.RegisterNotificationHandler(NotificationMeth
     });
 ```
 
-The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. <xref:System.Progress%601> is a standard .NET type that provides a way to receive progress updates.
+The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress\<T>` is a standard .NET type that provides a way to receive progress updates.
 For the purposes of MCP progress notifications, `T` should be <xref:ModelContextProtocol.ProgressNotificationValue>.
-The MCP C# SDK will automatically handle progress notifications and report them through the <xref:System.Progress%601> instance.
+The MCP C# SDK will automatically handle progress notifications and report them through the `Progress\<T>` instance.
 This notification handler will only receive progress updates for the specific request that was made,
 rather than all progress notifications from the server.
 

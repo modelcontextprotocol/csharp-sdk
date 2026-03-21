@@ -83,7 +83,7 @@ builder.Services.AddMcpServer()
 
 ### Automatic completions with AllowedValuesAttribute
 
-For parameters with a known set of valid values, you can use <xref:System.ComponentModel.DataAnnotations.AllowedValuesAttribute> on `string` parameters of prompts or resource templates. The server will automatically surface those values as completions without needing a custom completion handler.
+For parameters with a known set of valid values, you can use `AllowedValuesAttribute` on `string` parameters of prompts or resource templates. The server will automatically surface those values as completions without needing a custom completion handler.
 
 #### Prompt parameters
 
