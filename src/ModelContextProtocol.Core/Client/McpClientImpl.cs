@@ -489,7 +489,8 @@ internal sealed partial class McpClientImpl : McpClient
         // Advertise task capabilities
         _options.Capabilities ??= new();
 
-        // Advertise MRTR support so servers can use IncompleteResult instead of legacy JSON-RPC requests.
+        // Advertise MRTR support so servers can return IncompleteResult to request input inline
+        // instead of sending separate server-to-client JSON-RPC requests.
         var experimental = _options.Capabilities.Experimental ??= new Dictionary<string, object>();
         experimental[MrtrContext.ExperimentalCapabilityKey] = new JsonObject();
         var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
@@ -559,10 +560,11 @@ internal sealed partial class McpClientImpl : McpClient
             case RequestMethods.SamplingCreateMessage:
                 if (_options.Handlers.SamplingHandler is { } samplingHandler)
                 {
-                    var samplingParams = inputRequest.SamplingParams;
+                    var samplingParams = inputRequest.SamplingParams
+                        ?? throw new McpException($"Failed to deserialize sampling parameters from MRTR input request.");
                     var result = await samplingHandler(
                         samplingParams,
-                        samplingParams?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        samplingParams.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
                         cancellationToken).ConfigureAwait(false);
                     return InputResponse.FromSamplingResult(result);
                 }
@@ -573,7 +575,8 @@ internal sealed partial class McpClientImpl : McpClient
             case RequestMethods.ElicitationCreate:
                 if (_options.Handlers.ElicitationHandler is { } elicitationHandler)
                 {
-                    var elicitParams = inputRequest.ElicitationParams;
+                    var elicitParams = inputRequest.ElicitationParams
+                        ?? throw new McpException($"Failed to deserialize elicitation parameters from MRTR input request.");
                     var result = await elicitationHandler(elicitParams, cancellationToken).ConfigureAwait(false);
                     result = ElicitResult.WithDefaults(elicitParams, result);
                     return InputResponse.FromElicitResult(result);
@@ -585,7 +588,8 @@ internal sealed partial class McpClientImpl : McpClient
             case RequestMethods.RootsList:
                 if (_options.Handlers.RootsHandler is { } rootsHandler)
                 {
-                    var rootsParams = inputRequest.RootsParams;
+                    var rootsParams = inputRequest.RootsParams
+                        ?? throw new McpException($"Failed to deserialize roots parameters from MRTR input request.");
                     var result = await rootsHandler(rootsParams, cancellationToken).ConfigureAwait(false);
                     return InputResponse.FromRootsResult(result);
                 }

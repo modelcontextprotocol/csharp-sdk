@@ -71,30 +71,42 @@ public sealed class InputResponse
     /// </summary>
     /// <param name="result">The sampling result.</param>
     /// <returns>A new <see cref="InputResponse"/> instance.</returns>
-    public static InputResponse FromSamplingResult(CreateMessageResult result) => new()
+    public static InputResponse FromSamplingResult(CreateMessageResult result)
     {
-        RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CreateMessageResult),
-    };
+        Throw.IfNull(result);
+        return new()
+        {
+            RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CreateMessageResult),
+        };
+    }
 
     /// <summary>
     /// Creates an <see cref="InputResponse"/> from an <see cref="ElicitResult"/>.
     /// </summary>
     /// <param name="result">The elicitation result.</param>
     /// <returns>A new <see cref="InputResponse"/> instance.</returns>
-    public static InputResponse FromElicitResult(ElicitResult result) => new()
+    public static InputResponse FromElicitResult(ElicitResult result)
     {
-        RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ElicitResult),
-    };
+        Throw.IfNull(result);
+        return new()
+        {
+            RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ElicitResult),
+        };
+    }
 
     /// <summary>
     /// Creates an <see cref="InputResponse"/> from a <see cref="ListRootsResult"/>.
     /// </summary>
     /// <param name="result">The roots list result.</param>
     /// <returns>A new <see cref="InputResponse"/> instance.</returns>
-    public static InputResponse FromRootsResult(ListRootsResult result) => new()
+    public static InputResponse FromRootsResult(ListRootsResult result)
     {
-        RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ListRootsResult),
-    };
+        Throw.IfNull(result);
+        return new()
+        {
+            RawValue = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ListRootsResult),
+        };
+    }
 
     /// <summary>Provides JSON serialization support for <see cref="InputResponse"/>.</summary>
     public sealed class Converter : JsonConverter<InputResponse>

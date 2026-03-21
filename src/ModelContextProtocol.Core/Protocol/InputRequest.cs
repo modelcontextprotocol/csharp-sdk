@@ -86,33 +86,45 @@ public sealed class InputRequest
     /// </summary>
     /// <param name="requestParams">The sampling request parameters.</param>
     /// <returns>A new <see cref="InputRequest"/> instance.</returns>
-    public static InputRequest ForSampling(CreateMessageRequestParams requestParams) => new()
+    public static InputRequest ForSampling(CreateMessageRequestParams requestParams)
     {
-        Method = RequestMethods.SamplingCreateMessage,
-        Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams),
-    };
+        Throw.IfNull(requestParams);
+        return new()
+        {
+            Method = RequestMethods.SamplingCreateMessage,
+            Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams),
+        };
+    }
 
     /// <summary>
     /// Creates an <see cref="InputRequest"/> for an elicitation request.
     /// </summary>
     /// <param name="requestParams">The elicitation request parameters.</param>
     /// <returns>A new <see cref="InputRequest"/> instance.</returns>
-    public static InputRequest ForElicitation(ElicitRequestParams requestParams) => new()
+    public static InputRequest ForElicitation(ElicitRequestParams requestParams)
     {
-        Method = RequestMethods.ElicitationCreate,
-        Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.ElicitRequestParams),
-    };
+        Throw.IfNull(requestParams);
+        return new()
+        {
+            Method = RequestMethods.ElicitationCreate,
+            Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.ElicitRequestParams),
+        };
+    }
 
     /// <summary>
     /// Creates an <see cref="InputRequest"/> for a roots list request.
     /// </summary>
     /// <param name="requestParams">The roots list request parameters.</param>
     /// <returns>A new <see cref="InputRequest"/> instance.</returns>
-    public static InputRequest ForRootsList(ListRootsRequestParams requestParams) => new()
+    public static InputRequest ForRootsList(ListRootsRequestParams requestParams)
     {
-        Method = RequestMethods.RootsList,
-        Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.ListRootsRequestParams),
-    };
+        Throw.IfNull(requestParams);
+        return new()
+        {
+            Method = RequestMethods.RootsList,
+            Params = JsonSerializer.SerializeToElement(requestParams, McpJsonUtilities.JsonContext.Default.ListRootsRequestParams),
+        };
+    }
 
     /// <summary>Provides JSON serialization support for <see cref="InputRequest"/>.</summary>
     public sealed class Converter : JsonConverter<InputRequest>
