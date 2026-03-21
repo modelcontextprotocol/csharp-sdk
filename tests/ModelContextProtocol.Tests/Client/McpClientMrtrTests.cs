@@ -122,6 +122,30 @@ public class McpClientMrtrTests : ClientServerTestBase
                 {
                     Name = "sample-then-elicit-tool",
                     Description = "A tool that samples then elicits"
+                }),
+            McpServerTool.Create(
+                async (McpServer server, CancellationToken ct) =>
+                {
+                    // Attempt concurrent ElicitAsync + SampleAsync — MrtrContext prevents this.
+                    var t1 = server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "Concurrent elicit",
+                        RequestedSchema = new()
+                    }, ct).AsTask();
+
+                    var t2 = server.SampleAsync(new CreateMessageRequestParams
+                    {
+                        Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Concurrent sample" }] }],
+                        MaxTokens = 100
+                    }, ct).AsTask();
+
+                    await Task.WhenAll(t1, t2);
+                    return "done";
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "concurrent-tool",
+                    Description = "A tool that attempts concurrent elicitation and sampling"
                 })
         ]);
     }
@@ -315,5 +339,66 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("MRTR: Hello from both", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_ConcurrentElicitAndSample_PropagatesError()
+    {
+        // MrtrContext only allows one pending request at a time. When a tool handler
+        // calls ElicitAsync and SampleAsync concurrently via Task.WhenAll, the second
+        // call sees the TCS already completed and throws InvalidOperationException.
+        // That exception is caught by the tool error handler and returned as IsError.
+        StartServer();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+
+        // The first concurrent call (ElicitAsync) produces an IncompleteResult.
+        // The client resolves it via this handler, which unblocks the first task.
+        // Then Task.WhenAll surfaces the InvalidOperationException from the second task.
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+        };
+        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
+        {
+            return new ValueTask<CreateMessageResult>(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = "sampled" }],
+                Model = "test-model"
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync("concurrent-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        var errorText = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Contains("concurrent-tool", errorText);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_CancellationDuringMrtrRetry_ThrowsOperationCanceled()
+    {
+        // Verify that cancelling the CancellationToken during the MRTR retry loop
+        // (specifically during the elicitation handler callback) stops the loop.
+        StartServer();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            // Cancel the token during the callback. The retry loop will throw
+            // OperationCanceledException on the next await after this handler returns.
+            cts.Cancel();
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await client.CallToolAsync("elicitation-tool",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: cts.Token));
     }
 }
