@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -54,62 +53,4 @@ internal sealed class MrtrContext
     {
         _exchangeTcs = new TaskCompletionSource<MrtrExchange>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
-}
-
-/// <summary>
-/// Represents a single exchange between the handler and the pipeline during an MRTR flow.
-/// The handler creates the exchange and awaits the response TCS. The pipeline reads the exchange,
-/// sends the <see cref="InputRequest"/> to the client, and completes the TCS when the response arrives.
-/// </summary>
-internal sealed class MrtrExchange
-{
-    public MrtrExchange(string key, InputRequest inputRequest)
-    {
-        Key = key;
-        InputRequest = inputRequest;
-        ResponseTcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-
-    /// <summary>
-    /// The unique key identifying this exchange within the MRTR round trip.
-    /// </summary>
-    public string Key { get; }
-
-    /// <summary>
-    /// The input request that needs to be fulfilled by the client.
-    /// </summary>
-    public InputRequest InputRequest { get; }
-
-    /// <summary>
-    /// The TCS that will be completed with the client's response.
-    /// </summary>
-    public TaskCompletionSource<InputResponse> ResponseTcs { get; }
-}
-
-/// <summary>
-/// Represents a continuation for a suspended MRTR handler, stored between round trips.
-/// </summary>
-internal sealed class MrtrContinuation
-{
-    public MrtrContinuation(Task<JsonNode?> handlerTask, MrtrContext mrtrContext, MrtrExchange pendingExchange)
-    {
-        HandlerTask = handlerTask;
-        MrtrContext = mrtrContext;
-        PendingExchange = pendingExchange;
-    }
-
-    /// <summary>
-    /// The handler task that is suspended awaiting input.
-    /// </summary>
-    public Task<JsonNode?> HandlerTask { get; }
-
-    /// <summary>
-    /// The MRTR context for the handler's async flow.
-    /// </summary>
-    public MrtrContext MrtrContext { get; }
-
-    /// <summary>
-    /// The exchange that is awaiting a response from the client.
-    /// </summary>
-    public MrtrExchange PendingExchange { get; }
 }
