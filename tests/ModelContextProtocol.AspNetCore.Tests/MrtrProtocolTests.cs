@@ -30,6 +30,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                 Name = nameof(MrtrProtocolTests),
                 Version = "1",
             };
+            options.ExperimentalProtocolVersion = "2026-06-XX";
         }).WithTools([
             McpServerTool.Create(
                 async (string message, McpServer server, CancellationToken ct) =>
@@ -549,28 +550,36 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
             """);
 
     /// <summary>
-    /// Initialize a session with MRTR capability advertised.
+    /// Initialize a session requesting the experimental protocol version that enables MRTR.
     /// </summary>
     private async Task InitializeWithMrtrAsync()
     {
         var initJson = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{"sampling":{},"elicitation":{},"roots":{},"experimental":{"mrtr":{}}},"clientInfo":{"name":"MrtrTestClient","version":"1.0.0"}}}
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-06-XX","capabilities":{"sampling":{},"elicitation":{},"roots":{}},"clientInfo":{"name":"MrtrTestClient","version":"1.0.0"}}}
             """;
 
         using var response = await PostJsonRpcAsync(initJson);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         Assert.NotNull(rpcResponse.Result);
 
+        // Verify the server negotiated to the experimental version
+        var protocolVersion = rpcResponse.Result["protocolVersion"]?.GetValue<string>();
+        Assert.Equal("2026-06-XX", protocolVersion);
+
         var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
         HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+
+        // Set the MCP-Protocol-Version header for subsequent requests
+        HttpClient.DefaultRequestHeaders.Remove("MCP-Protocol-Version");
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2026-06-XX");
 
         // Reset request ID counter since initialize used ID 1
         _lastRequestId = 1;
     }
 
     /// <summary>
-    /// Initialize a session WITHOUT MRTR capability.
+    /// Initialize a session requesting a standard protocol version (no MRTR).
     /// </summary>
     private async Task InitializeWithoutMrtrAsync()
     {
@@ -581,6 +590,10 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         using var response = await PostJsonRpcAsync(initJson);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         Assert.NotNull(rpcResponse.Result);
+
+        // Verify the server negotiated to the standard version, not the experimental one
+        var protocolVersion = rpcResponse.Result["protocolVersion"]?.GetValue<string>();
+        Assert.Equal("2025-03-26", protocolVersion);
 
         var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");

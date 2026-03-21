@@ -234,8 +234,11 @@ internal sealed partial class McpServerImpl : McpServer
                 // Negotiate a protocol version. If the server options provide one, use that.
                 // Otherwise, try to use whatever the client requested as long as it's supported.
                 // If it's not supported, fall back to the latest supported version.
+                // Also accept the experimental protocol version when the server has it configured.
                 string? protocolVersion = options.ProtocolVersion;
-                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion &&
+                    (McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ||
+                     (options.ExperimentalProtocolVersion is not null && clientProtocolVersion == options.ExperimentalProtocolVersion)) ?
                     clientProtocolVersion :
                     McpSessionHandler.LatestProtocolVersion;
 
@@ -1140,13 +1143,13 @@ internal sealed partial class McpServerImpl : McpServer
     private partial void ReadResourceCompleted(string resourceUri);
 
     /// <summary>
-    /// Checks whether the connected client has advertised support for MRTR and the server
+    /// Checks whether the negotiated protocol version enables MRTR and the server
     /// operates in a mode where MRTR continuations can be stored (i.e., not stateless).
     /// </summary>
     private bool ClientSupportsMrtr() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true } &&
-        _clientCapabilities?.Experimental is { } experimental &&
-        experimental.ContainsKey(MrtrContext.ExperimentalCapabilityKey);
+        _negotiatedProtocolVersion is not null &&
+        _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
 
     /// <summary>
     /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync,

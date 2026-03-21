@@ -13,11 +13,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 internal sealed class MrtrContext
 {
-    /// <summary>
-    /// The experimental capability key used by clients to signal MRTR support during initialization.
-    /// </summary>
-    internal const string ExperimentalCapabilityKey = "mrtr";
-
     private TaskCompletionSource<MrtrExchange> _exchangeTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private int _nextInputRequestId;

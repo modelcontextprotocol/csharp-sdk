@@ -32,6 +32,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>
+    /// The experimental protocol version that enables MRTR (Multi Round-Trip Requests).
+    /// This version is not in <see cref="SupportedProtocolVersions"/> and is only accepted
+    /// when <see cref="McpServerOptions.ExperimentalProtocolVersion"/> or
+    /// <see cref="McpClientOptions.ExperimentalProtocolVersion"/> is set to this value.
+    /// </summary>
+    internal const string ExperimentalProtocolVersion = "2026-06-XX";
+
+    /// <summary>
     /// All protocol versions supported by this implementation.
     /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
     /// </summary>

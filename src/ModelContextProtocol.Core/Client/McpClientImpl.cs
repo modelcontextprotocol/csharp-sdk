@@ -489,10 +489,6 @@ internal sealed partial class McpClientImpl : McpClient
         // Advertise task capabilities
         _options.Capabilities ??= new();
 
-        // Advertise MRTR support so servers can return IncompleteResult to request input inline
-        // instead of sending separate server-to-client JSON-RPC requests.
-        var experimental = _options.Capabilities.Experimental ??= new Dictionary<string, object>();
-        experimental[MrtrContext.ExperimentalCapabilityKey] = new JsonObject();
         var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
         tasksCapability.List ??= new ListMcpTasksCapability();
         tasksCapability.Cancel ??= new CancelMcpTasksCapability();
@@ -620,7 +616,7 @@ internal sealed partial class McpClientImpl : McpClient
             try
             {
                 // Send initialize request
-                string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
+                string requestProtocol = _options.ProtocolVersion ?? _options.ExperimentalProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
                 var initializeResponse = await SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
@@ -648,7 +644,8 @@ internal sealed partial class McpClientImpl : McpClient
                 // Validate protocol version
                 bool isResponseProtocolValid =
                     _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion) ||
+                    (_options.ExperimentalProtocolVersion is not null && _options.ExperimentalProtocolVersion == initializeResponse.ProtocolVersion);
                 if (!isResponseProtocolValid)
                 {
                     LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);

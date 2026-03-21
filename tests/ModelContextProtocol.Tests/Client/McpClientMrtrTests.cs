@@ -23,6 +23,11 @@ public class McpClientMrtrTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.ExperimentalProtocolVersion = "2026-06-XX";
+        });
+
         mcpServerBuilder.WithTools([
             McpServerTool.Create(
                 async (string prompt, McpServer server, CancellationToken ct) =>
@@ -125,7 +130,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     public async Task CallToolAsync_WithSamplingTool_ResolvesViaMrtr()
     {
         StartServer();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
             var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
@@ -150,7 +155,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     public async Task CallToolAsync_WithElicitationTool_ResolvesViaMrtr()
     {
         StartServer();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             return new ValueTask<ElicitResult>(new ElicitResult
@@ -177,7 +182,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     public async Task CallToolAsync_WithRootsTool_ResolvesViaMrtr()
     {
         StartServer();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.RootsHandler = (request, ct) =>
         {
             return new ValueTask<ListRootsResult>(new ListRootsResult
@@ -200,7 +205,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     {
         StartServer();
         int callCount = 0;
-        var clientOptions = new McpClientOptions();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             var count = Interlocked.Increment(ref callCount);
@@ -229,7 +234,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     public async Task CallToolAsync_WithSamplingThenElicitation_ResolvesSequentialMrtrRoundTrips()
     {
         StartServer();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
             return new ValueTask<CreateMessageResult>(new CreateMessageResult
@@ -251,5 +256,64 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("sample=AI response,action=accept", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_ServerExperimentalClientNot_UsesLegacyRequests()
+    {
+        // Server has ExperimentalProtocolVersion set (from ConfigureServices),
+        // but client does NOT. Server negotiates to stable version.
+        // ClientSupportsMrtr() returns false → standard JSON-RPC requests.
+        StartServer();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
+        {
+            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            return new ValueTask<CreateMessageResult>(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = $"Legacy: {text}" }],
+                Model = "test-model"
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Verify the negotiated version is NOT the experimental one
+        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        var result = await client.CallToolAsync("sampling-tool",
+            new Dictionary<string, object?> { ["prompt"] = "Hello from legacy client" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(result.Content);
+        Assert.Equal("Legacy: Hello from legacy client", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_BothExperimental_UsesMrtr()
+    {
+        StartServer();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
+        {
+            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            return new ValueTask<CreateMessageResult>(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = $"MRTR: {text}" }],
+                Model = "test-model"
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Verify the negotiated version IS the experimental one
+        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        var result = await client.CallToolAsync("sampling-tool",
+            new Dictionary<string, object?> { ["prompt"] = "Hello from both" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(result.Content);
+        Assert.Equal("MRTR: Hello from both", Assert.IsType<TextContentBlock>(content).Text);
     }
 }
