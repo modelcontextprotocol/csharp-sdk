@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
-using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
 
@@ -211,10 +210,7 @@ internal sealed partial class McpServerImpl : McpServer
         {
             if (_mrtrContinuations.TryRemove(kvp.Key, out var continuation))
             {
-                foreach (var exchange in continuation.PendingExchanges)
-                {
-                    exchange.ResponseTcs.TrySetCanceled();
-                }
+                continuation.PendingExchange.ResponseTcs.TrySetCanceled();
             }
         }
 
@@ -1192,19 +1188,20 @@ internal sealed partial class McpServerImpl : McpServer
                     inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
                 }
 
-                // Complete pending exchanges with the client's responses.
-                foreach (var exchange in continuation.PendingExchanges)
+                // Prepare for the next potential exchange before resuming the handler.
+                continuation.MrtrContext.ResetForNextExchange();
+
+                // Complete the pending exchange with the client's response.
+                var exchange = continuation.PendingExchange;
+                if (inputResponses is not null &&
+                    inputResponses.TryGetValue(exchange.Key, out var response))
                 {
-                    if (inputResponses is not null &&
-                        inputResponses.TryGetValue(exchange.Key, out var response))
-                    {
-                        exchange.ResponseTcs.TrySetResult(response);
-                    }
-                    else
-                    {
-                        exchange.ResponseTcs.TrySetException(
-                            new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams));
-                    }
+                    exchange.ResponseTcs.TrySetResult(response);
+                }
+                else
+                {
+                    exchange.ResponseTcs.TrySetException(
+                        new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams));
                 }
 
                 // Race again: handler completion vs new exchange.
@@ -1228,7 +1225,7 @@ internal sealed partial class McpServerImpl : McpServer
             Task<JsonNode?> handlerTask;
             try
             {
-                handlerTask = InvokeOriginalHandlerAsync(originalHandler, request, mrtrContext, cancellationToken);
+                handlerTask = originalHandler(request, cancellationToken);
             }
             finally
             {
@@ -1241,31 +1238,7 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Invokes the original request handler and marks the MrtrContext as complete when done.
-    /// </summary>
-    private static async Task<JsonNode?> InvokeOriginalHandlerAsync(
-        Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
-        JsonRpcRequest request,
-        MrtrContext mrtrContext,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await handler(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            mrtrContext.Fault(ex);
-            throw;
-        }
-        finally
-        {
-            mrtrContext.Complete();
-        }
-    }
-
-    /// <summary>
-    /// Races between handler completion and the MrtrContext exchange channel.
+    /// Races between handler completion and the MrtrContext exchange TCS.
     /// If the handler completes, returns its result. If an exchange arrives (handler needs input),
     /// builds and returns an IncompleteResult and stores the continuation for future retries.
     /// </summary>
@@ -1280,10 +1253,7 @@ internal sealed partial class McpServerImpl : McpServer
             return await handlerTask.ConfigureAwait(false);
         }
 
-        // Start reading from the exchange channel.
-        var readTask = mrtrContext.ExchangeReader.ReadAsync(cancellationToken).AsTask();
-
-        var completedTask = await Task.WhenAny(handlerTask, readTask).ConfigureAwait(false);
+        var completedTask = await Task.WhenAny(handlerTask, mrtrContext.ExchangeTask).ConfigureAwait(false);
 
         if (completedTask == handlerTask)
         {
@@ -1292,40 +1262,17 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // Exchange arrived - handler needs input from the client.
-        MrtrExchange firstExchange;
-        try
-        {
-            firstExchange = await readTask.ConfigureAwait(false);
-        }
-        catch (ChannelClosedException)
-        {
-            // Channel was closed (handler completed between WhenAny and ReadAsync).
-            return await handlerTask.ConfigureAwait(false);
-        }
-
-        // Collect all currently available exchanges (handles concurrent ElicitAsync/SampleAsync calls).
-        var exchanges = new List<MrtrExchange> { firstExchange };
-        while (mrtrContext.ExchangeReader.TryRead(out var additionalExchange))
-        {
-            exchanges.Add(additionalExchange);
-        }
-
-        // Build the IncompleteResult with input requests.
-        var inputRequests = new Dictionary<string, InputRequest>(exchanges.Count);
-        foreach (var exchange in exchanges)
-        {
-            inputRequests[exchange.Key] = exchange.InputRequest;
-        }
+        var exchange = await mrtrContext.ExchangeTask.ConfigureAwait(false);
 
         var correlationId = Guid.NewGuid().ToString("N");
         var incompleteResult = new IncompleteResult
         {
-            InputRequests = inputRequests,
+            InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
             RequestState = correlationId,
         };
 
         // Store the continuation so the retry can resume the handler.
-        _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchanges);
+        _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange);
 
         return JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
     }

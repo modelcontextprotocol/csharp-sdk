@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using System.Threading.Channels;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -8,8 +7,9 @@ namespace ModelContextProtocol.Server;
 /// Manages the MRTR (Multi Round-Trip Request) coordination between a handler and the pipeline.
 /// When a handler calls <see cref="McpServer.ElicitAsync(ModelContextProtocol.Protocol.ElicitRequestParams, System.Threading.CancellationToken)"/> or
 /// <see cref="McpServer.SampleAsync(ModelContextProtocol.Protocol.CreateMessageRequestParams, System.Threading.CancellationToken)"/>,
-/// the handler writes to the channel and suspends on a TCS. The pipeline reads from the channel,
-/// sends an <see cref="IncompleteResult"/>, and later completes the TCS when the retry arrives.
+/// the handler sets the exchange TCS and suspends on a response TCS. The pipeline detects the exchange
+/// via <see cref="ExchangeTask"/>, sends an <see cref="IncompleteResult"/>, and later completes the
+/// response TCS when the retry arrives.
 /// </summary>
 internal sealed class MrtrContext
 {
@@ -18,15 +18,14 @@ internal sealed class MrtrContext
     /// </summary>
     internal const string ExperimentalCapabilityKey = "mrtr";
 
-    private readonly Channel<MrtrExchange> _exchanges = Channel.CreateUnbounded<MrtrExchange>(
-        new UnboundedChannelOptions { SingleReader = true });
+    private TaskCompletionSource<MrtrExchange> _exchangeTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private int _nextInputRequestId;
 
     /// <summary>
-    /// Gets the channel reader for consuming exchanges produced by the handler.
+    /// Gets a task that completes when the handler produces an exchange (calls ElicitAsync/SampleAsync/RequestRootsAsync).
     /// </summary>
-    public ChannelReader<MrtrExchange> ExchangeReader => _exchanges.Reader;
+    public Task<MrtrExchange> ExchangeTask => _exchangeTcs.Task;
 
     /// <summary>
     /// Called by <see cref="McpServer.ElicitAsync(ModelContextProtocol.Protocol.ElicitRequestParams, System.Threading.CancellationToken)"/>
@@ -36,26 +35,30 @@ internal sealed class MrtrContext
     /// <param name="inputRequest">The input request describing what the server needs.</param>
     /// <param name="cancellationToken">A token to cancel the wait for input.</param>
     /// <returns>The client's response to the input request.</returns>
+    /// <exception cref="InvalidOperationException">A concurrent server-to-client request is already pending.</exception>
     public async Task<InputResponse> RequestInputAsync(InputRequest inputRequest, CancellationToken cancellationToken)
     {
+        var tcs = _exchangeTcs;
+        if (tcs.Task.IsCompleted)
+        {
+            throw new InvalidOperationException("Concurrent server-to-client requests are not supported. Await each ElicitAsync, SampleAsync, or RequestRootsAsync call before making another.");
+        }
+
         var key = $"input_{Interlocked.Increment(ref _nextInputRequestId)}";
-
         var exchange = new MrtrExchange(key, inputRequest);
-
-        await _exchanges.Writer.WriteAsync(exchange, cancellationToken).ConfigureAwait(false);
+        tcs.TrySetResult(exchange);
 
         return await exchange.ResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Signals that the handler has completed normally.
+    /// Prepares the context for the next round of exchange after a retry arrives.
+    /// Must be called before completing the previous exchange's response TCS.
     /// </summary>
-    public void Complete() => _exchanges.Writer.TryComplete();
-
-    /// <summary>
-    /// Signals that the handler has faulted.
-    /// </summary>
-    public void Fault(Exception exception) => _exchanges.Writer.TryComplete(exception);
+    public void ResetForNextExchange()
+    {
+        _exchangeTcs = new TaskCompletionSource<MrtrExchange>(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 }
 
 /// <summary>
@@ -93,11 +96,11 @@ internal sealed class MrtrExchange
 /// </summary>
 internal sealed class MrtrContinuation
 {
-    public MrtrContinuation(Task<JsonNode?> handlerTask, MrtrContext mrtrContext, IReadOnlyList<MrtrExchange> pendingExchanges)
+    public MrtrContinuation(Task<JsonNode?> handlerTask, MrtrContext mrtrContext, MrtrExchange pendingExchange)
     {
         HandlerTask = handlerTask;
         MrtrContext = mrtrContext;
-        PendingExchanges = pendingExchanges;
+        PendingExchange = pendingExchange;
     }
 
     /// <summary>
@@ -111,7 +114,7 @@ internal sealed class MrtrContinuation
     public MrtrContext MrtrContext { get; }
 
     /// <summary>
-    /// The exchanges that are awaiting responses from the client.
+    /// The exchange that is awaiting a response from the client.
     /// </summary>
-    public IReadOnlyList<MrtrExchange> PendingExchanges { get; }
+    public MrtrExchange PendingExchange { get; }
 }
