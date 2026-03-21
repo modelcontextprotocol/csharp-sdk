@@ -170,6 +170,82 @@ Here's an example implementation of how a console application might handle elici
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
 
+### Multi Round-Trip Requests (MRTR)
+
+When both the client and server opt in to the experimental [MRTR](xref:mrtr) protocol, elicitation requests are handled via incomplete result / retry instead of a direct JSON-RPC request. This is transparent — the existing `ElicitAsync` API works identically regardless of whether MRTR is active.
+
+#### High-level API
+
+No code changes are needed. `ElicitAsync` automatically uses MRTR when both sides have opted in, and falls back to legacy JSON-RPC requests otherwise:
+
+```csharp
+// This code works the same with or without MRTR — the SDK handles it transparently.
+var result = await server.ElicitAsync(new ElicitRequestParams
+{
+    Message = "Please confirm the action",
+    RequestedSchema = new()
+    {
+        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+        {
+            ["confirm"] = new ElicitRequestParams.BooleanSchema
+            {
+                Description = "Confirm the action"
+            }
+        }
+    }
+}, cancellationToken);
+```
+
+#### Low-level API
+
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with an elicitation input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+
+```csharp
+[McpServerTool, Description("Tool that elicits via low-level MRTR")]
+public static string ElicitWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's elicitation response
+    if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
+    {
+        var elicitResult = response.ElicitationResult;
+        return elicitResult?.Action == "accept"
+            ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
+            : "User declined.";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support.";
+    }
+
+    // First call — request user input
+    throw new IncompleteResultException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+            {
+                Message = "Please confirm the action",
+                RequestedSchema = new()
+                {
+                    Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                    {
+                        ["confirm"] = new ElicitRequestParams.BooleanSchema
+                        {
+                            Description = "Confirm the action"
+                        }
+                    }
+                }
+            })
+        },
+        requestState: "awaiting-confirmation");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix.
+
 ### URL Elicitation Required Error
 
 When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in <xref: ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is enabled disabling server-to-client requests), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.

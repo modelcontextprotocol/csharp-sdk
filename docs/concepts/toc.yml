@@ -23,6 +23,8 @@ items:
     uid: mrtr
 - name: Client Features
   items:
+  - name: Sampling
+    uid: sampling
   - name: Roots
     uid: roots
   - name: Elicitation

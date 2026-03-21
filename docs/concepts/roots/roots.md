@@ -103,3 +103,55 @@ server.RegisterNotificationHandler(
         Console.WriteLine($"Roots updated. {result.Roots.Count} roots available.");
     });
 ```
+
+### Multi Round-Trip Requests (MRTR)
+
+When both the client and server opt in to the experimental [MRTR](xref:mrtr) protocol, root list requests are handled via incomplete result / retry instead of a direct JSON-RPC request. This is transparent — the existing `RequestRootsAsync` API works identically regardless of whether MRTR is active.
+
+#### High-level API
+
+No code changes are needed. `RequestRootsAsync` automatically uses MRTR when both sides have opted in:
+
+```csharp
+// This code works the same with or without MRTR — the SDK handles it transparently.
+var result = await server.RequestRootsAsync(new ListRootsRequestParams(), cancellationToken);
+foreach (var root in result.Roots)
+{
+    Console.WriteLine($"Root: {root.Name ?? root.Uri}");
+}
+```
+
+#### Low-level API
+
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with a roots input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+
+```csharp
+[McpServerTool, Description("Tool that requests roots via low-level MRTR")]
+public static string ListRootsWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's roots response
+    if (context.Params!.InputResponses?.TryGetValue("get_roots", out var response) is true)
+    {
+        var roots = response.RootsResult?.Roots ?? [];
+        return $"Found {roots.Count} roots: {string.Join(", ", roots.Select(r => r.Uri))}";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support.";
+    }
+
+    // First call — request the client's root list
+    throw new IncompleteResultException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["get_roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
+        },
+        requestState: "awaiting-roots");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.
