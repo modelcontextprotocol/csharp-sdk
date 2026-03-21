@@ -136,11 +136,13 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
 
         var process = new Process { StartInfo = startInfo };
 
+        // Protect callbacks with try/catch to prevent ITestOutputHelper from
+        // throwing on a background thread if events arrive after the test completes.
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 outputBuilder.AppendLine(e.Data);
             }
         };
@@ -149,7 +151,7 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 errorBuilder.AppendLine(e.Data);
             }
         };
@@ -172,6 +174,10 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
                 Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
             );
         }
+
+        // Ensure all redirected stdout/stderr events have been dispatched before
+        // the test completes and ITestOutputHelper becomes invalid.
+        process.WaitForExit();
 
         return (
             Success: process.ExitCode == 0,

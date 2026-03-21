@@ -82,11 +82,13 @@ public class ClientConformanceTests
 
         var process = new Process { StartInfo = startInfo };
 
+        // Protect callbacks with try/catch to prevent ITestOutputHelper from
+        // throwing on a background thread if events arrive after the test completes.
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                try { _output.WriteLine(e.Data); } catch { }
                 outputBuilder.AppendLine(e.Data);
             }
         };
@@ -95,7 +97,7 @@ public class ClientConformanceTests
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                try { _output.WriteLine(e.Data); } catch { }
                 errorBuilder.AppendLine(e.Data);
             }
         };
@@ -118,6 +120,10 @@ public class ClientConformanceTests
                 Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
             );
         }
+
+        // Ensure all redirected stdout/stderr events have been dispatched before
+        // the test completes and ITestOutputHelper becomes invalid.
+        process.WaitForExit();
 
         var output = outputBuilder.ToString();
         var error = errorBuilder.ToString();
