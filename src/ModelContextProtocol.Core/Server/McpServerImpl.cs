@@ -1143,11 +1143,9 @@ internal sealed partial class McpServerImpl : McpServer
     private partial void ReadResourceCompleted(string resourceUri);
 
     /// <summary>
-    /// Checks whether the negotiated protocol version enables MRTR and the server
-    /// operates in a mode where MRTR continuations can be stored (i.e., not stateless).
+    /// Checks whether the negotiated protocol version enables MRTR.
     /// </summary>
     internal bool ClientSupportsMrtr() =>
-        _sessionTransport is not StreamableHttpServerTransport { Stateless: true } &&
         _negotiatedProtocolVersion is not null &&
         _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
 
@@ -1177,6 +1175,15 @@ internal sealed partial class McpServerImpl : McpServer
 
         _requestHandlers[method] = async (request, cancellationToken) =>
         {
+            // In stateless mode, each request creates a new server instance that never saw the
+            // initialize handshake, so _negotiatedProtocolVersion is null. Pick it up from the
+            // Mcp-Protocol-Version header that the transport layer flowed via JsonRpcMessageContext.
+            if (_negotiatedProtocolVersion is null &&
+                request.Context?.ProtocolVersion is { } headerProtocolVersion)
+            {
+                _negotiatedProtocolVersion = headerProtocolVersion;
+            }
+
             // Check for MRTR retry: if requestState is present, look up the continuation.
             if (request.Params is JsonObject paramsObj &&
                 paramsObj.TryGetPropertyValue("requestState", out var requestStateNode) &&
@@ -1217,8 +1224,9 @@ internal sealed partial class McpServerImpl : McpServer
                 // high-level handlers that call ElicitAsync/SampleAsync.
             }
 
-            // Not a retry, or a retry without a continuation - check if the client supports MRTR.
-            if (!ClientSupportsMrtr())
+            // Not a retry, or a retry without a continuation - check if the client supports MRTR
+            // and the server is stateful (the high-level await path requires storing continuations).
+            if (!ClientSupportsMrtr() || _sessionTransport is StreamableHttpServerTransport { Stateless: true })
             {
                 return await InvokeWithIncompleteResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
@@ -1262,10 +1270,10 @@ internal sealed partial class McpServerImpl : McpServer
         }
         catch (IncompleteResultException ex)
         {
-            // In stateless mode, the server has no persistent session or negotiated protocol
-            // version, so it cannot determine client MRTR support. The tool handler has
-            // explicitly chosen to return an IncompleteResult, so we trust that decision.
-            if (_sessionTransport is not StreamableHttpServerTransport { Stateless: true } && !ClientSupportsMrtr())
+            // Allow the IncompleteResult if the client supports MRTR or the server is stateless
+            // (in stateless mode, the tool handler has explicitly chosen to return an IncompleteResult
+            // via the low-level API, so we trust that decision regardless of negotiated version).
+            if (!ClientSupportsMrtr() && _sessionTransport is not StreamableHttpServerTransport { Stateless: true })
             {
                 throw new McpException(
                     "A tool handler returned an incomplete result, but the client does not support Multi Round-Trip Requests (MRTR). " +

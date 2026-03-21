@@ -25,7 +25,9 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         TransportMode = HttpTransportMode.StreamableHttp,
     };
 
-    private async Task StartAsync()
+    private Task StartAsync() => StartAsync(configureOptions: null);
+
+    private async Task StartAsync(Action<McpServerOptions>? configureOptions, params McpServerTool[] additionalTools)
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -34,6 +36,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
                 Name = nameof(StatelessMrtrTests),
                 Version = "1",
             };
+            configureOptions?.Invoke(options);
         })
         .WithHttpTransport(httpOptions =>
         {
@@ -228,6 +231,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
                     Name = "stateless-multi-roundtrip",
                     Description = "Stateless tool with multiple MRTR round-trips"
                 }),
+            ..additionalTools,
         ]);
 
         _app = Builder.Build();
@@ -433,5 +437,34 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         // Verify both handlers were called (one per round-trip)
         Assert.Equal(1, samplingCalls);
         Assert.Equal(1, elicitCalls);
+    }
+
+    [Fact]
+    public async Task Stateless_IsMrtrSupported_ReturnsTrue_WhenExperimentalProtocolNegotiated()
+    {
+        // Regression test: In stateless mode, each request creates a new McpServerImpl that never
+        // sees the initialize handshake. The Mcp-Protocol-Version header is flowed via
+        // JsonRpcMessageContext.ProtocolVersion so the server can determine MRTR support.
+        var isMrtrSupportedTool = McpServerTool.Create(
+            static string (McpServer server) => server.IsMrtrSupported.ToString(),
+            new McpServerToolCreateOptions
+            {
+                Name = "check-mrtr",
+                Description = "Returns IsMrtrSupported"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            isMrtrSupportedTool);
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+
+        await using var client = await ConnectAsync(clientOptions);
+
+        var result = await client.CallToolAsync("check-mrtr",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("True", text);
     }
 }

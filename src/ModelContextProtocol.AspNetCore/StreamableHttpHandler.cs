@@ -480,12 +480,25 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is not null)
         {
-            message.Context = new()
+            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+            var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+
+            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
             {
-                User = context.User,
-            };
+                message.Context ??= new();
+
+                if (isAuthenticated)
+                {
+                    message.Context.User = context.User;
+                }
+
+                if (!string.IsNullOrEmpty(protocolVersion))
+                {
+                    message.Context.ProtocolVersion = protocolVersion;
+                }
+            }
         }
 
         return message;
