@@ -63,7 +63,7 @@ Server capabilities are automatically inferred from the configured features. For
 
 Before using an optional feature, check whether the other side declared the corresponding capability.
 
-#### Check server capabilities from the client
+#### Checking server capabilities from the client
 
 ```csharp
 await using var client = await McpClient.CreateAsync(transport);
