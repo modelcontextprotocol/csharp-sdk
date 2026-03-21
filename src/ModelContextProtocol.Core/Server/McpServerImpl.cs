@@ -1247,8 +1247,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Invokes a handler and catches <see cref="IncompleteResultException"/> to convert it to an
-    /// <see cref="IncompleteResult"/> JSON response. If MRTR is not supported and the handler throws
-    /// <see cref="IncompleteResultException"/>, the exception is wrapped with a descriptive message.
+    /// <see cref="IncompleteResult"/> JSON response. In stateless mode, the exception is always
+    /// serialized because the server cannot determine client MRTR support. In stateful mode,
+    /// if MRTR is not supported, the exception is wrapped with a descriptive message.
     /// </summary>
     private async Task<JsonNode?> InvokeWithIncompleteResultHandlingAsync(
         Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
@@ -1261,7 +1262,10 @@ internal sealed partial class McpServerImpl : McpServer
         }
         catch (IncompleteResultException ex)
         {
-            if (!ClientSupportsMrtr())
+            // In stateless mode, the server has no persistent session or negotiated protocol
+            // version, so it cannot determine client MRTR support. The tool handler has
+            // explicitly chosen to return an IncompleteResult, so we trust that decision.
+            if (_sessionTransport is not StreamableHttpServerTransport { Stateless: true } && !ClientSupportsMrtr())
             {
                 throw new McpException(
                     "A tool handler returned an incomplete result, but the client does not support Multi Round-Trip Requests (MRTR). " +
