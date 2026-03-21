@@ -206,12 +206,19 @@ internal sealed partial class McpServerImpl : McpServer
         _disposed = true;
 
         // Cancel all suspended MRTR handlers by faulting their pending exchanges.
+        int cancelledCount = 0;
         foreach (var kvp in _mrtrContinuations)
         {
             if (_mrtrContinuations.TryRemove(kvp.Key, out var continuation))
             {
                 continuation.PendingExchange.ResponseTcs.TrySetCanceled();
+                cancelledCount++;
             }
+        }
+
+        if (cancelledCount > 0)
+        {
+            MrtrContinuationsCancelled(cancelledCount);
         }
 
         _taskCancellationTokenProvider?.Dispose();
@@ -775,7 +782,12 @@ internal sealed partial class McpServerImpl : McpServer
                 }
                 catch (Exception e)
                 {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    // Skip logging for OperationCanceledException during server disposal —
+                    // MRTR handler cancellation during session teardown is expected, not an error.
+                    if (!(e is OperationCanceledException && _disposed))
+                    {
+                        ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    }
 
                     if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is IncompleteResultException)
                     {
@@ -1141,6 +1153,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
     private partial void ReadResourceCompleted(string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cancelled {Count} pending MRTR continuation(s) during session disposal.")]
+    private partial void MrtrContinuationsCancelled(int count);
 
     /// <summary>
     /// Checks whether the negotiated protocol version enables MRTR.

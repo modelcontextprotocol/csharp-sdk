@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -827,6 +828,84 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         var content = Assert.Single(callToolResult.Content);
         var text = Assert.IsType<TextContentBlock>(content).Text;
         Assert.Equal("lowlevel-unsupported:MRTR is not available", text);
+    }
+
+    [Fact]
+    public async Task SessionDelete_CancelsPendingMrtrContinuation()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // 1. Call a tool that suspends at ElicitAsync (high-level MRTR path).
+        var response = await PostJsonRpcAsync(CallTool("elicit-tool", """{"message":"Please confirm"}"""));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        // Verify we got an IncompleteResult (handler is now suspended, continuation stored).
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
+        var requestState = resultObj["requestState"]!.GetValue<string>();
+        Assert.False(string.IsNullOrEmpty(requestState));
+
+        // 2. DELETE the session while the handler is suspended.
+        using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+        // Allow a moment for the async cancellation to propagate through the handler task.
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        // 3. Verify that the MRTR cancellation was logged at Debug level.
+        var mrtrCancelledLog = MockLoggerProvider.LogMessages
+            .Where(m => m.Message.Contains("pending MRTR continuation"))
+            .ToList();
+        Assert.Single(mrtrCancelledLog);
+        Assert.Equal(LogLevel.Debug, mrtrCancelledLog[0].LogLevel);
+        Assert.Contains("1", mrtrCancelledLog[0].Message);
+
+        // 4. Verify no error-level log was emitted for the cancellation.
+        // The handler's OperationCanceledException should be silently observed, not logged as an error.
+        var errorLogs = MockLoggerProvider.LogMessages
+            .Where(m => m.LogLevel >= LogLevel.Error && m.Message.Contains("elicit"))
+            .ToList();
+        Assert.Empty(errorLogs);
+    }
+
+    [Fact]
+    public async Task SessionDelete_RetryAfterDelete_ReturnsSessionNotFound()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // 1. Call a tool that suspends at ElicitAsync.
+        var response = await PostJsonRpcAsync(CallTool("elicit-tool", """{"message":"Please confirm"}"""));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        var requestState = resultObj["requestState"]!.GetValue<string>();
+        var inputRequests = resultObj["inputRequests"]!.AsObject();
+        var inputKey = inputRequests.First().Key;
+
+        // 2. DELETE the session.
+        using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+        // 3. Attempt to retry with the old requestState — session is gone.
+        var inputResponse = InputResponse.FromElicitResult(new ElicitResult { Action = "accept" });
+        var retryParams = new JsonObject
+        {
+            ["name"] = "elicit-tool",
+            ["arguments"] = new JsonObject { ["message"] = "Please confirm" },
+            ["requestState"] = requestState,
+            ["inputResponses"] = new JsonObject
+            {
+                [inputKey] = JsonSerializer.SerializeToNode(inputResponse, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputResponse)))
+            },
+        };
+
+        using var retryResponse = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+
+        // The session was deleted, so we should get a 404 with a JSON-RPC error.
+        Assert.Equal(HttpStatusCode.NotFound, retryResponse.StatusCode);
+        Assert.Equal("application/json", retryResponse.Content.Headers.ContentType?.MediaType);
     }
 
     // --- Helpers ---
