@@ -467,4 +467,180 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("True", text);
     }
+
+    [Fact]
+    public async Task Stateless_IsMrtrSupported_ReturnsFalse_WhenClientDoesNotOptIn()
+    {
+        // When the client doesn't set ExperimentalProtocolVersion, IsMrtrSupported should
+        // be false even if the server has it configured.
+        var isMrtrSupportedTool = McpServerTool.Create(
+            static string (McpServer server) => server.IsMrtrSupported.ToString(),
+            new McpServerToolCreateOptions
+            {
+                Name = "check-mrtr",
+                Description = "Returns IsMrtrSupported"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            isMrtrSupportedTool);
+
+        // Client does NOT set ExperimentalProtocolVersion
+        await using var client = await ConnectAsync();
+
+        var result = await client.CallToolAsync("check-mrtr",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("False", text);
+    }
+
+    [Fact]
+    public async Task Stateless_IsMrtrSupportedCheck_ThenThrow_WorksEndToEnd()
+    {
+        // This mirrors the doc pattern: check IsMrtrSupported, return fallback if false,
+        // throw IncompleteResultException if true. This is the exact code from mrtr.md
+        // and elicitation.md that was previously untested in stateless mode.
+        var docPatternTool = McpServerTool.Create(
+            static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            {
+                if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
+                {
+                    var elicitResult = response.ElicitationResult;
+                    return elicitResult?.Action == "accept"
+                        ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
+                        : "User declined.";
+                }
+
+                if (!server.IsMrtrSupported)
+                {
+                    return "This tool requires MRTR support.";
+                }
+
+                throw new IncompleteResultException(
+                    inputRequests: new Dictionary<string, InputRequest>
+                    {
+                        ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "Please confirm",
+                            RequestedSchema = new()
+                        })
+                    },
+                    requestState: "awaiting-confirmation");
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "doc-pattern-elicit",
+                Description = "Mirrors the low-level elicitation doc sample"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            docPatternTool);
+
+        // With MRTR client: should complete the full flow
+        var mrtrClientOptions = CreateClientOptionsWithAllHandlers();
+        mrtrClientOptions.ExperimentalProtocolVersion = "2026-06-XX";
+
+        await using var mrtrClient = await ConnectAsync(mrtrClientOptions);
+
+        var result = await mrtrClient.CallToolAsync("doc-pattern-elicit",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("User accepted: yes", text);
+    }
+
+    [Fact]
+    public async Task Stateless_IsMrtrSupportedCheck_ReturnsFallback_WhenClientDoesNotOptIn()
+    {
+        // Same doc pattern tool, but the client doesn't opt in. Should return fallback message.
+        var docPatternTool = McpServerTool.Create(
+            static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            {
+                if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
+                {
+                    var elicitResult = response.ElicitationResult;
+                    return elicitResult?.Action == "accept"
+                        ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
+                        : "User declined.";
+                }
+
+                if (!server.IsMrtrSupported)
+                {
+                    return "This tool requires MRTR support.";
+                }
+
+                throw new IncompleteResultException(
+                    inputRequests: new Dictionary<string, InputRequest>
+                    {
+                        ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "Please confirm",
+                            RequestedSchema = new()
+                        })
+                    },
+                    requestState: "awaiting-confirmation");
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "doc-pattern-elicit",
+                Description = "Mirrors the low-level elicitation doc sample"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            docPatternTool);
+
+        // Client does NOT set ExperimentalProtocolVersion — should get fallback
+        await using var client = await ConnectAsync();
+
+        var result = await client.CallToolAsync("doc-pattern-elicit",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("This tool requires MRTR support.", text);
+    }
+
+    [Fact]
+    public async Task Stateless_LoadShedding_RequestStateOnly_CompletesViaMrtr()
+    {
+        // Tests the load shedding pattern from mrtr.md — requestState-only IncompleteResult
+        // without inputRequests. The client should auto-retry with just the requestState.
+        var loadSheddingTool = McpServerTool.Create(
+            static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            {
+                var requestState = context.Params!.RequestState;
+                if (requestState is not null)
+                {
+                    return $"resumed:{requestState}";
+                }
+
+                if (!server.IsMrtrSupported)
+                {
+                    return "MRTR not supported.";
+                }
+
+                throw new IncompleteResultException(requestState: "deferred-work");
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "stateless-loadshed",
+                Description = "Load shedding with IsMrtrSupported check"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            loadSheddingTool);
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+
+        await using var client = await ConnectAsync(clientOptions);
+
+        var result = await client.CallToolAsync("stateless-loadshed",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("resumed:deferred-work", text);
+    }
 }
