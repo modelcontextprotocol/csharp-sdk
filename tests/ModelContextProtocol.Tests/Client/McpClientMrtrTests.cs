@@ -16,6 +16,9 @@ namespace ModelContextProtocol.Tests.Client;
 /// </summary>
 public class McpClientMrtrTests : ClientServerTestBase
 {
+    private readonly TaskCompletionSource _handlerTokenCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public McpClientMrtrTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
@@ -146,6 +149,26 @@ public class McpClientMrtrTests : ClientServerTestBase
                 {
                     Name = "concurrent-tool",
                     Description = "A tool that attempts concurrent elicitation and sampling"
+                }),
+            McpServerTool.Create(
+                async (McpServer server, CancellationToken ct) =>
+                {
+                    var handlerTokenCancelled = _handlerTokenCancelled;
+                    ct.Register(static state => ((TaskCompletionSource)state!).TrySetResult(), handlerTokenCancelled);
+                    _handlerStarted.TrySetResult();
+
+                    await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "Cancellation test",
+                        RequestedSchema = new()
+                    }, ct);
+
+                    return "done";
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "cancellation-test-tool",
+                    Description = "A tool that monitors its CancellationToken during MRTR"
                 })
         ]);
     }
@@ -400,5 +423,47 @@ public class McpClientMrtrTests : ClientServerTestBase
             await client.CallToolAsync("elicitation-tool",
                 new Dictionary<string, object?> { ["message"] = "test" },
                 cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task ServerDisposal_CancelsHandlerCancellationToken_DuringMrtr()
+    {
+        // Verify that disposing the server cancels the handler's own CancellationToken
+        // (the `ct` parameter), not just the exchange ResponseTcs. Before the HandlerCts fix,
+        // the handler's CT was from a disposed CTS and could never be triggered.
+        StartServer();
+        var elicitHandlerCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = async (request, ct) =>
+        {
+            // Signal that the MRTR round trip reached the client, then block indefinitely.
+            elicitHandlerCalled.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new OperationCanceledException(ct);
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Start the tool call in the background.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        var callTask = client.CallToolAsync("cancellation-test-tool", cancellationToken: cts.Token).AsTask();
+
+        // Wait for the handler to start on the server.
+        await _handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Wait for the MRTR round trip to reach the client's elicitation handler.
+        await elicitHandlerCalled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Dispose the server — HandlerCts.Cancel() should trigger the handler's CancellationToken.
+        await Server.DisposeAsync();
+
+        // Verify the handler's CancellationToken was actually cancelled via HandlerCts,
+        // not just the exchange ResponseTcs.TrySetCanceled().
+        await _handlerTokenCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // The client call should fail (server disposed mid-MRTR).
+        await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
     }
 }

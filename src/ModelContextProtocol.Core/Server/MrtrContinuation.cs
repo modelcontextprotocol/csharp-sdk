@@ -7,11 +7,12 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 internal sealed class MrtrContinuation
 {
-    public MrtrContinuation(Task<JsonNode?> handlerTask, MrtrContext mrtrContext, MrtrExchange pendingExchange)
+    public MrtrContinuation(Task<JsonNode?> handlerTask, MrtrContext mrtrContext, MrtrExchange pendingExchange, CancellationTokenSource handlerCts)
     {
         HandlerTask = handlerTask;
         MrtrContext = mrtrContext;
         PendingExchange = pendingExchange;
+        HandlerCts = handlerCts;
     }
 
     /// <summary>
@@ -28,4 +29,11 @@ internal sealed class MrtrContinuation
     /// The exchange that is awaiting a response from the client.
     /// </summary>
     public MrtrExchange PendingExchange { get; }
+
+    /// <summary>
+    /// The long-lived CTS that controls the handler's cancellation across retries.
+    /// Linked to the original request's token at creation. Each retry links its own
+    /// cancellation to this CTS via a registration.
+    /// </summary>
+    public CancellationTokenSource HandlerCts { get; }
 }

@@ -205,13 +205,16 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
-        // Cancel all suspended MRTR handlers by faulting their pending exchanges.
+        // Cancel all suspended MRTR handlers via their long-lived CTS and await completion.
         int cancelledCount = 0;
+        List<Task>? cancelledTasks = null;
         foreach (var kvp in _mrtrContinuations)
         {
             if (_mrtrContinuations.TryRemove(kvp.Key, out var continuation))
             {
-                continuation.PendingExchange.ResponseTcs.TrySetCanceled();
+                continuation.HandlerCts.Cancel();
+                continuation.HandlerCts.Dispose();
+                (cancelledTasks ??= []).Add(continuation.HandlerTask);
                 cancelledCount++;
             }
         }
@@ -219,6 +222,20 @@ internal sealed partial class McpServerImpl : McpServer
         if (cancelledCount > 0)
         {
             MrtrContinuationsCancelled(cancelledCount);
+        }
+
+        // Await all cancelled handler tasks to observe their exceptions (prevents UnobservedTaskException).
+        // Handlers should complete promptly since their CTS was cancelled.
+        if (cancelledTasks is not null)
+        {
+            try
+            {
+                await Task.WhenAll(cancelledTasks).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Expected: handlers faulted with OperationCanceledException during disposal.
+            }
         }
 
         _taskCancellationTokenProvider?.Dispose();
@@ -1239,7 +1256,7 @@ internal sealed partial class McpServerImpl : McpServer
                     }
 
                     return await AwaitMrtrHandlerAsync(
-                        continuation.HandlerTask, continuation.MrtrContext, nextExchangeTask, cancellationToken).ConfigureAwait(false);
+                        continuation.HandlerTask, continuation.MrtrContext, nextExchangeTask, continuation.HandlerCts, cancellationToken).ConfigureAwait(false);
                 }
 
                 // Low-level MRTR retry or invalid requestState: no continuation found.
@@ -1259,6 +1276,11 @@ internal sealed partial class McpServerImpl : McpServer
             // Start a new MRTR-aware handler invocation.
             var mrtrContext = new MrtrContext();
 
+            // Create a long-lived CTS for the handler that survives across retries.
+            // The original request's combinedCts will be disposed when this lambda returns,
+            // breaking the cancellation chain. This CTS keeps the handler cancellable.
+            var handlerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
             // Store the MrtrContext so InvokeHandlerAsync can pick it up and set it on
             // the per-request DestinationBoundMcpServer. This is picked up synchronously
             // before any await, so the finally cleanup is safe.
@@ -1266,7 +1288,7 @@ internal sealed partial class McpServerImpl : McpServer
             Task<JsonNode?> handlerTask;
             try
             {
-                handlerTask = originalHandler(request, cancellationToken);
+                handlerTask = originalHandler(request, handlerCts.Token);
             }
             finally
             {
@@ -1274,7 +1296,7 @@ internal sealed partial class McpServerImpl : McpServer
             }
 
             return await AwaitMrtrHandlerAsync(
-                handlerTask, mrtrContext, mrtrContext.InitialExchangeTask, cancellationToken).ConfigureAwait(false);
+                handlerTask, mrtrContext, mrtrContext.InitialExchangeTask, handlerCts, cancellationToken).ConfigureAwait(false);
         };
     }
 
@@ -1321,19 +1343,31 @@ internal sealed partial class McpServerImpl : McpServer
         Task<JsonNode?> handlerTask,
         MrtrContext mrtrContext,
         Task<MrtrExchange> exchangeTask,
+        CancellationTokenSource handlerCts,
         CancellationToken cancellationToken)
     {
         // Fast path: handler already completed (no MRTR needed).
         if (handlerTask.IsCompleted)
         {
+            handlerCts.Dispose();
             return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
+
+        // Link the current request's cancellation to the handler's long-lived CTS.
+        // On the initial call this is redundant (handlerCts is already linked to cancellationToken)
+        // but on retries this is critical: the retry's combinedCts cancellation must flow to the handler.
+        using var registration = cancellationToken.Register(static state =>
+        {
+            try { ((CancellationTokenSource)state!).Cancel(); }
+            catch (ObjectDisposedException) { }
+        }, handlerCts);
 
         var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
 
         if (completedTask == handlerTask)
         {
             // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
+            handlerCts.Dispose();
             return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
 
@@ -1348,7 +1382,8 @@ internal sealed partial class McpServerImpl : McpServer
         };
 
         // Store the continuation so the retry can resume the handler.
-        _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange);
+        // The handlerCts is stored so retries and disposal can cancel the handler.
+        _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange, handlerCts);
 
         return SerializeIncompleteResult(incompleteResult);
     }
