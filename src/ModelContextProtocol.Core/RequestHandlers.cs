@@ -7,6 +7,8 @@ namespace ModelContextProtocol;
 
 internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>>>
 {
+    private static readonly JsonNode EmptyJsonObject = JsonNode.Parse("{}")!;
+
     /// <summary>
     /// Registers a handler for incoming requests of a specific method in the MCP protocol.
     /// </summary>
@@ -40,7 +42,10 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
         this[method] = async (request, cancellationToken) =>
         {
-            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
+            // When request.Params is null (e.g. the client omitted "params" from the JSON-RPC message),
+            // deserialize from an empty JSON object so we get a valid default TParams instance
+            // rather than null, since RequestContext.Params is now non-nullable.
+            TParams typedRequest = JsonSerializer.Deserialize(request.Params ?? EmptyJsonObject, requestTypeInfo)!;
             object? result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToNode(result, responseTypeInfo);
         };
