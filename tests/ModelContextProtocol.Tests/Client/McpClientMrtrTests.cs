@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -19,6 +20,7 @@ public class McpClientMrtrTests : ClientServerTestBase
     private readonly TaskCompletionSource _handlerTokenCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _handlerResumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _releaseHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public McpClientMrtrTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -220,6 +222,42 @@ public class McpClientMrtrTests : ClientServerTestBase
                 {
                     Name = "double-elicit-tool",
                     Description = "A tool that elicits twice for stale cancellation testing"
+                }),
+            McpServerTool.Create(
+                async (string message, McpServer server, CancellationToken ct) =>
+                {
+                    // Elicit, resume, then wait on _releaseHandler for the dispose test.
+                    _handlerStarted.TrySetResult();
+                    await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = message,
+                        RequestedSchema = new()
+                    }, ct);
+
+                    _handlerResumed.TrySetResult();
+                    await _releaseHandler.Task;
+                    return "handler-completed";
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "dispose-wait-tool",
+                    Description = "A tool that elicits, resumes, then waits on a signal for disposal testing"
+                }),
+            McpServerTool.Create(
+                async (McpServer server, CancellationToken ct) =>
+                {
+                    await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "elicit-then-throw",
+                        RequestedSchema = new()
+                    }, ct);
+
+                    throw new InvalidOperationException("Deliberate MRTR handler error for testing");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "elicit-then-throw-tool",
+                    Description = "A tool that elicits then throws an exception for error logging testing"
                 })
         ]);
     }
@@ -596,5 +634,75 @@ public class McpClientMrtrTests : ClientServerTestBase
         // The tool should complete successfully — the stale notification didn't affect it.
         var result = await callTask;
         Assert.Contains("accept", result.Content.OfType<TextContentBlock>().First().Text);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForMrtrHandler_BeforeReturning()
+    {
+        // Verify that McpServer.DisposeAsync() waits for an MRTR handler to complete
+        // before returning, similar to RunAsync_WaitsForInFlightHandlersBeforeReturning
+        // which tests the same invariant for regular request handlers in McpSessionHandler.
+        StartServer();
+        bool handlerCompleted = false;
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Start the tool call that calls ElicitAsync, then blocks on _releaseHandler.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        _ = client.CallToolAsync(
+            "dispose-wait-tool",
+            new Dictionary<string, object?> { ["message"] = "dispose-wait-test" },
+            cancellationToken: cts.Token);
+
+        // Wait for the handler to resume after ElicitAsync — it's now blocking on _releaseHandler.
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Dispose the server. The handler is still running (blocked on _releaseHandler).
+        // Release the handler after a delay — DisposeAsync must wait for it.
+        var ct = TestContext.Current.CancellationToken;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(200, ct);
+            handlerCompleted = true;
+            _releaseHandler.SetResult(true);
+        }, ct);
+
+        await Server.DisposeAsync();
+
+        // DisposeAsync should not have returned until the handler completed.
+        Assert.True(handlerCompleted, "DisposeAsync should wait for MRTR handlers to complete before returning.");
+    }
+
+    [Fact]
+    public async Task HandlerException_DuringMrtr_IsLoggedAtErrorLevel()
+    {
+        // Verify that when a tool handler throws an unhandled exception during MRTR
+        // (after resuming from ElicitAsync), the error is logged at Error level.
+        StartServer();
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Call the tool that elicits then throws. The retry returns an error result.
+        var result = await client.CallToolAsync(
+            "elicit-then-throw-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(result.IsError);
+
+        // Verify the tool error was logged at Error level during the MRTR retry.
+        // The ToolsCall handler catches the exception, logs it via ToolCallError,
+        // and converts it to an error result — so the error is properly surfaced.
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Error &&
+            m.Message.Contains("elicit-then-throw-tool") &&
+            m.Exception is InvalidOperationException);
     }
 }
