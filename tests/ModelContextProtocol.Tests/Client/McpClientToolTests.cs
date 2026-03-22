@@ -161,7 +161,7 @@ public class McpClientToolTests : ClientServerTestBase
         [McpServerTool]
         public static TextContentBlock MetadataEchoTool(RequestContext<CallToolRequestParams> context)
         {
-            var meta = context.Params?.Meta;
+            var meta = context.Params.Meta;
             var metaJson = meta?.ToJsonString() ?? "{}";
             return new TextContentBlock { Text = metaJson };
         }

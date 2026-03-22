@@ -687,7 +687,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
             RequestContext<CallToolRequestParams> context,
             CancellationToken cancellationToken)
         {
-            if (context.Params?.ProgressToken is { } token)
+            if (context.Params.ProgressToken is { } token)
             {
                 await server.NotifyProgressAsync(token, new ProgressNotificationValue
                 {
