@@ -206,35 +206,41 @@ internal sealed partial class McpServerImpl : McpServer
         _disposed = true;
 
         // Cancel all suspended MRTR handlers via their long-lived CTS and await completion.
-        int cancelledCount = 0;
-        List<Task>? cancelledTasks = null;
+        List<MrtrContinuation>? cancelledContinuations = null;
         foreach (var kvp in _mrtrContinuations)
         {
             if (_mrtrContinuations.TryRemove(kvp.Key, out var continuation))
             {
                 continuation.HandlerCts.Cancel();
-                continuation.HandlerCts.Dispose();
-                (cancelledTasks ??= []).Add(continuation.HandlerTask);
-                cancelledCount++;
+                (cancelledContinuations ??= []).Add(continuation);
             }
         }
 
-        if (cancelledCount > 0)
+        if (cancelledContinuations is { Count: > 0 })
         {
-            MrtrContinuationsCancelled(cancelledCount);
-        }
+            MrtrContinuationsCancelled(cancelledContinuations.Count);
 
-        // Await all cancelled handler tasks to observe their exceptions (prevents UnobservedTaskException).
-        // Handlers should complete promptly since their CTS was cancelled.
-        if (cancelledTasks is not null)
-        {
+            // Await all cancelled handler tasks to observe their exceptions (prevents UnobservedTaskException).
+            // Handlers should complete promptly since their CTS was cancelled.
             try
             {
+                List<Task> cancelledTasks = new(cancelledContinuations.Count);
+                foreach (var c in cancelledContinuations)
+                {
+                    cancelledTasks.Add(c.HandlerTask);
+                }
+
                 await Task.WhenAll(cancelledTasks).ConfigureAwait(false);
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // Expected: handlers faulted with OperationCanceledException during disposal.
+                // Expected: handlers cancelled during disposal.
+            }
+
+            // Dispose CTS objects after all handlers have completed.
+            foreach (var c in cancelledContinuations)
+            {
+                c.HandlerCts.Dispose();
             }
         }
 
@@ -1356,36 +1362,50 @@ internal sealed partial class McpServerImpl : McpServer
         // Link the current request's cancellation to the handler's long-lived CTS.
         // On the initial call this is redundant (handlerCts is already linked to cancellationToken)
         // but on retries this is critical: the retry's combinedCts cancellation must flow to the handler.
-        using var registration = cancellationToken.Register(static state =>
-        {
-            try { ((CancellationTokenSource)state!).Cancel(); }
-            catch (ObjectDisposedException) { }
-        }, handlerCts);
+        // This is how notifications/cancelled for the retry's request ID reaches the handler.
+        var registration = cancellationToken.Register(
+            static state => ((CancellationTokenSource)state!).Cancel(), handlerCts);
 
-        var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
-
-        if (completedTask == handlerTask)
+        try
         {
-            // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
-            handlerCts.Dispose();
-            return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+            var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
+
+            if (completedTask == handlerTask)
+            {
+                // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
+                return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+            }
+
+            // Exchange arrived - handler needs input from the client (high-level MRTR path).
+            var exchange = await exchangeTask.ConfigureAwait(false);
+
+            var correlationId = Guid.NewGuid().ToString("N");
+            var incompleteResult = new IncompleteResult
+            {
+                InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
+                RequestState = correlationId,
+            };
+
+            // Store the continuation so the retry can resume the handler.
+            // The handlerCts is stored so retries and disposal can cancel the handler.
+            _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange, handlerCts);
+
+            return SerializeIncompleteResult(incompleteResult);
         }
-
-        // Exchange arrived - handler needs input from the client (high-level MRTR path).
-        var exchange = await exchangeTask.ConfigureAwait(false);
-
-        var correlationId = Guid.NewGuid().ToString("N");
-        var incompleteResult = new IncompleteResult
+        finally
         {
-            InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
-            RequestState = correlationId,
-        };
+            // Unregister the cancellation callback before touching the CTS. Dispose() blocks
+            // until any in-flight callback completes, so after this line no callback can call
+            // handlerCts.Cancel(). This eliminates the ObjectDisposedException race.
+            registration.Dispose();
 
-        // Store the continuation so the retry can resume the handler.
-        // The handlerCts is stored so retries and disposal can cancel the handler.
-        _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange, handlerCts);
-
-        return SerializeIncompleteResult(incompleteResult);
+            // Dispose the CTS only when the handler has completed (no continuation stored).
+            // If a continuation was stored, disposal or the next retry owns the CTS lifetime.
+            if (handlerTask.IsCompleted)
+            {
+                handlerCts.Dispose();
+            }
+        }
     }
 
     /// <summary>

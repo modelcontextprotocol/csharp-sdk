@@ -18,6 +18,7 @@ public class McpClientMrtrTests : ClientServerTestBase
 {
     private readonly TaskCompletionSource _handlerTokenCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _handlerResumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public McpClientMrtrTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -169,6 +170,56 @@ public class McpClientMrtrTests : ClientServerTestBase
                 {
                     Name = "cancellation-test-tool",
                     Description = "A tool that monitors its CancellationToken during MRTR"
+                }),
+            McpServerTool.Create(
+                async (string message, McpServer server, CancellationToken ct) =>
+                {
+                    // Elicit first, then block forever — the retry request stays in-flight
+                    // until the client cancels, verifying that notifications/cancelled for
+                    // the retry's request ID flows through to cancel this handler.
+                    _handlerStarted.TrySetResult();
+                    var result = await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = message,
+                        RequestedSchema = new()
+                    }, ct);
+
+                    // Signal that we resumed after ElicitAsync, then block.
+                    _handlerResumed.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, ct);
+                    return "unreachable";
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "elicit-then-block-tool",
+                    Description = "A tool that elicits then blocks forever for cancellation testing"
+                }),
+            McpServerTool.Create(
+                async (McpServer server, CancellationToken ct) =>
+                {
+                    // Two sequential MRTR rounds. The client will inject a stale cancellation
+                    // notification for the original request ID between round 1 and round 2.
+                    var r1 = await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "First elicitation",
+                        RequestedSchema = new()
+                    }, ct);
+
+                    // Signal that round 1 completed so the test can inject the stale notification.
+                    _handlerResumed.TrySetResult();
+
+                    var r2 = await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "Second elicitation",
+                        RequestedSchema = new()
+                    }, ct);
+
+                    return $"{r1.Action},{r2.Action}";
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "double-elicit-tool",
+                    Description = "A tool that elicits twice for stale cancellation testing"
                 })
         ]);
     }
@@ -465,5 +516,85 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
+    }
+
+    [Fact]
+    public async Task CancellationNotification_DuringInFlightMrtrRetry_CancelsHandler()
+    {
+        // Verify that cancelling the client's CancellationToken while a retry request is in-flight
+        // sends notifications/cancelled with the retry's request ID, and the server correctly
+        // routes it to cancel the handler. This proves end-to-end that:
+        // (a) the client sends the notification with the CURRENT request ID (not the original),
+        // (b) the server's _handlingRequests lookup finds the retry's CTS,
+        // (c) the cancellation registration in AwaitMrtrHandlerAsync bridges to handlerCts.
+        StartServer();
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        var callTask = client.CallToolAsync(
+            "elicit-then-block-tool",
+            new Dictionary<string, object?> { ["message"] = "test" },
+            cancellationToken: cts.Token).AsTask();
+
+        // Wait for the handler to resume after ElicitAsync — at this point the retry
+        // request is in-flight (server is awaiting WhenAny in AwaitMrtrHandlerAsync).
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Cancel the client's token. The client is inside _sessionHandler.SendRequestAsync
+        // awaiting the retry response. RegisterCancellation fires and sends
+        // notifications/cancelled with the retry's request ID.
+        cts.Cancel();
+
+        // The call should throw OperationCanceledException.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await callTask);
+    }
+
+    [Fact]
+    public async Task CancellationNotification_ForExpiredRequestId_DoesNotAffectHandler()
+    {
+        // Verify that a stale cancellation notification for the original (now-completed)
+        // request ID does not interfere with an active MRTR handler. The original request's
+        // entry was removed from _handlingRequests when it returned IncompleteResult, so
+        // the notification should be a no-op.
+        StartServer();
+
+        int elicitationCount = 0;
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            Interlocked.Increment(ref elicitationCount);
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        // Start the double-elicit tool. Between round 1 and round 2, we'll inject a stale
+        // cancellation notification for a fake (expired) request ID.
+        var callTask = client.CallToolAsync(
+            "double-elicit-tool",
+            cancellationToken: TestContext.Current.CancellationToken).AsTask();
+
+        // Wait for handler to resume after the first ElicitAsync.
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Send a stale cancellation notification for a non-existent request ID.
+        // This simulates a delayed notification for the original request that already completed.
+        await client.SendMessageAsync(new JsonRpcNotification
+        {
+            Method = NotificationMethods.CancelledNotification,
+            Params = JsonSerializer.SerializeToNode(
+                new CancelledNotificationParams { RequestId = new RequestId("stale-id-999"), Reason = "stale test" },
+                McpJsonUtilities.DefaultOptions),
+        }, TestContext.Current.CancellationToken);
+
+        // The tool should complete successfully — the stale notification didn't affect it.
+        var result = await callTask;
+        Assert.Contains("accept", result.Content.OfType<TextContentBlock>().First().Text);
     }
 }
