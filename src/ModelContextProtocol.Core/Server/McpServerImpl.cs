@@ -1214,22 +1214,32 @@ internal sealed partial class McpServerImpl : McpServer
                         inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
                     }
 
-                    continuation.MrtrContext.ResetForNextExchange();
+                    var nextExchangeTask = continuation.MrtrContext.ResetForNextExchange(continuation.PendingExchange);
 
                     var exchange = continuation.PendingExchange;
                     if (inputResponses is not null &&
                         inputResponses.TryGetValue(exchange.Key, out var response))
                     {
-                        exchange.ResponseTcs.TrySetResult(response);
+                        if (!exchange.ResponseTcs.TrySetResult(response))
+                        {
+                            throw new McpProtocolException(
+                                $"MRTR exchange '{exchange.Key}' was already completed (possibly cancelled).",
+                                McpErrorCode.InternalError);
+                        }
                     }
                     else
                     {
-                        exchange.ResponseTcs.TrySetException(
-                            new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams));
+                        if (!exchange.ResponseTcs.TrySetException(
+                            new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams)))
+                        {
+                            throw new McpProtocolException(
+                                $"MRTR exchange '{exchange.Key}' was already completed (possibly cancelled).",
+                                McpErrorCode.InternalError);
+                        }
                     }
 
-                    return await RaceHandlerAndExchangesAsync(
-                        continuation.HandlerTask, continuation.MrtrContext, cancellationToken).ConfigureAwait(false);
+                    return await AwaitMrtrHandlerAsync(
+                        continuation.HandlerTask, continuation.MrtrContext, nextExchangeTask, cancellationToken).ConfigureAwait(false);
                 }
 
                 // Low-level MRTR retry or invalid requestState: no continuation found.
@@ -1263,8 +1273,8 @@ internal sealed partial class McpServerImpl : McpServer
                 _pendingMrtrContexts.TryRemove(request.Id, out _);
             }
 
-            return await RaceHandlerAndExchangesAsync(
-                handlerTask, mrtrContext, cancellationToken).ConfigureAwait(false);
+            return await AwaitMrtrHandlerAsync(
+                handlerTask, mrtrContext, mrtrContext.InitialExchangeTask, cancellationToken).ConfigureAwait(false);
         };
     }
 
@@ -1301,15 +1311,16 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Races between handler completion and the MrtrContext exchange TCS.
+    /// Awaits the outcome of an MRTR-enabled handler invocation.
     /// If the handler completes, returns its result. If an exchange arrives (handler needs input),
     /// builds and returns an IncompleteResult and stores the continuation for future retries.
     /// If the handler throws <see cref="IncompleteResultException"/>, the result is returned directly
     /// without storing a continuation (low-level MRTR path).
     /// </summary>
-    private async Task<JsonNode?> RaceHandlerAndExchangesAsync(
+    private async Task<JsonNode?> AwaitMrtrHandlerAsync(
         Task<JsonNode?> handlerTask,
         MrtrContext mrtrContext,
+        Task<MrtrExchange> exchangeTask,
         CancellationToken cancellationToken)
     {
         // Fast path: handler already completed (no MRTR needed).
@@ -1318,7 +1329,7 @@ internal sealed partial class McpServerImpl : McpServer
             return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
 
-        var completedTask = await Task.WhenAny(handlerTask, mrtrContext.ExchangeTask).ConfigureAwait(false);
+        var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
 
         if (completedTask == handlerTask)
         {
@@ -1327,7 +1338,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // Exchange arrived - handler needs input from the client (high-level MRTR path).
-        var exchange = await mrtrContext.ExchangeTask.ConfigureAwait(false);
+        var exchange = await exchangeTask.ConfigureAwait(false);
 
         var correlationId = Guid.NewGuid().ToString("N");
         var incompleteResult = new IncompleteResult
