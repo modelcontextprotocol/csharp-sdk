@@ -14,18 +14,33 @@ namespace ModelContextProtocol.Server;
 public sealed class RequestContext<TParams> : MessageContext
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server, JSON-RPC request, and request parameters.
+    /// </summary>
+    /// <param name="server">The server with which this instance is associated.</param>
+    /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
+    /// <param name="params">The parameters associated with this request.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
+    public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest, TParams @params)
+        : base(server, jsonRpcRequest)
+    {
+        Params = @params;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server and JSON-RPC request.
     /// </summary>
     /// <param name="server">The server with which this instance is associated.</param>
     /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
+    [Obsolete("Use the constructor that accepts a params argument.")]
     public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
         : base(server, jsonRpcRequest)
     {
+        Params = default!;
     }
 
     /// <summary>Gets or sets the parameters associated with this request.</summary>
-    public TParams? Params { get; set; }
+    public TParams Params { get; set; }
 
     /// <summary>
     /// Gets or sets the primitive that matched the request.
