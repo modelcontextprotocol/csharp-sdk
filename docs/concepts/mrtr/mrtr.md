@@ -329,7 +329,45 @@ When a server has MRTR enabled but the connected client does not:
 
 - The high-level API (`ElicitAsync`, `SampleAsync`) automatically falls back to sending standard JSON-RPC requests — no code changes needed.
 - The low-level API reports `IsMrtrSupported == false`, allowing the tool to provide a custom fallback message.
-- Throwing `IncompleteResultException` when MRTR is not supported results in a JSON-RPC error being returned to the client.
+
+### Backward compatibility for MRTR-native tools
+
+Tools written with the low-level MRTR pattern (`IncompleteResultException`) work automatically with clients that don't support MRTR. When a tool throws `IncompleteResultException` and the client hasn't negotiated MRTR, the SDK resolves each `InputRequest` by sending the corresponding standard JSON-RPC call (elicitation, sampling, or roots) to the client, then retries the handler with the resolved responses.
+
+This means you can write a single tool implementation using the MRTR-native pattern and it will work with any client:
+
+```csharp
+[McpServerTool, Description("Get weather with user's preferred units")]
+public static string GetWeather(
+    RequestContext<CallToolRequestParams> context,
+    string location)
+{
+    // On retry, inputResponses and requestState are populated
+    if (context.Params!.InputResponses?.TryGetValue("units", out var response) == true)
+    {
+        var units = response.ElicitationResult?.Content?.FirstOrDefault().Value;
+        return $"Weather for {location} in {units}: 72°";
+    }
+
+    // First call: request the user's preferred units
+    throw new IncompleteResultException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["units"] = InputRequest.ForElicitation(new ElicitRequestParams
+            {
+                Message = "Which temperature units?",
+                RequestedSchema = new()
+            })
+        },
+        requestState: "awaiting-units");
+}
+```
+
+- **With an MRTR client**: The `IncompleteResult` is sent over the wire. The client resolves the elicitation and retries with `inputResponses`.
+- **Without MRTR**: The SDK sends a standard `elicitation/create` JSON-RPC request to the client, collects the response, and retries the handler internally. The client never sees the `IncompleteResult`.
+
+> [!NOTE]
+> The backcompat retry loop resolves up to 10 rounds. Tools that need more rounds should use the high-level API (`ElicitAsync`) instead.
 
 ## Transitioning from MRTR to Tasks
 

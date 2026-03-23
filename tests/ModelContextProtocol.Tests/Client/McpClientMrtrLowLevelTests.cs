@@ -130,6 +130,41 @@ public class McpClientMrtrLowLevelTests : ClientServerTestBase
                     Name = "always-incomplete",
                     Description = "Tool that always throws IncompleteResultException"
                 }),
+            McpServerTool.Create(
+                static string (RequestContext<CallToolRequestParams> context) =>
+                {
+                    var inputResponses = context.Params!.InputResponses;
+
+                    if (inputResponses is not null &&
+                        inputResponses.TryGetValue("elicit", out var elicitResponse) &&
+                        inputResponses.TryGetValue("sample", out var sampleResponse))
+                    {
+                        var action = elicitResponse.ElicitationResult?.Action;
+                        var text = sampleResponse.SamplingResult?.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+                        return $"multi:{action}:{text}";
+                    }
+
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["elicit"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Confirm?",
+                                RequestedSchema = new()
+                            }),
+                            ["sample"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                            {
+                                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Summarize" }] }],
+                                MaxTokens = 50
+                            })
+                        },
+                        requestState: "multi-input");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "lowlevel-multi-input",
+                    Description = "Low-level tool with multiple InputRequests in one IncompleteResult"
+                }),
         ]);
     }
 
@@ -287,11 +322,49 @@ public class McpClientMrtrLowLevelTests : ClientServerTestBase
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // The always-incomplete tool throws IncompleteResultException without checking IsMrtrSupported
+        // The always-incomplete tool throws IncompleteResultException with only requestState
+        // and no inputRequests. Without MRTR negotiated, the backcompat layer can't resolve
+        // the request (no inputRequests to dispatch), so it wraps it in an error.
         var exception = await Assert.ThrowsAsync<McpProtocolException>(() =>
             client.CallToolAsync("always-incomplete",
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
-        Assert.Contains("Multi Round-Trip Requests", exception.Message);
+        Assert.Contains("without input requests", exception.Message);
+    }
+
+    [Fact]
+    public async Task LowLevel_MultipleInputRequests_ClientResolvesBothConcurrently()
+    {
+        // Tool throws IncompleteResultException with multiple InputRequests in a single
+        // IncompleteResult. The MRTR client resolves both via its registered handlers.
+        StartServer();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            return new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["answer"] = JsonDocument.Parse("\"yes\"").RootElement.Clone()
+                }
+            });
+        };
+        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
+        {
+            return new ValueTask<CreateMessageResult>(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = "LLM output" }],
+                Model = "test-model"
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync("lowlevel-multi-input",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(result.Content);
+        Assert.Equal("multi:accept:LLM output", Assert.IsType<TextContentBlock>(content).Text);
     }
 }

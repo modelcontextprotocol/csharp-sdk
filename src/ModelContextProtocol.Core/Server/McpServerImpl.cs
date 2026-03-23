@@ -1321,33 +1321,103 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Invokes a handler and catches <see cref="IncompleteResultException"/> to convert it to an
-    /// <see cref="IncompleteResult"/> JSON response. In stateless mode, the exception is always
-    /// serialized because the server cannot determine client MRTR support. In stateful mode,
-    /// if MRTR is not supported, the exception is wrapped with a descriptive message.
+    /// <see cref="IncompleteResult"/> JSON response. When MRTR is negotiated or the server is stateless,
+    /// the result is serialized directly. Otherwise, input requests are resolved via standard JSON-RPC
+    /// calls (elicitation, sampling, roots) and the handler is retried with the responses — allowing
+    /// MRTR-native tools to work transparently with clients that don't support MRTR.
     /// </summary>
     private async Task<JsonNode?> InvokeWithIncompleteResultHandlingAsync(
         Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
         JsonRpcRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            return await handler(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch (IncompleteResultException ex)
-        {
-            // Allow the IncompleteResult if the client supports MRTR or the server is stateless
-            // (in stateless mode, the tool handler has explicitly chosen to return an IncompleteResult
-            // via the low-level API, so we trust that decision regardless of negotiated version).
-            if (!ClientSupportsMrtr() && _sessionTransport is not StreamableHttpServerTransport { Stateless: true })
-            {
-                throw new McpException(
-                    "A tool handler returned an incomplete result, but the client does not support Multi Round-Trip Requests (MRTR). " +
-                    "Ensure both the server and client have ExperimentalProtocolVersion configured to enable MRTR.",
-                    ex);
-            }
+        const int MaxRetries = 10;
 
-            return SerializeIncompleteResult(ex.IncompleteResult);
+        for (int retry = 0; ; retry++)
+        {
+            try
+            {
+                return await handler(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IncompleteResultException ex)
+            {
+                // If the client supports MRTR or the server is stateless, serialize and return directly.
+                // In stateless mode, the tool handler has explicitly chosen to return an IncompleteResult
+                // via the low-level API, so we trust that decision regardless of negotiated version.
+                if (ClientSupportsMrtr() || _sessionTransport is StreamableHttpServerTransport { Stateless: true })
+                {
+                    return SerializeIncompleteResult(ex.IncompleteResult);
+                }
+
+                // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.
+                if (ex.IncompleteResult.InputRequests is not { Count: > 0 } inputRequests)
+                {
+                    throw new McpException(
+                        "A tool handler returned an incomplete result without input requests, and the client does not support MRTR.", ex);
+                }
+
+                if (retry >= MaxRetries)
+                {
+                    throw new McpException(
+                        $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.", ex);
+                }
+
+                // Resolve each input request by sending the corresponding JSON-RPC call to the client.
+                var inputResponses = new Dictionary<string, InputResponse>(inputRequests.Count);
+                foreach (var kvp in inputRequests)
+                {
+                    inputResponses[kvp.Key] = await ResolveInputRequestAsync(kvp.Value, cancellationToken).ConfigureAwait(false);
+                }
+
+                // Reconstruct request params with inputResponses and requestState for the retry.
+                var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+                paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
+                    (IDictionary<string, InputResponse>)inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+
+                if (ex.IncompleteResult.RequestState is { } requestState)
+                {
+                    paramsObj["requestState"] = requestState;
+                }
+
+                request = new JsonRpcRequest
+                {
+                    Id = request.Id,
+                    Method = request.Method,
+                    Params = paramsObj,
+                    Context = request.Context,
+                };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves a single MRTR <see cref="InputRequest"/> by dispatching it as a standard JSON-RPC
+    /// request to the client. This is the server-side mirror of the client's input resolution logic,
+    /// used for backward compatibility when the client doesn't support MRTR.
+    /// </summary>
+    private async Task<InputResponse> ResolveInputRequestAsync(InputRequest inputRequest, CancellationToken cancellationToken)
+    {
+        switch (inputRequest.Method)
+        {
+            case RequestMethods.ElicitationCreate:
+                var elicitParams = inputRequest.ElicitationParams
+                    ?? throw new McpException("Failed to deserialize elicitation parameters from MRTR input request.");
+                var elicitResult = await ElicitAsync(elicitParams, cancellationToken).ConfigureAwait(false);
+                return InputResponse.FromElicitResult(elicitResult);
+
+            case RequestMethods.SamplingCreateMessage:
+                var samplingParams = inputRequest.SamplingParams
+                    ?? throw new McpException("Failed to deserialize sampling parameters from MRTR input request.");
+                var samplingResult = await SampleAsync(samplingParams, cancellationToken).ConfigureAwait(false);
+                return InputResponse.FromSamplingResult(samplingResult);
+
+            case RequestMethods.RootsList:
+                var rootsParams = inputRequest.RootsParams ?? new ListRootsRequestParams();
+                var rootsResult = await RequestRootsAsync(rootsParams, cancellationToken).ConfigureAwait(false);
+                return InputResponse.FromRootsResult(rootsResult);
+
+            default:
+                throw new McpException($"Unsupported input request method: '{inputRequest.Method}'.");
         }
     }
 
