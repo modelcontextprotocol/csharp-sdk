@@ -17,9 +17,9 @@ namespace ModelContextProtocol.Tests.Client;
 /// </summary>
 public class McpClientMrtrTests : ClientServerTestBase
 {
-    private readonly TaskCompletionSource _handlerTokenCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource _handlerResumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _handlerTokenCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _handlerResumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _releaseHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public McpClientMrtrTests(ITestOutputHelper testOutputHelper)
@@ -157,8 +157,8 @@ public class McpClientMrtrTests : ClientServerTestBase
                 async (McpServer server, CancellationToken ct) =>
                 {
                     var handlerTokenCancelled = _handlerTokenCancelled;
-                    ct.Register(static state => ((TaskCompletionSource)state!).TrySetResult(), handlerTokenCancelled);
-                    _handlerStarted.TrySetResult();
+                    ct.Register(static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), handlerTokenCancelled);
+                    _handlerStarted.TrySetResult(true);
 
                     await server.ElicitAsync(new ElicitRequestParams
                     {
@@ -179,7 +179,7 @@ public class McpClientMrtrTests : ClientServerTestBase
                     // Elicit first, then block forever — the retry request stays in-flight
                     // until the client cancels, verifying that notifications/cancelled for
                     // the retry's request ID flows through to cancel this handler.
-                    _handlerStarted.TrySetResult();
+                    _handlerStarted.TrySetResult(true);
                     var result = await server.ElicitAsync(new ElicitRequestParams
                     {
                         Message = message,
@@ -187,7 +187,7 @@ public class McpClientMrtrTests : ClientServerTestBase
                     }, ct);
 
                     // Signal that we resumed after ElicitAsync, then block.
-                    _handlerResumed.TrySetResult();
+                    _handlerResumed.TrySetResult(true);
                     await Task.Delay(Timeout.Infinite, ct);
                     return "unreachable";
                 },
@@ -208,7 +208,7 @@ public class McpClientMrtrTests : ClientServerTestBase
                     }, ct);
 
                     // Signal that round 1 completed so the test can inject the stale notification.
-                    _handlerResumed.TrySetResult();
+                    _handlerResumed.TrySetResult(true);
 
                     var r2 = await server.ElicitAsync(new ElicitRequestParams
                     {
@@ -227,14 +227,14 @@ public class McpClientMrtrTests : ClientServerTestBase
                 async (string message, McpServer server, CancellationToken ct) =>
                 {
                     // Elicit, resume, then wait on _releaseHandler for the dispose test.
-                    _handlerStarted.TrySetResult();
+                    _handlerStarted.TrySetResult(true);
                     await server.ElicitAsync(new ElicitRequestParams
                     {
                         Message = message,
                         RequestedSchema = new()
                     }, ct);
 
-                    _handlerResumed.TrySetResult();
+                    _handlerResumed.TrySetResult(true);
                     await _releaseHandler.Task;
                     return "handler-completed";
                 },
@@ -543,13 +543,13 @@ public class McpClientMrtrTests : ClientServerTestBase
         // (the `ct` parameter), not just the exchange ResponseTcs. Before the HandlerCts fix,
         // the handler's CT was from a disposed CTS and could never be triggered.
         StartServer();
-        var elicitHandlerCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var elicitHandlerCalled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = async (request, ct) =>
         {
             // Signal that the MRTR round trip reached the client, then block indefinitely.
-            elicitHandlerCalled.TrySetResult();
+            elicitHandlerCalled.TrySetResult(true);
             await Task.Delay(Timeout.Infinite, ct);
             throw new OperationCanceledException(ct);
         };
