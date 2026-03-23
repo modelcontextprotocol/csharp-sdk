@@ -208,8 +208,8 @@ internal sealed partial class McpServerImpl : McpServer
         _requestHandlers.Set(RequestMethods.Initialize,
             async (request, _, _) =>
             {
-                _clientCapabilities = request.Capabilities ?? new();
-                _clientInfo = request.ClientInfo;
+                _clientCapabilities = request?.Capabilities ?? new();
+                _clientInfo = request?.ClientInfo;
 
                 // Use the ClientInfo to update the session EndpointName for logging.
                 UpdateEndpointNameWithClientInfo();
@@ -219,7 +219,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // Otherwise, try to use whatever the client requested as long as it's supported.
                 // If it's not supported, fall back to the latest supported version.
                 string? protocolVersion = options.ProtocolVersion;
-                protocolVersion ??= request.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
                     clientProtocolVersion :
                     McpSessionHandler.LatestProtocolVersion;
 
@@ -266,7 +266,7 @@ internal sealed partial class McpServerImpl : McpServer
                 CompleteResult result = await originalCompleteHandler(request, cancellationToken).ConfigureAwait(false);
 
                 string[]? allowedValues = null;
-                switch (request.Params.Ref)
+                switch (request.Params?.Ref)
                 {
                     case PromptReference pr when promptCompletions is not null:
                         if (promptCompletions.TryGetValue(pr.Name, out var promptParams))
@@ -285,7 +285,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                 if (allowedValues is not null)
                 {
-                    string partialValue = request.Params.Argument.Value;
+                    string partialValue = request.Params!.Argument.Value;
                     foreach (var v in allowedValues)
                     {
                         if (v.StartsWith(partialValue, StringComparison.OrdinalIgnoreCase))
@@ -409,7 +409,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         listResourcesHandler ??= (static async (_, __) => new ListResourcesResult());
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
-        readResourceHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown resource URI: '{request.Params.Uri}'", McpErrorCode.ResourceNotFound));
+        readResourceHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.ResourceNotFound));
         subscribeHandler ??= (static async (_, __) => new EmptyResult());
         unsubscribeHandler ??= (static async (_, __) => new EmptyResult());
         var listChanged = resourcesCapability?.ListChanged;
@@ -425,7 +425,7 @@ internal sealed partial class McpServerImpl : McpServer
                     await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
                     new();
 
-                if (request.Params.Cursor is null)
+                if (request.Params?.Cursor is null)
                 {
                     foreach (var r in resources)
                     {
@@ -446,7 +446,7 @@ internal sealed partial class McpServerImpl : McpServer
                     await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
                     new();
 
-                if (request.Params.Cursor is null)
+                if (request.Params?.Cursor is null)
                 {
                     foreach (var rt in resources)
                     {
@@ -484,7 +484,7 @@ internal sealed partial class McpServerImpl : McpServer
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
-                if (request.Params.Uri is { } uri && resources is not null)
+                if (request.Params?.Uri is { } uri && resources is not null)
                 {
                     // First try an O(1) lookup by exact match.
                     if (resources.TryGetPrimitive(uri, out var resource) && !resource.IsTemplated)
@@ -508,12 +508,12 @@ internal sealed partial class McpServerImpl : McpServer
                 try
                 {
                     var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                    ReadResourceCompleted(request.Params.Uri ?? string.Empty);
+                    ReadResourceCompleted(request.Params?.Uri ?? string.Empty);
                     return result;
                 }
                 catch (Exception e)
                 {
-                    ReadResourceError(request.Params.Uri ?? string.Empty, e);
+                    ReadResourceError(request.Params?.Uri ?? string.Empty, e);
                     throw;
                 }
             });
@@ -570,7 +570,7 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Prompts = new();
 
         listPromptsHandler ??= (static async (_, __) => new ListPromptsResult());
-        getPromptHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown prompt: '{request.Params.Name}'", McpErrorCode.InvalidParams));
+        getPromptHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
         var listChanged = promptsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
@@ -583,7 +583,7 @@ internal sealed partial class McpServerImpl : McpServer
                     await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false) :
                     new();
 
-                if (request.Params.Cursor is null)
+                if (request.Params?.Cursor is null)
                 {
                     foreach (var p in prompts)
                     {
@@ -613,7 +613,7 @@ internal sealed partial class McpServerImpl : McpServer
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
-                if (request.Params.Name is { } promptName && prompts is not null &&
+                if (request.Params?.Name is { } promptName && prompts is not null &&
                     prompts.TryGetPrimitive(promptName, out var prompt))
                 {
                     request.MatchedPrimitive = prompt;
@@ -622,12 +622,12 @@ internal sealed partial class McpServerImpl : McpServer
                 try
                 {
                     var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                    GetPromptCompleted(request.Params.Name ?? string.Empty);
+                    GetPromptCompleted(request.Params?.Name ?? string.Empty);
                     return result;
                 }
                 catch (Exception e)
                 {
-                    GetPromptError(request.Params.Name ?? string.Empty, e);
+                    GetPromptError(request.Params?.Name ?? string.Empty, e);
                     throw;
                 }
             });
@@ -663,7 +663,7 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Tools = new();
 
         listToolsHandler ??= (static async (_, __) => new ListToolsResult());
-        callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams));
+        callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
         var listChanged = toolsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
@@ -676,7 +676,7 @@ internal sealed partial class McpServerImpl : McpServer
                     await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false) :
                     new();
 
-                if (request.Params.Cursor is null)
+                if (request.Params?.Cursor is null)
                 {
                     foreach (var t in tools)
                     {
@@ -697,7 +697,7 @@ internal sealed partial class McpServerImpl : McpServer
                     var taskSupport = tool.ProtocolTool.Execution?.TaskSupport ?? ToolTaskSupport.Forbidden;
 
                     // Check if this is a task-augmented request
-                    if (request.Params.Task is { } taskMetadata)
+                    if (request.Params?.Task is { } taskMetadata)
                     {
                         // Validate tool-level task support
                         if (taskSupport is ToolTaskSupport.Forbidden)
@@ -735,7 +735,7 @@ internal sealed partial class McpServerImpl : McpServer
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
-                if (request.Params.Name is { } toolName && tools is not null &&
+                if (request.Params?.Name is { } toolName && tools is not null &&
                     tools.TryGetPrimitive(toolName, out var tool))
                 {
                     request.MatchedPrimitive = tool;
@@ -749,14 +749,14 @@ internal sealed partial class McpServerImpl : McpServer
                     // in ExecuteToolAsTaskAsync when the tool actually completes.
                     if (result.Task is null)
                     {
-                        ToolCallCompleted(request.Params.Name ?? string.Empty, result.IsError is true);
+                        ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
                     }
 
                     return result;
                 }
                 catch (Exception e)
                 {
-                    ToolCallError(request.Params.Name ?? string.Empty, e);
+                    ToolCallError(request.Params?.Name ?? string.Empty, e);
 
                     if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException)
                     {
@@ -769,8 +769,8 @@ internal sealed partial class McpServerImpl : McpServer
                         Content = [new TextContentBlock
                         {
                             Text = e is McpException ?
-                                $"An error occurred invoking '{request.Params.Name}': {e.Message}" :
-                                $"An error occurred invoking '{request.Params.Name}'.",
+                                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                                $"An error occurred invoking '{request.Params?.Name}'.",
                         }],
                     };
                 }
@@ -818,7 +818,7 @@ internal sealed partial class McpServerImpl : McpServer
         // tasks/get handler - Retrieve task status
         McpRequestHandler<GetTaskRequestParams, McpTask> getTaskHandler = async (request, cancellationToken) =>
         {
-            if (request.Params.TaskId is not { } taskId)
+            if (request.Params?.TaskId is not { } taskId)
             {
                 throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
             }
@@ -839,7 +839,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             async Task<JsonElement> GetTaskResultAsync(RequestContext<GetTaskPayloadRequestParams> request, CancellationToken cancellationToken)
             {
-                if (request.Params.TaskId is not { } taskId)
+                if (request.Params?.TaskId is not { } taskId)
                 {
                     throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
                 }
@@ -872,14 +872,14 @@ internal sealed partial class McpServerImpl : McpServer
         // tasks/list handler - List tasks with pagination
         McpRequestHandler<ListTasksRequestParams, ListTasksResult> listTasksHandler = async (request, cancellationToken) =>
         {
-            var cursor = request.Params.Cursor;
+            var cursor = request.Params?.Cursor;
             return await taskStore.ListTasksAsync(cursor, SessionId, cancellationToken).ConfigureAwait(false);
         };
 
         // tasks/cancel handler - Cancel a task
         McpRequestHandler<CancelMcpTaskRequestParams, McpTask> cancelTaskHandler = async (request, cancellationToken) =>
         {
-            if (request.Params.TaskId is not { } taskId)
+            if (request.Params?.TaskId is not { } taskId)
             {
                 throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
             }
@@ -941,17 +941,20 @@ internal sealed partial class McpServerImpl : McpServer
             (request, jsonRpcRequest, cancellationToken) =>
             {
                 // Store the provided level.
-                if (_loggingLevel is null)
+                if (request is not null)
                 {
-                    Interlocked.CompareExchange(ref _loggingLevel, new(request.Level), null);
-                }
+                    if (_loggingLevel is null)
+                    {
+                        Interlocked.CompareExchange(ref _loggingLevel, new(request.Level), null);
+                    }
 
-                _loggingLevel.Value = request.Level;
+                    _loggingLevel.Value = request.Level;
+                }
 
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, jsonRpcRequest, cancellationToken);
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
@@ -1163,7 +1166,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Invoke the tool with task-specific cancellation token
                 var result = await tool.InvokeAsync(request, taskCancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params.Name ?? string.Empty, result.IsError is true);
+                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
 
                 // Determine final status based on whether there was an error
                 var finalStatus = result.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;
@@ -1192,7 +1195,7 @@ internal sealed partial class McpServerImpl : McpServer
             catch (Exception ex)
             {
                 // Log the error
-                ToolCallError(request.Params.Name ?? string.Empty, ex);
+                ToolCallError(request.Params?.Name ?? string.Empty, ex);
 
                 // Store error result
                 var errorResult = new CallToolResult
