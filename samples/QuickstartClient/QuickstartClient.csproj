@@ -18,6 +18,7 @@
 
     <ItemGroup>
         <PackageReference Include="Anthropic" />
+        <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" VersionOverride="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.Hosting" />
         <PackageReference Include="Microsoft.Extensions.AI" />
     </ItemGroup>
