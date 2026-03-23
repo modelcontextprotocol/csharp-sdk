@@ -242,7 +242,7 @@ public class McpClientMrtrWithTasksTests : ClientServerTestBase
             {
                 SamplingHandler = (request, progress, ct) =>
                 {
-                    var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+                    var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
                     return new ValueTask<CreateMessageResult>(new CreateMessageResult
                     {
                         Content = [new TextContentBlock { Text = $"Response: {text}" }],

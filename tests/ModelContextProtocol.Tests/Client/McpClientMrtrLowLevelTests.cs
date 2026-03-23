@@ -243,7 +243,7 @@ public class McpClientMrtrLowLevelTests : ClientServerTestBase
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
-            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
             return new ValueTask<CreateMessageResult>(new CreateMessageResult
             {
                 Content = [new TextContentBlock { Text = $"Sampled: {text}" }],

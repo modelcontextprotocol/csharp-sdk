@@ -1369,56 +1369,49 @@ internal sealed partial class McpServerImpl : McpServer
         // On the initial call this is redundant (handlerCts is already linked to cancellationToken)
         // but on retries this is critical: the retry's combinedCts cancellation must flow to the handler.
         // This is how notifications/cancelled for the retry's request ID reaches the handler.
-        var registration = cancellationToken.Register(
+        using var registration = cancellationToken.Register(
             static state => ((MrtrContinuation)state!).CancelHandler(), continuation);
 
-        try
+        var deferredTask = continuation.MrtrContext.DeferredTask;
+
+        // Race handler against MRTR exchange and optionally the deferred task creation signal.
+        Task completedTask;
+        if (deferredTask is not null)
         {
-            var deferredTask = continuation.MrtrContext.DeferredTask;
-
-            // Race handler against MRTR exchange and optionally the deferred task creation signal.
-            Task completedTask;
-            if (deferredTask is not null)
-            {
-                completedTask = await Task.WhenAny(handlerTask, exchangeTask, deferredTask.SignalTask).ConfigureAwait(false);
-            }
-            else
-            {
-                completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
-            }
-
-            if (completedTask == handlerTask)
-            {
-                // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
-                return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
-            }
-
-            if (deferredTask is not null && completedTask == deferredTask.SignalTask)
-            {
-                // Handler called CreateTaskAsync() — transition to task mode.
-                return await HandleDeferredTaskCreationAsync(handlerTask, continuation, deferredTask, cancellationToken).ConfigureAwait(false);
-            }
-
-            // Exchange arrived - handler needs input from the client (high-level MRTR path).
-            var exchange = await exchangeTask.ConfigureAwait(false);
-
-            var correlationId = Guid.NewGuid().ToString("N");
-            var incompleteResult = new IncompleteResult
-            {
-                InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
-                RequestState = correlationId,
-            };
-
-            // Store the continuation so the retry can resume the handler.
-            continuation.PendingExchange = exchange;
-            _mrtrContinuations[correlationId] = continuation;
-
-            return SerializeIncompleteResult(incompleteResult);
+            completedTask = await Task.WhenAny(handlerTask, exchangeTask, deferredTask.SignalTask).ConfigureAwait(false);
         }
-        finally
+        else
         {
-            registration.Dispose();
+            completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
         }
+
+        if (completedTask == handlerTask)
+        {
+            // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
+            return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+        }
+
+        if (deferredTask is not null && completedTask == deferredTask.SignalTask)
+        {
+            // Handler called CreateTaskAsync() — transition to task mode.
+            return await HandleDeferredTaskCreationAsync(handlerTask, continuation, deferredTask, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Exchange arrived - handler needs input from the client (high-level MRTR path).
+        var exchange = await exchangeTask.ConfigureAwait(false);
+
+        var correlationId = Guid.NewGuid().ToString("N");
+        var incompleteResult = new IncompleteResult
+        {
+            InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
+            RequestState = correlationId,
+        };
+
+        // Store the continuation so the retry can resume the handler.
+        continuation.PendingExchange = exchange;
+        _mrtrContinuations[correlationId] = continuation;
+
+        return SerializeIncompleteResult(incompleteResult);
     }
 
     /// <summary>
@@ -1694,8 +1687,8 @@ internal sealed partial class McpServerImpl : McpServer
                 NotifyTaskStatusFunc = NotifyTaskStatusAsync
             };
 
-            // Task-augmented execution is fire-and-forget; MRTR doesn't apply here because
-            // the original request was already answered with CreateTaskResult.
+            // MRTR doesn't apply here because the task hasn't opted into deferred creation,
+            // and the original request was already answered with CreateTaskResult.
             if (request.Server is DestinationBoundMcpServer destinationServer)
             {
                 destinationServer.ActiveMrtrContext = null;

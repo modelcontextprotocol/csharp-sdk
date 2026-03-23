@@ -280,6 +280,48 @@ public class McpClientMrtrTests : ClientServerTestBase
                 {
                     Name = "incomplete-result-tool",
                     Description = "A tool that throws IncompleteResultException for low-level MRTR"
+                }),
+            McpServerTool.Create(
+                async (McpServer server, RequestContext<CallToolRequestParams> context, CancellationToken ct) =>
+                {
+                    var requestState = context.Params!.RequestState;
+                    var inputResponses = context.Params!.InputResponses;
+
+                    // Final round: we have the requestState from the IncompleteResultException
+                    if (requestState == "got-name" && inputResponses is not null
+                        && inputResponses.TryGetValue("age", out var ageResponse))
+                    {
+                        var age = ageResponse.ElicitationResult?.Content?.FirstOrDefault().Value;
+                        // Decode the name from requestState — in a real scenario, requestState
+                        // would carry the accumulated state, but here we just verify the flow works.
+                        return $"age={age}";
+                    }
+
+                    // First round: use high-level ElicitAsync (handler suspends)
+                    var nameResult = await server.ElicitAsync(new ElicitRequestParams
+                    {
+                        Message = "What is your name?",
+                        RequestedSchema = new()
+                    }, ct);
+
+                    var name = nameResult.Content?.FirstOrDefault().Value;
+
+                    // Second round: switch to low-level IncompleteResultException (handler dies)
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["age"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = $"How old are you, {name}?",
+                                RequestedSchema = new()
+                            })
+                        },
+                        requestState: "got-name");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "elicit-then-incomplete-result-tool",
+                    Description = "A tool that uses high-level ElicitAsync then throws IncompleteResultException"
                 })
         ]);
     }
@@ -291,7 +333,7 @@ public class McpClientMrtrTests : ClientServerTestBase
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
-            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
             return new ValueTask<CreateMessageResult>(new CreateMessageResult
             {
                 Content = [new TextContentBlock { Text = $"Sampled: {text}" }],
@@ -426,7 +468,7 @@ public class McpClientMrtrTests : ClientServerTestBase
         var clientOptions = new McpClientOptions();
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
-            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
             return new ValueTask<CreateMessageResult>(new CreateMessageResult
             {
                 Content = [new TextContentBlock { Text = $"Legacy: {text}" }],
@@ -454,7 +496,7 @@ public class McpClientMrtrTests : ClientServerTestBase
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
-            var text = request?.Messages[request.Messages.Count - 1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
             return new ValueTask<CreateMessageResult>(new CreateMessageResult
             {
                 Content = [new TextContentBlock { Text = $"MRTR: {text}" }],
@@ -747,6 +789,64 @@ public class McpClientMrtrTests : ClientServerTestBase
             "incomplete-result-tool",
             cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Error &&
+            m.Exception is IncompleteResultException);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_ElicitThenIncompleteResultException_WorksEndToEnd()
+    {
+        // Verify that a handler can mix high-level MRTR (ElicitAsync) with low-level MRTR
+        // (IncompleteResultException) in a single logical flow. The handler:
+        // 1. Calls ElicitAsync (high-level: handler suspends, IncompleteResult returned)
+        // 2. Gets the response, then throws IncompleteResultException (low-level: handler dies)
+        // 3. On the next retry, a fresh handler invocation processes requestState + inputResponses
+        StartServer();
+        int elicitationCallCount = 0;
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            elicitationCallCount++;
+            if (request?.Message == "What is your name?")
+            {
+                return new ValueTask<ElicitResult>(new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["name"] = JsonDocument.Parse("\"Alice\"").RootElement.Clone()
+                    }
+                });
+            }
+
+            // Second elicitation from the IncompleteResultException path
+            return new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["age"] = JsonDocument.Parse("\"30\"").RootElement.Clone()
+                }
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync(
+            "elicit-then-incomplete-result-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Verify the final result came through correctly
+        var content = Assert.Single(result.Content);
+        Assert.Equal("age=30", Assert.IsType<TextContentBlock>(content).Text);
+        Assert.NotEqual(true, result.IsError);
+
+        // Two elicitations: one from ElicitAsync, one from IncompleteResultException's inputRequests
+        Assert.Equal(2, elicitationCallCount);
+
+        // Verify no error-level logs for IncompleteResultException
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
