@@ -151,7 +151,17 @@ public sealed partial class StdioClientTransport : IClientTransport
                         stderrRollingLog.Enqueue(data);
                     }
 
-                    _options.StandardErrorLines?.Invoke(data);
+                    try
+                    {
+                        _options.StandardErrorLines?.Invoke(data);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Prevent exceptions in the user callback from propagating
+                        // to the background thread that dispatches ErrorDataReceived,
+                        // which would crash the process.
+                        LogStderrCallbackFailed(logger, endpointName, ex);
+                    }
 
                     LogReadStderr(logger, endpointName, data);
                 }
@@ -228,14 +238,13 @@ public sealed partial class StdioClientTransport : IClientTransport
                     process.KillTree(shutdownTimeout);
                 }
 
-                // Ensure all redirected stderr/stdout events have been dispatched
-                // before disposing. Only the no-arg WaitForExit() guarantees this;
-                // WaitForExit(int) (as used by KillTree) does not.
-                // This should not hang: either the process already exited on its own
-                // (no child processes holding handles), or KillTree killed the entire
-                // process tree. If it does take too long, the test infrastructure's
-                // own timeout will catch it.
-                if (!processRunning && HasExited(process))
+                // When a process has exited either on it's own or via KillTree, we must
+                // call WaitForExit() to ensure all redirected stderr/stdout events have
+                // been dispatched, otherwise ErrorDataReceived handlers may fire after 
+                // Dispose().
+                // The HasExited check is here to avoid waiting forever on a process that
+                // failed to be killed.
+                if (HasExited(process))
                 {
                     process.WaitForExit();
                 }
@@ -298,6 +307,9 @@ public sealed partial class StdioClientTransport : IClientTransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received stderr log: '{Data}'.")]
     private static partial void LogReadStderr(ILogger logger, string endpointName, string data);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} StandardErrorLines callback failed.")]
+    private static partial void LogStderrCallbackFailed(ILogger logger, string endpointName, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} started server process with PID {ProcessId}.")]
     private static partial void LogTransportProcessStarted(ILogger logger, string endpointName, int processId);
