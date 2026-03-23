@@ -1382,6 +1382,7 @@ internal sealed partial class McpServerImpl : McpServer
         var registration = cancellationToken.Register(
             static state => ((CancellationTokenSource)state!).Cancel(), handlerCts);
 
+        bool storedContinuation = false;
         try
         {
             var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
@@ -1405,6 +1406,7 @@ internal sealed partial class McpServerImpl : McpServer
             // Store the continuation so the retry can resume the handler.
             // The handlerCts is stored so retries and disposal can cancel the handler.
             _mrtrContinuations[correlationId] = new MrtrContinuation(handlerTask, mrtrContext, exchange, handlerCts);
+            storedContinuation = true;
 
             return SerializeIncompleteResult(incompleteResult);
         }
@@ -1415,9 +1417,9 @@ internal sealed partial class McpServerImpl : McpServer
             // handlerCts.Cancel(). This eliminates the ObjectDisposedException race.
             registration.Dispose();
 
-            // Dispose the CTS only when the handler has completed (no continuation stored).
-            // If a continuation was stored, disposal or the next retry owns the CTS lifetime.
-            if (handlerTask.IsCompleted)
+            // Dispose the CTS only when no continuation was stored (handler completed or threw).
+            // If a continuation was stored, the next retry or DisposeAsync owns the CTS lifetime.
+            if (!storedContinuation)
             {
                 handlerCts.Dispose();
             }
