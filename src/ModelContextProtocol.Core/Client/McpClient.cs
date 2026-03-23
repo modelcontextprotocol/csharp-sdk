@@ -70,5 +70,4 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
-
 }

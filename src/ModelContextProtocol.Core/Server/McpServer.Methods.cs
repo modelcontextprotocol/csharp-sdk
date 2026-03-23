@@ -280,13 +280,6 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
         ThrowIfRootsUnsupported();
 
-        return RequestRootsCoreAsync(requestParams, cancellationToken);
-    }
-
-    private ValueTask<ListRootsResult> RequestRootsCoreAsync(
-        ListRootsRequestParams requestParams,
-        CancellationToken cancellationToken)
-    {
         return SendRequestAsync(
             RequestMethods.RootsList,
             requestParams,

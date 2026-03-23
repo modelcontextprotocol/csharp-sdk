@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -488,7 +487,6 @@ internal sealed partial class McpClientImpl : McpClient
 
         // Advertise task capabilities
         _options.Capabilities ??= new();
-
         var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
         tasksCapability.List ??= new ListMcpTasksCapability();
         tasksCapability.Cancel ??= new CancelMcpTasksCapability();

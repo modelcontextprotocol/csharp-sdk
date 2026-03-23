@@ -87,5 +87,4 @@ public abstract partial class McpServer : McpSession
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     public abstract Task RunAsync(CancellationToken cancellationToken = default);
-
 }
