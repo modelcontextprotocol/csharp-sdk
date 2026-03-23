@@ -109,6 +109,13 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Description = "A tool that does not use MRTR"
                 }),
             McpServerTool.Create(
+                static string (McpServer server) => server.IsMrtrSupported.ToString(),
+                new McpServerToolCreateOptions
+                {
+                    Name = "check-mrtr-tool",
+                    Description = "Returns IsMrtrSupported"
+                }),
+            McpServerTool.Create(
                 static string (McpServer _) => throw new McpProtocolException("Tool validation failed", McpErrorCode.InvalidParams),
                 new McpServerToolCreateOptions
                 {
@@ -815,19 +822,20 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
     }
 
     [Fact]
-    public async Task LowLevel_ToolFallsBackGracefully_WithoutMrtr()
+    public async Task LowLevel_IsMrtrSupported_ReturnsTrue_WithoutMrtrNegotiation()
     {
         await StartAsync();
         await InitializeWithoutMrtrAsync();
 
-        // Call the lowlevel-tool that checks IsMrtrSupported and returns a fallback message
-        var response = await PostJsonRpcAsync(CallTool("lowlevel-tool"));
+        // On a non-stateless HTTP server, IsMrtrSupported returns true even without
+        // MRTR negotiation because the backcompat layer can resolve IncompleteResultException
+        // via standard JSON-RPC server-to-client requests.
+        var response = await PostJsonRpcAsync(CallTool("check-mrtr-tool"));
         var rpcResponse = await AssertSingleSseResponseAsync(response);
 
         var callToolResult = AssertType<CallToolResult>(rpcResponse.Result);
         var content = Assert.Single(callToolResult.Content);
-        var text = Assert.IsType<TextContentBlock>(content).Text;
-        Assert.Equal("lowlevel-unsupported:MRTR is not available", text);
+        Assert.Equal("True", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     [Fact]

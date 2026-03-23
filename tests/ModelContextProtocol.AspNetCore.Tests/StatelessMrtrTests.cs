@@ -25,7 +25,8 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         TransportMode = HttpTransportMode.StreamableHttp,
     };
 
-    private Task StartAsync() => StartAsync(configureOptions: null);
+    private Task StartAsync() => StartAsync(
+        options => options.ExperimentalProtocolVersion = "2026-06-XX");
 
     private async Task StartAsync(Action<McpServerOptions>? configureOptions, params McpServerTool[] additionalTools)
     {
@@ -249,7 +250,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
 
     private McpClientOptions CreateClientOptionsWithAllHandlers()
     {
-        var options = new McpClientOptions();
+        var options = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         options.Handlers.ElicitationHandler = (request, ct) =>
         {
             return new ValueTask<ElicitResult>(new ElicitResult
@@ -353,7 +354,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         var samplingHandlerCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var rootsHandlerCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var options = new McpClientOptions();
+        var options = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         options.Handlers.ElicitationHandler = async (request, ct) =>
         {
             elicitHandlerCalled.TrySetResult();
@@ -409,7 +410,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         int samplingCalls = 0;
         int elicitCalls = 0;
 
-        var options = new McpClientOptions();
+        var options = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         options.Handlers.SamplingHandler = (request, progress, ct) =>
         {
             Interlocked.Increment(ref samplingCalls);
@@ -642,5 +643,54 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("resumed:deferred-work", text);
+    }
+
+    [Fact]
+    public async Task Stateless_IncompleteResultException_WithoutMrtrClient_ReturnsError()
+    {
+        // When a tool throws IncompleteResultException in stateless mode and the client doesn't
+        // support MRTR, nobody can drive the retry loop: the server can't send JSON-RPC requests
+        // to the client (stateless), and the client doesn't recognize IncompleteResult (no MRTR).
+        // IsMrtrSupported correctly returns false for this configuration.
+        var nativeToolWithoutGuard = McpServerTool.Create(
+            static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            {
+                var inputResponses = context.Params!.InputResponses;
+                if (inputResponses is not null)
+                {
+                    return $"resolved:{inputResponses["user_input"].ElicitationResult?.Action}";
+                }
+
+                // IsMrtrSupported is false in stateless + non-MRTR, but tool ignores the check
+                throw new IncompleteResultException(
+                    inputRequests: new Dictionary<string, InputRequest>
+                    {
+                        ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "Please confirm",
+                            RequestedSchema = new()
+                        })
+                    },
+                    requestState: "awaiting-confirmation");
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "native-tool-no-guard",
+                Description = "MRTR-native tool that doesn't check IsMrtrSupported"
+            });
+
+        await StartAsync(
+            options => options.ExperimentalProtocolVersion = "2026-06-XX",
+            nativeToolWithoutGuard);
+
+        // Client does NOT opt in to MRTR
+        await using var client = await ConnectAsync();
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
+            client.CallToolAsync("native-tool-no-guard",
+                cancellationToken: TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Contains("stateless", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MRTR", ex.Message);
     }
 }

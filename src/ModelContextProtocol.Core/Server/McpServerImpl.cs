@@ -1189,6 +1189,17 @@ internal sealed partial class McpServerImpl : McpServer
         _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
 
     /// <summary>
+    /// Checks whether the low-level MRTR API (<see cref="IncompleteResultException"/>) is available
+    /// for the current request. Returns <see langword="true"/> in all cases except stateless mode
+    /// with a client that hasn't negotiated MRTR — that's the one configuration where nobody can
+    /// drive the retry loop (the server can't send JSON-RPC requests to the client, and the client
+    /// doesn't know about <c>IncompleteResult</c>).
+    /// </summary>
+    internal bool IsLowLevelMrtrAvailable() =>
+        ClientSupportsMrtr() ||
+        _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+
+    /// <summary>
     /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync,
     /// an IncompleteResult is returned early and the handler is suspended until the retry arrives.
     /// </summary>
@@ -1341,12 +1352,21 @@ internal sealed partial class McpServerImpl : McpServer
             }
             catch (IncompleteResultException ex)
             {
-                // If the client supports MRTR or the server is stateless, serialize and return directly.
-                // In stateless mode, the tool handler has explicitly chosen to return an IncompleteResult
-                // via the low-level API, so we trust that decision regardless of negotiated version.
-                if (ClientSupportsMrtr() || _sessionTransport is StreamableHttpServerTransport { Stateless: true })
+                // If the client natively supports MRTR, serialize and return directly —
+                // the client will drive the retry loop.
+                if (ClientSupportsMrtr())
                 {
                     return SerializeIncompleteResult(ex.IncompleteResult);
+                }
+
+                // In stateless mode without MRTR, the server can't resolve input requests via
+                // JSON-RPC (no persistent session for server-to-client requests), and the client
+                // won't recognize the IncompleteResult. This is the one unsupported configuration.
+                if (_sessionTransport is StreamableHttpServerTransport { Stateless: true })
+                {
+                    throw new McpException(
+                        "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
+                        "MRTR-native tools require either an MRTR-capable client or a stateful server for backward-compatible resolution.", ex);
                 }
 
                 // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.

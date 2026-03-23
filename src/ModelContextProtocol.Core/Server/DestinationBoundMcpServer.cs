@@ -22,7 +22,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     /// </summary>
     internal MrtrContext? ActiveMrtrContext { get; set; }
 
-    public override bool IsMrtrSupported => server.ClientSupportsMrtr();
+    public override bool IsMrtrSupported => server.IsLowLevelMrtrAvailable();
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 

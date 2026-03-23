@@ -255,20 +255,31 @@ public class McpClientMrtrLowLevelTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task IsMrtrSupported_ReturnsFalse_WhenClientNotExperimental()
+    public async Task IsMrtrSupported_ReturnsTrue_WhenClientNotExperimental_BackcompatAvailable()
     {
         StartServer();
-        // Client does NOT set ExperimentalProtocolVersion
+        // Client does NOT set ExperimentalProtocolVersion, but backcompat resolves the tool
         var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            return new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["answer"] = JsonDocument.Parse("\"backcompat\"").RootElement.Clone()
+                }
+            });
+        };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // The lowlevel-elicit tool checks IsMrtrSupported and returns a fallback message
+        // The lowlevel-elicit tool checks IsMrtrSupported — now true with backcompat
         var result = await client.CallToolAsync("lowlevel-elicit",
             cancellationToken: TestContext.Current.CancellationToken);
 
         var content = Assert.Single(result.Content);
-        Assert.Equal("fallback:MRTR not supported", Assert.IsType<TextContentBlock>(content).Text);
+        Assert.Equal("completed:accept:backcompat", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     [Fact]
