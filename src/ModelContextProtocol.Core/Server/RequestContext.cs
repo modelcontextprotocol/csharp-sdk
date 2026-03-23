@@ -18,12 +18,12 @@ public sealed class RequestContext<TParams> : MessageContext
     /// </summary>
     /// <param name="server">The server with which this instance is associated.</param>
     /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
-    /// <param name="params">The parameters associated with this request.</param>
+    /// <param name="parameters">The parameters associated with this request.</param>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
-    public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest, TParams @params)
+    public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest, TParams parameters)
         : base(server, jsonRpcRequest)
     {
-        Params = @params;
+        Params = parameters;
     }
 
     /// <summary>
@@ -32,7 +32,7 @@ public sealed class RequestContext<TParams> : MessageContext
     /// <param name="server">The server with which this instance is associated.</param>
     /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
-    [Obsolete("Use the constructor that accepts a params argument.")]
+    [Obsolete(Obsoletions.RequestContextParamsConstructor_Message, DiagnosticId = Obsoletions.RequestContextParamsConstructor_DiagnosticId, UrlFormat = Obsoletions.RequestContextParamsConstructor_Url)]
     public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
         : base(server, jsonRpcRequest)
     {
