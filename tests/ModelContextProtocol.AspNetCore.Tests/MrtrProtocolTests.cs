@@ -783,7 +783,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         // Should be a JSON-RPC error, not an IncompleteResult
         var errorMessage = Assert.IsType<JsonRpcError>(message);
         Assert.NotNull(errorMessage.Error);
-        Assert.Contains("Multi Round-Trip Requests", errorMessage.Error.Message);
+        Assert.Contains("without input requests", errorMessage.Error.Message);
     }
 
     [Fact]
