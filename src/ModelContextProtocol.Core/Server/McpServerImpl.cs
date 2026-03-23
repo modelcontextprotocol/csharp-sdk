@@ -210,7 +210,16 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
-        // Cancel all suspended MRTR handlers stored in continuations (waiting for retries).
+        // Dispose the session handler first — cancels message processing and waits for all
+        // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
+        // After this returns, no new requests can be processed and no new MRTR continuations
+        // can be created, so _mrtrContinuations is effectively frozen.
+        _taskCancellationTokenProvider?.Dispose();
+        _disposables.ForEach(d => d());
+        await _sessionHandler.DisposeAsync().ConfigureAwait(false);
+
+        // Cancel all orphaned MRTR handlers still suspended in continuations (waiting for
+        // retries that will never arrive now that the session handler is disposed).
         List<CancellationTokenSource>? orphanedCts = null;
         int cancelledCount = 0;
         foreach (var kvp in _mrtrContinuations)
@@ -228,13 +237,6 @@ internal sealed partial class McpServerImpl : McpServer
             MrtrContinuationsCancelled(cancelledCount);
         }
 
-        // Dispose the session handler — cancels message processing and waits for all in-flight
-        // request handlers (including retries in AwaitMrtrHandlerAsync). After this returns,
-        // no new MRTR handlers can start.
-        _taskCancellationTokenProvider?.Dispose();
-        _disposables.ForEach(d => d());
-        await _sessionHandler.DisposeAsync().ConfigureAwait(false);
-
         // Wait for all MRTR handler tasks to complete using the same inFlightCount + TCS
         // pattern as McpSessionHandler.ProcessMessagesCoreAsync. The count started at 1
         // (for DisposeAsync itself); decrementing it here triggers the drain if handlers
@@ -244,8 +246,7 @@ internal sealed partial class McpServerImpl : McpServer
             await _allMrtrHandlersCompleted.Task.ConfigureAwait(false);
         }
 
-        // Dispose orphaned CTS objects from continuations that weren't picked up by retries.
-        // All handler tasks have completed, so no callbacks can fire.
+        // Dispose orphaned CTS objects. All handler tasks have completed, so no callbacks can fire.
         if (orphanedCts is not null)
         {
             foreach (var cts in orphanedCts)
