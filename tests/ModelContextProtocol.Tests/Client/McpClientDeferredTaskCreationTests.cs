@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.ComponentModel;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -31,7 +32,8 @@ public class McpClientDeferredTaskCreationTests : ClientServerTestBase
             options.ExperimentalProtocolVersion = "2026-06-XX";
         });
 
-        mcpServerBuilder.WithTools([
+        mcpServerBuilder.WithTools<DeferredTaskToolType>()
+        .WithTools([
             // Tool that elicits before creating a task, then does work in background.
             McpServerTool.Create(
                 async (string vmName, McpServer server, CancellationToken ct) =>
@@ -283,5 +285,50 @@ public class McpClientDeferredTaskCreationTests : ClientServerTestBase
 
         var taskStatus = await WaitForTaskCompletionAsync(result.Task.TaskId);
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
+    }
+
+    [Fact]
+    public async Task DeferredTaskCreation_AttributeBased_ElicitThenCreateTask()
+    {
+        StartServer();
+        await using var client = await CreateMcpClientForServer(CreateClientOptions());
+
+        var result = await CallToolWithTaskMetadataAsync(client, "provision_vm",
+            new Dictionary<string, object?> { ["vmName"] = "test-vm" });
+
+        // The attribute-based tool should create a task after MRTR elicitation.
+        Assert.NotNull(result.Task);
+        Assert.NotEmpty(result.Task.TaskId);
+
+        var taskStatus = await WaitForTaskCompletionAsync(result.Task.TaskId);
+        Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
+    }
+
+    /// <summary>
+    /// Attribute-based tool type demonstrating deferred task creation.
+    /// Matches the pattern shown in the MRTR conceptual documentation.
+    /// </summary>
+    [McpServerToolType]
+    private sealed class DeferredTaskToolType
+    {
+        [McpServerTool(DeferTaskCreation = true, TaskSupport = ToolTaskSupport.Optional)]
+        [Description("Provisions a VM with user confirmation")]
+        public static async Task<string> ProvisionVm(
+            string vmName, McpServer server, CancellationToken ct)
+        {
+            var confirmation = await server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = $"Provision VM '{vmName}'? This will incur costs.",
+                RequestedSchema = new()
+            }, ct);
+
+            if (confirmation.Action != "confirm")
+                return "Cancelled by user.";
+
+            await server.CreateTaskAsync(ct);
+
+            await Task.Delay(50, ct);
+            return $"VM '{vmName}' provisioned successfully.";
+        }
     }
 }

@@ -85,14 +85,4 @@ public sealed class JsonRpcMessageContext
     /// to flow the protocol version header so the server can determine client capabilities.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
-
-    /// <summary>
-    /// Gets or sets the MRTR context for this request, if any.
-    /// </summary>
-    /// <remarks>
-    /// Set by <see cref="McpServer"/> when an MRTR-aware handler invocation is in progress,
-    /// so that the per-request <see cref="DestinationBoundMcpServer"/> can intercept
-    /// server-to-client requests (e.g. ElicitAsync, SampleAsync) and route them through the MRTR mechanism.
-    /// </remarks>
-    internal MrtrContext? MrtrContext { get; set; }
 }

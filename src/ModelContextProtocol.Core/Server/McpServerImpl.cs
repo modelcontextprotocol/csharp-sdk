@@ -30,6 +30,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
+    private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
 
     // Track MRTR handler tasks using the same inFlightCount + TCS pattern as
     // McpSessionHandler.ProcessMessagesCoreAsync. Starts at 1 for DisposeAsync itself.
@@ -822,11 +823,13 @@ internal sealed partial class McpServerImpl : McpServer
                 }
                 catch (Exception e)
                 {
-                    // Skip logging for OperationCanceledException during server disposal —
-                    // MRTR handler cancellation during session teardown is expected, not an error.
+                    // Skip logging for OperationCanceledException when the cancellation token
+                    // is signaled — tool handler cancellation is an expected lifecycle event
+                    // (client request cancellation, session shutdown, MRTR teardown), not a
+                    // tool error.
                     // Skip logging for IncompleteResultException — it's normal MRTR control flow,
                     // not an error (the low-level API uses it to signal an IncompleteResult).
-                    if (!(e is OperationCanceledException && _disposed) && e is not IncompleteResultException)
+                    if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not IncompleteResultException)
                     {
                         ToolCallError(request.Params?.Name ?? string.Empty, e);
                     }
@@ -1075,14 +1078,14 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Creates a per-request <see cref="DestinationBoundMcpServer"/> and attaches any
-    /// MRTR context that was set on the request by <see cref="WrapHandlerWithMrtr"/>.
+    /// Creates a per-request <see cref="DestinationBoundMcpServer"/> and attaches any pending
+    /// MRTR context that was stored by <see cref="WrapHandlerWithMrtr"/>.
     /// </summary>
     private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
     {
         var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport);
 
-        if (jsonRpcRequest.Context?.MrtrContext is { } mrtrContext)
+        if (_mrtrContextsByRequestId.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
         {
             server.ActiveMrtrContext = mrtrContext;
         }
@@ -1288,10 +1291,19 @@ internal sealed partial class McpServerImpl : McpServer
             // calling Cancel/Dispose inside locks or Interlocked guards.
             var handlerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            // Flow the MrtrContext to the handler via the request's Context, where
-            // CreateDestinationBoundServer will pick it up to set on the per-request server.
-            (request.Context ??= new()).MrtrContext = mrtrContext;
-            var handlerTask = originalHandler(request, handlerCts.Token);
+            // Store the MrtrContext so CreateDestinationBoundServer can pick it up and set it
+            // on the per-request DestinationBoundMcpServer. This is picked up synchronously
+            // before any await, so the finally cleanup is safe.
+            _mrtrContextsByRequestId[request.Id] = mrtrContext;
+            Task<JsonNode?> handlerTask;
+            try
+            {
+                handlerTask = originalHandler(request, handlerCts.Token);
+            }
+            finally
+            {
+                _mrtrContextsByRequestId.TryRemove(request.Id, out _);
+            }
 
             // Wrap handler state into a continuation for lifecycle management across retries.
             var continuation = new MrtrContinuation(handlerCts, handlerTask, mrtrContext);

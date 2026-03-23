@@ -331,6 +331,89 @@ When a server has MRTR enabled but the connected client does not:
 - The low-level API reports `IsMrtrSupported == false`, allowing the tool to provide a custom fallback message.
 - Throwing `IncompleteResultException` when MRTR is not supported results in a JSON-RPC error being returned to the client.
 
+## Transitioning from MRTR to Tasks
+
+<!-- mlc-disable-next-line -->
+> [!WARNING]
+> Deferred task creation depends on both the [MRTR](xref:mrtr) and [Tasks](xref:tasks) experimental features.
+
+Some tools need user input before they can decide whether to start a long-running background task. For example, a VM provisioning tool might confirm costs with the user before committing to a task that takes minutes. **Deferred task creation** lets a tool perform ephemeral MRTR exchanges first, then transition to a background task only when ready.
+
+### How it works
+
+1. The tool sets `DeferTaskCreation = true` on its attribute or options.
+2. When the client sends task metadata with the `tools/call` request, the SDK runs the tool through the normal MRTR-wrapped path instead of creating a task immediately.
+3. The tool calls `ElicitAsync` or `SampleAsync` as usual — these use MRTR (incomplete result / retry cycles).
+4. When the tool is ready, it calls `await server.CreateTaskAsync(cancellationToken)` to transition to a background task.
+5. After `CreateTaskAsync`, the MRTR phase ends. Any subsequent `ElicitAsync` or `SampleAsync` calls use the task's own `input_required` / `tasks/input_response` mechanism instead.
+6. If the tool returns without calling `CreateTaskAsync`, a normal (non-task) result is sent to the client.
+
+### Server example
+
+```csharp
+McpServerTool.Create(
+    async (string vmName, McpServer server, CancellationToken ct) =>
+    {
+        // Phase 1: Ephemeral MRTR — confirm with user before starting expensive work.
+        var confirmation = await server.ElicitAsync(new ElicitRequestParams
+        {
+            Message = $"Provision VM '{vmName}'? This will incur costs.",
+            RequestedSchema = new()
+        }, ct);
+
+        if (confirmation.Action != "confirm")
+        {
+            return "Cancelled by user.";
+        }
+
+        // Phase 2: Transition to a background task.
+        await server.CreateTaskAsync(ct);
+
+        // Phase 3: Background work — runs as a task, client polls for status.
+        await Task.Delay(TimeSpan.FromMinutes(5), ct);
+        return $"VM '{vmName}' provisioned successfully.";
+    },
+    new McpServerToolCreateOptions
+    {
+        Name = "provision-vm",
+        Description = "Provisions a VM with user confirmation",
+        DeferTaskCreation = true,
+        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional },
+    })
+```
+
+The attribute-based equivalent uses `DeferTaskCreation` on <xref:ModelContextProtocol.Server.McpServerToolAttribute>:
+
+```csharp
+[McpServerTool(DeferTaskCreation = true, TaskSupport = ToolTaskSupport.Optional)]
+[Description("Provisions a VM with user confirmation")]
+public static async Task<string> ProvisionVm(
+    string vmName, McpServer server, CancellationToken ct)
+{
+    var confirmation = await server.ElicitAsync(new ElicitRequestParams
+    {
+        Message = $"Provision VM '{vmName}'? This will incur costs.",
+        RequestedSchema = new()
+    }, ct);
+
+    if (confirmation.Action != "confirm")
+        return "Cancelled by user.";
+
+    await server.CreateTaskAsync(ct);
+
+    await Task.Delay(TimeSpan.FromMinutes(5), ct);
+    return $"VM '{vmName}' provisioned successfully.";
+}
+```
+
+### Key points
+
+- **One-way transition**: Once `CreateTaskAsync` is called, the tool cannot go back to ephemeral MRTR. All subsequent input requests use the task workflow.
+- **Optional task creation**: A `DeferTaskCreation` tool can return a normal result without ever calling `CreateTaskAsync`. The tool decides at runtime whether to create a task.
+- **No task metadata, no deferral**: If the client calls the tool without task metadata, the tool runs normally with MRTR — `DeferTaskCreation` has no effect.
+
+For more details on task configuration and lifecycle, see the [Tasks](xref:tasks) documentation.
+
 ## Choosing between high-level and low-level APIs
 
 | Consideration | High-level API | Low-level API |
