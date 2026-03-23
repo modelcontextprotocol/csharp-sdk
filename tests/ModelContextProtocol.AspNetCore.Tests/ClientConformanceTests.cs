@@ -121,10 +121,6 @@ public class ClientConformanceTests
             );
         }
 
-        // Ensure all redirected stdout/stderr events have been dispatched before
-        // the test completes and ITestOutputHelper becomes invalid.
-        process.WaitForExit();
-
         var output = outputBuilder.ToString();
         var error = errorBuilder.ToString();
         var success = process.ExitCode == 0 || HasOnlyWarnings(output, error);

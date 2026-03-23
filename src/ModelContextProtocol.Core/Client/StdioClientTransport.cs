@@ -238,13 +238,14 @@ public sealed partial class StdioClientTransport : IClientTransport
                     process.KillTree(shutdownTimeout);
                 }
 
-                // When a process has exited either on it's own or via KillTree, we must
-                // call WaitForExit() to ensure all redirected stderr/stdout events have
-                // been dispatched, otherwise ErrorDataReceived handlers may fire after 
-                // Dispose().
-                // The HasExited check is here to avoid waiting forever on a process that
-                // failed to be killed.
-                if (HasExited(process))
+                // When the process exited on its own, call WaitForExit() to flush
+                // any remaining ErrorDataReceived/OutputDataReceived events.
+                // We skip this after KillTree because the parameterless WaitForExit()
+                // blocks until all redirected output pipe handles are closed, which
+                // hangs when grandchild processes (e.g. from cmd.exe /c npx) inherited
+                // the handles. Late-firing events after KillTree are safe because the
+                // ErrorDataReceived handler is protected with try/catch.
+                if (!processRunning && HasExited(process))
                 {
                     process.WaitForExit();
                 }

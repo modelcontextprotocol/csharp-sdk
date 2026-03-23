@@ -175,10 +175,6 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             );
         }
 
-        // Ensure all redirected stdout/stderr events have been dispatched before
-        // the test completes and ITestOutputHelper becomes invalid.
-        process.WaitForExit();
-
         return (
             Success: process.ExitCode == 0,
             Output: outputBuilder.ToString(),
