@@ -858,8 +858,19 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
 
-        // Allow a moment for the async cancellation to propagate through the handler task.
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Poll for the async cancellation to propagate through the handler task.
+        // Under thread pool starvation, this can take significantly longer than 100ms.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            if (MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("pending MRTR continuation"))
+                || DateTime.UtcNow >= deadline)
+            {
+                break;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
 
         // 3. Verify that the MRTR cancellation was logged at Debug level.
         var mrtrCancelledLog = MockLoggerProvider.LogMessages

@@ -1249,9 +1249,9 @@ internal sealed partial class McpServerImpl : McpServer
                         inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
                     }
 
-                    var nextExchangeTask = existingContinuation.MrtrContext.ResetForNextExchange(existingContinuation.PendingExchange!);
-
                     var exchange = existingContinuation.PendingExchange!;
+                    var nextExchangeTask = existingContinuation.MrtrContext.ResetForNextExchange(exchange);
+
                     if (inputResponses is not null &&
                         inputResponses.TryGetValue(exchange.Key, out var response))
                     {

@@ -601,21 +601,21 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         // Start the tool call in the background.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
         var callTask = client.CallToolAsync("cancellation-test-tool", cancellationToken: cts.Token).AsTask();
 
         // Wait for the handler to start on the server.
-        await _handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await _handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Wait for the MRTR round trip to reach the client's elicitation handler.
-        await elicitHandlerCalled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await elicitHandlerCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Dispose the server — HandlerCts.Cancel() should trigger the handler's CancellationToken.
         await Server.DisposeAsync();
 
         // Verify the handler's CancellationToken was actually cancelled via HandlerCts,
         // not just the exchange ResponseTcs.TrySetCanceled().
-        await _handlerTokenCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await _handlerTokenCancelled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
@@ -639,7 +639,7 @@ public class McpClientMrtrTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer(clientOptions);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
         var callTask = client.CallToolAsync(
             "elicit-then-block-tool",
             new Dictionary<string, object?> { ["message"] = "test" },
@@ -647,7 +647,7 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         // Wait for the handler to resume after ElicitAsync — at this point the retry
         // request is in-flight (server is awaiting WhenAny in AwaitMrtrHandlerAsync).
-        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Cancel the client's token. The client is inside _sessionHandler.SendRequestAsync
         // awaiting the retry response. RegisterCancellation fires and sends
@@ -684,7 +684,7 @@ public class McpClientMrtrTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken).AsTask();
 
         // Wait for handler to resume after the first ElicitAsync.
-        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Send a stale cancellation notification for a non-existent request ID.
         // This simulates a delayed notification for the original request that already completed.
@@ -718,14 +718,14 @@ public class McpClientMrtrTests : ClientServerTestBase
 
         // Start the tool call that calls ElicitAsync, then blocks on _releaseHandler.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
         _ = client.CallToolAsync(
             "dispose-wait-tool",
             new Dictionary<string, object?> { ["message"] = "dispose-wait-test" },
             cancellationToken: cts.Token);
 
         // Wait for the handler to resume after ElicitAsync — it's now blocking on _releaseHandler.
-        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Dispose the server. The handler is still running (blocked on _releaseHandler).
         // Release the handler after a delay — DisposeAsync must wait for it.
