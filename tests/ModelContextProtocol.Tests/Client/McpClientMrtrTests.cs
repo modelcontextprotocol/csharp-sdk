@@ -29,6 +29,7 @@ public class McpClientMrtrTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+        services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
@@ -850,5 +851,45 @@ public class McpClientMrtrTests : ClientServerTestBase
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
+    }
+
+    [Fact]
+    public async Task ClientHandlerException_DuringMrtrInputResolution_SurfacesToCaller()
+    {
+        // When the CLIENT's elicitation handler throws during MRTR input resolution,
+        // the retry never reaches the server — the server's handler remains suspended
+        // on ElicitAsync(). The exception should surface to the CallToolAsync caller,
+        // and the server's orphaned handler should be cleaned up on disposal.
+        // This is a fundamental MRTR limitation: the client has no channel to communicate
+        // input resolution failures back to the server.
+        StartServer();
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            throw new InvalidOperationException("Client-side elicitation failure");
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        // The client handler throws during input resolution, so the exception
+        // escapes ResolveInputRequestAsync and surfaces directly to the caller.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await client.CallToolAsync("elicitation-tool",
+                new Dictionary<string, object?> { ["message"] = "Will fail" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Client-side elicitation failure", ex.Message);
+
+        // Dispose the server to trigger cleanup of the orphaned MRTR continuation.
+        // The server should cancel the handler suspended on ElicitAsync() and log
+        // the cancelled continuation at Debug level.
+        await Server.DisposeAsync();
+
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Debug &&
+            m.Message.Contains("Cancelled") &&
+            m.Message.Contains("MRTR continuation"));
     }
 }

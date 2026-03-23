@@ -219,6 +219,67 @@ public class McpClientMrtrCompatTests : ClientServerTestBase
                     Name = "native-roots",
                     Description = "MRTR-native tool requesting roots/list"
                 }),
+            McpServerTool.Create(
+                static string (RequestContext<CallToolRequestParams> context) =>
+                {
+                    // Always throws IncompleteResultException, never completes.
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Infinite loop",
+                                RequestedSchema = new()
+                            })
+                        },
+                        requestState: $"attempt-{context.Params!.RequestState ?? "0"}");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "native-always-incomplete",
+                    Description = "MRTR-native tool that never completes"
+                }),
+            McpServerTool.Create(
+                static string (RequestContext<CallToolRequestParams> context) =>
+                {
+                    // Throws IncompleteResultException with empty inputRequests dict.
+                    throw new IncompleteResultException(new IncompleteResult
+                    {
+                        InputRequests = new Dictionary<string, InputRequest>(),
+                        RequestState = "some-state",
+                    });
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "native-empty-inputs",
+                    Description = "MRTR-native tool with empty inputRequests"
+                }),
+            McpServerTool.Create(
+                static string (RequestContext<CallToolRequestParams> context) =>
+                {
+                    var inputResponses = context.Params!.InputResponses;
+
+                    if (inputResponses is not null)
+                    {
+                        return "should-not-reach";
+                    }
+
+                    throw new IncompleteResultException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Will fail",
+                                RequestedSchema = new()
+                            })
+                        },
+                        requestState: "error-test");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "native-elicit-for-error",
+                    Description = "MRTR-native tool for testing error propagation"
+                }),
         ]);
     }
 
@@ -456,5 +517,80 @@ public class McpClientMrtrCompatTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("roots:MyProject", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_MrtrNativeAlwaysIncomplete_FailsAfterMaxRetries()
+    {
+        // Tool always throws IncompleteResultException. The backcompat layer should
+        // give up after 10 retry rounds and throw McpException.
+        int elicitCallCount = 0;
+        StartServer();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            elicitCallCount++;
+            return new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["value"] = JsonDocument.Parse($"\"{elicitCallCount}\"").RootElement.Clone()
+                }
+            });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CallToolAsync("native-always-incomplete",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("exceeded", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10", ex.Message);
+        Assert.Equal(10, elicitCallCount);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_MrtrNativeEmptyInputRequests_FailsWithMcpException()
+    {
+        // Tool throws IncompleteResultException with an empty inputRequests dictionary.
+        // The backcompat layer should detect this and throw McpException immediately.
+        StartServer();
+        var clientOptions = new McpClientOptions();
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CallToolAsync("native-empty-inputs",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("without input requests", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_MrtrNativeElicitation_ClientHandlerThrows_PropagatesError()
+    {
+        // Client's elicitation handler throws. The error should propagate through
+        // ResolveInputRequestAsync and surface as an McpException on the client.
+        StartServer();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+        {
+            throw new InvalidOperationException("Client-side elicitation failure");
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        // The client handler's exception message doesn't survive the JSON-RPC round-trip.
+        // The server sends elicitation → client handler throws → client returns JSON-RPC error
+        // → server receives it as McpProtocolException → server re-throws → becomes JSON-RPC
+        // error to the original call → client sees a double-wrapped error.
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CallToolAsync("native-elicit-for-error",
+                cancellationToken: TestContext.Current.CancellationToken));
     }
 }
