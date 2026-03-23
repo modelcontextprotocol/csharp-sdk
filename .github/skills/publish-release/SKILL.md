@@ -64,7 +64,7 @@ Re-categorize all PRs in the commit range (including any new ones from Step 3). 
 
 1. **Re-run the breaking change audit** using the **breaking-changes** skill if new PRs were found that may introduce breaks. Otherwise, carry forward the results from the prepare-release PR.
 2. **Re-categorize** all PRs into sections (What's Changed, Documentation, Tests, Infrastructure).
-3. **Re-attribute** co-authors for any new PRs.
+3. **Re-attribute** co-authors for any new PRs by harvesting `Co-authored-by` trailers from all commits in each PR.
 4. **Update acknowledgements** to include contributors from new PRs.
 
 ### Step 5: Validate README Code Samples
@@ -125,7 +125,7 @@ When the user requests revisions after the initial creation, always rewrite the 
 - **PR not found**: if the prepare-release PR cannot be identified, offer to proceed manually by specifying a version and target commit
 - **Draft already exists**: if a draft release with the same tag already exists, offer to update it
 - **PR spans categories**: categorize by primary intent
-- **Copilot timeline missing**: fall back to `Co-authored-by` trailers; if still unclear, use `@Copilot` as primary author
+- **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
 - **No breaking changes**: omit the Breaking Changes section entirely
 - **Single breaking change**: use the same numbered format as multiple
 
