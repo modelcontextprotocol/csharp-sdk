@@ -215,6 +215,20 @@ public sealed class McpServerToolCreateOptions
     public ToolExecution? Execution { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the tool defers task creation, allowing
+    /// ephemeral MRTR exchanges before committing to a background task via
+    /// <see cref="McpServer.CreateTaskAsync(CancellationToken)"/>.
+    /// </summary>
+    /// <remarks>
+    /// When <see langword="true"/> and the client provides task metadata, the handler runs through
+    /// the normal MRTR-wrapped path. The handler may call
+    /// <see cref="McpServer.CreateTaskAsync(CancellationToken)"/> to transition to a background task,
+    /// or it may return a normal result without creating a task.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public bool DeferTaskCreation { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -236,5 +250,6 @@ public sealed class McpServerToolCreateOptions
             Icons = Icons,
             Meta = Meta,
             Execution = Execution,
+            DeferTaskCreation = DeferTaskCreation,
         };
 }

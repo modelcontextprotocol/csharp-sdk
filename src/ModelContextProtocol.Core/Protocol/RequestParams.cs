@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -24,6 +25,52 @@ public abstract class RequestParams
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the responses to server-initiated input requests from a previous <see cref="IncompleteResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="IncompleteResult"/>.
+    /// Each key corresponds to a key from the <see cref="IncompleteResult.InputRequests"/> map, and
+    /// the value is the client's response to that input request.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
+    [JsonIgnore]
+    public IDictionary<string, InputResponse>? InputResponses
+    {
+        get => InputResponsesCore;
+        set => InputResponsesCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
+    [JsonPropertyName("inputResponses")]
+    internal IDictionary<string, InputResponse>? InputResponsesCore { get; set; }
+
+    /// <summary>
+    /// Gets or sets opaque request state echoed back from a previous <see cref="IncompleteResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="IncompleteResult"/>
+    /// that included a <see cref="IncompleteResult.RequestState"/> value. The client must echo back the
+    /// exact value without modification.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
+    [JsonIgnore]
+    public string? RequestState
+    {
+        get => RequestStateCore;
+        set => RequestStateCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
+    [JsonPropertyName("requestState")]
+    internal string? RequestStateCore { get; set; }
 
     /// <summary>
     /// Gets the opaque token that will be attached to any subsequent progress notifications.

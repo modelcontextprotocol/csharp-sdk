@@ -2,8 +2,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
@@ -27,6 +29,13 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly McpSessionHandler _sessionHandler;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
+    private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
+    private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
+
+    // Track MRTR handler tasks using the same inFlightCount + TCS pattern as
+    // McpSessionHandler.ProcessMessagesCoreAsync. Starts at 1 for DisposeAsync itself.
+    private int _mrtrInFlightCount = 1;
+    private readonly TaskCompletionSource<bool> _allMrtrHandlersCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
@@ -91,6 +100,9 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureLogging(options);
         ConfigureCompletion(options);
         ConfigureExperimentalAndExtensions(options);
+
+        // Wrap MRTR-eligible handlers AFTER all handler registration is complete.
+        ConfigureMrtr();
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -198,9 +210,35 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
+        // Dispose the session handler first — cancels message processing and waits for all
+        // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
+        // After this returns, no new requests can be processed and no new MRTR continuations
+        // can be created, so _mrtrContinuations is effectively frozen.
         _taskCancellationTokenProvider?.Dispose();
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
+
+        // Cancel all orphaned MRTR handlers still suspended in continuations (waiting for
+        // retries that will never arrive now that the session handler is disposed).
+        int cancelledCount = _mrtrContinuations.Count;
+        foreach (var continuation in _mrtrContinuations.Values)
+        {
+            continuation.CancelHandler();
+        }
+
+        if (cancelledCount > 0)
+        {
+            MrtrContinuationsCancelled(cancelledCount);
+        }
+
+        // Wait for all MRTR handler tasks to complete using the same inFlightCount + TCS
+        // pattern as McpSessionHandler.ProcessMessagesCoreAsync. The count started at 1
+        // (for DisposeAsync itself); decrementing it here triggers the drain if handlers
+        // are still in flight. ObserveHandlerCompletionAsync decrements for each handler.
+        if (Interlocked.Decrement(ref _mrtrInFlightCount) != 0)
+        {
+            await _allMrtrHandlersCompleted.Task.ConfigureAwait(false);
+        }
     }
 
     private void ConfigureInitialize(McpServerOptions options)
@@ -218,8 +256,11 @@ internal sealed partial class McpServerImpl : McpServer
                 // Negotiate a protocol version. If the server options provide one, use that.
                 // Otherwise, try to use whatever the client requested as long as it's supported.
                 // If it's not supported, fall back to the latest supported version.
+                // Also accept the experimental protocol version when the server has it configured.
                 string? protocolVersion = options.ProtocolVersion;
-                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion &&
+                    (McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ||
+                     (options.ExperimentalProtocolVersion is not null && clientProtocolVersion == options.ExperimentalProtocolVersion)) ?
                     clientProtocolVersion :
                     McpSessionHandler.LatestProtocolVersion;
 
@@ -707,7 +748,33 @@ internal sealed partial class McpServerImpl : McpServer
                                 McpErrorCode.InvalidParams);
                         }
 
-                        // Task augmentation requested - return CreateTaskResult
+                        // When DeferTaskCreation is enabled, run the handler through the normal
+                        // MRTR-wrapped path with deferred task context, allowing ephemeral MRTR
+                        // exchanges before the tool calls CreateTaskAsync().
+                        if (tool.DeferTaskCreation)
+                        {
+                            // Attach deferred task info to the MrtrContext so CreateTaskAsync()
+                            // and AwaitMrtrHandlerAsync can use it. The MrtrContext was already
+                            // created by WrapHandlerWithMrtr and set on the per-request server.
+                            if (request.Server is DestinationBoundMcpServer destinationServer &&
+                                destinationServer.ActiveMrtrContext is { } mrtrContext)
+                            {
+                                mrtrContext.DeferredTask = new DeferredTaskInfo
+                                {
+                                    TaskMetadata = taskMetadata,
+                                    OriginalRequestId = request.JsonRpcRequest.Id,
+                                    OriginalRequest = request.JsonRpcRequest,
+                                    TaskStore = taskStore!,
+                                    SendNotifications = sendNotifications,
+                                };
+                            }
+
+                            // Execute normally — the MRTR wrapper (WrapHandlerWithMrtr) will handle
+                            // racing between handler completion, MRTR exchanges, and task creation.
+                            return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        // Task augmentation requested with immediate creation
                         return await ExecuteToolAsTaskAsync(tool, request, taskMetadata, taskStore, sendNotifications, cancellationToken).ConfigureAwait(false);
                     }
 
@@ -756,9 +823,18 @@ internal sealed partial class McpServerImpl : McpServer
                 }
                 catch (Exception e)
                 {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    // Skip logging for OperationCanceledException when the cancellation token
+                    // is signaled — tool handler cancellation is an expected lifecycle event
+                    // (client request cancellation, session shutdown, MRTR teardown), not a
+                    // tool error.
+                    // Skip logging for IncompleteResultException — it's normal MRTR control flow,
+                    // not an error (the low-level API uses it to signal an IncompleteResult).
+                    if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not IncompleteResultException)
+                    {
+                        ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    }
 
-                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException)
+                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is IncompleteResultException)
                     {
                         throw;
                     }
@@ -972,7 +1048,7 @@ internal sealed partial class McpServerImpl : McpServer
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, jsonRpcRequest, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
+            handler(new(CreateDestinationBoundServer(jsonRpcRequest), jsonRpcRequest) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             McpRequestHandler<TParams, TResult> handler,
@@ -984,7 +1060,7 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest)
+                    new RequestContext<TParams>(CreateDestinationBoundServer(jsonRpcRequest), jsonRpcRequest)
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args
@@ -999,6 +1075,22 @@ internal sealed partial class McpServerImpl : McpServer
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Creates a per-request <see cref="DestinationBoundMcpServer"/> and attaches any pending
+    /// MRTR context that was stored by <see cref="WrapHandlerWithMrtr"/>.
+    /// </summary>
+    private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
+    {
+        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport);
+
+        if (_mrtrContextsByRequestId.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
+        {
+            server.ActiveMrtrContext = mrtrContext;
+        }
+
+        return server;
     }
 
     private void SetHandler<TParams, TResult>(
@@ -1089,6 +1181,453 @@ internal sealed partial class McpServerImpl : McpServer
             _ => Protocol.LoggingLevel.Emergency,
         };
 
+    /// <summary>
+    /// Checks whether the negotiated protocol version enables MRTR.
+    /// </summary>
+    internal bool ClientSupportsMrtr() =>
+        _negotiatedProtocolVersion is not null &&
+        _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
+
+    /// <summary>
+    /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync,
+    /// an IncompleteResult is returned early and the handler is suspended until the retry arrives.
+    /// </summary>
+    private void ConfigureMrtr()
+    {
+        // Wrap all methods that may trigger MRTR (server calling ElicitAsync/SampleAsync/RequestRootsAsync
+        // during handler execution). These methods may produce IncompleteResult if the handler needs input.
+        WrapHandlerWithMrtr(RequestMethods.ToolsCall);
+        WrapHandlerWithMrtr(RequestMethods.PromptsGet);
+        WrapHandlerWithMrtr(RequestMethods.ResourcesRead);
+    }
+
+    /// <summary>
+    /// Replaces an existing request handler entry with an MRTR-aware wrapper that supports
+    /// handler suspension and IncompleteResult responses.
+    /// </summary>
+    private void WrapHandlerWithMrtr(string method)
+    {
+        if (!_requestHandlers.TryGetValue(method, out var originalHandler))
+        {
+            return;
+        }
+
+        _requestHandlers[method] = async (request, cancellationToken) =>
+        {
+            // In stateless mode, each request creates a new server instance that never saw the
+            // initialize handshake, so _negotiatedProtocolVersion is null. Pick it up from the
+            // Mcp-Protocol-Version header that the transport layer flowed via JsonRpcMessageContext.
+            if (_negotiatedProtocolVersion is null &&
+                request.Context?.ProtocolVersion is { } headerProtocolVersion)
+            {
+                _negotiatedProtocolVersion = headerProtocolVersion;
+            }
+
+            // Check for MRTR retry: if requestState is present, look up the continuation.
+            if (request.Params is JsonObject paramsObj &&
+                paramsObj.TryGetPropertyValue("requestState", out var requestStateNode) &&
+                requestStateNode?.GetValueKind() == JsonValueKind.String &&
+                requestStateNode.GetValue<string>() is { } requestState)
+            {
+                if (_mrtrContinuations.TryRemove(requestState, out var existingContinuation))
+                {
+                    // High-level MRTR retry: resume the suspended handler with client responses.
+                    IDictionary<string, InputResponse>? inputResponses = null;
+                    if (paramsObj.TryGetPropertyValue("inputResponses", out var responsesNode) && responsesNode is not null)
+                    {
+                        inputResponses = JsonSerializer.Deserialize(responsesNode, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+                    }
+
+                    var nextExchangeTask = existingContinuation.MrtrContext.ResetForNextExchange(existingContinuation.PendingExchange!);
+
+                    var exchange = existingContinuation.PendingExchange!;
+                    if (inputResponses is not null &&
+                        inputResponses.TryGetValue(exchange.Key, out var response))
+                    {
+                        if (!exchange.ResponseTcs.TrySetResult(response))
+                        {
+                            throw new McpProtocolException(
+                                $"MRTR exchange '{exchange.Key}' was already completed (possibly cancelled).",
+                                McpErrorCode.InternalError);
+                        }
+                    }
+                    else
+                    {
+                        if (!exchange.ResponseTcs.TrySetException(
+                            new McpProtocolException($"Missing input response for key '{exchange.Key}'.", McpErrorCode.InvalidParams)))
+                        {
+                            throw new McpProtocolException(
+                                $"MRTR exchange '{exchange.Key}' was already completed (possibly cancelled).",
+                                McpErrorCode.InternalError);
+                        }
+                    }
+
+                    return await AwaitMrtrHandlerAsync(
+                        existingContinuation.HandlerTask, existingContinuation, nextExchangeTask, cancellationToken).ConfigureAwait(false);
+                }
+
+                // Low-level MRTR retry or invalid requestState: no continuation found.
+                // Fall through to the standard MRTR-aware invocation path below. The retry data
+                // (inputResponses, requestState) is already in the deserialized request params
+                // for low-level handlers to access, and the MrtrContext will be set up for
+                // high-level handlers that call ElicitAsync/SampleAsync.
+            }
+
+            // Not a retry, or a retry without a continuation - check if the client supports MRTR
+            // and the server is stateful (the high-level await path requires storing continuations).
+            if (!ClientSupportsMrtr() || _sessionTransport is StreamableHttpServerTransport { Stateless: true })
+            {
+                return await InvokeWithIncompleteResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Start a new MRTR-aware handler invocation.
+            var mrtrContext = new MrtrContext();
+
+            // Create a long-lived CTS for the handler that survives across retries.
+            // The original request's combinedCts will be disposed when this lambda returns,
+            // breaking the cancellation chain. This CTS keeps the handler cancellable.
+            // Like Kestrel's HttpContext.RequestAborted, the CTS is never disposed — Cancel()
+            // is thread-safe with itself, and not disposing avoids deadlock risks from
+            // calling Cancel/Dispose inside locks or Interlocked guards.
+            var handlerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            // Store the MrtrContext so CreateDestinationBoundServer can pick it up and set it
+            // on the per-request DestinationBoundMcpServer. This is picked up synchronously
+            // before any await, so the finally cleanup is safe.
+            _mrtrContextsByRequestId[request.Id] = mrtrContext;
+            Task<JsonNode?> handlerTask;
+            try
+            {
+                handlerTask = originalHandler(request, handlerCts.Token);
+            }
+            finally
+            {
+                _mrtrContextsByRequestId.TryRemove(request.Id, out _);
+            }
+
+            // Wrap handler state into a continuation for lifecycle management across retries.
+            var continuation = new MrtrContinuation(handlerCts, handlerTask, mrtrContext);
+
+            // Track the handler task for lifecycle management. The observer logs unhandled
+            // exceptions and decrements _mrtrInFlightCount when the handler completes,
+            // mirroring how McpSessionHandler tracks in-flight handlers.
+            Interlocked.Increment(ref _mrtrInFlightCount);
+            _ = ObserveHandlerCompletionAsync(handlerTask);
+
+            return await AwaitMrtrHandlerAsync(
+                handlerTask, continuation, mrtrContext.InitialExchangeTask, cancellationToken).ConfigureAwait(false);
+        };
+    }
+
+    /// <summary>
+    /// Invokes a handler and catches <see cref="IncompleteResultException"/> to convert it to an
+    /// <see cref="IncompleteResult"/> JSON response. In stateless mode, the exception is always
+    /// serialized because the server cannot determine client MRTR support. In stateful mode,
+    /// if MRTR is not supported, the exception is wrapped with a descriptive message.
+    /// </summary>
+    private async Task<JsonNode?> InvokeWithIncompleteResultHandlingAsync(
+        Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
+        JsonRpcRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await handler(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IncompleteResultException ex)
+        {
+            // Allow the IncompleteResult if the client supports MRTR or the server is stateless
+            // (in stateless mode, the tool handler has explicitly chosen to return an IncompleteResult
+            // via the low-level API, so we trust that decision regardless of negotiated version).
+            if (!ClientSupportsMrtr() && _sessionTransport is not StreamableHttpServerTransport { Stateless: true })
+            {
+                throw new McpException(
+                    "A tool handler returned an incomplete result, but the client does not support Multi Round-Trip Requests (MRTR). " +
+                    "Ensure both the server and client have ExperimentalProtocolVersion configured to enable MRTR.",
+                    ex);
+            }
+
+            return SerializeIncompleteResult(ex.IncompleteResult);
+        }
+    }
+
+    /// <summary>
+    /// Awaits the outcome of an MRTR-enabled handler invocation.
+    /// If the handler completes, returns its result. If an exchange arrives (handler needs input),
+    /// builds and returns an IncompleteResult and stores the continuation for future retries.
+    /// If the handler throws <see cref="IncompleteResultException"/>, the result is returned directly
+    /// without storing a continuation (low-level MRTR path).
+    /// When deferred task creation is enabled, also races against the task creation signal.
+    /// </summary>
+    private async Task<JsonNode?> AwaitMrtrHandlerAsync(
+        Task<JsonNode?> handlerTask,
+        MrtrContinuation continuation,
+        Task<MrtrExchange> exchangeTask,
+        CancellationToken cancellationToken)
+    {
+        // Link the current request's cancellation to the handler's long-lived CTS.
+        // On the initial call this is redundant (handlerCts is already linked to cancellationToken)
+        // but on retries this is critical: the retry's combinedCts cancellation must flow to the handler.
+        // This is how notifications/cancelled for the retry's request ID reaches the handler.
+        var registration = cancellationToken.Register(
+            static state => ((MrtrContinuation)state!).CancelHandler(), continuation);
+
+        try
+        {
+            var deferredTask = continuation.MrtrContext.DeferredTask;
+
+            // Race handler against MRTR exchange and optionally the deferred task creation signal.
+            Task completedTask;
+            if (deferredTask is not null)
+            {
+                completedTask = await Task.WhenAny(handlerTask, exchangeTask, deferredTask.SignalTask).ConfigureAwait(false);
+            }
+            else
+            {
+                completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
+            }
+
+            if (completedTask == handlerTask)
+            {
+                // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
+                return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+            }
+
+            if (deferredTask is not null && completedTask == deferredTask.SignalTask)
+            {
+                // Handler called CreateTaskAsync() — transition to task mode.
+                return await HandleDeferredTaskCreationAsync(handlerTask, continuation, deferredTask, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Exchange arrived - handler needs input from the client (high-level MRTR path).
+            var exchange = await exchangeTask.ConfigureAwait(false);
+
+            var correlationId = Guid.NewGuid().ToString("N");
+            var incompleteResult = new IncompleteResult
+            {
+                InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
+                RequestState = correlationId,
+            };
+
+            // Store the continuation so the retry can resume the handler.
+            continuation.PendingExchange = exchange;
+            _mrtrContinuations[correlationId] = continuation;
+
+            return SerializeIncompleteResult(incompleteResult);
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget observer for an MRTR handler task. Logs unhandled exceptions at Error
+    /// level and decrements <see cref="_mrtrInFlightCount"/> when the handler completes, following
+    /// the same in-flight tracking pattern as <see cref="McpSessionHandler"/>.
+    /// </summary>
+    private async Task ObserveHandlerCompletionAsync(Task<JsonNode?> handlerTask)
+    {
+        try
+        {
+            await handlerTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Handler cancelled — expected lifecycle event (disposal, client cancel, session shutdown).
+        }
+        catch (IncompleteResultException)
+        {
+            // Low-level MRTR: handler explicitly signaling an IncompleteResult. Not an error.
+        }
+        catch (Exception ex)
+        {
+            MrtrHandlerError(ex);
+        }
+        finally
+        {
+            if (Interlocked.Decrement(ref _mrtrInFlightCount) == 0)
+            {
+                _allMrtrHandlersCompleted.TrySetResult(true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Awaits a handler task, catching <see cref="IncompleteResultException"/> to convert it to an
+    /// <see cref="IncompleteResult"/> JSON response without storing a continuation.
+    /// </summary>
+    private static async Task<JsonNode?> AwaitHandlerWithIncompleteResultHandlingAsync(Task<JsonNode?> handlerTask)
+    {
+        try
+        {
+            return await handlerTask.ConfigureAwait(false);
+        }
+        catch (IncompleteResultException ex)
+        {
+            return SerializeIncompleteResult(ex.IncompleteResult);
+        }
+    }
+
+    private static JsonNode? SerializeIncompleteResult(IncompleteResult incompleteResult) =>
+        JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
+
+    /// <summary>
+    /// Handles the transition from ephemeral MRTR to task-based execution when the handler
+    /// calls <see cref="McpServer.CreateTaskAsync(CancellationToken)"/>.
+    /// Creates the task, acknowledges the handler, re-links the handler CTS to the task's
+    /// cancellation token, and returns CreateTaskResult to the client.
+    /// </summary>
+    private async Task<JsonNode?> HandleDeferredTaskCreationAsync(
+        Task<JsonNode?> handlerTask,
+        MrtrContinuation continuation,
+        DeferredTaskInfo deferredTask,
+        CancellationToken cancellationToken)
+    {
+        var taskStore = deferredTask.TaskStore;
+        var sendNotifications = deferredTask.SendNotifications;
+
+        Protocol.McpTask mcpTask;
+        CancellationToken taskCancellationToken;
+        try
+        {
+            // Create the task in the task store.
+            mcpTask = await taskStore.CreateTaskAsync(
+                deferredTask.TaskMetadata,
+                deferredTask.OriginalRequestId,
+                deferredTask.OriginalRequest,
+                SessionId,
+                cancellationToken).ConfigureAwait(false);
+
+            // Register the task for TTL-based cancellation.
+            taskCancellationToken = _taskCancellationTokenProvider!.RequestToken(mcpTask.TaskId, mcpTask.TimeToLive);
+
+            // Re-link the handler's CTS to the task's cancellation token so handler
+            // cancellation tracks the task lifecycle (TTL expiration, explicit cancel)
+            // instead of the original request.
+            taskCancellationToken.Register(
+                static state => ((MrtrContinuation)state!).CancelHandler(), continuation);
+
+            // Update task status to working.
+            var workingTask = await taskStore.UpdateTaskStatusAsync(
+                mcpTask.TaskId,
+                McpTaskStatus.Working,
+                null,
+                SessionId,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (sendNotifications)
+            {
+                _ = NotifyTaskStatusAsync(workingTask, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            // If task creation fails, propagate the exception to the handler
+            // so CreateTaskAsync() throws instead of blocking forever.
+            deferredTask.AcknowledgeFailure(ex);
+            throw;
+        }
+
+        // Acknowledge the handler so CreateTaskAsync() returns and the handler continues.
+        deferredTask.AcknowledgeTaskCreation(new DeferredTaskCreationResult
+        {
+            TaskId = mcpTask.TaskId,
+            SessionId = SessionId,
+            TaskStore = taskStore,
+            SendNotifications = sendNotifications,
+            NotifyTaskStatusFunc = NotifyTaskStatusAsync,
+            TaskCancellationToken = taskCancellationToken,
+        });
+
+        // Track the handler task in the background. The handler is already tracked by
+        // ObserveHandlerCompletionAsync (via _mrtrInFlightCount), so no additional
+        // in-flight tracking is needed here — just status updates.
+        _ = TrackDeferredHandlerTaskAsync(handlerTask, mcpTask, taskStore, sendNotifications);
+
+        // Return CreateTaskResult to the client.
+        var createTaskResult = new CallToolResult { Task = mcpTask };
+        return JsonSerializer.SerializeToNode(createTaskResult, McpJsonUtilities.JsonContext.Default.CallToolResult);
+    }
+
+    /// <summary>
+    /// Tracks a deferred handler task after task creation, updating task status and storing results.
+    /// The handler task is already tracked by <see cref="ObserveHandlerCompletionAsync"/> for
+    /// in-flight counting and error logging.
+    /// </summary>
+    private async Task TrackDeferredHandlerTaskAsync(
+        Task<JsonNode?> handlerTask,
+        Protocol.McpTask mcpTask,
+        IMcpTaskStore taskStore,
+        bool sendNotifications)
+    {
+        try
+        {
+            var resultNode = await handlerTask.ConfigureAwait(false);
+
+            CallToolResult? result = null;
+            if (resultNode is not null)
+            {
+                result = JsonSerializer.Deserialize(resultNode, McpJsonUtilities.JsonContext.Default.CallToolResult);
+            }
+
+            var finalStatus = result?.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;
+            var resultElement = result is not null
+                ? JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult)
+                : default;
+
+            var finalTask = await taskStore.StoreTaskResultAsync(
+                mcpTask.TaskId,
+                finalStatus,
+                resultElement,
+                SessionId,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (sendNotifications)
+            {
+                _ = NotifyTaskStatusAsync(finalTask, CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // After task creation, any handler cancellation is legitimate —
+            // task TTL expiration, explicit tasks/cancel, or session disposal.
+        }
+        catch (Exception ex)
+        {
+            // Error logging is already handled by ObserveHandlerCompletionAsync.
+            var errorResult = new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = $"Task execution failed: {ex.Message}" }],
+            };
+
+            try
+            {
+                var errorResultElement = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.JsonContext.Default.CallToolResult);
+                var failedTask = await taskStore.StoreTaskResultAsync(
+                    mcpTask.TaskId,
+                    McpTaskStatus.Failed,
+                    errorResultElement,
+                    SessionId,
+                    CancellationToken.None).ConfigureAwait(false);
+
+                if (sendNotifications)
+                {
+                    _ = NotifyTaskStatusAsync(failedTask, CancellationToken.None);
+                }
+            }
+            catch
+            {
+                // If we can't store the error result, the task will remain in "working" status.
+            }
+        }
+        finally
+        {
+            _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);
 
@@ -1106,6 +1645,12 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
     private partial void ReadResourceCompleted(string resourceUri);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cancelled {Count} pending MRTR continuation(s) during session disposal.")]
+    private partial void MrtrContinuationsCancelled(int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "An MRTR handler threw an unhandled exception.")]
+    private partial void MrtrHandlerError(Exception exception);
 
     /// <summary>
     /// Executes a tool call as a task and returns a CallToolTaskResult immediately.
@@ -1148,6 +1693,13 @@ internal sealed partial class McpServerImpl : McpServer
                 SendNotifications = sendNotifications,
                 NotifyTaskStatusFunc = NotifyTaskStatusAsync
             };
+
+            // Task-augmented execution is fire-and-forget; MRTR doesn't apply here because
+            // the original request was already answered with CreateTaskResult.
+            if (request.Server is DestinationBoundMcpServer destinationServer)
+            {
+                destinationServer.ActiveMrtrContext = null;
+            }
 
             try
             {

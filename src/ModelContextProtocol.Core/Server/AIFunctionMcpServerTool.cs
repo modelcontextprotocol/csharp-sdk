@@ -15,6 +15,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly bool _structuredOutputRequiresWrapping;
     private readonly IReadOnlyList<object> _metadata;
+    private readonly bool _deferTaskCreation;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -167,7 +168,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             tool.Execution.TaskSupport = ToolTaskSupport.Optional;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? [], options?.DeferTaskCreation ?? false);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -218,6 +219,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Execution ??= new ToolExecution();
                 newOptions.Execution.TaskSupport ??= taskSupport;
             }
+
+            if (toolAttr._deferTaskCreation is bool deferTaskCreation)
+            {
+                newOptions.DeferTaskCreation = deferTaskCreation;
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -235,7 +241,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata, bool deferTaskCreation)
     {
         ValidateToolName(tool.Name);
 
@@ -244,10 +250,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
+        _deferTaskCreation = deferTaskCreation;
     }
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
+
+    /// <inheritdoc />
+    public override bool DeferTaskCreation => _deferTaskCreation;
 
     /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _metadata;
