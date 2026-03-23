@@ -5,15 +5,15 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Tests.Client;
+namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Integration tests for the low-level MRTR API where tool handlers directly throw
-/// <see cref="IncompleteResultException"/> and manage request state themselves.
+/// Tests for the low-level MRTR server API — IsMrtrSupported, IncompleteResultException,
+/// and client auto-retry of incomplete results.
 /// </summary>
-public class McpClientMrtrLowLevelTests : ClientServerTestBase
+public class MrtrLowLevelApiTests : ClientServerTestBase
 {
-    public McpClientMrtrLowLevelTests(ITestOutputHelper testOutputHelper)
+    public MrtrLowLevelApiTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }

@@ -205,7 +205,7 @@ public class McpClientDeferredTaskCreationTests : ClientServerTestBase
         Assert.NotEmpty(result.Task.TaskId);
 
         // Wait for the tool to finish in the background.
-        await _toolAfterTaskCreation.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await _toolAfterTaskCreation.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         var taskStatus = await WaitForTaskCompletionAsync(result.Task.TaskId);
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
     }

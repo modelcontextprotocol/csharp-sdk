@@ -6,16 +6,17 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Tests.Client;
+namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for MRTR compatibility across different experimental/non-experimental combinations.
-/// This test class configures the server WITHOUT ExperimentalProtocolVersion to test scenarios
-/// where the server is not opted-in to the experimental protocol.
+/// Tests for the server's backward-compatible resolution of MRTR-native tools.
+/// Verifies that when a tool throws IncompleteResultException and the client doesn't support MRTR,
+/// the server resolves input requests via standard JSON-RPC calls (elicitation, sampling, roots)
+/// and retries the handler.
 /// </summary>
-public class McpClientMrtrCompatTests : ClientServerTestBase
+public class MrtrBackcompatTests : ClientServerTestBase
 {
-    public McpClientMrtrCompatTests(ITestOutputHelper testOutputHelper)
+    public MrtrBackcompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }

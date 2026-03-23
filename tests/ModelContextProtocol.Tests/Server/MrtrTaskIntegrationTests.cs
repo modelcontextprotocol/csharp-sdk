@@ -5,16 +5,16 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 
-namespace ModelContextProtocol.Tests.Client;
+namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for MRTR (Multi Round-Trip Requests) interacting with the Task system.
-/// Verifies that task status tracking works correctly during MRTR-resolved sampling/elicitation,
-/// and that task-based methods (SampleAsTaskAsync/ElicitAsTaskAsync) bypass MRTR interception.
+/// Tests for the interaction between MRTR and the Tasks feature — verifying that MRTR-driven
+/// tool calls correctly track task status (InputRequired), and that task-based sampling
+/// bypasses MRTR interception.
 /// </summary>
-public class McpClientMrtrWithTasksTests : ClientServerTestBase
+public class MrtrTaskIntegrationTests : ClientServerTestBase
 {
-    public McpClientMrtrWithTasksTests(ITestOutputHelper testOutputHelper)
+    public MrtrTaskIntegrationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
