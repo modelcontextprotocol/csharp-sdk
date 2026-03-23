@@ -747,7 +747,33 @@ internal sealed partial class McpServerImpl : McpServer
                                 McpErrorCode.InvalidParams);
                         }
 
-                        // Task augmentation requested - return CreateTaskResult
+                        // When DeferTaskCreation is enabled, run the handler through the normal
+                        // MRTR-wrapped path with deferred task context, allowing ephemeral MRTR
+                        // exchanges before the tool calls CreateTaskAsync().
+                        if (tool.DeferTaskCreation)
+                        {
+                            // Attach deferred task info to the MrtrContext so CreateTaskAsync()
+                            // and AwaitMrtrHandlerAsync can use it. The MrtrContext was already
+                            // created by WrapHandlerWithMrtr and set on the per-request server.
+                            if (request.Server is DestinationBoundMcpServer destinationServer &&
+                                destinationServer.ActiveMrtrContext is { } mrtrContext)
+                            {
+                                mrtrContext.DeferredTask = new DeferredTaskInfo
+                                {
+                                    TaskMetadata = taskMetadata,
+                                    OriginalRequestId = request.JsonRpcRequest.Id,
+                                    OriginalRequest = request.JsonRpcRequest,
+                                    TaskStore = taskStore!,
+                                    SendNotifications = sendNotifications,
+                                };
+                            }
+
+                            // Execute normally — the MRTR wrapper (WrapHandlerWithMrtr) will handle
+                            // racing between handler completion, MRTR exchanges, and task creation.
+                            return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        // Task augmentation requested with immediate creation
                         return await ExecuteToolAsTaskAsync(tool, request, taskMetadata, taskStore, sendNotifications, cancellationToken).ConfigureAwait(false);
                     }
 
@@ -1319,6 +1345,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// builds and returns an IncompleteResult and stores the continuation for future retries.
     /// If the handler throws <see cref="IncompleteResultException"/>, the result is returned directly
     /// without storing a continuation (low-level MRTR path).
+    /// When deferred task creation is enabled, also races against the task creation signal.
     /// </summary>
     private async Task<JsonNode?> AwaitMrtrHandlerAsync(
         Task<JsonNode?> handlerTask,
@@ -1335,12 +1362,29 @@ internal sealed partial class McpServerImpl : McpServer
 
         try
         {
-            var completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
+            var deferredTask = continuation.MrtrContext.DeferredTask;
+
+            // Race handler against MRTR exchange and optionally the deferred task creation signal.
+            Task completedTask;
+            if (deferredTask is not null)
+            {
+                completedTask = await Task.WhenAny(handlerTask, exchangeTask, deferredTask.SignalTask).ConfigureAwait(false);
+            }
+            else
+            {
+                completedTask = await Task.WhenAny(handlerTask, exchangeTask).ConfigureAwait(false);
+            }
 
             if (completedTask == handlerTask)
             {
                 // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
                 return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+            }
+
+            if (deferredTask is not null && completedTask == deferredTask.SignalTask)
+            {
+                // Handler called CreateTaskAsync() — transition to task mode.
+                return await HandleDeferredTaskCreationAsync(handlerTask, continuation, deferredTask, cancellationToken).ConfigureAwait(false);
             }
 
             // Exchange arrived - handler needs input from the client (high-level MRTR path).
@@ -1415,6 +1459,162 @@ internal sealed partial class McpServerImpl : McpServer
 
     private static JsonNode? SerializeIncompleteResult(IncompleteResult incompleteResult) =>
         JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
+
+    /// <summary>
+    /// Handles the transition from ephemeral MRTR to task-based execution when the handler
+    /// calls <see cref="McpServer.CreateTaskAsync(CancellationToken)"/>.
+    /// Creates the task, acknowledges the handler, re-links the handler CTS to the task's
+    /// cancellation token, and returns CreateTaskResult to the client.
+    /// </summary>
+    private async Task<JsonNode?> HandleDeferredTaskCreationAsync(
+        Task<JsonNode?> handlerTask,
+        MrtrContinuation continuation,
+        DeferredTaskInfo deferredTask,
+        CancellationToken cancellationToken)
+    {
+        var taskStore = deferredTask.TaskStore;
+        var sendNotifications = deferredTask.SendNotifications;
+
+        Protocol.McpTask mcpTask;
+        CancellationToken taskCancellationToken;
+        try
+        {
+            // Create the task in the task store.
+            mcpTask = await taskStore.CreateTaskAsync(
+                deferredTask.TaskMetadata,
+                deferredTask.OriginalRequestId,
+                deferredTask.OriginalRequest,
+                SessionId,
+                cancellationToken).ConfigureAwait(false);
+
+            // Register the task for TTL-based cancellation.
+            taskCancellationToken = _taskCancellationTokenProvider!.RequestToken(mcpTask.TaskId, mcpTask.TimeToLive);
+
+            // Re-link the handler's CTS to the task's cancellation token so handler
+            // cancellation tracks the task lifecycle (TTL expiration, explicit cancel)
+            // instead of the original request.
+            taskCancellationToken.Register(
+                static state => ((MrtrContinuation)state!).CancelHandler(), continuation);
+
+            // Update task status to working.
+            var workingTask = await taskStore.UpdateTaskStatusAsync(
+                mcpTask.TaskId,
+                McpTaskStatus.Working,
+                null,
+                SessionId,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (sendNotifications)
+            {
+                _ = NotifyTaskStatusAsync(workingTask, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            // If task creation fails, propagate the exception to the handler
+            // so CreateTaskAsync() throws instead of blocking forever.
+            deferredTask.AcknowledgeFailure(ex);
+            throw;
+        }
+
+        // Acknowledge the handler so CreateTaskAsync() returns and the handler continues.
+        deferredTask.AcknowledgeTaskCreation(new DeferredTaskCreationResult
+        {
+            TaskId = mcpTask.TaskId,
+            SessionId = SessionId,
+            TaskStore = taskStore,
+            SendNotifications = sendNotifications,
+            NotifyTaskStatusFunc = NotifyTaskStatusAsync,
+            TaskCancellationToken = taskCancellationToken,
+        });
+
+        // Track the handler task in the background. The handler is already tracked by
+        // ObserveHandlerCompletionAsync (via _mrtrInFlightCount), so no additional
+        // in-flight tracking is needed here — just status updates.
+        _ = TrackDeferredHandlerTaskAsync(handlerTask, mcpTask, taskStore, sendNotifications);
+
+        // Return CreateTaskResult to the client.
+        var createTaskResult = new CallToolResult { Task = mcpTask };
+        return JsonSerializer.SerializeToNode(createTaskResult, McpJsonUtilities.JsonContext.Default.CallToolResult);
+    }
+
+    /// <summary>
+    /// Tracks a deferred handler task after task creation, updating task status and storing results.
+    /// The handler task is already tracked by <see cref="ObserveHandlerCompletionAsync"/> for
+    /// in-flight counting and error logging.
+    /// </summary>
+    private async Task TrackDeferredHandlerTaskAsync(
+        Task<JsonNode?> handlerTask,
+        Protocol.McpTask mcpTask,
+        IMcpTaskStore taskStore,
+        bool sendNotifications)
+    {
+        try
+        {
+            var resultNode = await handlerTask.ConfigureAwait(false);
+
+            CallToolResult? result = null;
+            if (resultNode is not null)
+            {
+                result = JsonSerializer.Deserialize(resultNode, McpJsonUtilities.JsonContext.Default.CallToolResult);
+            }
+
+            var finalStatus = result?.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;
+            var resultElement = result is not null
+                ? JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult)
+                : default;
+
+            var finalTask = await taskStore.StoreTaskResultAsync(
+                mcpTask.TaskId,
+                finalStatus,
+                resultElement,
+                SessionId,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (sendNotifications)
+            {
+                _ = NotifyTaskStatusAsync(finalTask, CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // After task creation, any handler cancellation is legitimate —
+            // task TTL expiration, explicit tasks/cancel, or session disposal.
+        }
+        catch (Exception ex)
+        {
+            // Error logging is already handled by ObserveHandlerCompletionAsync.
+            var errorResult = new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = $"Task execution failed: {ex.Message}" }],
+            };
+
+            try
+            {
+                var errorResultElement = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.JsonContext.Default.CallToolResult);
+                var failedTask = await taskStore.StoreTaskResultAsync(
+                    mcpTask.TaskId,
+                    McpTaskStatus.Failed,
+                    errorResultElement,
+                    SessionId,
+                    CancellationToken.None).ConfigureAwait(false);
+
+                if (sendNotifications)
+                {
+                    _ = NotifyTaskStatusAsync(failedTask, CancellationToken.None);
+                }
+            }
+            catch
+            {
+                // If we can't store the error result, the task will remain in "working" status.
+            }
+        }
+        finally
+        {
+            _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
+        }
+    }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);

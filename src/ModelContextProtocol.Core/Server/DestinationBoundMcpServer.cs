@@ -89,4 +89,31 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             Result = JsonSerializer.SerializeToNode(inputResponse.RawValue, McpJsonUtilities.JsonContext.Default.JsonElement),
         };
     }
+
+    /// <inheritdoc />
+    public override async ValueTask CreateTaskAsync(CancellationToken cancellationToken = default)
+    {
+        var deferredTask = ActiveMrtrContext?.DeferredTask
+            ?? throw new InvalidOperationException(
+                "CreateTaskAsync can only be called from a tool handler with DeferTaskCreation enabled " +
+                "when the client provides task metadata in the tools/call request.");
+
+        // Signal the framework to create the task and wait for acknowledgment.
+        // RequestTaskCreationAsync is atomic — throws if already called.
+        var result = await deferredTask.RequestTaskCreationAsync(cancellationToken).ConfigureAwait(false);
+
+        // Transition to task mode on the handler's async flow.
+        TaskExecutionContext.Current = new TaskExecutionContext
+        {
+            TaskId = result.TaskId,
+            SessionId = result.SessionId,
+            TaskStore = result.TaskStore,
+            SendNotifications = result.SendNotifications,
+            NotifyTaskStatusFunc = result.NotifyTaskStatusFunc,
+        };
+
+        // No more ephemeral MRTR — subsequent ElicitAsync/SampleAsync calls
+        // will go through SendRequestWithTaskStatusTrackingAsync instead.
+        ActiveMrtrContext = null;
+    }
 }

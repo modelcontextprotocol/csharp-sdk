@@ -27,6 +27,13 @@ internal sealed class MrtrContext
     }
 
     /// <summary>
+    /// Gets or sets the deferred task creation info, if the tool opted into deferred task creation
+    /// and the client provided task metadata. When set, <see cref="McpServer.CreateTaskAsync(CancellationToken)"/>
+    /// uses this to signal the framework.
+    /// </summary>
+    public DeferredTaskInfo? DeferredTask { get; set; }
+
+    /// <summary>
     /// Prepares the context for the next round of exchange after a retry arrives.
     /// Uses <see cref="Interlocked.CompareExchange{T}"/> to atomically validate that
     /// <see cref="_exchangeTcs"/> still references the TCS that produced <paramref name="previousExchange"/>,
