@@ -15,7 +15,7 @@ Typically progress tracking is supported by server tools that perform operations
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
-### Server Implementation
+### Server implementation
 
 When processing a request, the server can use the <xref:ModelContextProtocol.McpSession.SendNotificationAsync*> extension method of <xref:ModelContextProtocol.Server.McpServer> to send progress updates,
 specifying `"notifications/progress"` as the notification method name.
@@ -27,7 +27,7 @@ The server must verify that the caller provided a `progressToken` in the request
 
 [!code-csharp[](samples/server/Tools/LongRunningTools.cs?name=snippet_SendProgress)]
 
-### Client Implementation
+### Client implementation
 
 Clients request progress updates by including a `progressToken` in the parameters of a request.
 Note that servers aren't required to support progress tracking, so clients should not depend on receiving progress updates.
@@ -50,9 +50,9 @@ await using var handler = mcpClient.RegisterNotificationHandler(NotificationMeth
     });
 ```
 
-The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress<T>` is a standard .NET type that provides a way to receive progress updates.
+The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress\<T>` is a standard .NET type that provides a way to receive progress updates.
 For the purposes of MCP progress notifications, `T` should be <xref:ModelContextProtocol.ProgressNotificationValue>.
-The MCP C# SDK will automatically handle progress notifications and report them through the `Progress<T>` instance.
+The MCP C# SDK will automatically handle progress notifications and report them through the `Progress\<T>` instance.
 This notification handler will only receive progress updates for the specific request that was made,
 rather than all progress notifications from the server.
 

@@ -11,19 +11,19 @@ MCP [tools] allow servers to expose callable functions to clients. Tools are the
 
 [tools]: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
-This document covers tool content types, change notifications, and schema generation.
+This article covers tool content types, change notifications, and schema generation.
 
 ### Defining tools on the server
 
-Tools can be defined in several ways:
+You can define tools in several ways:
 
-- Using the <xref:ModelContextProtocol.Server.McpServerToolAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerToolTypeAttribute>
-- Using <xref:ModelContextProtocol.Server.McpServerTool.Create*> factory methods from a delegate, `MethodInfo`, or `AIFunction`
-- Deriving from <xref:ModelContextProtocol.Server.McpServerTool> or <xref:ModelContextProtocol.Server.DelegatingMcpServerTool>
-- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>
-- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>
+- Using the <xref:ModelContextProtocol.Server.McpServerToolAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerToolTypeAttribute>.
+- Using <xref:ModelContextProtocol.Server.McpServerTool.Create*> factory methods from a delegate, <xref:System.Reflection.MethodInfo>, or <xref:Microsoft.Extensions.AI.AIFunction>.
+- Deriving from <xref:ModelContextProtocol.Server.McpServerTool> or <xref:ModelContextProtocol.Server.DelegatingMcpServerTool>.
+- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
+- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this document. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes. In addition to tool arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, `ClaimsPrincipal`, and any service registered through dependency injection.
+The attribute-based approach is the most common and is shown throughout this article. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes. In addition to tool arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
 
 ```csharp
 [McpServerToolType]
@@ -45,7 +45,11 @@ builder.Services.AddMcpServer()
 
 ### Content types
 
-Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return `DataContent` from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
+Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return <xref:Microsoft.Extensions.AI.DataContent?displayProperty=fullName>, which is automatically mapped to the appropriate MCP content block:
+
+- Image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>.
+- Audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>.
+- All other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
 
 #### Text content
 
@@ -65,7 +69,7 @@ Use the <xref:ModelContextProtocol.Protocol.ImageContentBlock.FromBytes*> factor
 [McpServerTool, Description("Returns a generated image")]
 public static ImageContentBlock GenerateImage()
 {
-    byte[] pngBytes = CreateImage(); // your image generation logic
+    byte[] pngBytes = CreateImage(); // Your image generation logic.
     return ImageContentBlock.FromBytes(pngBytes, "image/png");
 }
 ```
@@ -79,7 +83,7 @@ The <xref:ModelContextProtocol.Protocol.AudioContentBlock.FromBytes*> factory me
 [McpServerTool, Description("Returns a synthesized audio clip")]
 public static AudioContentBlock Synthesize(string text)
 {
-    byte[] wavBytes = TextToSpeech(text); // your audio synthesis logic
+    byte[] wavBytes = TextToSpeech(text); // Your audio synthesis logic.
     return AudioContentBlock.FromBytes(wavBytes, "audio/wav");
 }
 ```
@@ -113,7 +117,7 @@ For binary resources, use <xref:ModelContextProtocol.Protocol.BlobResourceConten
 [McpServerTool, Description("Returns a binary resource")]
 public static EmbeddedResourceBlock GetBinaryData(string id)
 {
-    byte[] data = LoadData(id); // application logic to load data by ID
+    byte[] data = LoadData(id); // Application logic to load data by ID.
     return new EmbeddedResourceBlock
     {
         Resource = BlobResourceContents.FromBytes(data, $"data://items/{id}", "application/octet-stream")
@@ -149,8 +153,8 @@ new TextContentBlock
     Text = "Detailed debug information",
     Annotations = new Annotations
     {
-        Audience = [Role.Assistant], // Only for the LLM, not the user
-        Priority = 0.3f             // Low priority (0.0 to 1.0)
+        Audience = [Role.Assistant], // Only for the LLM, not the user.
+        Priority = 0.3f             // Low priority (0.0 to 1.0).
     }
 }
 ```
@@ -160,7 +164,7 @@ new TextContentBlock
 Clients can discover and call tools using <xref:ModelContextProtocol.Client.McpClient>:
 
 ```csharp
-// List available tools
+// List available tools.
 IList<McpClientTool> tools = await client.ListToolsAsync();
 
 foreach (var tool in tools)
@@ -168,12 +172,12 @@ foreach (var tool in tools)
     Console.WriteLine($"{tool.Name}: {tool.Description}");
 }
 
-// Call a tool by finding it in the list
+// Call a tool by finding it in the list.
 McpClientTool echoTool = tools.First(t => t.Name == "echo");
 CallToolResult result = await echoTool.CallAsync(
     new Dictionary<string, object?> { ["message"] = "Hello!" });
 
-// Process the result content blocks
+// Process the result content blocks.
 foreach (var content in result.Content)
 {
     switch (content)
@@ -201,12 +205,12 @@ Tool errors in MCP are distinct from protocol errors. When a tool encounters an 
 
 #### Automatic exception handling
 
-When a tool method throws an exception, the server catches it and returns a `CallToolResult` with `IsError = true`, with the following exceptions:
+When a tool method throws an exception, the server catches it and returns a <xref:ModelContextProtocol.Protocol.CallToolResult> with `IsError = true`, with the following exceptions:
 
-- <xref:ModelContextProtocol.McpProtocolException> is re-thrown as a JSON-RPC error response (not a tool error result).
-- `OperationCanceledException` is re-thrown when the cancellation token was triggered.
+- <xref:ModelContextProtocol.McpProtocolException> is rethrown as a JSON-RPC error response (not a tool error result).
+- `OperationCanceledException` is rethrown when the cancellation token was triggered.
 
-For all other exceptions, the error is returned as a tool result. If the exception derives from <xref:ModelContextProtocol.McpException> (excluding `McpProtocolException`, which is re-thrown above), its message is included in the error text; otherwise, a generic message is returned to avoid leaking internal details.
+For all other exceptions, the error is returned as a tool result. If the exception derives from <xref:ModelContextProtocol.McpException> (excluding <xref:ModelContextProtocol.McpProtocolException>, which is rethrown above), its message is included in the error text; otherwise, a generic message is returned to avoid leaking internal details.
 
 ```csharp
 [McpServerTool, Description("Divides two numbers")]
@@ -225,7 +229,7 @@ public static double Divide(double a, double b)
 
 #### Protocol errors
 
-Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (e.g., invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
+Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (for example, invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
 
 ```csharp
 [McpServerTool, Description("Processes the input")]
@@ -234,7 +238,7 @@ public static string Process(string input)
     if (string.IsNullOrEmpty(input))
     {
         // Propagates as a JSON-RPC error with code -32602 (InvalidParams)
-        // and message "Missing required input"
+        // and message "Missing required input".
         throw new McpProtocolException("Missing required input", McpErrorCode.InvalidParams);
     }
 
@@ -269,7 +273,7 @@ Servers can dynamically add, remove, or modify tools at runtime. When the tool l
 Inject <xref:ModelContextProtocol.Server.McpServer> and call the notification method after modifying the tool list:
 
 ```csharp
-// After adding or removing tools dynamically
+// After adding or removing tools dynamically.
 await server.SendNotificationAsync(
     NotificationMethods.ToolListChangedNotification,
     new ToolListChangedNotificationParams());
@@ -284,7 +288,7 @@ mcpClient.RegisterNotificationHandler(
     NotificationMethods.ToolListChangedNotification,
     async (notification, cancellationToken) =>
     {
-        // Refresh the tool list
+        // Refresh the tool list.
         var updatedTools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
         Console.WriteLine($"Tool list updated. {updatedTools.Count} tools available.");
     });
@@ -296,13 +300,13 @@ Tool parameters are described using [JSON Schema 2020-12]. JSON schemas are auto
 
 [JSON Schema 2020-12]: https://json-schema.org/specification
 
-| .NET Type | JSON Schema Type |
-|-----------|-----------------|
-| `string` | `string` |
-| `int`, `long` | `integer` |
-| `float`, `double` | `number` |
-| `bool` | `boolean` |
-| Complex types | `object` with `properties` |
+| .NET Type         | JSON Schema Type           |
+|-------------------|----------------------------|
+| `string`          | `string`                   |
+| `int`, `long`     | `integer`                  |
+| `float`, `double` | `number`                   |
+| `bool`            | `boolean`                  |
+| Complex types     | `object` with `properties` |
 
 Use `[Description]` attributes on parameters to populate the `description` field in the generated schema. This helps LLMs understand what each parameter expects.
 
@@ -312,6 +316,6 @@ public static string Search(
     [Description("The search query string")] string query,
     [Description("Maximum results to return (1-100)")] int maxResults = 10)
 {
-    // Schema will include descriptions and default value for maxResults
+    // Schema will include descriptions and default value for maxResults.
 }
 ```

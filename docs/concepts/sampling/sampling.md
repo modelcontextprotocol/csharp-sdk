@@ -70,7 +70,7 @@ string response = result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Te
 
 Set <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> when creating the client. This handler is called when a server sends a `sampling/createMessage` request.
 
-#### Using an IChatClient
+#### Use an IChatClient
 
 The simplest approach is to use <xref:ModelContextProtocol.AIContentExtensions.CreateSamplingHandler*> with any <xref:Microsoft.Extensions.AI.IChatClient> implementation:
 
@@ -116,4 +116,4 @@ McpClientOptions options = new()
 
 ### Capability negotiation
 
-Sampling requires the client to advertise the `sampling` capability. This is handled automatically — when a <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> is set, the client includes the sampling capability during initialization. The server can check whether the client supports sampling before calling <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>; if sampling is not supported, the method throws <xref:System.InvalidOperationException>.
+Sampling requires the client to advertise the `sampling` capability. This is handled automatically — when a <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> is set, the client includes the sampling capability during initialization. The server can check whether the client supports sampling before calling <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>; if sampling isn't supported, the method throws <xref:System.InvalidOperationException>.

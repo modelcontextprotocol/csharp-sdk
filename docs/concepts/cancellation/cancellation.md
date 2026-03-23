@@ -7,18 +7,18 @@ uid: cancellation
 
 ## Cancellation
 
-MCP supports [cancellation] of in-flight requests. Either side can cancel a previously issued request, and `CancellationToken` parameters on MCP methods are wired to send and receive `notifications/cancelled` notifications over the protocol.
+MCP supports [cancellation] of in-flight requests. Either side can cancel a previously issued request, and <xref:System.Threading.CancellationToken> parameters on MCP methods are wired to send and receive `notifications/cancelled` notifications over the protocol.
 
 [cancellation]: https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation
 [task cancellation]: https://learn.microsoft.com/dotnet/standard/parallel-programming/task-cancellation
 
 ### How cancellation maps to MCP notifications
 
-When a `CancellationToken` passed to a client method (such as <xref:ModelContextProtocol.Client.McpClient.CallToolAsync*>) is cancelled, a `notifications/cancelled` notification is sent to the server with the request ID. On the server side, the `CancellationToken` provided to the tool method is then triggered, allowing the handler to stop work gracefully. This same mechanism works in reverse for server-to-client requests.
+When a <xref:System.Threading.CancellationToken> passed to a client method (such as <xref:ModelContextProtocol.Client.McpClient.CallToolAsync*>) is cancelled, a `notifications/cancelled` notification is sent to the server with the request ID. On the server side, the <xref:System.Threading.CancellationToken> provided to the tool method is then triggered, allowing the handler to stop work gracefully. This same mechanism works in reverse for server-to-client requests.
 
 ### Server-side cancellation handling
 
-Server tool methods receive a `CancellationToken` that is triggered when the client sends a cancellation notification. Pass this token through to any async operations so they stop promptly:
+Server tool methods receive a <xref:System.Threading.CancellationToken> that is triggered when the client sends a cancellation notification. Pass this token through to any async operations so they stop promptly:
 
 ```csharp
 [McpServerTool, Description("A long-running computation")]

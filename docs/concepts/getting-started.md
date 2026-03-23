@@ -5,7 +5,7 @@ description: Install the MCP C# SDK and build your first MCP client and server.
 uid: getting-started
 ---
 
-## Getting Started
+## Getting started
 
 This guide walks you through installing the MCP C# SDK and building a minimal MCP client and server.
 
@@ -47,7 +47,7 @@ using System.ComponentModel;
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(consoleLogOptions =>
 {
-    // Configure all logs to go to stderr
+    // Configure all logs to go to stderr.
     consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
 });
 builder.Services
@@ -129,7 +129,7 @@ var result = await client.CallToolAsync(
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
     cancellationToken: CancellationToken.None);
 
-// echo always returns one and only one text content object
+// echo always returns one and only one text content object.
 Console.WriteLine(result.Content.OfType<TextContentBlock>().First().Text);
 ```
 
@@ -137,7 +137,7 @@ Clients can connect to any MCP server, not just ones created with this library. 
 
 #### Using tools with an LLM
 
-`McpClientTool` inherits from `AIFunction`, so the tools returned by `ListToolsAsync` can be handed directly to any `IChatClient`:
+<xref:ModelContextProtocol.Client.McpClientTool> inherits from <xref:Microsoft.Extensions.AI.AIFunction>, so the tools returned by `ListToolsAsync` can be handed directly to any <xref:Microsoft.Extensions.AI.IChatClient>:
 
 ```csharp
 // Get available tools.

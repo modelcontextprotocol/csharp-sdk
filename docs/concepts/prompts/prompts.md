@@ -11,19 +11,19 @@ MCP [prompts] allow servers to expose reusable prompt templates to clients. Prom
 
 [prompts]: https://modelcontextprotocol.io/specification/2025-11-25/server/prompts
 
-This document covers implementing prompts on the server, consuming them from the client, rich content types, and change notifications.
+This article covers implementing prompts on the server, consuming them from the client, rich content types, and change notifications.
 
 ### Defining prompts on the server
 
 Prompts can be defined in several ways:
 
-- Using the <xref:ModelContextProtocol.Server.McpServerPromptAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerPromptTypeAttribute>
-- Using <xref:ModelContextProtocol.Server.McpServerPrompt.Create*> factory methods from a delegate, `MethodInfo`, or `AIFunction`
-- Deriving from <xref:ModelContextProtocol.Server.McpServerPrompt> or <xref:ModelContextProtocol.Server.DelegatingMcpServerPrompt>
-- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>
-- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>
+- Using the <xref:ModelContextProtocol.Server.McpServerPromptAttribute> attribute on methods within a class marked with <xref:ModelContextProtocol.Server.McpServerPromptTypeAttribute>.
+- Using <xref:ModelContextProtocol.Server.McpServerPrompt.Create*> factory methods from a delegate, <xref:System.Reflection.MethodInfo>, or <xref:Microsoft.Extensions.AI.AIFunction>.
+- Deriving from <xref:ModelContextProtocol.Server.McpServerPrompt> or <xref:ModelContextProtocol.Server.DelegatingMcpServerPrompt>.
+- Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
+- Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this document. Prompts can return `ChatMessage` instances for simple text/image content, or <xref:ModelContextProtocol.Protocol.PromptMessage> instances when protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> are needed.
+The attribute-based approach is the most common and is shown throughout this article. Prompts can return <xref:Microsoft.Extensions.AI.ChatMessage> instances for simple text/image content, or <xref:ModelContextProtocol.Protocol.PromptMessage> instances when protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> are needed.
 
 #### Simple prompts
 
@@ -41,7 +41,7 @@ public class MyPrompts
 
 #### Prompts with arguments
 
-Prompts can accept parameters to customize the generated messages. Use `[Description]` attributes to document each parameter. In addition to prompt arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, `ClaimsPrincipal`, and any service registered through dependency injection.
+Prompts can accept parameters to customize the generated messages. Use `[Description]` attributes to article each parameter. In addition to prompt arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
 
 ```csharp
 [McpServerPromptType]
@@ -70,11 +70,11 @@ builder.Services.AddMcpServer()
 
 ### Rich content in prompts
 
-Prompt messages can contain more than just text. For text and image content, use `ChatMessage` from Microsoft.Extensions.AI. `DataContent` is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents. For text embedded resources specifically, use <xref:ModelContextProtocol.Protocol.PromptMessage> directly.
+Prompt messages can contain more than just text. For text and image content, use <xref:Microsoft.Extensions.AI.ChatMessage> from Microsoft.Extensions.AI. <xref:Microsoft.Extensions.AI.DataContent> is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents. For text embedded resources specifically, use <xref:ModelContextProtocol.Protocol.PromptMessage> directly.
 
 #### Image content
 
-Include images in prompts using `DataContent`:
+Include images in prompts using <xref:Microsoft.Extensions.AI.DataContent>:
 
 ```csharp
 [McpServerPrompt, Description("A prompt that includes an image for analysis")]
@@ -95,14 +95,14 @@ public static IEnumerable<ChatMessage> AnalyzeImage(
 
 #### Embedded resources
 
-For protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock>, use <xref:ModelContextProtocol.Protocol.PromptMessage> instead of `ChatMessage`. `PromptMessage` has a `Role` property and a single `Content` property of type <xref:ModelContextProtocol.Protocol.ContentBlock>:
+For protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock>, use <xref:ModelContextProtocol.Protocol.PromptMessage> instead of <xref:Microsoft.Extensions.AI.ChatMessage>. <xref:ModelContextProtocol.Protocol.PromptMessage> has a `Role` property and a single `Content` property of type <xref:ModelContextProtocol.Protocol.ContentBlock>:
 
 ```csharp
 [McpServerPrompt, Description("A prompt that includes a document resource")]
 public static IEnumerable<PromptMessage> ReviewDocument(
     [Description("The document ID to review")] string documentId)
 {
-    string content = LoadDocument(documentId); // application logic to load by ID
+    string content = LoadDocument(documentId); // Application logic to load by ID.
     return
     [
         new PromptMessage
@@ -153,7 +153,7 @@ foreach (var prompt in prompts)
 {
     Console.WriteLine($"{prompt.Name}: {prompt.Description}");
 
-    // Show available arguments
+    // Show available arguments.
     if (prompt.ProtocolPrompt.Arguments is { Count: > 0 })
     {
         foreach (var arg in prompt.ProtocolPrompt.Arguments)
@@ -176,7 +176,7 @@ GetPromptResult result = await client.GetPromptAsync(
         ["code"] = "public static int Add(int a, int b) => a + b;"
     });
 
-// Process the returned messages (PromptMessage has a single Content block)
+// Process the returned messages (PromptMessage has a single Content block).
 foreach (var message in result.Messages)
 {
     Console.WriteLine($"[{message.Role}]:");
@@ -202,7 +202,7 @@ Servers can dynamically add, remove, or modify prompts at runtime and notify con
 #### Sending notifications from the server
 
 ```csharp
-// After adding or removing prompts dynamically
+// After adding or removing prompts dynamically.
 await server.SendNotificationAsync(
     NotificationMethods.PromptListChangedNotification,
     new PromptListChangedNotificationParams());

@@ -17,24 +17,24 @@ Instead of offset-based pagination (page 1, page 2, etc.), MCP uses opaque curso
 
 Two levels of API are provided for paginated operations:
 
-1. **Convenience methods** (e.g., `ListToolsAsync()` returning `IList<T>`) that automatically handle pagination and return all results.
-2. **Raw methods** (e.g., `ListToolsAsync(ListToolsRequestParams)` returning the result type directly) that provide direct control over pagination.
+1. **Convenience methods** (for example, `ListToolsAsync()` returning `IList<T>`) that automatically handle pagination and return all results.
+2. **Raw methods** (for example, `ListToolsAsync(ListToolsRequestParams)` returning the result type directly) that provide direct control over pagination.
 
 ### Automatic pagination
 
 The convenience methods on <xref:ModelContextProtocol.Client.McpClient> handle pagination automatically, fetching all pages and returning the complete list:
 
 ```csharp
-// Fetches all tools, handling pagination automatically
+// Fetches all tools, handling pagination automatically.
 IList<McpClientTool> allTools = await client.ListToolsAsync();
 
-// Fetches all resources, handling pagination automatically
+// Fetches all resources, handling pagination automatically.
 IList<McpClientResource> allResources = await client.ListResourcesAsync();
 
-// Fetches all prompts, handling pagination automatically
+// Fetches all prompts, handling pagination automatically.
 IList<McpClientPrompt> allPrompts = await client.ListPromptsAsync();
 
-// Fetches all resource templates, handling pagination automatically
+// Fetches all resource templates, handling pagination automatically.
 IList<McpClientResourceTemplate> allTemplates = await client.ListResourceTemplatesAsync();
 ```
 
@@ -52,13 +52,13 @@ do
         Cursor = cursor
     });
 
-    // Process this page of results
+    // Process this page of results.
     foreach (var tool in result.Tools)
     {
         Console.WriteLine($"{tool.Name}: {tool.Description}");
     }
 
-    // Get the cursor for the next page (null when no more pages)
+    // Get the cursor for the next page (null when no more pages).
     cursor = result.NextCursor;
 
 } while (cursor is not null);
@@ -66,7 +66,7 @@ do
 
 ### Pagination on the server
 
-When implementing custom list handlers on the server, pagination is supported by examining the `Cursor` property of the request parameters and returning a `NextCursor` in the result:
+When you implement custom list handlers on the server, to support pagination, examine the `Cursor` property of the request parameters and return a `NextCursor` in the result:
 
 ```csharp
 builder.Services.AddMcpServer()
@@ -76,7 +76,7 @@ builder.Services.AddMcpServer()
         const int pageSize = 10;
         int startIndex = 0;
 
-        // Parse cursor to determine starting position
+        // Parse cursor to determine starting position.
         if (ctx.Params?.Cursor is { } cursor)
         {
             startIndex = int.Parse(cursor);

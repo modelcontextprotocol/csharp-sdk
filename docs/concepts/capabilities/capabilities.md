@@ -15,11 +15,11 @@ MCP uses a [capability negotiation] mechanism during connection setup. Clients a
 
 <xref:ModelContextProtocol.Protocol.ClientCapabilities> declares what features the client supports:
 
-| Capability | Type | Description |
-|-----------|------|-------------|
-| `Roots` | <xref:ModelContextProtocol.Protocol.RootsCapability> | Client can provide filesystem root URIs |
-| `Sampling` | <xref:ModelContextProtocol.Protocol.SamplingCapability> | Client can handle LLM sampling requests |
-| `Elicitation` | <xref:ModelContextProtocol.Protocol.ElicitationCapability> | Client can present forms or URLs to the user |
+| Capability     | Type                          | Description               |
+|----------------|-------------------------------|---------------------------|
+| `Roots`        | <xref:ModelContextProtocol.Protocol.RootsCapability> | Client can provide filesystem root URIs |
+| `Sampling`     | <xref:ModelContextProtocol.Protocol.SamplingCapability> | Client can handle LLM sampling requests |
+| `Elicitation`  | <xref:ModelContextProtocol.Protocol.ElicitationCapability> | Client can present forms or URLs to the user |
 | `Experimental` | `IDictionary<string, object>` | Experimental capabilities |
 
 Configure client capabilities when creating an MCP client:
@@ -48,13 +48,13 @@ Handlers for each capability (roots, sampling, elicitation) are covered in their
 
 <xref:ModelContextProtocol.Protocol.ServerCapabilities> declares what features the server supports:
 
-| Capability | Type | Description |
-|-----------|------|-------------|
-| `Tools` | <xref:ModelContextProtocol.Protocol.ToolsCapability> | Server exposes callable tools |
-| `Prompts` | <xref:ModelContextProtocol.Protocol.PromptsCapability> | Server exposes prompt templates |
-| `Resources` | <xref:ModelContextProtocol.Protocol.ResourcesCapability> | Server exposes readable resources |
-| `Logging` | <xref:ModelContextProtocol.Protocol.LoggingCapability> | Server can send log messages |
-| `Completions` | <xref:ModelContextProtocol.Protocol.CompletionsCapability> | Server supports argument completions |
+| Capability     | Type                          | Description               |
+|----------------|-------------------------------|---------------------------|
+| `Tools`        | <xref:ModelContextProtocol.Protocol.ToolsCapability> | Server exposes callable tools |
+| `Prompts`      | <xref:ModelContextProtocol.Protocol.PromptsCapability> | Server exposes prompt templates |
+| `Resources`    | <xref:ModelContextProtocol.Protocol.ResourcesCapability> | Server exposes readable resources |
+| `Logging`      | <xref:ModelContextProtocol.Protocol.LoggingCapability> | Server can send log messages |
+| `Completions`  | <xref:ModelContextProtocol.Protocol.CompletionsCapability> | Server supports argument completions |
 | `Experimental` | `IDictionary<string, object>` | Experimental capabilities |
 
 Server capabilities are automatically inferred from the configured features. For example, registering tools with `.WithTools<T>()` automatically declares the tools capability.
@@ -68,19 +68,19 @@ Before using an optional feature, check whether the other side declared the corr
 ```csharp
 await using var client = await McpClient.CreateAsync(transport);
 
-// Check if the server supports tools
+// Check if the server supports tools.
 if (client.ServerCapabilities.Tools is not null)
 {
     var tools = await client.ListToolsAsync();
 }
 
-// Check if the server supports resources with subscriptions
+// Check if the server supports resources with subscriptions.
 if (client.ServerCapabilities.Resources is { Subscribe: true })
 {
     await client.SubscribeToResourceAsync("config://app/settings");
 }
 
-// Check if the server supports prompts with list-changed notifications
+// Check if the server supports prompts with list-changed notifications.
 if (client.ServerCapabilities.Prompts is { ListChanged: true })
 {
     mcpClient.RegisterNotificationHandler(
@@ -91,13 +91,13 @@ if (client.ServerCapabilities.Prompts is { ListChanged: true })
         });
 }
 
-// Check if the server supports logging
+// Check if the server supports logging.
 if (client.ServerCapabilities.Logging is not null)
 {
     await client.SetLoggingLevelAsync(LoggingLevel.Info);
 }
 
-// Check if the server supports completions
+// Check if the server supports completions.
 if (client.ServerCapabilities.Completions is not null)
 {
     var completions = await client.CompleteAsync(
@@ -112,10 +112,10 @@ if (client.ServerCapabilities.Completions is not null)
 During connection setup, the client and server negotiate a mutually supported MCP protocol version. After initialization, the negotiated version is available on both sides:
 
 ```csharp
-// On the client
+// On the client.
 string? version = client.NegotiatedProtocolVersion;
 
-// On the server (within a tool or handler)
+// On the server (within a tool or handler).
 string? version = server.NegotiatedProtocolVersion;
 ```
 

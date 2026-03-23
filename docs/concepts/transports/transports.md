@@ -13,7 +13,7 @@ MCP uses a [transport layer] to handle the communication between clients and ser
 
 ### stdio transport
 
-The stdio transport communicates over standard input and output streams. It is best suited for local integrations, as the MCP server runs as a child process of the client.
+The stdio transport communicates over standard input and output streams. It's best suited for local integrations, as the MCP server runs as a child process of the client.
 
 #### stdio client
 
@@ -34,15 +34,15 @@ await using var client = await McpClient.CreateAsync(transport);
 
 Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 
-| Property | Description |
-|----------|-------------|
-| `Command` | The executable to launch (required) |
-| `Arguments` | Command-line arguments for the process |
-| `WorkingDirectory` | Working directory for the server process |
+| Property               | Description                                        |
+|------------------------|----------------------------------------------------|
+| `Command`              | The executable to launch (required)                |
+| `Arguments`            | Command-line arguments for the process             |
+| `WorkingDirectory`     | Working directory for the server process           |
 | `EnvironmentVariables` | Environment variables (merged with current; `null` values remove variables) |
-| `ShutdownTimeout` | Graceful shutdown timeout (default: 5 seconds) |
-| `StandardErrorLines` | Callback for stderr output from the server process |
-| `Name` | Optional transport identifier for logging |
+| `ShutdownTimeout`      | Graceful shutdown timeout (default: 5 seconds)     |
+| `StandardErrorLines`   | Callback for stderr output from the server process |
+| `Name`                 | Optional transport identifier for logging          |
 
 #### stdio server
 
@@ -83,13 +83,13 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 await using var client = await McpClient.CreateAsync(transport);
 ```
 
-The client also supports automatic transport detection with <xref:ModelContextProtocol.Client.HttpTransportMode.AutoDetect> (the default), which tries Streamable HTTP first and falls back to SSE if the server does not support it:
+The client also supports automatic transport detection with <xref:ModelContextProtocol.Client.HttpTransportMode.AutoDetect> (the default), which tries Streamable HTTP first and falls back to SSE if the server doesn't support it:
 
 ```csharp
 var transport = new HttpClientTransport(new HttpClientTransportOptions
 {
     Endpoint = new Uri("https://my-mcp-server.example.com/mcp"),
-    // TransportMode defaults to AutoDetect
+    // TransportMode defaults to AutoDetect.
 });
 ```
 
@@ -135,7 +135,7 @@ A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools]
 app.MapMcp("/mcp");
 ```
 
-When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+When using a custom route, Streamable HTTP clients should connect directly to that route (for example, `https://host/mcp`), while SSE clients should connect to `{route}/sse` (for example, `https://host/mcp/sse`).
 
 ### SSE transport (legacy)
 
@@ -165,9 +165,9 @@ await using var client = await McpClient.CreateAsync(transport);
 
 SSE-specific configuration options:
 
-| Property | Description |
-|----------|-------------|
-| `MaxReconnectionAttempts` | Maximum number of reconnection attempts on stream disconnect (default: 5) |
+| Property                      | Description                                                 |
+|-------------------------------|-------------------------------------------------------------|
+| `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect (default: 5) |
 | `DefaultReconnectionInterval` | Wait time between reconnection attempts (default: 1 second) |
 
 #### SSE server (ASP.NET Core)
@@ -193,10 +193,10 @@ No additional configuration is needed. When a client connects using the SSE prot
 
 ### Transport mode comparison
 
-| Feature | stdio | Streamable HTTP | SSE (Legacy) |
-|---------|-------|----------------|--------------|
-| Process model | Child process | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Bidirectional | Server→client stream + client→server POST |
-| Session resumption | N/A | ✓ | ✗ |
-| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
-| Best for | Local tools | Remote servers | Legacy compatibility |
+| Feature            | stdio         | Streamable HTTP            | SSE (Legacy)               |
+|--------------------|---------------|----------------------------|----------------------------|
+| Process model      | Child process | Remote HTTP                | Remote HTTP                |
+| Direction          | Bidirectional | Bidirectional              | Server→client stream + client→server POST |
+| Session resumption | N/A           | ✓                         | ✗                          |
+| Authentication     | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
+| Best for           | Local tools   | Remote servers             | Legacy compatibility       |

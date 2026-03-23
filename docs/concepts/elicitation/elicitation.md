@@ -11,16 +11,16 @@ The **elicitation** feature allows servers to request additional information fro
 
 The protocol supports two modes of elicitation:
 
-- **Form (In-Band)**: The server requests structured data (strings, numbers, Booleans, enums) which the client collects via a form interface and returns to the server.
+- **Form (In-Band)**: The server requests structured data (strings, numbers, Booleans, enums), which the client collects via a form interface and returns to the server.
 - **URL Mode**: The server provides a URL for the user to visit (for example, for OAuth, payments, or sensitive data entry). The interaction happens outside the MCP client.
 
-### Server Support for Elicitation
+### Server support for elicitation
 
 Servers request information from users with the <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*> extension method on <xref:ModelContextProtocol.Server.McpServer>.
 The C# SDK registers an instance of <xref:ModelContextProtocol.Server.McpServer> with the dependency injection container,
 so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.McpServer> to their method signature to access it.
 
-#### Form Mode Elicitation (In-Band)
+#### Form mode elicitation (in-band)
 
 For form-based elicitation, the MCP Server must specify the schema of each input value it is requesting from the user.
 Primitive types (string, number, Boolean) and enum types are supported for elicitation requests.
@@ -36,8 +36,8 @@ For enum types, the SDK supports several schema formats:
 
 #### Default values
 
-Each schema type supports a `Default` property that specifies a pre-populated value for the form field.
-Clients should use defaults to pre-fill form fields, making it easier for users to accept common values or see expected input formats.
+Each schema type supports a `Default` property that specifies a prepopulated value for the form field.
+Clients should use defaults to prefill form fields, making it easier for users to accept common values or see expected input formats.
 
 ```csharp
 var result = await server.ElicitAsync(new ElicitRequestParams
@@ -83,7 +83,7 @@ Enum schemas allow the server to present a set of choices to the user.
 - <xref:ModelContextProtocol.Protocol.ElicitRequestParams.TitledMultiSelectEnumSchema>: Multi-select with display titles.
 
 ```csharp
-// Titled single-select: display titles differ from values
+// Titled single-select: display titles differ from values.
 ["priority"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
 {
     Description = "Task priority",
@@ -96,7 +96,7 @@ Enum schemas allow the server to present a set of choices to the user.
     Default = "p2"
 },
 
-// Multi-select: user can select multiple values
+// Multi-select: user can select multiple values.
 ["tags"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
 {
     Description = "Tags to apply",
@@ -115,7 +115,7 @@ The following example demonstrates how a server could request a Boolean response
 
 [!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
-#### URL Mode Elicitation (Out-of-Band)
+#### URL mode elicitation (out-of-band)
 
 For URL mode elicitation, the server provides a URL that the user must visit to complete an action. This is useful for scenarios like OAuth flows, payment processing, or collecting sensitive credentials that should not be exposed to the MCP client.
 
@@ -134,7 +134,7 @@ var result = await server.ElicitAsync(
     cancellationToken);
 ```
 
-### Client Support for Elicitation
+### Client support for elicitation
 
 Clients declare their support for elicitation in their capabilities as part of the `initialize` request. Clients can support `Form` (in-band), `Url` (out-of-band), or both.
 
@@ -170,28 +170,28 @@ Here's an example implementation of how a console application might handle elici
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
 
-### URL Elicitation Required Error
+### URL elicitation required error
 
 When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in <xref: ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is enabled disabling server-to-client requests), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
 
-#### Throwing UrlElicitationRequiredException on the Server
+#### Throwing UrlElicitationRequiredException on the server
 
-A server tool can throw `UrlElicitationRequiredException` when it detects that authorization or other out-of-band interaction is required:
+A server tool can throw <xref:ModelContextProtocol.UrlElicitationRequiredException> when it detects that authorization or other out-of-band interaction is required:
 
 ```csharp
 [McpServerTool, Description("A tool that requires third-party authorization")]
 public async Task<string> AccessThirdPartyResource(McpServer server, CancellationToken token)
 {
-    // Check if we already have valid credentials for this user
-    // (In a real app, you'd check stored tokens based on user identity)
+    // Check if we already have valid credentials for this user.
+    // (In a real app, you'd check stored tokens based on user identity.)
     bool hasValidCredentials = false;
 
     if (!hasValidCredentials)
     {
-        // Generate a unique elicitation ID for tracking
+        // Generate a unique elicitation ID for tracking.
         var elicitationId = Guid.NewGuid().ToString();
 
-        // Throw the exception to signal the client needs to complete URL elicitation
+        // Throw the exception to signal the client needs to complete URL elicitation.
         throw new UrlElicitationRequiredException(
             "Authorization is required to access the third-party service.",
             [
@@ -205,16 +205,16 @@ public async Task<string> AccessThirdPartyResource(McpServer server, Cancellatio
             ]);
     }
 
-    // Proceed with the authorized operation
+    // Proceed with the authorized operation.
     return "Successfully accessed the resource!";
 }
 ```
 
 The exception can include multiple elicitations if the operation requires authorization from multiple services.
 
-#### Catching UrlElicitationRequiredException on the Client
+#### Catching UrlElicitationRequiredException on the client
 
-When the client calls a tool and receives a `UrlElicitationRequiredException`, it should:
+When the client calls a tool and receives a <xref:ModelContextProtocol.UrlElicitationRequiredException>, it should:
 
 1. Present each URL elicitation to the user (showing the URL and message)
 2. Get user consent before opening each URL
@@ -231,7 +231,7 @@ catch (UrlElicitationRequiredException ex)
 {
     Console.WriteLine($"Authorization required: {ex.Message}");
 
-    // Process each required elicitation
+    // Process each required elicitation.
     foreach (var elicitation in ex.Elicitations)
     {
         Console.WriteLine($"\nServer requests URL interaction:");
@@ -239,21 +239,21 @@ catch (UrlElicitationRequiredException ex)
         Console.WriteLine($"  URL: {elicitation.Url}");
         Console.WriteLine($"  Elicitation ID: {elicitation.ElicitationId}");
 
-        // Show security warning and get user consent
+        // Show security warning and get user consent.
         Console.Write("\nDo you want to open this URL? (y/n): ");
         var consent = Console.ReadLine();
 
         if (consent?.ToLower() == "y")
         {
-            // Open the URL in the system browser
+            // Open the URL in the system browser.
             Process.Start(new ProcessStartInfo(elicitation.Url!) { UseShellExecute = true });
 
             Console.WriteLine("Waiting for you to complete the interaction in your browser...");
-            // Optionally listen for notifications/elicitation/complete notification
+            // Optionally listen for notifications/elicitation/complete notification.
         }
     }
 
-    // After user completes the out-of-band interaction, retry the tool call
+    // After user completes the out-of-band interaction, retry the tool call.
     Console.Write("\nPress Enter to retry the tool call...");
     Console.ReadLine();
 
@@ -262,7 +262,7 @@ catch (UrlElicitationRequiredException ex)
 }
 ```
 
-#### Listening for Elicitation Completion Notifications
+#### Listening for elicitation completion notifications
 
 Servers can optionally send a `notifications/elicitation/complete` notification when the out-of-band interaction is complete. Clients can register a handler to receive these notifications:
 
@@ -277,13 +277,13 @@ await using var completionHandler = client.RegisterNotificationHandler(
         if (payload is not null)
         {
             Console.WriteLine($"Elicitation {payload.ElicitationId} completed!");
-            // Signal that the client can now retry the original request
+            // Signal that the client can now retry the original request.
         }
     });
 ```
 
 This pattern is particularly useful for:
 
-- **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user
-- **Payment processing**: When user confirmation is required through a secure payment interface
-- **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client
+- **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user.
+- **Payment processing**: When user confirmation is required through a secure payment interface.
+- **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client.

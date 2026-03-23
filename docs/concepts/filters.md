@@ -5,50 +5,50 @@ description: MCP Server Filters
 uid: filters
 ---
 
-# MCP Server Filters
+# MCP server filters
 
 The MCP Server provides two levels of filters for intercepting and modifying request processing:
 
 1. **Message Filters** - Low-level filters (`AddIncomingFilter`, `AddOutgoingFilter`) configured via `WithMessageFilters(...)` that intercept all JSON-RPC messages before routing.
-2. **Request-Specific Filters** - Handler-level filters (e.g., `AddListToolsFilter`, `AddCallToolFilter`) configured via `WithRequestFilters(...)` that target specific MCP operations.
+2. **Request-Specific Filters** - Handler-level filters (for example, `AddListToolsFilter`, `AddCallToolFilter`) configured via `WithRequestFilters(...)` that target specific MCP operations.
 
 The filters are stored in `McpServerOptions.Filters`.
 
-## Available Request-Specific Filter Methods
+## Available request-specific filter methods
 
 The following request filter methods are available on `IMcpRequestFilterBuilder` inside `WithRequestFilters(...)`:
 
-- `AddListResourceTemplatesFilter` - Filter for list resource templates handlers
-- `AddListToolsFilter` - Filter for list tools handlers
-- `AddCallToolFilter` - Filter for call tool handlers
-- `AddListPromptsFilter` - Filter for list prompts handlers
-- `AddGetPromptFilter` - Filter for get prompt handlers
-- `AddListResourcesFilter` - Filter for list resources handlers
-- `AddReadResourceFilter` - Filter for read resource handlers
-- `AddCompleteFilter` - Filter for completion handlers
-- `AddSubscribeToResourcesFilter` - Filter for resource subscription handlers
-- `AddUnsubscribeFromResourcesFilter` - Filter for resource unsubscription handlers
-- `AddSetLoggingLevelFilter` - Filter for logging level handlers
+- `AddListResourceTemplatesFilter` - Filter for list resource templates handlers.
+- `AddListToolsFilter` - Filter for list tools handlers.
+- `AddCallToolFilter` - Filter for call tool handlers.
+- `AddListPromptsFilter` - Filter for list prompts handlers.
+- `AddGetPromptFilter` - Filter for get prompt handlers.
+- `AddListResourcesFilter` - Filter for list resources handlers.
+- `AddReadResourceFilter` - Filter for read resource handlers.
+- `AddCompleteFilter` - Filter for completion handlers.
+- `AddSubscribeToResourcesFilter` - Filter for resource subscription handlers.
+- `AddUnsubscribeFromResourcesFilter` - Filter for resource unsubscription handlers.
+- `AddSetLoggingLevelFilter` - Filter for logging level handlers.
 
-## Message Filters
+## Message filters
 
 In addition to the request-specific filters above, there are low-level message filters that intercept all JSON-RPC messages before they are routed to specific handlers.
 Configure these on `IMcpMessageFilterBuilder` inside `WithMessageFilters(...)`:
 
-- `AddIncomingFilter` - Filter for all incoming JSON-RPC messages (requests and notifications)
-- `AddOutgoingFilter` - Filter for all outgoing JSON-RPC messages (responses and notifications)
+- `AddIncomingFilter` - Filter for all incoming JSON-RPC messages (requests and notifications).
+- `AddOutgoingFilter` - Filter for all outgoing JSON-RPC messages (responses and notifications).
 
-### When to Use Message Filters
+### When to use message filters
 
 Message filters operate at a lower level than request-specific filters and are useful when you need to:
 
-- Intercept all messages regardless of type
-- Implement custom protocol extensions or handle custom JSON-RPC methods
-- Log or monitor all traffic between client and server
-- Modify or skip messages before they reach handlers
-- Send additional messages in response to specific events
+- Intercept all messages regardless of type.
+- Implement custom protocol extensions or handle custom JSON-RPC methods.
+- Log or monitor all traffic between client and server.
+- Modify or skip messages before they reach handlers.
+- Send additional messages in response to specific events.
 
-### Incoming Message Filter
+### Incoming message filter
 
 `AddIncomingFilter` intercepts all incoming JSON-RPC messages before they are dispatched to request-specific handlers:
 
@@ -60,29 +60,29 @@ services.AddMcpServer()
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
 
-            // Access the raw JSON-RPC message
+            // Access the raw JSON-RPC message.
             if (context.JsonRpcMessage is JsonRpcRequest request)
             {
                 logger?.LogInformation($"Incoming request: {request.Method}");
             }
 
-            // Call next to continue processing
+            // Call next to continue processing.
             await next(context, cancellationToken);
         });
     })
     .WithTools<MyTools>();
 ```
 
-#### MessageContext Properties
+#### MessageContext properties
 
 Inside an incoming message filter, you have access to:
 
-- `context.JsonRpcMessage` - The incoming `JsonRpcMessage` (can be `JsonRpcRequest` or `JsonRpcNotification`)
-- `context.Server` - The `McpServer` instance for sending responses or notifications
-- `context.Services` - The request's service provider
-- `context.Items` - A dictionary for passing data between filters
+- `context.JsonRpcMessage` - The incoming `JsonRpcMessage` (can be `JsonRpcRequest` or `JsonRpcNotification`).
+- `context.Server` - The <xref:ModelContextProtocol.Server.McpServer> instance for sending responses or notifications.
+- `context.Services` - The request's service provider.
+- `context.Items` - A dictionary for passing data between filters.
 
-#### Skipping Default Handlers
+#### Skipping default handlers
 
 You can skip the default handler by not calling `next`. This is useful for implementing custom protocol methods:
 
@@ -93,14 +93,14 @@ You can skip the default handler by not calling `next`. This is useful for imple
     {
         if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == "custom/myMethod")
         {
-            // Handle the custom method directly
+            // Handle the custom method directly.
             var response = new JsonRpcResponse
             {
                 Id = request.Id,
                 Result = JsonSerializer.SerializeToNode(new { message = "Custom response" })
             };
             await context.Server.SendMessageAsync(response, cancellationToken);
-            return; // Don't call next - we handled it
+            return; // Don't call next - we handled it.
         }
 
         await next(context, cancellationToken);
@@ -108,7 +108,7 @@ You can skip the default handler by not calling `next`. This is useful for imple
 })
 ```
 
-### Outgoing Message Filter
+### Outgoing message filter
 
 `AddOutgoingFilter` intercepts all outgoing JSON-RPC messages before they are sent to the client:
 
@@ -120,7 +120,7 @@ services.AddMcpServer()
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
 
-            // Inspect outgoing messages
+            // Inspect outgoing messages.
             switch (context.JsonRpcMessage)
             {
                 case JsonRpcResponse response:
@@ -137,7 +137,7 @@ services.AddMcpServer()
     .WithTools<MyTools>();
 ```
 
-#### Skipping Outgoing Messages
+#### Skipping outgoing messages
 
 You can suppress outgoing messages by not calling `next`:
 
@@ -146,11 +146,11 @@ You can suppress outgoing messages by not calling `next`:
 {
     messageFilters.AddOutgoingFilter(next => async (context, cancellationToken) =>
     {
-        // Suppress specific notifications
+        // Suppress specific notifications.
         if (context.JsonRpcMessage is JsonRpcNotification notification &&
             notification.Method == "notifications/progress")
         {
-            return; // Don't send this notification
+            return; // Don't send this notification.
         }
 
         await next(context, cancellationToken);
@@ -158,7 +158,7 @@ You can suppress outgoing messages by not calling `next`:
 })
 ```
 
-#### Sending Additional Messages
+#### Sending additional messages
 
 Outgoing message filters can send additional messages by calling `next` with a new `MessageContext`:
 
@@ -167,7 +167,7 @@ Outgoing message filters can send additional messages by calling `next` with a n
 {
     messageFilters.AddOutgoingFilter(next => async (context, cancellationToken) =>
     {
-        // Send an extra notification before certain responses
+        // Send an extra notification before certain responses.
         if (context.JsonRpcMessage is JsonRpcResponse response &&
             response.Result is JsonObject result &&
             result.ContainsKey("tools"))
@@ -189,7 +189,7 @@ Outgoing message filters can send additional messages by calling `next` with a n
 })
 ```
 
-### Message Filter Execution Order
+### Message filter execution order
 
 Message filters execute in registration order, with the first registered filter being the outermost:
 
@@ -197,14 +197,14 @@ Message filters execute in registration order, with the first registered filter 
 services.AddMcpServer()
     .WithMessageFilters(messageFilters =>
     {
-        messageFilters.AddIncomingFilter(incomingFilter1); // Incoming: executes first (outermost)
-        messageFilters.AddIncomingFilter(incomingFilter2); // Incoming: executes second
-        messageFilters.AddOutgoingFilter(outgoingFilter1); // Outgoing: executes first (outermost)
-        messageFilters.AddOutgoingFilter(outgoingFilter2); // Outgoing: executes second
+        messageFilters.AddIncomingFilter(incomingFilter1); // Incoming: executes first (outermost).
+        messageFilters.AddIncomingFilter(incomingFilter2); // Incoming: executes second.
+        messageFilters.AddOutgoingFilter(outgoingFilter1); // Outgoing: executes first (outermost).
+        messageFilters.AddOutgoingFilter(outgoingFilter2); // Outgoing: executes second.
     })
     .WithRequestFilters(requestFilters =>
     {
-        requestFilters.AddListToolsFilter(toolsFilter);    // Request-specific filter
+        requestFilters.AddListToolsFilter(toolsFilter);    // Request-specific filter.
     })
     .WithTools<MyTools>();
 ```
@@ -235,7 +235,7 @@ OutgoingFilter2 (after next)
 OutgoingFilter1 (after next)
 ```
 
-### Passing Data Between Filters
+### Passing data between filters
 
 The `Items` dictionary allows you to pass data between filters processing the same message:
 
@@ -270,7 +270,7 @@ Filters are functions that take a handler and return a new handler, allowing you
 services.AddMcpServer()
     .WithListToolsHandler(async (context, cancellationToken) =>
     {
-        // Your base handler logic
+        // Your base handler logic.
         return new ListToolsResult { Tools = GetTools() };
     })
     .WithRequestFilters(requestFilters =>
@@ -279,34 +279,34 @@ services.AddMcpServer()
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
 
-            // Pre-processing logic
+            // Pre-processing logic.
             logger?.LogInformation("Before handler execution");
 
             var result = await next(context, cancellationToken);
 
-            // Post-processing logic
+            // Post-processing logic.
             logger?.LogInformation("After handler execution");
             return result;
         });
     });
 ```
 
-## Filter Execution Order
+## Filter execution order
 
 ```csharp
 services.AddMcpServer()
     .WithListToolsHandler(baseHandler)
     .WithRequestFilters(requestFilters =>
     {
-        requestFilters.AddListToolsFilter(filter1); // Executes first (outermost)
-        requestFilters.AddListToolsFilter(filter2); // Executes second
-        requestFilters.AddListToolsFilter(filter3); // Executes third (closest to handler)
+        requestFilters.AddListToolsFilter(filter1); // Executes first (outermost).
+        requestFilters.AddListToolsFilter(filter2); // Executes second.
+        requestFilters.AddListToolsFilter(filter3); // Executes third (closest to handler).
     });
 ```
 
 Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filter2 -> filter1`
 
-## Common Use Cases
+## Common use cases
 
 ### Logging
 
@@ -325,7 +325,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 });
 ```
 
-### Error Handling
+### Error handling
 
 ```csharp
 .WithRequestFilters(requestFilters =>
@@ -351,7 +351,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 });
 ```
 
-### Performance Monitoring
+### Performance monitoring
 
 ```csharp
 .WithRequestFilters(requestFilters =>
@@ -391,33 +391,33 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 });
 ```
 
-## Built-in Authorization Request Filters
+## Built-in authorization request filters
 
 When using the ASP.NET Core integration (`ModelContextProtocol.AspNetCore`), you can add authorization filters to support `[Authorize]` and `[AllowAnonymous]` attributes on MCP server tools, prompts, and resources by calling `AddAuthorizationFilters()` on your MCP server builder.
 
-### Enabling Authorization Request Filters
+### Enabling authorization request filters
 
 To enable authorization support, call `AddAuthorizationFilters()` when configuring your MCP server:
 
 ```csharp
 services.AddMcpServer()
     .WithHttpTransport()
-    .AddAuthorizationFilters() // Enable authorization filter support
+    .AddAuthorizationFilters() // Enable authorization filter support.
     .WithTools<WeatherTools>();
 ```
 
 **Important**: You should always call `AddAuthorizationFilters()` when using ASP.NET Core integration if you want to use authorization attributes like `[Authorize]` on your MCP server tools, prompts, or resources.
 
-### Authorization Attributes Support
+### Authorization attributes support
 
 The MCP server automatically respects the following authorization attributes:
 
-- **`[Authorize]`** - Requires authentication for access
-- **`[Authorize(Roles = "RoleName")]`** - Requires specific roles
-- **`[Authorize(Policy = "PolicyName")]`** - Requires specific authorization policies
-- **`[AllowAnonymous]`** - Explicitly allows anonymous access (overrides `[Authorize]`)
+- **`[Authorize]`** - Requires authentication for access.
+- **`[Authorize(Roles = "RoleName")]`** - Requires specific roles.
+- **`[Authorize(Policy = "PolicyName")]`** - Requires specific authorization policies.
+- **`[AllowAnonymous]`** - Explicitly allows anonymous access (overrides `[Authorize]`).
 
-### Tool Authorization
+### Tool authorization
 
 Tools can be decorated with authorization attributes to control access:
 
@@ -432,14 +432,14 @@ public class WeatherTools
     }
 
     [McpServerTool, Description("Gets detailed weather forecast")]
-    [Authorize] // Requires authentication
+    [Authorize] // Requires authentication.
     public static string GetDetailedForecast(string location)
     {
         return $"Detailed forecast for {location}: ...";
     }
 
     [McpServerTool, Description("Manages weather alerts")]
-    [Authorize(Roles = "Admin")] // Requires Admin role
+    [Authorize(Roles = "Admin")] // Requires Admin role.
     public static string ManageWeatherAlerts(string alertType)
     {
         return $"Managing alert: {alertType}";
@@ -447,13 +447,13 @@ public class WeatherTools
 }
 ```
 
-### Class-Level Authorization
+### Class-level authorization
 
 You can apply authorization at the class level, which affects all tools in the class:
 
 ```csharp
 [McpServerToolType]
-[Authorize] // All tools require authentication
+[Authorize] // All tools require authentication.
 public class RestrictedTools
 {
     [McpServerTool, Description("Restricted tool accessible to authenticated users")]
@@ -463,7 +463,7 @@ public class RestrictedTools
     }
 
     [McpServerTool, Description("Public tool accessible to anonymous users")]
-    [AllowAnonymous] // Overrides class-level [Authorize]
+    [AllowAnonymous] // Overrides class-level [Authorize].
     public static string PublicOperation()
     {
         return "Public operation completed";
@@ -471,19 +471,19 @@ public class RestrictedTools
 }
 ```
 
-### How Authorization Filters Work
+### How authorization filters work
 
 The authorization filters work differently for list operations versus individual operations:
 
-#### List Operations (ListTools, ListPrompts, ListResources)
+#### List operations (ListTools, ListPrompts, ListResources)
 
 For list operations, the filters automatically remove unauthorized items from the results. Users only see tools, prompts, or resources they have permission to access.
 
-#### Individual Operations (CallTool, GetPrompt, ReadResource)
+#### Individual operations (CallTool, GetPrompt, ReadResource)
 
-For individual operations, the filters throw an `McpException` with "Access forbidden" message. These get turned into JSON-RPC errors if uncaught by middleware.
+For individual operations, the filters throw an <xref:ModelContextProtocol.McpException> with "Access forbidden" message. These get turned into JSON-RPC errors if uncaught by middleware.
 
-### Filter Execution Order and Authorization
+### Filter execution order and authorization
 
 Authorization filters are applied automatically when you call `AddAuthorizationFilters()`. These filters run at a specific point in the filter pipeline, which means:
 
@@ -508,21 +508,21 @@ services.AddMcpServer()
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
 
-            // This filter runs BEFORE authorization - sees all tools
+            // This filter runs BEFORE authorization - sees all tools.
             logger?.LogInformation("Request for tools list - will see all tools");
             var result = await next(context, cancellationToken);
             logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools after authorization");
             return result;
         });
     })
-    .AddAuthorizationFilters() // Authorization filtering happens here
+    .AddAuthorizationFilters() // Authorization filtering happens here.
     .WithRequestFilters(requestFilters =>
     {
         requestFilters.AddListToolsFilter(next => async (context, cancellationToken) =>
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
 
-            // This filter runs AFTER authorization - only sees authorized tools
+            // This filter runs AFTER authorization - only sees authorized tools.
             var result = await next(context, cancellationToken);
             logger?.LogInformation($"Post-auth filter sees {result.Tools?.Count ?? 0} authorized tools");
             return result;
@@ -531,7 +531,7 @@ services.AddMcpServer()
     .WithTools<WeatherTools>();
 ```
 
-### Setup Requirements
+### Setup requirements
 
 To use authorization features, you must configure authentication and authorization in your ASP.NET Core application and call `AddAuthorizationFilters()`:
 
@@ -545,13 +545,13 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddMcpServer()
     .WithHttpTransport()
-    .AddAuthorizationFilters() // Required for authorization support
+    .AddAuthorizationFilters() // Required for authorization support.
     .WithTools<WeatherTools>()
     .WithRequestFilters(requestFilters =>
     {
         requestFilters.AddCallToolFilter(next => async (context, cancellationToken) =>
         {
-            // Custom call tool logic
+            // Custom call tool logic.
             return await next(context, cancellationToken);
         });
     });
@@ -562,7 +562,7 @@ app.MapMcp();
 app.Run();
 ```
 
-### Custom Authorization Filters
+### Custom authorization filters
 
 You can also create custom authorization filters using the filter methods:
 
@@ -571,7 +571,7 @@ You can also create custom authorization filters using the filter methods:
 {
     requestFilters.AddCallToolFilter(next => async (context, cancellationToken) =>
     {
-        // Custom authorization logic
+        // Custom authorization logic.
         if (context.User?.Identity?.IsAuthenticated != true)
         {
             return new CallToolResult
@@ -590,6 +590,6 @@ You can also create custom authorization filters using the filter methods:
 
 Within filters, you have access to:
 
-- `context.User` - The current user's `ClaimsPrincipal`.
+- `context.User` - The current user's <xref:System.Security.Claims.ClaimsPrincipal>.
 - `context.Services` - The request's service provider for resolving authorization services.
 - `context.MatchedPrimitive` - The matched tool/prompt/resource with its metadata including authorization attributes via `context.MatchedPrimitive.Metadata`.

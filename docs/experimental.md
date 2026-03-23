@@ -9,7 +9,7 @@ The Model Context Protocol C# SDK uses the [`[Experimental]`](https://learn.micr
 
 ## Suppressing experimental diagnostics
 
-When you use an experimental API, the compiler produces a diagnostic (e.g., `MCPEXP001`) to ensure you're aware the API may change. If you want to use the API, suppress the diagnostic in one of these ways:
+When you use an experimental API, the compiler produces a diagnostic (for example, `MCPEXP001`) to ensure you're aware the API may change. If you want to use the API, suppress the diagnostic in one of these ways:
 
 ### Project-wide suppression
 
@@ -44,7 +44,7 @@ The behavior of experimental properties differs depending on whether you use [re
 
 This means that switching between reflection-based and source-generated serialization can silently change which properties are serialized. To avoid this, source-generation users should configure a `TypeInfoResolverChain` as described below.
 
-### Custom `JsonSerializerContext`
+### Custom JsonSerializerContext
 
 If you define your own `JsonSerializerContext` that includes MCP protocol types, configure a `TypeInfoResolverChain` so the SDK's resolver handles MCP types:
 
