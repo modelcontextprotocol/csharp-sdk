@@ -569,10 +569,7 @@ public partial class McpServerToolTests
             OutputSchema = outputSchema,
         });
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
@@ -650,10 +647,7 @@ public partial class McpServerToolTests
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
 
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
@@ -727,10 +721,7 @@ public partial class McpServerToolTests
             SerializerOptions = serializerOptions,
         });
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
@@ -753,10 +744,7 @@ public partial class McpServerToolTests
             SerializerOptions = serializerOptions,
         });
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
