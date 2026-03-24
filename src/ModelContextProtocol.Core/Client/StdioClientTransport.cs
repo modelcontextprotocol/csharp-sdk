@@ -59,6 +59,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
         Process? process = null;
         bool processStarted = false;
+        DataReceivedEventHandler? errorHandler = null;
 
         string command = _options.Command;
         IList<string>? arguments = _options.Arguments;
@@ -136,7 +137,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             // few lines in a rolling log for use in exceptions.
             const int MaxStderrLength = 10; // keep the last 10 lines of stderr
             Queue<string> stderrRollingLog = new(MaxStderrLength);
-            process.ErrorDataReceived += (sender, args) =>
+            process.ErrorDataReceived += errorHandler = (sender, args) =>
             {
                 string? data = args.Data;
                 if (data is not null)
@@ -203,7 +204,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             process.BeginErrorReadLine();
 
-            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, _loggerFactory);
+            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, _loggerFactory);
         }
         catch (Exception ex)
         {
@@ -211,6 +212,11 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             try
             {
+                if (process is not null && errorHandler is not null)
+                {
+                    process.ErrorDataReceived -= errorHandler;
+                }
+
                 DisposeProcess(process, processStarted, _options.ShutdownTimeout);
             }
             catch (Exception ex2)
@@ -236,18 +242,6 @@ public sealed partial class StdioClientTransport : IClientTransport
                     // Kill the while process tree because the process may spawn child processes
                     // and Node.js does not kill its children when it exits properly.
                     process.KillTree(shutdownTimeout);
-                }
-
-                // When the process exited on its own, call WaitForExit() to flush
-                // any remaining ErrorDataReceived/OutputDataReceived events.
-                // We skip this after KillTree because the parameterless WaitForExit()
-                // blocks until all redirected output pipe handles are closed, which
-                // hangs when grandchild processes (e.g. from cmd.exe /c npx) inherited
-                // the handles. Late-firing events after KillTree are safe because the
-                // ErrorDataReceived handler is protected with try/catch.
-                if (!processRunning && HasExited(process))
-                {
-                    process.WaitForExit();
                 }
 
                 // Invoke the callback while the process handle is still valid,

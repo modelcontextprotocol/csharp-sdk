@@ -10,15 +10,17 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     private readonly StdioClientTransportOptions _options;
     private readonly Process _process;
     private readonly Queue<string> _stderrRollingLog;
+    private readonly DataReceivedEventHandler _errorHandler;
     private int _cleanedUp = 0;
     private readonly int? _processId;
 
-    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory) :
+    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, ILoggerFactory? loggerFactory) :
         base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
     {
         _options = options;
         _process = process;
         _stderrRollingLog = stderrRollingLog;
+        _errorHandler = errorHandler;
         try { _processId = process.Id; } catch { }
     }
 
@@ -55,6 +57,10 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // so create an exception with details about that.
         error ??= await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false);
 
+        // Detach the stderr handler so no further ErrorDataReceived events
+        // are dispatched during or after process disposal.
+        _process.ErrorDataReceived -= _errorHandler;
+
         // Terminate the server process (or confirm it already exited), then build
         // and publish strongly-typed completion details while the process handle
         // is still valid so we can read the exit code.
@@ -89,13 +95,11 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         try
         {
             // The process has exited, but we still need to ensure stderr has been flushed.
-            // WaitForExitAsync only waits for exit; it does not guarantee that all
-            // ErrorDataReceived events have been dispatched. The synchronous WaitForExit()
-            // (no arguments) does ensure that, so call it after WaitForExitAsync completes.
 #if NET
             await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+#else
+            _process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds);
 #endif
-            _process.WaitForExit();
         }
         catch { }
 
