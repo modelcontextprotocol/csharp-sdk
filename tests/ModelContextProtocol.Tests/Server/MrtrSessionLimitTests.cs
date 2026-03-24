@@ -7,14 +7,13 @@ using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 
-namespace ModelContextProtocol.Tests.Client;
+namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests proving that outgoing message filters can track and limit per-session MRTR flows.
-/// This demonstrates that protocol-level sessions enable session-scoped resource governance
-/// that would not be possible without the Mcp-Session-Id routing mechanism.
+/// Tests for session-scoped MRTR resource governance — verifying that outgoing message
+/// filters can track and limit MRTR round trips per session.
 /// </summary>
-public class McpClientMrtrSessionLimitTests : ClientServerTestBase
+public class MrtrSessionLimitTests : ClientServerTestBase
 {
     /// <summary>
     /// Tracks the number of pending MRTR flows per session. Incremented when an IncompleteResult
@@ -39,7 +38,7 @@ public class McpClientMrtrSessionLimitTests : ClientServerTestBase
     /// </summary>
     private int _blockedFlowCount;
 
-    public McpClientMrtrSessionLimitTests(ITestOutputHelper testOutputHelper)
+    public MrtrSessionLimitTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }

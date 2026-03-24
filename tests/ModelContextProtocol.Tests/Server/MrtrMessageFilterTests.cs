@@ -7,17 +7,18 @@ using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Tests.Client;
+namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests that verify transport middleware sees raw MRTR JSON-RPC messages and
-/// that old-style sampling/elicitation JSON-RPC requests are NOT sent when MRTR is active.
+/// Tests that message filters correctly observe MRTR protocol behavior — verifying that
+/// IncompleteResult responses are visible to outgoing filters, and that no legacy
+/// elicitation/sampling requests are sent when MRTR is active.
 /// </summary>
-public class McpClientMrtrMessageFilterTests : ClientServerTestBase
+public class MrtrMessageFilterTests : ClientServerTestBase
 {
     private readonly ConcurrentBag<string> _outgoingRequestMethods = [];
 
-    public McpClientMrtrMessageFilterTests(ITestOutputHelper testOutputHelper)
+    public MrtrMessageFilterTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
