@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -13,6 +14,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class MrtrLowLevelApiTests : ClientServerTestBase
 {
+    private readonly ServerMessageTracker _tracker = new();
+
     public MrtrLowLevelApiTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
@@ -23,6 +26,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
+            _tracker.AddOutgoingFilter(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -192,6 +196,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("completed:accept:user-response", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -215,6 +220,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("sampled:LLM output", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -230,6 +236,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("resumed:shedding-load", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -252,6 +259,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
         // If IsMrtrSupported was false, it would return "fallback:MRTR not supported"
         var content = Assert.Single(result.Content);
         Assert.StartsWith("completed:", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -322,6 +330,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
         var elicitContent = Assert.Single(elicitResult.Content);
         Assert.Equal("completed:confirm:elicited", Assert.IsType<TextContentBlock>(elicitContent).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -377,5 +386,6 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("multi:accept:LLM output", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 }

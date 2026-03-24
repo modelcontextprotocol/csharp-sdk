@@ -19,6 +19,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
     private readonly TaskCompletionSource<bool> _handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _handlerResumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _releaseHandler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly ServerMessageTracker _tracker = new();
 
     public MrtrHandlerLifecycleTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -31,6 +32,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
+            _tracker.AddOutgoingFilter(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -204,6 +206,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             await client.CallToolAsync("elicitation-tool",
                 new Dictionary<string, object?> { ["message"] = "test" },
                 cancellationToken: cts.Token));
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -246,6 +250,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -283,6 +289,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // The call should throw OperationCanceledException.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await callTask);
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -326,6 +334,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // The tool should complete successfully — the stale notification didn't affect it.
         var result = await callTask;
         Assert.Contains("accept", result.Content.OfType<TextContentBlock>().First().Text);
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -368,6 +378,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // DisposeAsync should not have returned until the handler completed.
         Assert.True(handlerCompleted, "DisposeAsync should wait for MRTR handlers to complete before returning.");
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -396,6 +408,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             m.LogLevel == LogLevel.Error &&
             m.Message.Contains("elicit-then-throw-tool") &&
             m.Exception is InvalidOperationException);
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -420,5 +434,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 }

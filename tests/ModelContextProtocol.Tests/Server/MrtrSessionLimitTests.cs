@@ -27,6 +27,8 @@ public class MrtrSessionLimitTests : ClientServerTestBase
     /// </summary>
     private readonly ConcurrentBag<(string SessionId, int PendingCount)> _observations = [];
 
+    private readonly ServerMessageTracker _tracker = new();
+
     /// <summary>
     /// Maximum allowed concurrent MRTR flows per session. If exceeded, the outgoing filter
     /// replaces the IncompleteResult with an error response.
@@ -48,6 +50,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
+            _tracker.AddOutgoingFilter(options.Filters.Message);
 
             // Outgoing filter: detect IncompleteResult responses and track per session.
             options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
@@ -149,6 +152,8 @@ public class MrtrSessionLimitTests : ClientServerTestBase
 
         // After the retry completed, the count should be back to 0.
         Assert.Equal(0, _pendingFlowsPerSession.GetValueOrDefault(sessionId));
+
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]

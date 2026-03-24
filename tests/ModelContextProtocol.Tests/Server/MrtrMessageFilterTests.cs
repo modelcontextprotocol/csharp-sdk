@@ -4,7 +4,6 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -16,7 +15,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class MrtrMessageFilterTests : ClientServerTestBase
 {
-    private readonly ConcurrentBag<string> _outgoingRequestMethods = [];
+    private readonly ServerMessageTracker _tracker = new();
 
     public MrtrMessageFilterTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -28,22 +27,10 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
+            _tracker.AddOutgoingFilter(options.Filters.Message);
         });
 
         mcpServerBuilder
-            .WithMessageFilters(filters =>
-            {
-                filters.AddOutgoingFilter(next => async (context, cancellationToken) =>
-                {
-                    // Record the method of every outgoing JsonRpcRequest (server → client requests).
-                    if (context.JsonRpcMessage is JsonRpcRequest request)
-                    {
-                        _outgoingRequestMethods.Add(request.Method);
-                    }
-
-                    await next(context, cancellationToken);
-                });
-            })
             .WithTools([
                 McpServerTool.Create(
                     async (string message, McpServer server, CancellationToken ct) =>
@@ -85,7 +72,6 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     {
         // When both sides are on the experimental protocol, the server should use MRTR
         // (IncompleteResult) instead of sending old-style elicitation/create JSON-RPC requests.
-        // The outgoing message filter should NOT see any elicitation/create or sampling/createMessage requests.
         StartServer();
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
@@ -100,13 +86,9 @@ public class MrtrMessageFilterTests : ClientServerTestBase
             new Dictionary<string, object?> { ["message"] = "test" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // The tool should have completed successfully via MRTR.
         var content = Assert.Single(result.Content);
         Assert.Equal("accept", Assert.IsType<TextContentBlock>(content).Text);
-
-        // Verify no old-style elicitation requests were sent over the wire.
-        Assert.DoesNotContain(RequestMethods.ElicitationCreate, _outgoingRequestMethods);
-        Assert.DoesNotContain(RequestMethods.SamplingCreateMessage, _outgoingRequestMethods);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -133,10 +115,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("Sampled: test", Assert.IsType<TextContentBlock>(content).Text);
-
-        // Verify no old-style requests were sent.
-        Assert.DoesNotContain(RequestMethods.SamplingCreateMessage, _outgoingRequestMethods);
-        Assert.DoesNotContain(RequestMethods.ElicitationCreate, _outgoingRequestMethods);
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -146,10 +125,6 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         // in outgoing JSON-RPC responses (validates MRTR transport visibility).
         var sawIncompleteResult = false;
 
-        // We need a fresh server with an additional filter that checks responses.
-        // But since ConfigureServices already set up the outgoing filter, we add
-        // response checking via the existing _outgoingRequestMethods bag (which only
-        // records requests). Instead, we'll just verify via the result that MRTR was used.
         StartServer();
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
@@ -169,5 +144,6 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         // The elicitation handler was called, confirming MRTR round-trip occurred
         // (IncompleteResult was sent by server and processed by client).
         Assert.True(sawIncompleteResult, "Expected MRTR round-trip with IncompleteResult");
+        _tracker.AssertNoLegacyMrtrRequests();
     }
 }

@@ -16,6 +16,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class MrtrBackcompatTests : ClientServerTestBase
 {
+    private readonly ServerMessageTracker _tracker = new();
+
     public MrtrBackcompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
@@ -24,6 +26,11 @@ public class MrtrBackcompatTests : ClientServerTestBase
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         // Deliberately NOT setting ExperimentalProtocolVersion on the server.
+        services.Configure<McpServerOptions>(options =>
+        {
+            _tracker.AddOutgoingFilter(options.Filters.Message);
+        });
+
         mcpServerBuilder.WithTools([
             McpServerTool.Create(
                 async (string prompt, McpServer server, CancellationToken ct) =>
