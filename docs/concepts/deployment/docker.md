@@ -1,6 +1,6 @@
 ---
 title: Docker Deployment
-author: jeffhandley
+author: john-mckillip
 description: How to run ASP.NET Core MCP servers in Docker containers using Streamable HTTP transport.
 uid: docker-deployment
 ---
