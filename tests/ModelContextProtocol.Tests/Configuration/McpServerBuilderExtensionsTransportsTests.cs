@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Tests.Configuration;
 public class McpServerBuilderExtensionsTransportsTests
 {
     [Fact]
-    public void WithStdioServerTransport_Sets_Transport()
+    public async Task WithStdioServerTransport_Sets_Transport()
     {
         var services = new ServiceCollection();
         services.AddMcpServer().WithStdioServerTransport();
@@ -17,7 +17,7 @@ public class McpServerBuilderExtensionsTransportsTests
         var transportServiceType = services.FirstOrDefault(s => s.ServiceType == typeof(ITransport));
         Assert.NotNull(transportServiceType);
 
-        var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         Assert.IsType<StdioServerTransport>(serviceProvider.GetRequiredService<ITransport>());
     }
 
