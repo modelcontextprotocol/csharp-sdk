@@ -197,9 +197,17 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             m.Category == "ModelContextProtocol.Client.McpClient" &&
             m.Message.Contains("request '2' for method 'tools/call'"));
 
-        Assert.Single(MockLoggerProvider.LogMessages, m =>
+        // In MRTR mode, sampling is embedded in the IncompleteResult exchange within tools/call,
+        // so there's no separate sampling/createMessage JSON-RPC request logged by the server.
+        bool hasSeparateSamplingRequest = MockLoggerProvider.LogMessages.Any(m =>
             m.Category == "ModelContextProtocol.Server.McpServer" &&
-            m.Message.Contains("request '2' for method 'sampling/createMessage'"));
+            m.Message.Contains("for method 'sampling/createMessage'"));
+        if (hasSeparateSamplingRequest)
+        {
+            Assert.Single(MockLoggerProvider.LogMessages, m =>
+                m.Category == "ModelContextProtocol.Server.McpServer" &&
+                m.Message.Contains("request '2' for method 'sampling/createMessage'"));
+        }
     }
 
     [Fact]
