@@ -1732,7 +1732,7 @@ internal sealed partial class McpServerImpl : McpServer
     [LoggerMessage(Level = LogLevel.Debug, Message = "Cancelled {Count} pending MRTR continuation(s) during session disposal.")]
     private partial void MrtrContinuationsCancelled(int count);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "An MRTR handler threw an unhandled exception.")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "An MRTR handler threw an unhandled exception.")]
     private partial void MrtrHandlerError(Exception exception);
 
     /// <summary>
