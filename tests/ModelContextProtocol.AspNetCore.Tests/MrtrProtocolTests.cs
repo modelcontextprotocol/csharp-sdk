@@ -50,46 +50,11 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Description = "Elicits from client"
                 }),
             McpServerTool.Create(
-                static string (McpServer server) => server.IsMrtrSupported.ToString(),
-                new McpServerToolCreateOptions
-                {
-                    Name = "check-mrtr-tool",
-                    Description = "Returns IsMrtrSupported"
-                }),
-            McpServerTool.Create(
                 static string (McpServer _) => throw new McpProtocolException("Tool validation failed", McpErrorCode.InvalidParams),
                 new McpServerToolCreateOptions
                 {
                     Name = "throwing-tool",
                     Description = "A tool that throws immediately"
-                }),
-            McpServerTool.Create(
-                static string (McpServer server, RequestContext<CallToolRequestParams> context) =>
-                {
-                    var requestState = context.Params!.RequestState;
-
-                    if (requestState is not null)
-                    {
-                        return $"loadshed-resumed:{requestState}";
-                    }
-
-                    throw new IncompleteResultException(requestState: "load-shedding-state");
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "loadshed-tool",
-                    Description = "Low-level MRTR tool that returns requestState only (load shedding)"
-                }),
-            McpServerTool.Create(
-                static string (McpServer server) =>
-                {
-                    // Throws IncompleteResultException even though MRTR may not be supported
-                    throw new IncompleteResultException(requestState: "should-fail");
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "always-incomplete-tool",
-                    Description = "Tool that always throws IncompleteResultException regardless of MRTR support"
                 }),
         ]).WithHttpTransport();
 
@@ -157,63 +122,6 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.True(
             message is JsonRpcResponse or JsonRpcError,
             $"Expected JsonRpcResponse or JsonRpcError, got {message?.GetType().Name}");
-    }
-
-    // --- Low-Level MRTR Protocol Tests ---
-
-    [Fact]
-    public async Task LowLevel_ToolReturnsRequestStateOnly_LoadShedding()
-    {
-        await StartAsync();
-        await InitializeWithMrtrAsync();
-
-        var response = await PostJsonRpcAsync(CallTool("loadshed-tool"));
-        var rpcResponse = await AssertSingleSseResponseAsync(response);
-
-        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
-        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
-
-        // No inputRequests — this is a load shedding response
-        Assert.Null(resultObj["inputRequests"]);
-
-        // requestState must be present
-        Assert.Equal("load-shedding-state", resultObj["requestState"]?.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task LowLevel_IncompleteResultException_WithoutMrtr_ReturnsJsonRpcError()
-    {
-        await StartAsync();
-        await InitializeWithoutMrtrAsync();
-
-        // Call a tool that always throws IncompleteResultException regardless of MRTR support
-        var response = await PostJsonRpcAsync(CallTool("always-incomplete-tool"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
-        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
-
-        // Should be a JSON-RPC error, not an IncompleteResult
-        var errorMessage = Assert.IsType<JsonRpcError>(message);
-        Assert.NotNull(errorMessage.Error);
-        Assert.Contains("without input requests", errorMessage.Error.Message);
-    }
-
-    [Fact]
-    public async Task LowLevel_IsMrtrSupported_ReturnsTrue_WithoutMrtrNegotiation()
-    {
-        await StartAsync();
-        await InitializeWithoutMrtrAsync();
-
-        // On a non-stateless HTTP server, IsMrtrSupported returns true even without
-        // MRTR negotiation because the backcompat layer can resolve IncompleteResultException
-        // via standard JSON-RPC server-to-client requests.
-        var response = await PostJsonRpcAsync(CallTool("check-mrtr-tool"));
-        var rpcResponse = await AssertSingleSseResponseAsync(response);
-
-        var callToolResult = AssertType<CallToolResult>(rpcResponse.Result);
-        var content = Assert.Single(callToolResult.Content);
-        Assert.Equal("True", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     [Fact]
@@ -310,13 +218,6 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
-    private static T AssertType<T>(JsonNode? jsonNode)
-    {
-        var type = JsonSerializer.Deserialize(jsonNode, GetJsonTypeInfo<T>());
-        Assert.NotNull(type);
-        return type;
-    }
-
     private static async IAsyncEnumerable<string> ReadSseAsync(HttpContent responseContent)
     {
         var responseStream = await responseContent.ReadAsStreamAsync(TestContext.Current.CancellationToken);
@@ -383,30 +284,6 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2026-06-XX");
 
         // Reset request ID counter since initialize used ID 1
-        _lastRequestId = 1;
-    }
-
-    /// <summary>
-    /// Initialize a session requesting a standard protocol version (no MRTR).
-    /// </summary>
-    private async Task InitializeWithoutMrtrAsync()
-    {
-        var initJson = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{"sampling":{},"elicitation":{},"roots":{}},"clientInfo":{"name":"LegacyTestClient","version":"1.0.0"}}}
-            """;
-
-        using var response = await PostJsonRpcAsync(initJson);
-        var rpcResponse = await AssertSingleSseResponseAsync(response);
-        Assert.NotNull(rpcResponse.Result);
-
-        // Verify the server negotiated to the standard version, not the experimental one
-        var protocolVersion = rpcResponse.Result["protocolVersion"]?.GetValue<string>();
-        Assert.Equal("2025-03-26", protocolVersion);
-
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
-        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
-
         _lastRequestId = 1;
     }
 }
