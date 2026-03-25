@@ -654,6 +654,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Throw.IfNull(message);
 
+        if (message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' request via {nameof(SendMessageAsync)}. " +
+                $"Use {nameof(SendRequestAsync)} instead to get a correlated response.");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;

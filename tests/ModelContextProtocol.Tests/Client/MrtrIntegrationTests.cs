@@ -140,13 +140,13 @@ public class MrtrIntegrationTests : ClientServerTestBase
                     Description = "A tool that uses high-level ElicitAsync then throws IncompleteResultException"
                 }),
             McpServerTool.Create(
-                (McpServer server) =>
+                async (McpServer server) =>
                 {
-                    // Attempt to bypass MRTR by using SendMessageAsync with a raw JsonRpcRequest.
-                    // DestinationBoundMcpServer should throw synchronously when MRTR context is active.
+                    // Attempt to send a JsonRpcRequest via SendMessageAsync — should always throw
+                    // since requests must go through SendRequestAsync for response correlation.
                     try
                     {
-                        server.SendMessageAsync(new JsonRpcRequest
+                        await server.SendMessageAsync(new JsonRpcRequest
                         {
                             Id = new RequestId(999),
                             Method = RequestMethods.ElicitationCreate,
@@ -308,18 +308,16 @@ public class MrtrIntegrationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task SendMessageAsync_WithJsonRpcRequest_ThrowsWhenMrtrActive()
+    public async Task SendMessageAsync_WithJsonRpcRequest_ThrowsAlways()
     {
-        // When MRTR is active, DestinationBoundMcpServer.SendMessageAsync should throw
-        // InvalidOperationException if the message is a JsonRpcRequest. This prevents
-        // accidental bypassing of the MRTR mechanism.
+        // SendMessageAsync should throw InvalidOperationException if the message is a
+        // JsonRpcRequest, regardless of MRTR state. Use SendRequestAsync for requests.
         StartServer();
         var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("sendmessage-bypass-tool",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -327,7 +325,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.StartsWith("blocked:", text);
         Assert.Contains("SendMessageAsync", text);
-        Assert.Contains("MRTR", text);
+        Assert.Contains("SendRequestAsync", text);
     }
 
     [Fact]
