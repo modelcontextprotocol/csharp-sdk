@@ -50,7 +50,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
 
             // Outgoing filter: detect IncompleteResult responses and track per session.
             options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
@@ -153,7 +153,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
         // After the retry completed, the count should be back to 0.
         Assert.Equal(0, _pendingFlowsPerSession.GetValueOrDefault(sessionId));
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]

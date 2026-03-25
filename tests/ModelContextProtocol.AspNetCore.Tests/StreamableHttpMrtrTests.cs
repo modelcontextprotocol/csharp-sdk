@@ -38,7 +38,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
                 Version = "1",
             };
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
         })
         .WithHttpTransport()
         .WithTools([
@@ -244,7 +244,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("accept:yes", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("LLM:Hello", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -273,7 +273,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("file:///project,file:///data", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("Hello Alice!", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -301,7 +301,6 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("True", text);
-        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -315,7 +314,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("lowlevel-confirmed:accept:lowlevel-state-1", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     // =====================================================================
@@ -337,6 +336,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("accept:yes", text);
+        _tracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -351,6 +351,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("LLM:Hello", text);
+        _tracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -364,6 +365,7 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("Hello Alice!", text);
+        _tracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -395,5 +397,6 @@ public class StreamableHttpMrtrTests(ITestOutputHelper outputHelper) : KestrelIn
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("lowlevel-confirmed:accept:lowlevel-state-1", text);
+        _tracker.AssertMrtrNotUsed();
     }
 }

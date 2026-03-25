@@ -29,7 +29,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -241,7 +241,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("Sampled: Hello world", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -269,7 +269,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("confirm:yes", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("file:///project", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -323,7 +323,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var content = Assert.Single(result.Content);
         Assert.Equal("Hello Alice!", Assert.IsType<TextContentBlock>(content).Text);
         Assert.Equal(2, callCount);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("sample=AI response,action=accept", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -384,6 +384,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("Legacy: Hello from legacy client", Assert.IsType<TextContentBlock>(content).Text);
+        _tracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -412,7 +413,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("MRTR: Hello from both", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -449,7 +450,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         Assert.True(result.IsError);
         var errorText = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Contains("concurrent-tool", errorText);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -508,7 +509,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -549,6 +550,5 @@ public class MrtrIntegrationTests : ClientServerTestBase
             m.LogLevel == LogLevel.Debug &&
             m.Message.Contains("Cancelled") &&
             m.Message.Contains("MRTR continuation"));
-        _tracker.AssertNoLegacyMrtrRequests();
     }
 }

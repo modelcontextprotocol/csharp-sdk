@@ -27,7 +27,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
         });
 
         mcpServerBuilder
@@ -88,7 +88,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("accept", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("Sampled: test", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -144,6 +144,6 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         // The elicitation handler was called, confirming MRTR round-trip occurred
         // (IncompleteResult was sent by server and processed by client).
         Assert.True(sawIncompleteResult, "Expected MRTR round-trip with IncompleteResult");
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 }

@@ -39,7 +39,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
                 Name = nameof(StatelessMrtrTests),
                 Version = "1",
             };
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
             configureOptions?.Invoke(options);
         })
         .WithHttpTransport(httpOptions =>
@@ -311,7 +311,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         Assert.True(result.IsError is not true);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("elicit-ok:accept", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -328,7 +328,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         Assert.True(result.IsError is not true);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("sample-ok:LLM:Summarize this", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         Assert.True(result.IsError is not true);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("roots-ok:file:///project,file:///data", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -405,7 +405,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         Assert.True(result.IsError is not true);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("all-ok:elicit=accept,sample=AI-summary,roots=file:///workspace", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -445,7 +445,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
         // Verify both handlers were called (one per round-trip)
         Assert.Equal(1, samplingCalls);
         Assert.Equal(1, elicitCalls);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -475,7 +475,6 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("True", text);
-        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -559,7 +558,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("User accepted: yes", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -653,7 +652,7 @@ public class StatelessMrtrTests(ITestOutputHelper outputHelper) : KestrelInMemor
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("resumed:deferred-work", text);
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]

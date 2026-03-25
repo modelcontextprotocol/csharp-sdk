@@ -32,7 +32,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddOutgoingFilter(options.Filters.Message);
+            _tracker.AddFilters(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -207,7 +207,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
                 new Dictionary<string, object?> { ["message"] = "test" },
                 cancellationToken: cts.Token));
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -250,8 +250,6 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
-
-        _tracker.AssertNoLegacyMrtrRequests();
     }
 
     [Fact]
@@ -290,7 +288,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // The call should throw OperationCanceledException.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await callTask);
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -335,7 +333,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         var result = await callTask;
         Assert.Contains("accept", result.Content.OfType<TextContentBlock>().First().Text);
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -379,7 +377,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // DisposeAsync should not have returned until the handler completed.
         Assert.True(handlerCompleted, "DisposeAsync should wait for MRTR handlers to complete before returning.");
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -409,7 +407,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             m.Message.Contains("elicit-then-throw-tool") &&
             m.Exception is InvalidOperationException);
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -435,6 +433,6 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
 
-        _tracker.AssertNoLegacyMrtrRequests();
+        _tracker.AssertMrtrUsed();
     }
 }
