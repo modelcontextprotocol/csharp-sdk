@@ -715,31 +715,58 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             requestState: "round-1");
     }
 
-    [Fact]
-    public async Task Mrtr_Experimental_MultiRoundTrip_CompletesAcrossRetries()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mrtr_MultiRoundTrip_Completes(bool experimentalClient)
     {
+        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         var messageTracker = ConfigureExperimentalServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectExperimentalAsync();
+
+        var clientOptions = CreateDefaultClientOptions();
+        if (experimentalClient)
+        {
+            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
+        }
+        await using var client = await ConnectAsync(clientOptions: clientOptions);
 
         var result = await client.CallToolAsync("mrtr-multi",
             cancellationToken: TestContext.Current.CancellationToken);
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("multi-done:greeting=accept", text);
-        messageTracker.AssertMrtrUsed();
+
+        if (experimentalClient)
+        {
+            messageTracker.AssertMrtrUsed();
+        }
+        else
+        {
+            Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+            messageTracker.AssertMrtrNotUsed();
+        }
     }
 
-    [Fact]
-    public async Task Mrtr_Experimental_IsMrtrSupported_ReturnsTrue()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mrtr_IsMrtrSupported_ReturnsTrue(bool experimentalClient)
     {
+        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         ConfigureExperimentalServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectExperimentalAsync();
+
+        var clientOptions = CreateDefaultClientOptions();
+        if (experimentalClient)
+        {
+            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
+        }
+        await using var client = await ConnectAsync(clientOptions: clientOptions);
 
         var result = await client.CallToolAsync("mrtr-check",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -772,42 +799,6 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                 })
             },
             requestState: "lowlevel-state-1");
-    }
-    [Fact]
-    public async Task Mrtr_Backcompat_MultiRoundTrip_ResolvedViaLegacyJsonRpc()
-    {
-        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureExperimentalServer(MrtrMulti);
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
-
-        var result = await client.CallToolAsync("mrtr-multi",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("multi-done:greeting=accept", text);
-        messageTracker.AssertMrtrNotUsed();
-    }
-
-    [Fact]
-    public async Task Mrtr_Backcompat_IsMrtrSupported_ReturnsTrue()
-    {
-        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        ConfigureExperimentalServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
-
-        var result = await client.CallToolAsync("mrtr-check",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("True", text);
     }
     [Fact]
     public async Task Mrtr_Experimental_HighLevel_Roots_CompletesViaMrtr()
