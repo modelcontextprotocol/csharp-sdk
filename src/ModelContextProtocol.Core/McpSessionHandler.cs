@@ -593,10 +593,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await _outgoingMessageFilter(async (msg, ct) =>
-            {
-                await SendToRelatedTransportAsync(msg, ct).ConfigureAwait(false);
-            })(request, cancellationToken).ConfigureAwait(false);
+            await _outgoingMessageFilter(SendToRelatedTransportAsync)(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
@@ -653,6 +650,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
+
+        if (message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' request via {nameof(SendMessageAsync)}. " +
+                $"Use {nameof(SendRequestAsync)} instead to get a correlated response.");
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
 
