@@ -20,7 +20,7 @@ public class McpServerLoggingLevelTests
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
         await using var provider = services.BuildServiceProvider();
@@ -34,7 +34,7 @@ public class McpServerLoggingLevelTests
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
         await using var provider = services.BuildServiceProvider();
@@ -50,7 +50,7 @@ public class McpServerLoggingLevelTests
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
-            .WithStdioServerTransport();
+            .WithStreamServerTransport(Stream.Null, Stream.Null);
         await using var provider = services.BuildServiceProvider();
         var server = provider.GetRequiredService<McpServer>();
         Assert.Null(server.ServerOptions.Capabilities?.Logging);

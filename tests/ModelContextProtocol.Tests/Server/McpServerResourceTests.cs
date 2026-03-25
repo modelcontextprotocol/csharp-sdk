@@ -34,7 +34,7 @@ public partial class McpServerResourceTests
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithListResourcesHandler(async (ctx, ct) =>
             {
                 return new ListResourcesResult
@@ -70,7 +70,7 @@ public partial class McpServerResourceTests
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithListResourceTemplatesHandler(async (ctx, ct) =>
             {
                 return new ListResourceTemplatesResult
@@ -104,7 +104,7 @@ public partial class McpServerResourceTests
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithReadResourceHandler(async (ctx, ct) =>
             {
                 return new ReadResourceResult
