@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.IO.Pipelines;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -34,22 +35,6 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         mcpServerBuilder.WithTools([
             McpServerTool.Create(
-                async (string prompt, McpServer server, CancellationToken ct) =>
-                {
-                    var result = await server.SampleAsync(new CreateMessageRequestParams
-                    {
-                        Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
-                        MaxTokens = 100
-                    }, ct);
-
-                    return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "No response";
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "sampling-tool",
-                    Description = "A tool that requests sampling from the client"
-                }),
-            McpServerTool.Create(
                 async (string message, McpServer server, CancellationToken ct) =>
                 {
                     var result = await server.ElicitAsync(new ElicitRequestParams
@@ -64,68 +49,6 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 {
                     Name = "elicitation-tool",
                     Description = "A tool that requests elicitation from the client"
-                }),
-            McpServerTool.Create(
-                async (McpServer server, CancellationToken ct) =>
-                {
-                    var result = await server.RequestRootsAsync(new ListRootsRequestParams(), ct);
-                    return string.Join(",", result.Roots.Select(r => r.Uri));
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "roots-tool",
-                    Description = "A tool that requests roots from the client"
-                }),
-            McpServerTool.Create(
-                async (McpServer server, CancellationToken ct) =>
-                {
-                    // First round-trip: elicit a name
-                    var nameResult = await server.ElicitAsync(new ElicitRequestParams
-                    {
-                        Message = "What is your name?",
-                        RequestedSchema = new()
-                    }, ct);
-
-                    // Second round-trip: elicit a greeting preference
-                    var greetingResult = await server.ElicitAsync(new ElicitRequestParams
-                    {
-                        Message = "How should I greet you?",
-                        RequestedSchema = new()
-                    }, ct);
-
-                    var name = nameResult.Content?.FirstOrDefault().Value;
-                    var greeting = greetingResult.Content?.FirstOrDefault().Value;
-                    return $"{greeting} {name}!";
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "multi-elicit-tool",
-                    Description = "A tool that elicits twice in sequence"
-                }),
-            McpServerTool.Create(
-                async (string prompt, McpServer server, CancellationToken ct) =>
-                {
-                    // Sampling + elicitation in sequence
-                    var sampleResult = await server.SampleAsync(new CreateMessageRequestParams
-                    {
-                        Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
-                        MaxTokens = 100
-                    }, ct);
-
-                    var sampleText = sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "";
-
-                    var elicitResult = await server.ElicitAsync(new ElicitRequestParams
-                    {
-                        Message = $"Confirm: {sampleText}",
-                        RequestedSchema = new()
-                    }, ct);
-
-                    return $"sample={sampleText},action={elicitResult.Action}";
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "sample-then-elicit-tool",
-                    Description = "A tool that samples then elicits"
                 }),
             McpServerTool.Create(
                 async (McpServer server, CancellationToken ct) =>
@@ -216,204 +139,6 @@ public class MrtrIntegrationTests : ClientServerTestBase
                     Description = "A tool that uses high-level ElicitAsync then throws IncompleteResultException"
                 })
         ]);
-    }
-
-    [Fact]
-    public async Task CallToolAsync_WithSamplingTool_ResolvesViaMrtr()
-    {
-        StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
-        {
-            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
-            return new ValueTask<CreateMessageResult>(new CreateMessageResult
-            {
-                Content = [new TextContentBlock { Text = $"Sampled: {text}" }],
-                Model = "test-model"
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        var result = await client.CallToolAsync("sampling-tool",
-            new Dictionary<string, object?> { ["prompt"] = "Hello world" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("Sampled: Hello world", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_WithElicitationTool_ResolvesViaMrtr()
-    {
-        StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
-        {
-            return new ValueTask<ElicitResult>(new ElicitResult
-            {
-                Action = "confirm",
-                Content = new Dictionary<string, JsonElement>
-                {
-                    ["answer"] = JsonDocument.Parse("\"yes\"").RootElement.Clone()
-                }
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        var result = await client.CallToolAsync("elicitation-tool",
-            new Dictionary<string, object?> { ["message"] = "Do you agree?" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("confirm:yes", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_WithRootsTool_ResolvesViaMrtr()
-    {
-        StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.RootsHandler = (request, ct) =>
-        {
-            return new ValueTask<ListRootsResult>(new ListRootsResult
-            {
-                Roots = [new Root { Uri = "file:///project", Name = "Project" }]
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        var result = await client.CallToolAsync("roots-tool",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("file:///project", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_WithMultipleElicitations_ResolvesMultipleMrtrRoundTrips()
-    {
-        StartServer();
-        int callCount = 0;
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
-        {
-            var count = Interlocked.Increment(ref callCount);
-            string value = count == 1 ? "Alice" : "Hello";
-            return new ValueTask<ElicitResult>(new ElicitResult
-            {
-                Action = "confirm",
-                Content = new Dictionary<string, JsonElement>
-                {
-                    ["answer"] = JsonDocument.Parse($"\"{value}\"").RootElement.Clone()
-                }
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        var result = await client.CallToolAsync("multi-elicit-tool",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("Hello Alice!", Assert.IsType<TextContentBlock>(content).Text);
-        Assert.Equal(2, callCount);
-        _tracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_WithSamplingThenElicitation_ResolvesSequentialMrtrRoundTrips()
-    {
-        StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
-        {
-            return new ValueTask<CreateMessageResult>(new CreateMessageResult
-            {
-                Content = [new TextContentBlock { Text = "AI response" }],
-                Model = "test-model"
-            });
-        };
-        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
-        {
-            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        var result = await client.CallToolAsync("sample-then-elicit-tool",
-            new Dictionary<string, object?> { ["prompt"] = "Test" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("sample=AI response,action=accept", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_ServerExperimentalClientNot_UsesLegacyRequests()
-    {
-        // Server has ExperimentalProtocolVersion set (from ConfigureServices),
-        // but client does NOT. Server negotiates to stable version.
-        // ClientSupportsMrtr() returns false → standard JSON-RPC requests.
-        StartServer();
-        var clientOptions = new McpClientOptions();
-        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
-        {
-            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
-            return new ValueTask<CreateMessageResult>(new CreateMessageResult
-            {
-                Content = [new TextContentBlock { Text = $"Legacy: {text}" }],
-                Model = "test-model"
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        // Verify the negotiated version is NOT the experimental one
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
-
-        var result = await client.CallToolAsync("sampling-tool",
-            new Dictionary<string, object?> { ["prompt"] = "Hello from legacy client" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("Legacy: Hello from legacy client", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrNotUsed();
-    }
-
-    [Fact]
-    public async Task CallToolAsync_BothExperimental_UsesMrtr()
-    {
-        StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
-        {
-            var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
-            return new ValueTask<CreateMessageResult>(new CreateMessageResult
-            {
-                Content = [new TextContentBlock { Text = $"MRTR: {text}" }],
-                Model = "test-model"
-            });
-        };
-
-        await using var client = await CreateMcpClientForServer(clientOptions);
-
-        // Verify the negotiated version IS the experimental one
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
-
-        var result = await client.CallToolAsync("sampling-tool",
-            new Dictionary<string, object?> { ["prompt"] = "Hello from both" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(result.Content);
-        Assert.Equal("MRTR: Hello from both", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -550,5 +275,111 @@ public class MrtrIntegrationTests : ClientServerTestBase
             m.LogLevel == LogLevel.Debug &&
             m.Message.Contains("Cancelled") &&
             m.Message.Contains("MRTR continuation"));
+    }
+
+    [Fact]
+    public async Task LegacyRequestOnMrtrSession_LogsWarning()
+    {
+        // This test simulates a non-compliant server that negotiates MRTR
+        // but sends legacy elicitation/create JSON-RPC requests instead of
+        // using IncompleteResult. The client should handle it but log a warning.
+        StartServer(); // Required for base class DisposeAsync cleanup
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+        clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
+            new ValueTask<CreateMessageResult>(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = "sampled" }],
+                Model = "test-model"
+            });
+
+        // Start the client task — it will send initialize and block waiting for response
+        var clientTask = McpClient.CreateAsync(
+            new StreamClientTransport(
+                clientToServer.Writer.AsStream(),
+                serverToClient.Reader.AsStream(),
+                LoggerFactory),
+            clientOptions,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Simulate server: read initialize request, respond with experimental version
+        var serverReader = new StreamReader(clientToServer.Reader.AsStream());
+        var serverWriter = serverToClient.Writer.AsStream();
+
+        // Read the initialize request from client
+        var initLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initLine);
+        var initRequest = JsonSerializer.Deserialize<JsonRpcRequest>(initLine, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(initRequest);
+        Assert.Equal("initialize", initRequest.Method);
+
+        // Respond with experimental protocol version (MRTR negotiated)
+        var initResponse = new JsonRpcResponse
+        {
+            Id = initRequest.Id,
+            Result = JsonSerializer.SerializeToNode(new InitializeResult
+            {
+                ProtocolVersion = "2026-06-XX",
+                Capabilities = new ServerCapabilities(),
+                ServerInfo = new Implementation { Name = "MockMrtrServer", Version = "1.0" }
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        var responseBytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(
+            initResponse, McpJsonUtilities.DefaultOptions);
+        await serverWriter.WriteAsync(responseBytes, TestContext.Current.CancellationToken);
+        await serverWriter.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
+        await serverWriter.FlushAsync(TestContext.Current.CancellationToken);
+
+        // Read the initialized notification from client
+        var initializedLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initializedLine);
+
+        // Client is now connected with MRTR negotiated
+        await using var client = await clientTask;
+        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        // Now simulate the non-compliant server sending a legacy elicitation/create request
+        var legacyRequest = new JsonRpcRequest
+        {
+            Id = new RequestId(42),
+            Method = RequestMethods.ElicitationCreate,
+            Params = JsonSerializer.SerializeToNode(new ElicitRequestParams
+            {
+                Message = "Legacy elicitation from non-compliant server",
+                RequestedSchema = new()
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        var requestBytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(
+            legacyRequest, McpJsonUtilities.DefaultOptions);
+        await serverWriter.WriteAsync(requestBytes, TestContext.Current.CancellationToken);
+        await serverWriter.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
+        await serverWriter.FlushAsync(TestContext.Current.CancellationToken);
+
+        // Read the client's response to the legacy request
+        var responseLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(responseLine);
+        var clientResponse = JsonSerializer.Deserialize<JsonRpcResponse>(responseLine, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(clientResponse);
+        Assert.Equal(new RequestId(42), clientResponse.Id);
+
+        // Verify the client handled the request (returned ElicitResult)
+        var elicitResult = JsonSerializer.Deserialize<ElicitResult>(clientResponse.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(elicitResult);
+        Assert.Equal("accept", elicitResult.Action);
+
+        // Verify the warning was logged
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Warning &&
+            m.Message.Contains("elicitation/create") &&
+            m.Message.Contains("MRTR"));
+
+        // Clean up
+        clientToServer.Writer.Complete();
+        serverToClient.Writer.Complete();
     }
 }

@@ -120,6 +120,8 @@ internal sealed partial class McpClientImpl : McpClient
                     RequestMethods.SamplingCreateMessage,
                     async (request, jsonRpcRequest, cancellationToken) =>
                     {
+                        WarnIfLegacyRequestOnMrtrSession(RequestMethods.SamplingCreateMessage);
+
                         // Check if this is a task-augmented request
                         if (request?.Task is { } taskMetadata)
                         {
@@ -154,10 +156,14 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 requestHandlers.Set(
                     RequestMethods.SamplingCreateMessage,
-                    (request, _, cancellationToken) => samplingHandler(
-                        request,
-                        request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                        cancellationToken),
+                    (request, _, cancellationToken) =>
+                    {
+                        WarnIfLegacyRequestOnMrtrSession(RequestMethods.SamplingCreateMessage);
+                        return samplingHandler(
+                            request,
+                            request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                            cancellationToken);
+                    },
                     McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
                     McpJsonUtilities.JsonContext.Default.CreateMessageResult);
             }
@@ -170,7 +176,11 @@ internal sealed partial class McpClientImpl : McpClient
         {
             requestHandlers.Set(
                 RequestMethods.RootsList,
-                (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
+                (request, _, cancellationToken) =>
+                {
+                    WarnIfLegacyRequestOnMrtrSession(RequestMethods.RootsList);
+                    return rootsHandler(request, cancellationToken);
+                },
                 McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsResult);
 
@@ -187,6 +197,8 @@ internal sealed partial class McpClientImpl : McpClient
                     RequestMethods.ElicitationCreate,
                     async (request, jsonRpcRequest, cancellationToken) =>
                     {
+                        WarnIfLegacyRequestOnMrtrSession(RequestMethods.ElicitationCreate);
+
                         // Check if this is a task-augmented request
                         if (request?.Task is { } taskMetadata)
                         {
@@ -219,6 +231,7 @@ internal sealed partial class McpClientImpl : McpClient
                     RequestMethods.ElicitationCreate,
                     async (request, _, cancellationToken) =>
                     {
+                        WarnIfLegacyRequestOnMrtrSession(RequestMethods.ElicitationCreate);
                         var result = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
                         return ElicitResult.WithDefaults(request, result);
                     },
@@ -813,4 +826,16 @@ internal sealed partial class McpClientImpl : McpClient
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use IncompleteResult instead of sending direct requests.")]
+    private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
+
+    /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
+    private void WarnIfLegacyRequestOnMrtrSession(string method)
+    {
+        if (_options.ExperimentalProtocolVersion is not null &&
+            _negotiatedProtocolVersion == _options.ExperimentalProtocolVersion)
+        {
+            LogLegacyRequestOnMrtrSession(_endpointName, method);
+        }
+    }
 }
