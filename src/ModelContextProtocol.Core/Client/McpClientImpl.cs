@@ -731,6 +731,8 @@ internal sealed partial class McpClientImpl : McpClient
                 resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
                 resultTypeNode?.GetValue<string>() is "incomplete")
             {
+                WarnIfIncompleteResultOnNonMrtrSession(request.Method);
+
                 var incompleteResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.IncompleteResult)
                     ?? throw new JsonException("Failed to deserialize IncompleteResult.");
 
@@ -829,6 +831,9 @@ internal sealed partial class McpClientImpl : McpClient
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use IncompleteResult instead of sending direct requests.")]
     private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received IncompleteResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
+    private partial void LogIncompleteResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
+
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
@@ -836,6 +841,16 @@ internal sealed partial class McpClientImpl : McpClient
             _negotiatedProtocolVersion == _options.ExperimentalProtocolVersion)
         {
             LogLegacyRequestOnMrtrSession(_endpointName, method);
+        }
+    }
+
+    /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an IncompleteResult.</summary>
+    private void WarnIfIncompleteResultOnNonMrtrSession(string method)
+    {
+        if (_options.ExperimentalProtocolVersion is null ||
+            _negotiatedProtocolVersion != _options.ExperimentalProtocolVersion)
+        {
+            LogIncompleteResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }
     }
 }

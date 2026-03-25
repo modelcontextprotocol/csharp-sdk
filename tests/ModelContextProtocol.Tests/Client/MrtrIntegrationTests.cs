@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -329,11 +330,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 ServerInfo = new Implementation { Name = "MockMrtrServer", Version = "1.0" }
             }, McpJsonUtilities.DefaultOptions),
         };
-        var responseBytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(
-            initResponse, McpJsonUtilities.DefaultOptions);
-        await serverWriter.WriteAsync(responseBytes, TestContext.Current.CancellationToken);
-        await serverWriter.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
-        await serverWriter.FlushAsync(TestContext.Current.CancellationToken);
+        await WriteJsonRpcAsync(serverWriter, initResponse);
 
         // Read the initialized notification from client
         var initializedLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
@@ -354,11 +351,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 RequestedSchema = new()
             }, McpJsonUtilities.DefaultOptions),
         };
-        var requestBytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(
-            legacyRequest, McpJsonUtilities.DefaultOptions);
-        await serverWriter.WriteAsync(requestBytes, TestContext.Current.CancellationToken);
-        await serverWriter.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
-        await serverWriter.FlushAsync(TestContext.Current.CancellationToken);
+        await WriteJsonRpcAsync(serverWriter, legacyRequest);
 
         // Read the client's response to the legacy request
         var responseLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
@@ -381,5 +374,166 @@ public class MrtrIntegrationTests : ClientServerTestBase
         // Clean up
         clientToServer.Writer.Complete();
         serverToClient.Writer.Complete();
+    }
+
+    [Fact]
+    public async Task IncompleteResultOnNonMrtrSession_LogsWarning()
+    {
+        // This test simulates a non-compliant server that sends an IncompleteResult
+        // to a client that did NOT negotiate MRTR. The client should still process it
+        // (resilience), but log a warning about the unexpected protocol behavior.
+        StartServer(); // Required for base class DisposeAsync cleanup
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        // Client does NOT set ExperimentalProtocolVersion — standard protocol only
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["confirmed"] = JsonDocument.Parse("\"yes\"").RootElement.Clone()
+                }
+            });
+
+        // Start the client task — it will send initialize and block waiting for response
+        var clientTask = McpClient.CreateAsync(
+            new StreamClientTransport(
+                clientToServer.Writer.AsStream(),
+                serverToClient.Reader.AsStream(),
+                LoggerFactory),
+            clientOptions,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var serverReader = new StreamReader(clientToServer.Reader.AsStream());
+        var serverWriter = serverToClient.Writer.AsStream();
+
+        // Read the initialize request from client
+        var initLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initLine);
+        var initRequest = JsonSerializer.Deserialize<JsonRpcRequest>(initLine, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(initRequest);
+        Assert.Equal("initialize", initRequest.Method);
+
+        // Respond with standard protocol version (no MRTR)
+        var initResponse = new JsonRpcResponse
+        {
+            Id = initRequest.Id,
+            Result = JsonSerializer.SerializeToNode(new InitializeResult
+            {
+                ProtocolVersion = "2025-03-26",
+                Capabilities = new ServerCapabilities { Tools = new() },
+                ServerInfo = new Implementation { Name = "NonCompliantServer", Version = "1.0" }
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        await WriteJsonRpcAsync(serverWriter, initResponse);
+
+        // Read the initialized notification from client
+        var initializedLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initializedLine);
+
+        // Client is now connected with standard protocol (no MRTR)
+        await using var client = await clientTask;
+        Assert.Equal("2025-03-26", client.NegotiatedProtocolVersion);
+
+        // Start a background task to handle the client's tools/call request
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var serverLoop = Task.Run(async () =>
+        {
+            // Read tools/call request from client
+            var callLine = await serverReader.ReadLineAsync(cancellationToken);
+            Assert.NotNull(callLine);
+            var callRequest = JsonSerializer.Deserialize<JsonRpcRequest>(callLine, McpJsonUtilities.DefaultOptions);
+            Assert.NotNull(callRequest);
+            Assert.Equal("tools/call", callRequest.Method);
+
+            // Non-compliant server sends IncompleteResult on standard protocol session!
+            var incompleteResult = new JsonObject
+            {
+                ["result_type"] = "incomplete",
+                ["inputRequests"] = new JsonObject
+                {
+                    ["confirm_1"] = JsonSerializer.SerializeToNode(
+                        InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "Unexpected elicitation from non-compliant server",
+                            RequestedSchema = new()
+                        }), McpJsonUtilities.DefaultOptions)
+                },
+                ["requestState"] = "non-mrtr-state"
+            };
+
+            var incompleteResponse = new JsonRpcResponse
+            {
+                Id = callRequest.Id,
+                Result = incompleteResult,
+            };
+            await WriteJsonRpcAsync(serverWriter, incompleteResponse);
+
+            // Read the retry request with inputResponses from client
+            var retryLine = await serverReader.ReadLineAsync(cancellationToken);
+            Assert.NotNull(retryLine);
+            var retryRequest = JsonSerializer.Deserialize<JsonRpcRequest>(retryLine, McpJsonUtilities.DefaultOptions);
+            Assert.NotNull(retryRequest);
+            Assert.Equal("tools/call", retryRequest.Method);
+
+            // Verify the retry contains inputResponses and requestState
+            var retryParams = retryRequest.Params as JsonObject;
+            Assert.NotNull(retryParams);
+            Assert.NotNull(retryParams["inputResponses"]);
+            Assert.Equal("non-mrtr-state", retryParams["requestState"]?.GetValue<string>());
+
+            // Now respond with a normal result
+            var normalResult = new JsonRpcResponse
+            {
+                Id = retryRequest.Id,
+                Result = JsonSerializer.SerializeToNode(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "completed-without-mrtr" }]
+                }, McpJsonUtilities.DefaultOptions),
+            };
+            await WriteJsonRpcAsync(serverWriter, normalResult);
+        }, cancellationToken);
+
+        // Client calls the tool — the non-compliant server will send IncompleteResult
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest
+            {
+                Method = "tools/call",
+                Params = JsonSerializer.SerializeToNode(new CallToolRequestParams
+                {
+                    Name = "any-tool",
+                }, McpJsonUtilities.DefaultOptions)
+            },
+            cancellationToken);
+
+        await serverLoop;
+
+        Assert.NotNull(response.Result);
+        var result = JsonSerializer.Deserialize<CallToolResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result);
+        var content = Assert.Single(result.Content);
+        Assert.Equal("completed-without-mrtr", Assert.IsType<TextContentBlock>(content).Text);
+
+        // Verify the warning was logged about IncompleteResult on non-MRTR session
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Warning &&
+            m.Message.Contains("IncompleteResult") &&
+            m.Message.Contains("did not negotiate MRTR"));
+
+        // Clean up
+        clientToServer.Writer.Complete();
+        serverToClient.Writer.Complete();
+    }
+
+    private static async Task WriteJsonRpcAsync(Stream writer, JsonRpcMessage message)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(message, McpJsonUtilities.DefaultOptions);
+        await writer.WriteAsync(bytes, TestContext.Current.CancellationToken);
+        await writer.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
+        await writer.FlushAsync(TestContext.Current.CancellationToken);
     }
 }
