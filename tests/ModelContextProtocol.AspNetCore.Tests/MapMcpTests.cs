@@ -26,9 +26,8 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
     protected async Task<McpClient> ConnectAsync(
         string? path = null,
         HttpClientTransportOptions? transportOptions = null,
-        McpClientOptions? clientOptions = null)
+        Action<McpClientOptions>? configureClient = null)
     {
-        // Default behavior when no options are provided
         path ??= UseStreamableHttp ? "/" : "/sse";
 
         await using var transport = new HttpClientTransport(transportOptions ?? new HttpClientTransportOptions
@@ -37,6 +36,8 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
+        var clientOptions = new McpClientOptions();
+        configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
 
@@ -155,29 +156,24 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         var sampleCount = 0;
-        var clientOptions = new McpClientOptions()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            Handlers = new()
+            options.Handlers.SamplingHandler = async (parameters, _, _) =>
             {
-                SamplingHandler = async (parameters, _, _) =>
+                Assert.NotNull(parameters?.Messages);
+                var message = Assert.Single(parameters.Messages);
+                Assert.Equal(Role.User, message.Role);
+                Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(Assert.Single(message.Content)).Text);
+
+                sampleCount++;
+                return new CreateMessageResult
                 {
-                    Assert.NotNull(parameters?.Messages);
-                    var message = Assert.Single(parameters.Messages);
-                    Assert.Equal(Role.User, message.Role);
-                    Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(Assert.Single(message.Content)).Text);
-
-                    sampleCount++;
-                    return new CreateMessageResult
-                    {
-                        Model = "test-model",
-                        Role = Role.Assistant,
-                        Content = [new TextContentBlock { Text = "Sampling response from client" }],
-                    };
-                }
-            }
-        };
-
-        await using var mcpClient = await ConnectAsync(clientOptions: clientOptions);
+                    Model = "test-model",
+                    Role = Role.Assistant,
+                    Content = [new TextContentBlock { Text = "Sampling response from client" }],
+                };
+            };
+        });
 
         var result = await mcpClient.CallToolAsync("sampling-tool", new Dictionary<string, object?>
         {

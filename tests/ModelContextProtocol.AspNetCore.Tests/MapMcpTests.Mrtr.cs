@@ -15,7 +15,7 @@ public abstract partial class MapMcpTests
         var messageTracker = new ServerMessageTracker();
         Builder.Services.AddMcpServer(options =>
         {
-            options.ServerInfo = new Implementation { Name = "MapMcpTests", Version = "1" };
+            options.ServerInfo = new Implementation { Name = "ExperimentalServer", Version = "1" };
             options.ExperimentalProtocolVersion = "2026-06-XX";
             messageTracker.AddFilters(options.Filters.Message);
         })
@@ -29,7 +29,7 @@ public abstract partial class MapMcpTests
         var messageTracker = new ServerMessageTracker();
         Builder.Services.AddMcpServer(options =>
         {
-            options.ServerInfo = new Implementation { Name = "MapMcpTests", Version = "1" };
+            options.ServerInfo = new Implementation { Name = "DefaultServer", Version = "1" };
             messageTracker.AddFilters(options.Filters.Message);
         })
         .WithHttpTransport(ConfigureStateless)
@@ -37,18 +37,19 @@ public abstract partial class MapMcpTests
         return messageTracker;
     }
 
-    private Task<McpClient> ConnectExperimentalAsync()
-    {
-        var options = CreateDefaultClientOptions();
-        options.ExperimentalProtocolVersion = "2026-06-XX";
-        return ConnectAsync(clientOptions: options);
-    }
+    private Task<McpClient> ConnectExperimentalAsync() =>
+        ConnectAsync(configureClient: options =>
+        {
+            ConfigureMrtrHandlers(options);
+            options.ExperimentalProtocolVersion = "2026-06-XX";
+        });
 
-    private Task<McpClient> ConnectDefaultAsync() => ConnectAsync(clientOptions: CreateDefaultClientOptions());
+    private Task<McpClient> ConnectDefaultAsync() =>
+        ConnectAsync(configureClient: ConfigureMrtrHandlers);
 
-    private static McpClientOptions CreateDefaultClientOptions()
+    /// <summary>Configures elicitation, sampling, and roots handlers on client options.</summary>
+    private static void ConfigureMrtrHandlers(McpClientOptions options)
     {
-        var options = new McpClientOptions();
         options.Handlers.ElicitationHandler = (request, ct) =>
         {
             var message = request?.Message ?? "";
@@ -85,7 +86,6 @@ public abstract partial class MapMcpTests
                 ]
             });
         };
-        return options;
     }
 
     // =====================================================================
@@ -179,11 +179,9 @@ public abstract partial class MapMcpTests
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         // Configure client — experimental or default based on parameter.
-        var clientOptions = CreateDefaultClientOptions();
-        if (experimentalClient)
-        {
-            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
-        }
+        Action<McpClientOptions> configureClient = experimentalClient
+            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            : ConfigureMrtrHandlers;
 
         if (experimentalServer)
         {
@@ -191,7 +189,7 @@ public abstract partial class MapMcpTests
             // Skip stateless — await API requires handler suspension (stateful only).
             Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
 
-            await using var client = await ConnectAsync(clientOptions: clientOptions);
+            await using var client = await ConnectAsync(configureClient: configureClient);
 
             if (experimentalClient)
             {
@@ -231,7 +229,7 @@ public abstract partial class MapMcpTests
         {
             // Stateless + non-experimental: IncompleteResultException cannot be resolved
             // (no MRTR and no stateful backcompat). The server returns an error.
-            await using var client = await ConnectAsync(clientOptions: clientOptions);
+            await using var client = await ConnectAsync(configureClient: configureClient);
 
             var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
                 client.CallToolAsync("mrtr-mixed",
@@ -245,7 +243,7 @@ public abstract partial class MapMcpTests
         {
             // Stateful + non-experimental: backcompat resolves IncompleteResultException
             // via legacy JSON-RPC requests. The tool completes all 3 rounds.
-            await using var client = await ConnectAsync(clientOptions: clientOptions);
+            await using var client = await ConnectAsync(configureClient: configureClient);
 
             var result = await client.CallToolAsync("mrtr-mixed",
                 cancellationToken: TestContext.Current.CancellationToken);
@@ -311,12 +309,11 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var clientOptions = CreateDefaultClientOptions();
-        if (experimentalClient)
-        {
-            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
-        }
-        await using var client = await ConnectAsync(clientOptions: clientOptions);
+        // Configure client — experimental or default based on parameter.
+        Action<McpClientOptions> configureClient = experimentalClient
+            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            : ConfigureMrtrHandlers;
+        await using var client = await ConnectAsync(configureClient: configureClient);
 
         if (experimentalServer && experimentalClient)
         {
@@ -445,12 +442,11 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var clientOptions = CreateDefaultClientOptions();
-        if (experimentalClient)
-        {
-            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
-        }
-        await using var client = await ConnectAsync(clientOptions: clientOptions);
+        // Configure client — experimental or default based on parameter.
+        Action<McpClientOptions> configureClient = experimentalClient
+            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            : ConfigureMrtrHandlers;
+        await using var client = await ConnectAsync(configureClient: configureClient);
 
         if (!experimentalClient && Stateless)
         {
@@ -491,12 +487,11 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var clientOptions = CreateDefaultClientOptions();
-        if (experimentalClient)
-        {
-            clientOptions.ExperimentalProtocolVersion = "2026-06-XX";
-        }
-        await using var client = await ConnectAsync(clientOptions: clientOptions);
+        // Configure client — experimental or default based on parameter.
+        Action<McpClientOptions> configureClient = experimentalClient
+            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            : ConfigureMrtrHandlers;
+        await using var client = await ConnectAsync(configureClient: configureClient);
 
         var result = await client.CallToolAsync("mrtr-check",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -581,34 +576,35 @@ public abstract partial class MapMcpTests
         var samplingCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var rootsCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var options = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
-        options.Handlers.ElicitationHandler = async (request, ct) =>
+        await using var client = await ConnectAsync(configureClient: options =>
         {
-            elicitCalled.TrySetResult();
-            await Task.WhenAll(samplingCalled.Task.WaitAsync(ct), rootsCalled.Task.WaitAsync(ct));
-            return new ElicitResult { Action = "accept" };
-        };
-        options.Handlers.SamplingHandler = async (request, progress, ct) =>
-        {
-            samplingCalled.TrySetResult();
-            await Task.WhenAll(elicitCalled.Task.WaitAsync(ct), rootsCalled.Task.WaitAsync(ct));
-            return new CreateMessageResult
+            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.Handlers.ElicitationHandler = async (request, ct) =>
             {
-                Content = [new TextContentBlock { Text = "AI-summary" }],
-                Model = "test-model"
+                elicitCalled.TrySetResult();
+                await Task.WhenAll(samplingCalled.Task.WaitAsync(ct), rootsCalled.Task.WaitAsync(ct));
+                return new ElicitResult { Action = "accept" };
             };
-        };
-        options.Handlers.RootsHandler = async (request, ct) =>
-        {
-            rootsCalled.TrySetResult();
-            await Task.WhenAll(elicitCalled.Task.WaitAsync(ct), samplingCalled.Task.WaitAsync(ct));
-            return new ListRootsResult
+            options.Handlers.SamplingHandler = async (request, progress, ct) =>
             {
-                Roots = [new Root { Uri = "file:///workspace", Name = "Workspace" }]
+                samplingCalled.TrySetResult();
+                await Task.WhenAll(elicitCalled.Task.WaitAsync(ct), rootsCalled.Task.WaitAsync(ct));
+                return new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "AI-summary" }],
+                    Model = "test-model"
+                };
             };
-        };
-
-        await using var client = await ConnectAsync(clientOptions: options);
+            options.Handlers.RootsHandler = async (request, ct) =>
+            {
+                rootsCalled.TrySetResult();
+                await Task.WhenAll(elicitCalled.Task.WaitAsync(ct), samplingCalled.Task.WaitAsync(ct));
+                return new ListRootsResult
+                {
+                    Roots = [new Root { Uri = "file:///workspace", Name = "Workspace" }]
+                };
+            };
+        });
 
         var result = await client.CallToolAsync("mrtr-concurrent-three",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -735,13 +731,6 @@ public abstract partial class MapMcpTests
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         int elicitCallCount = 0;
-        var options = CreateDefaultClientOptions();
-        var originalHandler = options.Handlers.ElicitationHandler!;
-        options.Handlers.ElicitationHandler = (request, ct) =>
-        {
-            Interlocked.Increment(ref elicitCallCount);
-            return originalHandler(request, ct);
-        };
 
         ConfigureExperimentalServer(
             [McpServerTool(Name = "mrtr-always-incomplete")] (RequestContext<CallToolRequestParams> context) =>
@@ -761,7 +750,16 @@ public abstract partial class MapMcpTests
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectAsync(clientOptions: options);
+        await using var client = await ConnectAsync(configureClient: options =>
+        {
+            ConfigureMrtrHandlers(options);
+            var originalHandler = options.Handlers.ElicitationHandler!;
+            options.Handlers.ElicitationHandler = (request, ct) =>
+            {
+                Interlocked.Increment(ref elicitCallCount);
+                return originalHandler(request, ct);
+            };
+        });
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
@@ -801,17 +799,19 @@ public abstract partial class MapMcpTests
     public async Task Mrtr_Backcompat_ClientHandlerThrows_PropagatesError()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var options = CreateDefaultClientOptions();
-        options.Handlers.ElicitationHandler = (request, ct) =>
-        {
-            throw new InvalidOperationException("Client-side elicitation failure");
-        };
 
         ConfigureExperimentalServer(MrtrElicit);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectAsync(clientOptions: options);
+        await using var client = await ConnectAsync(configureClient: options =>
+        {
+            ConfigureMrtrHandlers(options);
+            options.Handlers.ElicitationHandler = (request, ct) =>
+            {
+                throw new InvalidOperationException("Client-side elicitation failure");
+            };
+        });
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         // Handler exception propagates through the backcompat JSON-RPC round-trip

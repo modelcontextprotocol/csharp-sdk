@@ -178,9 +178,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            ProtocolVersion = "2025-06-18",
+            options.ProtocolVersion = "2025-06-18";
         });
 
         Assert.Equal("2025-06-18", mcpClient.NegotiatedProtocolVersion);
