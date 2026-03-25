@@ -317,7 +317,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     }
 
     [Fact]
-    public async Task AddOutgoingMessageFilter_Sees_Initialize_Progress_And_Response()
+    public async Task AddOutgoingMessageFilter_Sees_Responses_Notifications_And_Requests()
     {
         var observedMessages = new List<string>();
 
@@ -326,6 +326,9 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
             {
                 switch (context.JsonRpcMessage)
                 {
+                    case JsonRpcRequest request:
+                        observedMessages.Add($"request:{request.Method}");
+                        break;
                     case JsonRpcResponse response when response.Result is JsonObject result:
                         if (result.ContainsKey("protocolVersion"))
                         {
@@ -343,22 +346,41 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
                 await next(context, cancellationToken);
             }))
-            .WithTools<ProgressTool>();
+            .WithTools<ProgressTool>()
+            .WithTools<SamplingTool>();
 
         StartServer();
 
-        await using McpClient client = await CreateMcpClientForServer();
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new() { Sampling = new() },
+            Handlers = new()
+            {
+                SamplingHandler = (_, _, _) => new(new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "sampled" }],
+                    Model = "test-model",
+                }),
+            },
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
 
         IProgress<ProgressNotificationValue> progress = new Progress<ProgressNotificationValue>(_ => { });
         await client.CallToolAsync("progress-tool", progress: progress, cancellationToken: TestContext.Current.CancellationToken);
 
+        await client.CallToolAsync("sampling-tool", new Dictionary<string, object?> { ["prompt"] = "Hello" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
         int initializeIndex = observedMessages.IndexOf("initialize");
         int progressIndex = observedMessages.IndexOf("progress");
         int responseIndex = observedMessages.LastIndexOf("response");
+        int requestIndex = observedMessages.IndexOf($"request:{RequestMethods.SamplingCreateMessage}");
 
         Assert.True(initializeIndex >= 0);
         Assert.True(progressIndex > initializeIndex);
         Assert.True(responseIndex > progressIndex);
+        Assert.True(requestIndex >= 0);
     }
 
     [Fact]
@@ -429,43 +451,124 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     }
 
     [Fact]
-    public async Task AddOutgoingMessageFilter_Sees_ServerOriginatedRequests()
+    public async Task AddOutgoingMessageFilter_SkipNext_DoesNotLogSending()
     {
-        var observedMethods = new List<string>();
+        ServiceCollection.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
 
         McpServerBuilder
-            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => (context, cancellationToken) =>
             {
-                if (context.JsonRpcMessage is JsonRpcRequest request)
+                // Skip sending tool list responses
+                if (context.JsonRpcMessage is JsonRpcResponse response && response.Result is JsonObject result && result.ContainsKey("tools"))
                 {
-                    observedMethods.Add(request.Method);
+                    return Task.CompletedTask;
                 }
 
-                await next(context, cancellationToken);
+                return next(context, cancellationToken);
             }))
-            .WithTools<SamplingTool>();
+            .WithTools<TestTool>();
 
         StartServer();
 
-        var clientOptions = new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Clear any logs from initialization
+        while (MockLoggerProvider.LogMessages.TryDequeue(out _)) { }
+
+        using var requestCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
-            Capabilities = new() { Sampling = new() },
-            Handlers = new()
+            await client.ListToolsAsync(cancellationToken: requestCts.Token);
+        });
+
+        // Since the filter skipped next, no "sending message" log should appear for the skipped response
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
+            m.Category.Contains("McpServer") && m.Message.Contains("sending message", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AddOutgoingMessageFilter_CallsNext_LogsSending()
+    {
+        ServiceCollection.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
+
+        McpServerBuilder
+            .WithTools<TestTool>();
+
+        StartServer();
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Clear any logs from initialization
+        while (MockLoggerProvider.LogMessages.TryDequeue(out _)) { }
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The response should have been sent, producing a "sending message" log from the server
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.Category.Contains("McpServer") && m.Message.Contains("sending message", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AddIncomingMessageFilter_SkipNext_DoesNotLogSendingResponse()
+    {
+        ServiceCollection.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
+
+        McpServerBuilder
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
             {
-                SamplingHandler = (_, _, _) => new(new CreateMessageResult
+                // Skip processing tools/list requests — handler never runs, no response sent
+                if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
-                    Content = [new TextContentBlock { Text = "sampled" }],
-                    Model = "test-model",
-                }),
-            },
-        };
+                    return Task.CompletedTask;
+                }
 
-        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+                return next(context, cancellationToken);
+            }))
+            .WithTools<TestTool>();
 
-        await client.CallToolAsync("sampling-tool", new Dictionary<string, object?> { ["prompt"] = "Hello" },
-            cancellationToken: TestContext.Current.CancellationToken);
+        StartServer();
 
-        Assert.Contains(RequestMethods.SamplingCreateMessage, observedMethods);
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Clear any logs from initialization
+        while (MockLoggerProvider.LogMessages.TryDequeue(out _)) { }
+
+        using var requestCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await client.ListToolsAsync(cancellationToken: requestCts.Token);
+        });
+
+        // Since the incoming filter skipped next, no handler ran, so no response was sent
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
+            m.Category.Contains("McpServer") && m.Message.Contains("sending message", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AddIncomingMessageFilter_CallsNext_LogsSendingResponse()
+    {
+        ServiceCollection.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
+
+        McpServerBuilder
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
+            {
+                // Pass through — handler runs, response is sent
+                return next(context, cancellationToken);
+            }))
+            .WithTools<TestTool>();
+
+        StartServer();
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Clear any logs from initialization
+        while (MockLoggerProvider.LogMessages.TryDequeue(out _)) { }
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The handler ran and sent a response, producing a "sending message" log from the server
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.Category.Contains("McpServer") && m.Message.Contains("sending message", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

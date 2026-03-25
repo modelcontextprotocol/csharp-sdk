@@ -328,8 +328,10 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     }
 
     [Fact]
-    public async Task OutgoingFilter_SeesResponses()
+    public async Task OutgoingFilter_SeesResponsesAndRequests()
     {
+        Assert.SkipWhen(Stateless, "Server-originated requests are not supported in stateless mode.");
+
         var observedMessageTypes = new List<string>();
 
         Builder.Services.AddMcpServer()
@@ -338,6 +340,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             {
                 var typeName = context.JsonRpcMessage switch
                 {
+                    JsonRpcRequest request => $"request:{request.Method}",
                     JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("protocolVersion") => "initialize-response",
                     JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("tools") => "tools-list-response",
                     JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("content") => "tool-call-response",
@@ -351,42 +354,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
                 await next(context, cancellationToken);
             }))
-            .WithTools<ClaimsPrincipalTools>();
-
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var client = await ConnectAsync();
-
-        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await client.CallToolAsync("echo_claims_principal",
-            new Dictionary<string, object?> { ["message"] = "hi" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Contains("initialize-response", observedMessageTypes);
-        Assert.Contains("tools-list-response", observedMessageTypes);
-        Assert.Contains("tool-call-response", observedMessageTypes);
-    }
-
-    [Fact]
-    public async Task OutgoingFilter_SeesServerOriginatedRequests()
-    {
-        Assert.SkipWhen(Stateless, "Server-originated requests are not supported in stateless mode.");
-
-        var observedMethods = new List<string>();
-
-        Builder.Services.AddMcpServer()
-            .WithHttpTransport(ConfigureStateless)
-            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
-            {
-                if (context.JsonRpcMessage is JsonRpcRequest request)
-                {
-                    observedMethods.Add(request.Method);
-                }
-
-                await next(context, cancellationToken);
-            }))
+            .WithTools<ClaimsPrincipalTools>()
             .WithTools<SamplingRegressionTools>();
 
         await using var app = Builder.Build();
@@ -408,11 +376,18 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
         await using var client = await ConnectAsync(clientOptions: clientOptions);
 
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await client.CallToolAsync("echo_claims_principal",
+            new Dictionary<string, object?> { ["message"] = "hi" },
+            cancellationToken: TestContext.Current.CancellationToken);
         await client.CallToolAsync("sampling-tool",
             new Dictionary<string, object?> { ["prompt"] = "Hello" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains(RequestMethods.SamplingCreateMessage, observedMethods);
+        Assert.Contains("initialize-response", observedMessageTypes);
+        Assert.Contains("tools-list-response", observedMessageTypes);
+        Assert.Contains("tool-call-response", observedMessageTypes);
+        Assert.Contains($"request:{RequestMethods.SamplingCreateMessage}", observedMessageTypes);
     }
 
     [Fact]
