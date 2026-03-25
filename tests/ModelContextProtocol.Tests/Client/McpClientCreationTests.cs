@@ -101,6 +101,24 @@ public class McpClientCreationTests
         }        
     }
 
+    [Fact]
+    public async Task CreateAsync_TransportClosedDuringInit_ThrowsTransportClosedException()
+    {
+        // Arrange - a transport that completes its channel with a TransportClosedException
+        // when the client tries to send the initialize request (simulating a server process exit).
+        var transport = new TransportClosedDuringInitTransport();
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<TransportClosedException>(
+            () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
+
+        var details = Assert.IsType<StdioClientCompletionDetails>(ex.Details);
+        Assert.Equal(42, details.ExitCode);
+        Assert.Equal(9999, details.ProcessId);
+        Assert.NotNull(details.StandardErrorTail);
+        Assert.Equal("Feature disabled", details.StandardErrorTail![0]);
+    }
+
     private class NopTransport : ITransport, IClientTransport
     {
         private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
@@ -153,6 +171,46 @@ public class McpClientCreationTests
         public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException(ExpectedMessage);
+        }
+    }
+
+    /// <summary>
+    /// Simulates a transport that closes with structured completion details during initialization,
+    /// as would happen when a stdio server process exits before completing the handshake.
+    /// </summary>
+    private sealed class TransportClosedDuringInitTransport : ITransport, IClientTransport
+    {
+        private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
+
+        public bool IsConnected => true;
+        public string? SessionId => null;
+
+        public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
+
+        public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
+
+        public ValueTask DisposeAsync()
+        {
+            _channel.Writer.TryComplete();
+            return default;
+        }
+
+        public string Name => "Test TransportClosed Transport";
+
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+        {
+            // Simulate the server process exiting: complete the channel with a TransportClosedException
+            // carrying structured completion details, then throw IOException like the real transport does.
+            var details = new StdioClientCompletionDetails
+            {
+                ExitCode = 42,
+                ProcessId = 9999,
+                StandardErrorTail = ["Feature disabled"],
+                Exception = new IOException("MCP server process exited unexpectedly (exit code: 42)"),
+            };
+
+            _channel.Writer.TryComplete(new TransportClosedException(details));
+            throw new IOException("Failed to send message.", new IOException("Broken pipe"));
         }
     }
 }

@@ -4,16 +4,37 @@ using System.Threading.Channels;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// <see cref="IOException"/> used to smuggle <see cref="ClientCompletionDetails"/> through
-/// the <see cref="ChannelWriter{T}.TryComplete(Exception?)"/> mechanism.
+/// An <see cref="IOException"/> that indicates the transport was closed, carrying
+/// structured <see cref="ClientCompletionDetails"/> about why the closure occurred.
 /// </summary>
 /// <remarks>
-/// This could be made public in the future to allow custom <see cref="ITransport"/>
-/// implementations to provide their own <see cref="ClientCompletionDetails"/>-derived types
-/// by completing their channel with this exception.
+/// <para>
+/// This exception is thrown when an MCP transport closes, either during initialization
+/// (e.g., from <see cref="McpClient.CreateAsync"/>) or during an active session.
+/// Callers can catch this exception to access the <see cref="Details"/> property
+/// for structured information about the closure.
+/// </para>
+/// <para>
+/// For stdio-based transports, the <see cref="Details"/> will be a
+/// <see cref="StdioClientCompletionDetails"/> instance providing access to the
+/// server process exit code, process ID, and standard error output.
+/// </para>
+/// <para>
+/// Custom <see cref="ITransport"/> implementations can provide their own
+/// <see cref="ClientCompletionDetails"/>-derived types by completing their
+/// <see cref="ChannelWriter{T}"/> with this exception.
+/// </para>
 /// </remarks>
-internal sealed class TransportClosedException(ClientCompletionDetails details) :
-    IOException(details.Exception?.Message, details.Exception)
+public sealed class TransportClosedException(ClientCompletionDetails details) :
+    IOException(details.Exception?.Message ?? "The transport was closed.", details.Exception)
 {
+    /// <summary>
+    /// Gets the structured details about why the transport was closed.
+    /// </summary>
+    /// <remarks>
+    /// The concrete type of the returned <see cref="ClientCompletionDetails"/> depends on
+    /// the transport that was used. For example, <see cref="StdioClientCompletionDetails"/>
+    /// for stdio-based transports and <see cref="HttpClientCompletionDetails"/> for HTTP-based transports.
+    /// </remarks>
     public ClientCompletionDetails Details { get; } = details;
 }

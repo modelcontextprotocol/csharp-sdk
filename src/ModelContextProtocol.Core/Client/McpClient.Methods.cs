@@ -52,18 +52,65 @@ public abstract partial class McpClient : McpSession
         {
             await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (Exception ex) when (ex is not TransportClosedException)
+        {
+            // ConnectAsync already disposed the session. Call DisposeAsync again (no-op)
+            // to ensure cleanup, then check if the transport provided structured completion
+            // details indicating why the transport closed.
+            ClientCompletionDetails? completionDetails = null;
+            try
+            {
+                await clientSession.DisposeAsync().ConfigureAwait(false);
+                completionDetails = await clientSession.Completion.ConfigureAwait(false);
+            }
+            catch { } // allow the original exception to propagate if completion is unavailable
+
+            // If the transport closed with a non-graceful error (e.g., server process exited)
+            // and the completion details carry an exception that's NOT already in the original
+            // exception chain, throw a TransportClosedException with the structured details so
+            // callers can programmatically inspect the closure reason (exit code, stderr, etc.).
+            // When the same exception is already in the chain (e.g., HttpRequestException from
+            // an HTTP transport), the original exception is more appropriate to re-throw.
+            if (completionDetails?.Exception is { } detailsException &&
+                !ExceptionChainContains(ex, detailsException))
+            {
+                throw new TransportClosedException(completionDetails);
+            }
+
+            throw;
+        }
         catch
         {
+            // The exception is already a TransportClosedException (e.g., from
+            // ProcessMessagesCoreAsync propagating channel completion details).
+            // Just ensure cleanup and re-throw.
             try
             {
                 await clientSession.DisposeAsync().ConfigureAwait(false);
             }
-            catch { } // allow the original exception to propagate
+            catch { }
 
             throw;
         }
 
         return clientSession;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> if <paramref name="target"/> is the same object as
+    /// <paramref name="exception"/> or any exception in its <see cref="Exception.InnerException"/> chain.
+    /// </summary>
+    private static bool ExceptionChainContains(Exception exception, Exception target)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
