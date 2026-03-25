@@ -810,24 +810,6 @@ internal sealed partial class McpClientImpl : McpClient
         await Completion.ConfigureAwait(false);
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
-    private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization error.")]
-    private partial void LogClientInitializationError(string endpointName, Exception exception);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization timed out.")]
-    private partial void LogClientInitializationTimeout(string endpointName);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client protocol version mismatch with server. Expected '{Expected}', received '{Received}'.")]
-    private partial void LogServerProtocolVersionMismatch(string endpointName, string expected, string received);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
-    private partial void LogClientConnected(string endpointName);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
-    private partial void LogClientSessionResumed(string endpointName);
-
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
@@ -853,4 +835,22 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received IncompleteResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
     private partial void LogIncompleteResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
+    private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization error.")]
+    private partial void LogClientInitializationError(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization timed out.")]
+    private partial void LogClientInitializationTimeout(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client protocol version mismatch with server. Expected '{Expected}', received '{Received}'.")]
+    private partial void LogServerProtocolVersionMismatch(string endpointName, string expected, string received);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
+    private partial void LogClientConnected(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
+    private partial void LogClientSessionResumed(string endpointName);
 }
