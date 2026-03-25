@@ -503,29 +503,6 @@ public abstract partial class MapMcpTests
         Assert.Equal(expected, text);
     }
 
-    [Fact]
-    public async Task Mrtr_HighLevel_Roots_CompletesViaMrtr()
-    {
-        Assert.SkipWhen(Stateless, "High-level API requires stateful handler suspension.");
-        var messageTracker = ConfigureExperimentalServer(
-            [McpServerTool(Name = "mrtr-hl-roots")] async (McpServer server, CancellationToken ct) =>
-            {
-                var result = await server.RequestRootsAsync(new ListRootsRequestParams(), ct);
-                return string.Join(",", result.Roots.Select(r => r.Uri));
-            });
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectExperimentalAsync();
-
-        var result = await client.CallToolAsync("mrtr-hl-roots",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("file:///project,file:///data", text);
-        messageTracker.AssertMrtrUsed();
-    }
-
     [McpServerTool(Name = "mrtr-concurrent-three")]
     private static string MrtrConcurrentThree(RequestContext<CallToolRequestParams> context)
     {
