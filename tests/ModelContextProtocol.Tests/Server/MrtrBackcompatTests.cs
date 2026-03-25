@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class MrtrBackcompatTests : ClientServerTestBase
 {
-    private readonly ServerMessageTracker _tracker = new();
+    private readonly ServerMessageTracker _messageTracker = new();
 
     public MrtrBackcompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -28,7 +28,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
         // Deliberately NOT setting ExperimentalProtocolVersion on the server.
         services.Configure<McpServerOptions>(options =>
         {
-            _tracker.AddFilters(options.Filters.Message);
+            _messageTracker.AddFilters(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -286,7 +286,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("completed:accept:resolved-via-legacy", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("sampled:LLM says: Summarize", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
         var content = Assert.Single(result.Content);
         Assert.Equal("done:round2:accept:confirm", Assert.IsType<TextContentBlock>(content).Text);
         Assert.Equal(2, elicitCallCount);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -383,7 +383,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("both:accept:LLM summary", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -409,7 +409,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
 
         var content = Assert.Single(result.Content);
         Assert.Equal("roots:MyProject", Assert.IsType<TextContentBlock>(content).Text);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -443,7 +443,7 @@ public class MrtrBackcompatTests : ClientServerTestBase
         Assert.Contains("exceeded", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("10", ex.Message);
         Assert.Equal(10, elicitCallCount);
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 
     [Fact]
@@ -486,6 +486,6 @@ public class MrtrBackcompatTests : ClientServerTestBase
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.CallToolAsync("native-elicit-for-error",
                 cancellationToken: TestContext.Current.CancellationToken));
-        _tracker.AssertMrtrNotUsed();
+        _messageTracker.AssertMrtrNotUsed();
     }
 }

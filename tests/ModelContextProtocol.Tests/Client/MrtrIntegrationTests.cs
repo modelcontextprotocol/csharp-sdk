@@ -18,7 +18,7 @@ namespace ModelContextProtocol.Tests.Client;
 /// </summary>
 public class MrtrIntegrationTests : ClientServerTestBase
 {
-    private readonly ServerMessageTracker _tracker = new();
+    private readonly ServerMessageTracker _messageTracker = new();
 
     public MrtrIntegrationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -31,7 +31,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ExperimentalProtocolVersion = "2026-06-XX";
-            _tracker.AddFilters(options.Filters.Message);
+            _messageTracker.AddFilters(options.Filters.Message);
         });
 
         mcpServerBuilder.WithTools([
@@ -205,7 +205,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         Assert.True(result.IsError);
         var errorText = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Contains("concurrent-tool", errorText);
-        _tracker.AssertMrtrUsed();
+        _messageTracker.AssertMrtrUsed();
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Exception is IncompleteResultException);
-        _tracker.AssertMrtrUsed();
+        _messageTracker.AssertMrtrUsed();
     }
 
     [Fact]
