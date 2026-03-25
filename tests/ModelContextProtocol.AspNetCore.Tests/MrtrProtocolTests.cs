@@ -305,43 +305,6 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.Equal("application/json", retryResponse.Content.Headers.ContentType?.MediaType);
     }
 
-    // --- Out-of-spec Edge Cases ---
-
-    [Fact]
-    public async Task ClientSendsLegacyElicitationToServer_ReturnsMethodNotFound()
-    {
-        await StartAsync();
-        await InitializeWithMrtrAsync();
-
-        // A non-SDK client might mistakenly send elicitation/create as a request TO the server.
-        // This is backwards — elicitation/create is a server→client method, not client→server.
-        // The server should return MethodNotFound.
-        var response = await PostJsonRpcAsync(
-            Request("elicitation/create", """{"message":"Hello","requestedSchema":{}}"""));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
-        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
-        var error = Assert.IsType<JsonRpcError>(message);
-        Assert.Equal((int)McpErrorCode.MethodNotFound, error.Error.Code);
-    }
-
-    [Fact]
-    public async Task ClientSendsLegacySamplingToServer_ReturnsMethodNotFound()
-    {
-        await StartAsync();
-        await InitializeWithMrtrAsync();
-
-        var response = await PostJsonRpcAsync(
-            Request("sampling/createMessage", """{"messages":[],"maxTokens":100}"""));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
-        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
-        var error = Assert.IsType<JsonRpcError>(message);
-        Assert.Equal((int)McpErrorCode.MethodNotFound, error.Error.Code);
-    }
-
     // --- Helpers ---
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");

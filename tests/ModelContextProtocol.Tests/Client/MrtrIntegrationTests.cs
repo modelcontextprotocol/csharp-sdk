@@ -138,6 +138,35 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 {
                     Name = "elicit-then-incomplete-result-tool",
                     Description = "A tool that uses high-level ElicitAsync then throws IncompleteResultException"
+                }),
+            McpServerTool.Create(
+                (McpServer server) =>
+                {
+                    // Attempt to bypass MRTR by using SendMessageAsync with a raw JsonRpcRequest.
+                    // DestinationBoundMcpServer should throw synchronously when MRTR context is active.
+                    try
+                    {
+                        server.SendMessageAsync(new JsonRpcRequest
+                        {
+                            Id = new RequestId(999),
+                            Method = RequestMethods.ElicitationCreate,
+                            Params = JsonSerializer.SerializeToNode(new ElicitRequestParams
+                            {
+                                Message = "Bypass attempt",
+                                RequestedSchema = new()
+                            }, McpJsonUtilities.DefaultOptions)
+                        });
+                        return "NOT BLOCKED - expected InvalidOperationException";
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return $"blocked:{ex.Message}";
+                    }
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "sendmessage-bypass-tool",
+                    Description = "A tool that attempts to bypass MRTR via SendMessageAsync"
                 })
         ]);
     }
@@ -276,6 +305,29 @@ public class MrtrIntegrationTests : ClientServerTestBase
             m.LogLevel == LogLevel.Debug &&
             m.Message.Contains("Cancelled") &&
             m.Message.Contains("MRTR continuation"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithJsonRpcRequest_ThrowsWhenMrtrActive()
+    {
+        // When MRTR is active, DestinationBoundMcpServer.SendMessageAsync should throw
+        // InvalidOperationException if the message is a JsonRpcRequest. This prevents
+        // accidental bypassing of the MRTR mechanism.
+        StartServer();
+        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        clientOptions.Handlers.ElicitationHandler = (request, ct) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+
+        var result = await client.CallToolAsync("sendmessage-bypass-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.StartsWith("blocked:", text);
+        Assert.Contains("SendMessageAsync", text);
+        Assert.Contains("MRTR", text);
     }
 
     [Fact]

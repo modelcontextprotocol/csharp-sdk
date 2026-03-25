@@ -33,6 +33,13 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
 
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        if (ActiveMrtrContext is not null && message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' via SendMessageAsync when MRTR is active. " +
+                "Use SendRequestAsync to route through the MRTR mechanism.");
+        }
+
         if (message.Context is not null)
         {
             throw new ArgumentException("Only transports can provide a JsonRpcMessageContext.");
