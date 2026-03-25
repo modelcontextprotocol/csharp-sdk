@@ -201,7 +201,7 @@ public abstract partial class MapMcpTests
             else
             {
                 // Backcompat — server experimental, client default. Legacy JSON-RPC.
-                Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+                Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
             }
 
             var result = await client.CallToolAsync("mrtr-mixed",
@@ -238,6 +238,8 @@ public abstract partial class MapMcpTests
                     cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
             Assert.Equal(McpErrorCode.InternalError, ex.ErrorCode);
+            Assert.Contains("stateless", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("MRTR", ex.Message);
         }
         else
         {
@@ -438,7 +440,6 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_MultiRoundTrip_Completes(bool experimentalClient)
     {
-        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         var messageTracker = ConfigureExperimentalServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
@@ -451,6 +452,17 @@ public abstract partial class MapMcpTests
         }
         await using var client = await ConnectAsync(clientOptions: clientOptions);
 
+        if (!experimentalClient && Stateless)
+        {
+            // Stateless without MRTR: IncompleteResultException can't be resolved
+            // (no MRTR negotiated and no stateful backcompat path).
+            var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
+                client.CallToolAsync("mrtr-multi",
+                    cancellationToken: TestContext.Current.CancellationToken).AsTask());
+            Assert.Equal(McpErrorCode.InternalError, ex.ErrorCode);
+            return;
+        }
+
         var result = await client.CallToolAsync("mrtr-multi",
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -459,11 +471,12 @@ public abstract partial class MapMcpTests
 
         if (experimentalClient)
         {
+            Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
             messageTracker.AssertMrtrUsed();
         }
         else
         {
-            Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+            Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
             messageTracker.AssertMrtrNotUsed();
         }
     }
@@ -471,9 +484,8 @@ public abstract partial class MapMcpTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Mrtr_IsMrtrSupported_ReturnsTrue(bool experimentalClient)
+    public async Task Mrtr_IsMrtrSupported(bool experimentalClient)
     {
-        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         ConfigureExperimentalServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
@@ -489,34 +501,11 @@ public abstract partial class MapMcpTests
         var result = await client.CallToolAsync("mrtr-check",
             cancellationToken: TestContext.Current.CancellationToken);
 
+        // IsMrtrSupported is false only when stateless AND client didn't negotiate MRTR
+        // (no backcompat path available). All other combos have MRTR or backcompat support.
+        var expected = Stateless && !experimentalClient ? "False" : "True";
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("True", text);
-    }
-
-    [McpServerTool(Name = "mrtr-lowlevel")]
-    private static string MrtrLowLevel(McpServer server, RequestContext<CallToolRequestParams> context)
-    {
-        if (context.Params!.RequestState is not null && context.Params!.InputResponses is { } responses)
-        {
-            var result = responses["user_confirm"].ElicitationResult;
-            return $"lowlevel-confirmed:{result?.Action}:{context.Params.RequestState}";
-        }
-
-        if (!server.IsMrtrSupported)
-        {
-            return "lowlevel-unsupported";
-        }
-
-        throw new IncompleteResultException(
-            inputRequests: new Dictionary<string, InputRequest>
-            {
-                ["user_confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
-                {
-                    Message = "Please confirm",
-                    RequestedSchema = new()
-                })
-            },
-            requestState: "lowlevel-state-1");
+        Assert.Equal(expected, text);
     }
 
     [Fact]
@@ -540,23 +529,6 @@ public abstract partial class MapMcpTests
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("file:///project,file:///data", text);
         messageTracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task Mrtr_IsMrtrSupported_ReturnsFalse_WhenClientDoesNotOptIn_InStatelessMode()
-    {
-        Assert.SkipUnless(Stateless, "This test verifies the stateless-specific false case.");
-        ConfigureExperimentalServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
-
-        var result = await client.CallToolAsync("mrtr-check",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("False", text);
     }
 
     [McpServerTool(Name = "mrtr-concurrent-three")]
@@ -650,18 +622,14 @@ public abstract partial class MapMcpTests
     public async Task Mrtr_Experimental_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
         var messageTracker = ConfigureExperimentalServer(
-            [McpServerTool(Name = "mrtr-loadshed")] (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            [McpServerTool(Name = "mrtr-loadshed")] (RequestContext<CallToolRequestParams> context) =>
             {
                 if (context.Params!.RequestState is { } state)
                 {
                     return $"resumed:{state}";
                 }
 
-                if (!server.IsMrtrSupported)
-                {
-                    return "MRTR not supported.";
-                }
-
+                // requestState-only IncompleteResultException (no inputRequests)
                 throw new IncompleteResultException(requestState: "deferred-work");
             });
         await using var app = Builder.Build();
@@ -675,41 +643,6 @@ public abstract partial class MapMcpTests
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("resumed:deferred-work", text);
         messageTracker.AssertMrtrUsed();
-    }
-
-    [Fact]
-    public async Task Mrtr_Stateless_LowLevel_ReturnsFallback_WhenMrtrNotSupported()
-    {
-        Assert.SkipUnless(Stateless, "In stateful mode, IsMrtrSupported=true via backcompat.");
-        ConfigureExperimentalServer(MrtrLowLevel);
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
-
-        var result = await client.CallToolAsync("mrtr-lowlevel",
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.Equal("lowlevel-unsupported", text);
-    }
-
-    [Fact]
-    public async Task Mrtr_Stateless_IncompleteResultException_WithoutMrtrClient_ThrowsError()
-    {
-        Assert.SkipUnless(Stateless, "In stateful mode, backcompat resolves this.");
-        ConfigureExperimentalServer(MrtrElicit);
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
-
-        var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
-            client.CallToolAsync("mrtr-elicit",
-                cancellationToken: TestContext.Current.CancellationToken).AsTask());
-
-        Assert.Contains("stateless", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("MRTR", ex.Message);
     }
 
     [Fact]
@@ -737,7 +670,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectDefaultAsync();
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-roots-backcompat",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -787,7 +720,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectDefaultAsync();
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-multi-input",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -829,7 +762,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectAsync(clientOptions: options);
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
             client.CallToolAsync("mrtr-always-incomplete",
@@ -855,7 +788,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectDefaultAsync();
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
             client.CallToolAsync("mrtr-empty-inputs",
@@ -879,7 +812,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectAsync(clientOptions: options);
-        Assert.NotEqual("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         // Handler exception propagates through the backcompat JSON-RPC round-trip
         await Assert.ThrowsAsync<McpProtocolException>(() =>
