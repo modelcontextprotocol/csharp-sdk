@@ -429,6 +429,46 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     }
 
     [Fact]
+    public async Task AddOutgoingMessageFilter_Sees_ServerOriginatedRequests()
+    {
+        var observedMethods = new List<string>();
+
+        McpServerBuilder
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest request)
+                {
+                    observedMethods.Add(request.Method);
+                }
+
+                await next(context, cancellationToken);
+            }))
+            .WithTools<SamplingTool>();
+
+        StartServer();
+
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new() { Sampling = new() },
+            Handlers = new()
+            {
+                SamplingHandler = (_, _, _) => new(new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "sampled" }],
+                    Model = "test-model",
+                }),
+            },
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        await client.CallToolAsync("sampling-tool", new Dictionary<string, object?> { ["prompt"] = "Hello" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(RequestMethods.SamplingCreateMessage, observedMethods);
+    }
+
+    [Fact]
     public async Task AddIncomingMessageFilter_Items_Flow_To_Request_Filters()
     {
         string? capturedValue = null;
@@ -644,7 +684,6 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         Assert.Equal("modifiedByFilter1", observedValues[1]);
     }
 
-    [McpServerToolType]
     public sealed class TestTool
     {
         [McpServerTool]
@@ -654,7 +693,6 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         }
     }
 
-    [McpServerPromptType]
     public sealed class TestPrompt
     {
         [McpServerPrompt]
@@ -668,7 +706,6 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         }
     }
 
-    [McpServerResourceType]
     public sealed class TestResource
     {
         [McpServerResource(UriTemplate = "test://resource/{id}")]
@@ -678,7 +715,6 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         }
     }
 
-    [McpServerToolType]
     public sealed class ProgressTool
     {
         [McpServerTool(Name = "progress-tool")]
@@ -708,13 +744,27 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         }
     }
 
-    [McpServerToolType]
     public sealed class SimpleTool
     {
         [McpServerTool(Name = "simple-tool")]
         public static string Execute()
         {
             return "success";
+        }
+    }
+
+    public sealed class SamplingTool
+    {
+        [McpServerTool(Name = "sampling-tool")]
+        public static async Task<string> SampleAsync(McpServer server, string prompt, CancellationToken cancellationToken)
+        {
+            var result = await server.SampleAsync(new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
+                MaxTokens = 100,
+            }, cancellationToken);
+
+            return $"Sampled: {Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text}";
         }
     }
 }
