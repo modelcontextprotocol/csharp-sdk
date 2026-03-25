@@ -328,8 +328,9 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // If the transport's channel was completed with a TransportClosedException,
             // propagate it so callers can access the structured completion details.
             Exception pendingException =
-                _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion
-                    ? completion.Exception!.InnerException!
+                _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion &&
+                    completion.Exception?.InnerException is { } innerException
+                    ? innerException
                     : new IOException("The server shut down unexpectedly.");
             foreach (var entry in _pendingRequests)
             {
