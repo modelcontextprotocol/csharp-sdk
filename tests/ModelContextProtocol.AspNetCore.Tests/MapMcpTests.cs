@@ -363,10 +363,31 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     // Each test creates its own server with ExperimentalProtocolVersion enabled.
     // =====================================================================
 
+    [McpServerTool(Name = "mrtr-elicit")]
+    private static string MrtrElicit(RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.InputResponses is { } responses &&
+            responses.TryGetValue("user_input", out var response))
+        {
+            return $"elicit-ok:{response.ElicitationResult?.Action}";
+        }
+
+        throw new IncompleteResultException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "Please confirm",
+                    RequestedSchema = new()
+                })
+            },
+            requestState: "elicit-state");
+    }
+
     [Fact]
     public async Task Mrtr_Experimental_Elicitation_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrElicit);
+        var messageTracker = ConfigureMrtrServer(MrtrElicit);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -380,10 +401,36 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         messageTracker.AssertMrtrUsed();
     }
 
+    [McpServerTool(Name = "mrtr-sample")]
+    private static string MrtrSample(RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.InputResponses is { } responses &&
+            responses.TryGetValue("llm_call", out var response))
+        {
+            var text = response.SamplingResult?.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            return $"sample-ok:{text}";
+        }
+
+        throw new IncompleteResultException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["llm_call"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                {
+                    Messages = [new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content = [new TextContentBlock { Text = "Summarize this" }]
+                    }],
+                    MaxTokens = 100
+                })
+            },
+            requestState: "sample-state");
+    }
+
     [Fact]
     public async Task Mrtr_Experimental_Sampling_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrSample);
+        var messageTracker = ConfigureMrtrServer(MrtrSample);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -400,7 +447,23 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Mrtr_Experimental_Roots_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrRoots);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-roots")] (RequestContext<CallToolRequestParams> context) =>
+            {
+                if (context.Params!.InputResponses is { } responses &&
+                    responses.TryGetValue("roots", out var response))
+                {
+                    var roots = response.RootsResult?.Roots;
+                    return $"roots-ok:{string.Join(",", roots?.Select(r => r.Uri) ?? [])}";
+                }
+
+                throw new IncompleteResultException(
+                    inputRequests: new Dictionary<string, InputRequest>
+                    {
+                        ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
+                    },
+                    requestState: "roots-state");
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -414,10 +477,49 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         messageTracker.AssertMrtrUsed();
     }
 
+    [McpServerTool(Name = "mrtr-multi")]
+    private static string MrtrMulti(RequestContext<CallToolRequestParams> context)
+    {
+        var requestState = context.Params!.RequestState;
+        var inputResponses = context.Params!.InputResponses;
+
+        if (requestState == "round-2" && inputResponses is not null)
+        {
+            var greeting = inputResponses["greeting"].ElicitationResult?.Action;
+            return $"multi-done:greeting={greeting}";
+        }
+
+        if (requestState == "round-1" && inputResponses is not null)
+        {
+            var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
+            throw new IncompleteResultException(
+                inputRequests: new Dictionary<string, InputRequest>
+                {
+                    ["greeting"] = InputRequest.ForElicitation(new ElicitRequestParams
+                    {
+                        Message = $"How should I greet {name}?",
+                        RequestedSchema = new()
+                    })
+                },
+                requestState: "round-2");
+        }
+
+        throw new IncompleteResultException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["name"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "What is your name?",
+                    RequestedSchema = new()
+                })
+            },
+            requestState: "round-1");
+    }
+
     [Fact]
     public async Task Mrtr_Experimental_MultiRoundTrip_CompletesAcrossRetries()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrMulti);
+        var messageTracker = ConfigureMrtrServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -434,7 +536,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Mrtr_Experimental_IsMrtrSupported_ReturnsTrue()
     {
-        ConfigureMrtrServer(MrtrTestTools.MrtrCheck);
+        ConfigureMrtrServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -447,10 +549,36 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.Equal("True", text);
     }
 
+    [McpServerTool(Name = "mrtr-lowlevel")]
+    private static string MrtrLowLevel(McpServer server, RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.RequestState is not null && context.Params!.InputResponses is { } responses)
+        {
+            var result = responses["user_confirm"].ElicitationResult;
+            return $"lowlevel-confirmed:{result?.Action}:{context.Params.RequestState}";
+        }
+
+        if (!server.IsMrtrSupported)
+        {
+            return "lowlevel-unsupported";
+        }
+
+        throw new IncompleteResultException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["user_confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "Please confirm",
+                    RequestedSchema = new()
+                })
+            },
+            requestState: "lowlevel-state-1");
+    }
+
     [Fact]
     public async Task Mrtr_Experimental_LowLevel_IncompleteResultException_WorksEndToEnd()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrLowLevel);
+        var messageTracker = ConfigureMrtrServer(MrtrLowLevel);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -468,7 +596,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_Elicitation_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrElicit);
+        var messageTracker = ConfigureMrtrServer(MrtrElicit);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -486,7 +614,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_Sampling_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrSample);
+        var messageTracker = ConfigureMrtrServer(MrtrSample);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -504,7 +632,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_MultiRoundTrip_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrMulti);
+        var messageTracker = ConfigureMrtrServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -522,7 +650,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_IsMrtrSupported_ReturnsTrue()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        ConfigureMrtrServer(MrtrTestTools.MrtrCheck);
+        ConfigureMrtrServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -539,7 +667,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_LowLevel_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrLowLevel);
+        var messageTracker = ConfigureMrtrServer(MrtrLowLevel);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -557,7 +685,16 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Experimental_HighLevel_Elicitation_CompletesViaMrtr()
     {
         Assert.SkipWhen(Stateless, "High-level API requires stateful handler suspension.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelElicit);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-elicit")] async (string message, McpServer server, CancellationToken ct) =>
+            {
+                var result = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = message,
+                    RequestedSchema = new()
+                }, ct);
+                return $"{result.Action}:{result.Content?.FirstOrDefault().Value}";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -576,7 +713,16 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Experimental_HighLevel_Sampling_CompletesViaMrtr()
     {
         Assert.SkipWhen(Stateless, "High-level API requires stateful handler suspension.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelSample);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-sample")] async (string prompt, McpServer server, CancellationToken ct) =>
+            {
+                var result = await server.SampleAsync(new CreateMessageRequestParams
+                {
+                    Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
+                    MaxTokens = 100
+                }, ct);
+                return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "No response";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -595,7 +741,12 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Experimental_HighLevel_Roots_CompletesViaMrtr()
     {
         Assert.SkipWhen(Stateless, "High-level API requires stateful handler suspension.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelRoots);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-roots")] async (McpServer server, CancellationToken ct) =>
+            {
+                var result = await server.RequestRootsAsync(new ListRootsRequestParams(), ct);
+                return string.Join(",", result.Roots.Select(r => r.Uri));
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -613,7 +764,21 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Experimental_HighLevel_MultiRoundTrip_CompletesViaMrtr()
     {
         Assert.SkipWhen(Stateless, "High-level API requires stateful handler suspension.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelMultiElicit);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-multi-elicit")] async (McpServer server, CancellationToken ct) =>
+            {
+                var nameResult = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = "What is your name?",
+                    RequestedSchema = new()
+                }, ct);
+                var greetingResult = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = "How should I greet you?",
+                    RequestedSchema = new()
+                }, ct);
+                return $"{greetingResult.Content?.FirstOrDefault().Value} {nameResult.Content?.FirstOrDefault().Value}!";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -631,7 +796,16 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_HighLevel_Elicitation_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelElicit);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-elicit")] async (string message, McpServer server, CancellationToken ct) =>
+            {
+                var result = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = message,
+                    RequestedSchema = new()
+                }, ct);
+                return $"{result.Action}:{result.Content?.FirstOrDefault().Value}";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -650,7 +824,16 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_HighLevel_Sampling_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelSample);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-sample")] async (string prompt, McpServer server, CancellationToken ct) =>
+            {
+                var result = await server.SampleAsync(new CreateMessageRequestParams
+                {
+                    Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
+                    MaxTokens = 100
+                }, ct);
+                return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "No response";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -669,7 +852,21 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Backcompat_HighLevel_MultiRoundTrip_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrHighLevelMultiElicit);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-hl-multi-elicit")] async (McpServer server, CancellationToken ct) =>
+            {
+                var nameResult = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = "What is your name?",
+                    RequestedSchema = new()
+                }, ct);
+                var greetingResult = await server.ElicitAsync(new ElicitRequestParams
+                {
+                    Message = "How should I greet you?",
+                    RequestedSchema = new()
+                }, ct);
+                return $"{greetingResult.Content?.FirstOrDefault().Value} {nameResult.Content?.FirstOrDefault().Value}!";
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -687,7 +884,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_IsMrtrSupported_ReturnsFalse_WhenClientDoesNotOptIn_InStatelessMode()
     {
         Assert.SkipUnless(Stateless, "This test verifies the stateless-specific false case.");
-        ConfigureMrtrServer(MrtrTestTools.MrtrCheck);
+        ConfigureMrtrServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -700,10 +897,48 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.Equal("False", text);
     }
 
+    [McpServerTool(Name = "mrtr-concurrent-three")]
+    private static string MrtrConcurrentThree(RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.InputResponses is { Count: 3 } responses &&
+            responses.ContainsKey("elicit") &&
+            responses.ContainsKey("sample") &&
+            responses.ContainsKey("roots"))
+        {
+            var elicitAction = responses["elicit"].ElicitationResult?.Action;
+            var sampleText = responses["sample"].SamplingResult?
+                .Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+            var rootUris = string.Join(",",
+                responses["roots"].RootsResult?.Roots.Select(r => r.Uri) ?? []);
+            return $"all-ok:elicit={elicitAction},sample={sampleText},roots={rootUris}";
+        }
+
+        throw new IncompleteResultException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["elicit"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "Confirm action",
+                    RequestedSchema = new()
+                }),
+                ["sample"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                {
+                    Messages = [new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content = [new TextContentBlock { Text = "Generate summary" }]
+                    }],
+                    MaxTokens = 50
+                }),
+                ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
+            },
+            requestState: "concurrent-state");
+    }
+
     [Fact]
     public async Task Mrtr_ConcurrentThreeInputs_ResolvedSimultaneously()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrConcurrentThree);
+        var messageTracker = ConfigureMrtrServer(MrtrConcurrentThree);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -752,7 +987,21 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Mrtr_Experimental_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureMrtrServer(MrtrTestTools.MrtrLoadShed);
+        var messageTracker = ConfigureMrtrServer(
+            [McpServerTool(Name = "mrtr-loadshed")] (McpServer server, RequestContext<CallToolRequestParams> context) =>
+            {
+                if (context.Params!.RequestState is { } state)
+                {
+                    return $"resumed:{state}";
+                }
+
+                if (!server.IsMrtrSupported)
+                {
+                    return "MRTR not supported.";
+                }
+
+                throw new IncompleteResultException(requestState: "deferred-work");
+            });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -770,7 +1019,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Stateless_LowLevel_ReturnsFallback_WhenMrtrNotSupported()
     {
         Assert.SkipUnless(Stateless, "In stateful mode, IsMrtrSupported=true via backcompat.");
-        ConfigureMrtrServer(MrtrTestTools.MrtrLowLevel);
+        ConfigureMrtrServer(MrtrLowLevel);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -787,7 +1036,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task Mrtr_Stateless_IncompleteResultException_WithoutMrtrClient_ThrowsError()
     {
         Assert.SkipUnless(Stateless, "In stateful mode, backcompat resolves this.");
-        ConfigureMrtrServer(MrtrTestTools.MrtrElicit);
+        ConfigureMrtrServer(MrtrElicit);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -869,242 +1118,6 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         {
             await Task.Delay(durationMs, cancellationToken);
             return $"Operation completed after {durationMs}ms";
-        }
-    }
-
-    [McpServerToolType]
-    private static class MrtrTestTools
-    {
-        [McpServerTool(Name = "mrtr-elicit")]
-        public static string MrtrElicit(RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.InputResponses is { } responses &&
-                responses.TryGetValue("user_input", out var response))
-            {
-                return $"elicit-ok:{response.ElicitationResult?.Action}";
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
-                    {
-                        Message = "Please confirm",
-                        RequestedSchema = new()
-                    })
-                },
-                requestState: "elicit-state");
-        }
-
-        [McpServerTool(Name = "mrtr-sample")]
-        public static string MrtrSample(RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.InputResponses is { } responses &&
-                responses.TryGetValue("llm_call", out var response))
-            {
-                var text = response.SamplingResult?.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
-                return $"sample-ok:{text}";
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["llm_call"] = InputRequest.ForSampling(new CreateMessageRequestParams
-                    {
-                        Messages = [new SamplingMessage
-                        {
-                            Role = Role.User,
-                            Content = [new TextContentBlock { Text = "Summarize this" }]
-                        }],
-                        MaxTokens = 100
-                    })
-                },
-                requestState: "sample-state");
-        }
-
-        [McpServerTool(Name = "mrtr-roots")]
-        public static string MrtrRoots(RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.InputResponses is { } responses &&
-                responses.TryGetValue("roots", out var response))
-            {
-                var roots = response.RootsResult?.Roots;
-                return $"roots-ok:{string.Join(",", roots?.Select(r => r.Uri) ?? [])}";
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
-                },
-                requestState: "roots-state");
-        }
-
-        [McpServerTool(Name = "mrtr-multi")]
-        public static string MrtrMulti(RequestContext<CallToolRequestParams> context)
-        {
-            var requestState = context.Params!.RequestState;
-            var inputResponses = context.Params!.InputResponses;
-
-            if (requestState == "round-2" && inputResponses is not null)
-            {
-                var greeting = inputResponses["greeting"].ElicitationResult?.Action;
-                return $"multi-done:greeting={greeting}";
-            }
-
-            if (requestState == "round-1" && inputResponses is not null)
-            {
-                var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
-                throw new IncompleteResultException(
-                    inputRequests: new Dictionary<string, InputRequest>
-                    {
-                        ["greeting"] = InputRequest.ForElicitation(new ElicitRequestParams
-                        {
-                            Message = $"How should I greet {name}?",
-                            RequestedSchema = new()
-                        })
-                    },
-                    requestState: "round-2");
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["name"] = InputRequest.ForElicitation(new ElicitRequestParams
-                    {
-                        Message = "What is your name?",
-                        RequestedSchema = new()
-                    })
-                },
-                requestState: "round-1");
-        }
-
-        [McpServerTool(Name = "mrtr-lowlevel")]
-        public static string MrtrLowLevel(McpServer server, RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.RequestState is not null && context.Params!.InputResponses is { } responses)
-            {
-                var result = responses["user_confirm"].ElicitationResult;
-                return $"lowlevel-confirmed:{result?.Action}:{context.Params.RequestState}";
-            }
-
-            if (!server.IsMrtrSupported)
-            {
-                return "lowlevel-unsupported";
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["user_confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
-                    {
-                        Message = "Please confirm",
-                        RequestedSchema = new()
-                    })
-                },
-                requestState: "lowlevel-state-1");
-        }
-
-        [McpServerTool(Name = "mrtr-check")]
-        public static string MrtrCheck(McpServer server) => server.IsMrtrSupported.ToString();
-
-        [McpServerTool(Name = "mrtr-hl-elicit")]
-        public static async Task<string> MrtrHighLevelElicit(string message, McpServer server, CancellationToken ct)
-        {
-            var result = await server.ElicitAsync(new ElicitRequestParams
-            {
-                Message = message,
-                RequestedSchema = new()
-            }, ct);
-            return $"{result.Action}:{result.Content?.FirstOrDefault().Value}";
-        }
-
-        [McpServerTool(Name = "mrtr-hl-sample")]
-        public static async Task<string> MrtrHighLevelSample(string prompt, McpServer server, CancellationToken ct)
-        {
-            var result = await server.SampleAsync(new CreateMessageRequestParams
-            {
-                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = prompt }] }],
-                MaxTokens = 100
-            }, ct);
-            return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "No response";
-        }
-
-        [McpServerTool(Name = "mrtr-hl-roots")]
-        public static async Task<string> MrtrHighLevelRoots(McpServer server, CancellationToken ct)
-        {
-            var result = await server.RequestRootsAsync(new ListRootsRequestParams(), ct);
-            return string.Join(",", result.Roots.Select(r => r.Uri));
-        }
-
-        [McpServerTool(Name = "mrtr-hl-multi-elicit")]
-        public static async Task<string> MrtrHighLevelMultiElicit(McpServer server, CancellationToken ct)
-        {
-            var nameResult = await server.ElicitAsync(new ElicitRequestParams
-            {
-                Message = "What is your name?",
-                RequestedSchema = new()
-            }, ct);
-            var greetingResult = await server.ElicitAsync(new ElicitRequestParams
-            {
-                Message = "How should I greet you?",
-                RequestedSchema = new()
-            }, ct);
-            return $"{greetingResult.Content?.FirstOrDefault().Value} {nameResult.Content?.FirstOrDefault().Value}!";
-        }
-
-        [McpServerTool(Name = "mrtr-concurrent-three")]
-        public static string MrtrConcurrentThree(RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.InputResponses is { Count: 3 } responses &&
-                responses.ContainsKey("elicit") &&
-                responses.ContainsKey("sample") &&
-                responses.ContainsKey("roots"))
-            {
-                var elicitAction = responses["elicit"].ElicitationResult?.Action;
-                var sampleText = responses["sample"].SamplingResult?
-                    .Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
-                var rootUris = string.Join(",",
-                    responses["roots"].RootsResult?.Roots.Select(r => r.Uri) ?? []);
-                return $"all-ok:elicit={elicitAction},sample={sampleText},roots={rootUris}";
-            }
-
-            throw new IncompleteResultException(
-                inputRequests: new Dictionary<string, InputRequest>
-                {
-                    ["elicit"] = InputRequest.ForElicitation(new ElicitRequestParams
-                    {
-                        Message = "Confirm action",
-                        RequestedSchema = new()
-                    }),
-                    ["sample"] = InputRequest.ForSampling(new CreateMessageRequestParams
-                    {
-                        Messages = [new SamplingMessage
-                        {
-                            Role = Role.User,
-                            Content = [new TextContentBlock { Text = "Generate summary" }]
-                        }],
-                        MaxTokens = 50
-                    }),
-                    ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
-                },
-                requestState: "concurrent-state");
-        }
-
-        [McpServerTool(Name = "mrtr-loadshed")]
-        public static string MrtrLoadShed(McpServer server, RequestContext<CallToolRequestParams> context)
-        {
-            if (context.Params!.RequestState is { } state)
-            {
-                return $"resumed:{state}";
-            }
-
-            if (!server.IsMrtrSupported)
-            {
-                return "MRTR not supported.";
-            }
-
-            throw new IncompleteResultException(requestState: "deferred-work");
         }
     }
 
