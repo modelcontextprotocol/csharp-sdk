@@ -828,12 +828,6 @@ internal sealed partial class McpClientImpl : McpClient
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use IncompleteResult instead of sending direct requests.")]
-    private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received IncompleteResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
-    private partial void LogIncompleteResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
-
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
@@ -853,4 +847,10 @@ internal sealed partial class McpClientImpl : McpClient
             LogIncompleteResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use IncompleteResult instead of sending direct requests.")]
+    private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received IncompleteResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
+    private partial void LogIncompleteResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
 }

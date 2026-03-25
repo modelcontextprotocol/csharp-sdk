@@ -43,7 +43,6 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             RelatedTransport = transport
         };
 
-        // Delegates to McpServerImpl (McpSessionHandler) which guards against JsonRpcRequest.
         return server.SendMessageAsync(message, cancellationToken);
     }
 
