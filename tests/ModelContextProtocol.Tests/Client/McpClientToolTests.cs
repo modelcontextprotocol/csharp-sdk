@@ -854,4 +854,163 @@ public class McpClientToolTests : ClientServerTestBase
         var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
         Assert.Contains("coordinates", textBlock.Text);
     }
+
+    [Fact]
+    public async Task CallAsync_WithProgress_ProgressTokenInMeta()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        // Pass progress directly to CallAsync
+        var result = await tool.CallAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Content);
+
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.NotNull(receivedMetadata["progressToken"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task CallAsync_WithMeta_WithProgress_BothMetaAndProgressTokenPresent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        // WithMeta on the tool, progress passed to CallAsync
+        var result = await tool
+            .WithMeta(new() { ["traceId"] = "trace-123" })
+            .CallAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Content);
+
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("trace-123", receivedMetadata["traceId"]?.GetValue<string>());
+        Assert.NotNull(receivedMetadata["progressToken"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WithMeta_WithProgress_BothMetaAndProgressTokenPresent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        // Both WithMeta and WithProgress on the tool, invoked via InvokeAsync (the AIFunction path)
+        var result = await tool
+            .WithMeta(new() { ["traceId"] = "trace-456" })
+            .WithProgress(progress)
+            .InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // InvokeAsync returns a JsonElement for results with meta
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task CallAsync_WithMeta_WithProgress_DoesNotMutateOriginalMeta()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        JsonObject originalMeta = new()
+        {
+            ["traceId"] = "trace-789"
+        };
+
+        var toolWithMeta = tool.WithMeta(originalMeta);
+
+        // Call multiple times with progress to ensure original meta is not mutated
+        await toolWithMeta.CallAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+        await toolWithMeta.CallAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Original meta should not contain progressToken
+        Assert.Single(originalMeta);
+        Assert.Equal("trace-789", originalMeta["traceId"]?.GetValue<string>());
+        Assert.False(originalMeta.ContainsKey("progressToken"));
+    }
+
+    [Fact]
+    public async Task CallAsync_WithMeta_WithProgress_WithName_WithDescription_AllChained()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        var modifiedTool = tool
+            .WithName("custom_name")
+            .WithDescription("Custom description")
+            .WithMeta(new() { ["chainedKey"] = "chainedValue" });
+
+        Assert.Equal("custom_name", modifiedTool.Name);
+        Assert.Equal("Custom description", modifiedTool.Description);
+
+        var result = await modifiedTool.CallAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("chainedValue", receivedMetadata["chainedKey"]?.GetValue<string>());
+        Assert.NotNull(receivedMetadata["progressToken"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task CallAsync_WithMeta_WithProgress_WithRequestOptionsMeta_AllMerged()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var progressValues = new List<ProgressNotificationValue>();
+        var progress = new Progress<ProgressNotificationValue>(p => progressValues.Add(p));
+
+        RequestOptions requestOptions = new()
+        {
+            Meta = new()
+            {
+                ["requestKey"] = "requestValue"
+            }
+        };
+
+        var result = await tool
+            .WithMeta(new() { ["toolKey"] = "toolValue" })
+            .CallAsync(progress: progress, options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("toolValue", receivedMetadata["toolKey"]?.GetValue<string>());
+        Assert.Equal("requestValue", receivedMetadata["requestKey"]?.GetValue<string>());
+        Assert.NotNull(receivedMetadata["progressToken"]?.GetValue<string>());
+    }
 }
