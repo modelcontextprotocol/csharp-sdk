@@ -15,6 +15,8 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 - Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
 - Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
+- Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
+- Are you debugging a typically-stdio server over HTTP and want editors to be able to reset state by reconnecting?  → **Use stateful.**
 - Otherwise → **Use stateless** (`options.Stateless = true`).
 
 <!-- mlc-disable-next-line -->
@@ -91,7 +93,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
 - Server-to-client requests (sampling, elicitation, roots) via an open SSE stream
 - Unsolicited notifications (resource updates, logging messages)
 - Resource subscriptions
-- Session-scoped state (e.g., per-session DI scopes, RunSessionHandler)
+- Session-scoped state (e.g., `RunSessionHandler`, state that persists across multiple requests within a session)
 
 ### When to use stateful mode
 
@@ -101,7 +103,10 @@ Use stateful mode when your server needs one or more of:
 - **Unsolicited notifications**: Sending resource-changed notifications or log messages without a preceding client request
 - **Resource subscriptions**: Clients subscribing to resource changes and receiving updates
 - **Session-scoped state**: Logic that must persist across multiple requests within the same session
-- **Debugging stdio servers over HTTP**: When you want to test a typically stateful stdio server over HTTP while supporting concurrent connections from editors like Claude Code, GitHub Copilot in VS Code, Cursor, etc., sessions let you distinguish between them
+- **Concurrent client isolation**: Multiple agents or editor instances connecting simultaneously, where per-client state must not leak between users — separate working environments, independent scratch state, or parallel simulations where each participant needs its own context. The server — not the model — controls when sessions are created, so the harness decides the boundaries of isolation.
+- **Local development and debugging**: Testing a typically-stdio server over HTTP where you want to attach a debugger, see log output on stdout, and have editors like Claude Code, GitHub Copilot in VS Code, and Cursor reset the server's state by starting a new session — without requiring a process restart. This closely mirrors the stdio experience where restarting the server process gives the client a clean slate.
+
+The [deployment footguns](#deployment-footguns) below are real concerns for production, internet-facing services — but many MCP servers don't run in that context. For single-instance servers, internal tools, and dev/test clusters, session affinity and memory overhead are largely irrelevant, and sessions provide the richest feature set with no practical downsides.
 
 ### Deployment footguns
 
@@ -131,13 +136,22 @@ The SDK does not limit how long a handler can run or how many requests can be pr
 
 Stateless mode is significantly more resilient here because each tool call is a standard HTTP request-response. This means Kestrel and IIS connection limits, request timeouts, and rate-limiting middleware all apply naturally. The <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> settings help protect against non-malicious overuse (e.g., a buggy client creating too many sessions), but they are not a substitute for HTTP-level protections.
 
+### Convenience pitfalls of statelessness
+
+Stateless mode trades features for simplicity. Before choosing it, consider what you give up:
+
+- **No server-to-client requests.** Sampling, elicitation, and roots all require the server to send a JSON-RPC request back to the client over a persistent connection. Stateless mode has no such connection. The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to solve this, but it is not yet available.
+- **No push notifications.** The server cannot send unsolicited messages — log entries, resource-change events, or progress updates outside the scope of a tool call response. Every notification must be part of a direct response to a client request.
+- **No concurrent client isolation.** Every request is independent. The server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
+- **No state reset on reconnect.** When a client disconnects and reconnects (e.g., an editor restarting), stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start — because there was never a session to begin with. If your server holds any external state, you must manage cleanup through other means.
+
 ## stdio transport
 
 The [stdio transport](xref:transports) is inherently single-session. The client launches the server as a child process and communicates over stdin/stdout. There is exactly one session per process, the session starts when the process starts, and it ends when the process exits.
 
 Because there is only one connection, stdio servers don't need session IDs or any explicit session management. The session is implicit in the process boundary. This makes stdio the simplest transport to use, and it naturally supports all server-to-client features (sampling, elicitation, roots) because there is always exactly one client connected.
 
-However, stdio servers cannot be shared between multiple clients. Each client needs its own server process. This is fine for local tool integrations (IDEs, CLI tools) but not suitable for remote or multi-tenant scenarios — use [Streamable HTTP](xref:transports) for those.
+However, stdio servers cannot be shared between multiple clients. Each client needs its own server process. This is fine for local tool integrations (IDEs, CLI tools) but not suitable for remote or multi-tenant scenarios — use [Streamable HTTP](xref:transports) for those. For details on how DI scopes work with stdio, see [Service lifetimes and DI scopes](#service-lifetimes-and-di-scopes).
 
 ## Session lifecycle (HTTP)
 
@@ -279,6 +293,53 @@ builder.Services.AddMcpServer()
     .WithTools<DefaultTools>();
 ```
 
+## Service lifetimes and DI scopes
+
+How the server resolves scoped services depends on the transport and session mode. The <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> property controls whether the server creates a new `IServiceProvider` scope for each handler invocation.
+
+### Stateful HTTP
+
+In stateful mode, the server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider` — not a per-request scope. Because the server outlives individual HTTP requests, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> defaults to `true`: each handler invocation (tool call, resource read, etc.) creates a new async scope via `IServiceScopeFactory.CreateAsyncScope()`. The scoped `IServiceProvider` is available on <xref:ModelContextProtocol.Server.RequestContext`1.Services>.
+
+This means:
+
+- **Scoped services** are created fresh for each handler invocation and disposed when the handler completes
+- **Singleton services** resolve from the application container as usual
+- **Transient services** create a new instance per resolution, as usual
+
+### Stateless HTTP
+
+In stateless mode, the server uses ASP.NET Core's per-request `HttpContext.RequestServices` as its service provider, and <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is automatically set to `false`. No additional scopes are created — handlers share the same HTTP request scope that middleware and other ASP.NET Core components use.
+
+This means:
+
+- **Scoped services** behave exactly like any other ASP.NET Core request-scoped service — middleware can set state on a scoped service and the tool handler will see it
+- The DI lifetime model is identical to a standard ASP.NET Core controller or minimal API endpoint
+
+### stdio
+
+The stdio transport creates a single server for the lifetime of the process. The server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider`. By default, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is `true`, so each handler invocation gets its own scope — the same behavior as stateful HTTP.
+
+You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` if you want handlers to resolve services directly from the root container. This can be useful for performance-sensitive scenarios where scope creation overhead matters, but be aware that scoped services will then behave like singletons for the lifetime of the process.
+
+```csharp
+builder.Services.AddMcpServer(options =>
+{
+    // Disable per-handler scoping. Scoped services will resolve from the root container.
+    options.ScopeRequests = false;
+})
+.WithStdioServerTransport()
+.WithTools<MyTools>();
+```
+
+### Summary
+
+| Mode | Service provider | ScopeRequests | Handler scope |
+|------|-----------------|---------------|---------------|
+| **Stateful HTTP** | Application services | `true` (default) | New async scope per handler invocation |
+| **Stateless HTTP** | `HttpContext.RequestServices` | `false` (forced) | Shared HTTP request scope |
+| **stdio** | Application services | `true` (default, configurable) | New async scope per handler invocation |
+
 ## User binding
 
 When authentication is configured, the server automatically binds sessions to the authenticated user. This prevents one user from hijacking another user's session.
@@ -357,3 +418,6 @@ This is useful for clients that may experience transient network issues. Without
 | **Unsolicited notifications** | Not supported | Supported (resource updates, logging) |
 | **Resource subscriptions** | Not supported | Supported |
 | **Client compatibility** | Works with all clients | Requires clients to track and send `Mcp-Session-Id` |
+| **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
+| **Concurrent client isolation** | No distinction between clients — all requests are independent | Each client gets its own session with isolated state |
+| **State reset on reconnect** | No concept of reconnection — every request stands alone | Client reconnection starts a new session with a clean slate |
