@@ -219,7 +219,7 @@ For a detailed comparison of stateless vs. stateful mode — including deploymen
 
 ### In-memory transport
 
-The <xref:ModelContextProtocol.Server.StreamServerTransport> and <xref:ModelContextProtocol.Client.StreamClientTransport> types work with any `Stream`, including in-memory pipes. This is useful for testing, embedding an MCP server in a larger application, or running a client and server in the same process without network overhead.
+The <xref:ModelContextProtocol.Server.StreamServerTransport> and <xref:ModelContextProtocol.Protocol.StreamClientTransport> types work with any `Stream`, including in-memory pipes. This is useful for testing, embedding an MCP server in a larger application, or running a client and server in the same process without network overhead.
 
 The following example creates a client and server connected via `System.IO.Pipelines` (from the [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/blob/51a4fde4d9cfa12ef9430deef7daeaac36625be8/samples/InMemoryTransport/Program.cs)):
 
