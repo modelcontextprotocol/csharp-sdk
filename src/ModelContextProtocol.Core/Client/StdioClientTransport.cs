@@ -137,7 +137,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             // few lines in a rolling log for use in exceptions.
             const int MaxStderrLength = 10; // keep the last 10 lines of stderr
             Queue<string> stderrRollingLog = new(MaxStderrLength);
-            process.ErrorDataReceived += errorHandler = (sender, args) =>
+            errorHandler = (sender, args) =>
             {
                 string? data = args.Data;
                 if (data is not null)
@@ -167,6 +167,7 @@ public sealed partial class StdioClientTransport : IClientTransport
                     LogReadStderr(logger, endpointName, data);
                 }
             };
+            process.ErrorDataReceived += errorHandler;
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but

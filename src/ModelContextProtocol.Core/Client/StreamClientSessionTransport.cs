@@ -164,6 +164,21 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
+    /// <summary>
+    /// Cancels the shutdown token to signal that the transport is shutting down,
+    /// without performing any other cleanup.
+    /// </summary>
+    protected void CancelShutdown()
+    {
+        try
+        {
+            _shutdownCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
         LogTransportShuttingDown(Name);
