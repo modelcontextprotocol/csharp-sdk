@@ -333,7 +333,9 @@ This means:
 
 The stdio transport creates a single server for the lifetime of the process. The server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider`. By default, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is `true`, so each handler invocation gets its own scope — the same behavior as stateful HTTP.
 
-You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` when using <xref:ModelContextProtocol.McpServer.Create*> with an `IServiceProvider` that is already scoped to the desired lifetime — this avoids creating redundant nested scopes. The [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/InMemoryTransport) shows a minimal example of using `McpServer.Create` with in-memory pipes:
+#### McpServer.Create (custom transports)
+
+When you create a server directly with <xref:ModelContextProtocol.McpServer.Create*>, you control the `IServiceProvider` and transport yourself. If you pass an already-scoped provider, you can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` to avoid creating redundant nested scopes. The [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/InMemoryTransport) shows a minimal example of using `McpServer.Create` with in-memory pipes:
 
 ```csharp
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
@@ -357,6 +359,7 @@ await using McpServer server = McpServer.Create(
 | **Stateful HTTP** | Application services | `true` (default) | New scope per handler invocation |
 | **Stateless HTTP** | `HttpContext.RequestServices` | `false` (forced) | Shared HTTP request scope |
 | **stdio** | Application services | `true` (default, configurable) | New scope per handler invocation |
+| **McpServer.Create** | Caller-provided | Caller-controlled | Depends on `ScopeRequests` and whether the provider is already scoped |
 
 ## Security
 
