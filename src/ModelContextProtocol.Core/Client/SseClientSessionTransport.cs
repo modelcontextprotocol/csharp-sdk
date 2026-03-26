@@ -58,11 +58,15 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
-            throw new InvalidOperationException("Failed to connect transport", ex);
+            throw new IOException("Failed to connect transport.", ex);
         }
     }
 
