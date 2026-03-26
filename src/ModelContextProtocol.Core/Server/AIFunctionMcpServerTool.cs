@@ -262,7 +262,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         request.Services = new RequestServiceProvider<CallToolRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
-        if (request.Params.Arguments is { } argDict)
+        if (request.Params?.Arguments is { } argDict)
         {
             foreach (var kvp in argDict)
             {

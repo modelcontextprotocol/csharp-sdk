@@ -201,7 +201,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         request.Services = new RequestServiceProvider<GetPromptRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
-        if (request.Params.Arguments is { } argDict)
+        if (request.Params?.Arguments is { } argDict)
         {
             foreach (var kvp in argDict)
             {

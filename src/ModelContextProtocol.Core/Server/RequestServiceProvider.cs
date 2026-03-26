@@ -27,7 +27,7 @@ internal sealed class RequestServiceProvider<TRequestParams>(RequestContext<TReq
         serviceType == typeof(RequestContext<TRequestParams>) ? request :
         serviceType == typeof(McpServer) ? request.Server :
         serviceType == typeof(IProgress<ProgressNotificationValue>) ?
-            (request.Params.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
+            (request.Params?.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
         serviceType == typeof(ClaimsPrincipal) ? request.User :
         _innerServices?.GetService(serviceType);
 
