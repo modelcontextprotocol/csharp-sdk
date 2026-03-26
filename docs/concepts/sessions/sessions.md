@@ -399,9 +399,10 @@ await using McpServer server = McpServer.Create(
 | **Stateless HTTP** | `HttpContext.RequestServices` | `false` (forced) | Shared HTTP request scope |
 | **stdio** | Application services | `true` (default, configurable) | New scope per handler invocation |
 | **McpServer.Create** | Caller-provided | Caller-controlled | Depends on `ScopeRequests` and whether the provider is already scoped |
+
 ## Cancellation and disposal
 
-Every tool, prompt, and resource handler receives a `CancellationToken`. The source and behavior of that token depends on the transport and session mode. The SDK also supports the MCP [cancellation protocol](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) for client-initiated cancellation of individual requests.
+Every tool, prompt, and resource handler can receive a `CancellationToken`. The source and behavior of that token depends on the transport and session mode. The SDK also supports the MCP [cancellation protocol](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) for client-initiated cancellation of individual requests.
 
 ### Handler cancellation tokens
 
