@@ -157,14 +157,14 @@ All subsequent requests from the client must include this session ID.
 
 #### Activity tracking
 
-The server tracks the last activity time for each session. Activity is recorded when:
+The server tracks the last activity time for each Streamable HTTP session. Activity is recorded when:
 
 - A request arrives for the session (POST or GET)
 - A response is sent for the session
 
 #### Idle timeout
 
-Sessions that have no activity for the duration of <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> (default: **2 hours**) are automatically closed. The idle timeout is checked in the background every 5 seconds.
+Streamable HTTP sessions that have no activity for the duration of <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> (default: **2 hours**) are automatically closed. The idle timeout is checked in the background every 5 seconds.
 
 A client can keep its session alive by maintaining any open HTTP request (e.g., a long-running POST with a streamed response or an open `GET` for unsolicited messages). Sessions with active requests are never considered idle.
 
@@ -178,7 +178,7 @@ You can disable idle timeout by setting it to `Timeout.InfiniteTimeSpan`, though
 
 #### Maximum idle session count
 
-<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> (default: **10,000**) limits how many idle sessions can exist simultaneously. If this limit is exceeded:
+<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> (default: **10,000**) limits how many idle Streamable HTTP sessions can exist simultaneously. If this limit is exceeded:
 
 - A critical error is logged
 - The oldest idle sessions are terminated (even if they haven't reached their idle timeout)
@@ -188,7 +188,7 @@ Sessions with any active HTTP request don't count toward this limit.
 
 #### Termination
 
-Sessions can be terminated by:
+Streamable HTTP sessions can be terminated by:
 
 - **Client DELETE request**: The client sends an HTTP `DELETE` to the session endpoint with its `Mcp-Session-Id`
 - **Idle timeout**: The session exceeds the idle timeout without activity
@@ -208,6 +208,29 @@ Stateful sessions introduce several challenges for production, internet-facing s
 **Clients that don't send Mcp-Session-Id.** Some MCP clients may not send the `Mcp-Session-Id` header on every request. When this happens, the server responds with an error: `"Bad Request: A new session can only be created by an initialize request."` This can happen after a server restart, when a client loses its session ID, or when a client simply doesn't support sessions. If you see this error, consider whether your server actually needs sessions — and if not, switch to stateless mode.
 
 **No built-in backpressure on request handlers.** See the [warning at the top of this document](#sessions) for details on the security implications of unbounded request handling in stateful sessions.
+
+### SSE (legacy)
+
+The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are only mapped when `Stateless = false` (the default), because the GET and POST requests must be handled by the same server process sharing in-memory session state.
+
+#### How SSE sessions work
+
+1. The client connects to the `/sse` endpoint with a GET request
+2. The server generates a session ID and sends a `/message?sessionId={id}` URL as the first SSE event
+3. The client sends JSON-RPC messages as POST requests to that `/message?sessionId={id}` URL
+4. The server streams responses and unsolicited messages back over the open SSE GET stream
+
+Unlike Streamable HTTP which uses the `Mcp-Session-Id` header, legacy SSE passes the session ID as a query string parameter on the `/message` endpoint.
+
+#### Session lifetime
+
+SSE session lifetime is tied directly to the GET SSE stream. When the client disconnects (detected via `HttpContext.RequestAborted`), or the server shuts down (via `IHostApplicationLifetime.ApplicationStopping`), the session is immediately removed. There is no idle timeout or maximum idle session count for SSE sessions — the session exists exactly as long as the SSE connection is open.
+
+This makes SSE sessions behave similarly to [stdio](#stdio-transport): the session is implicit in the connection lifetime, and disconnection is the only termination mechanism.
+
+#### Configuration
+
+<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.RunSessionHandler> both work with SSE sessions. They are called during the `/sse` GET request handler, and services resolve from the GET request's `HttpContext.RequestServices`. [User binding](#user-binding) also works — the authenticated user is captured from the GET request and verified on each POST to `/message`.
 
 ### stdio transport
 
