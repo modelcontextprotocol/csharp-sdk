@@ -122,7 +122,7 @@ Use stateful mode when your server needs one or more of:
 - **Concurrent client isolation**: Multiple agents or editor instances connecting simultaneously, where per-client state must not leak between users — separate working environments, independent scratch state, or parallel simulations where each participant needs its own context. The server — not the model — controls when sessions are created, so the harness decides the boundaries of isolation.
 - **Local development and debugging**: Testing a typically-stdio server over HTTP where you want to attach a debugger, see log output on stdout, and have editors like Claude Code, GitHub Copilot in VS Code, and Cursor reset the server's state by starting a new session — without requiring a process restart. This closely mirrors the stdio experience where restarting the server process gives the client a clean slate.
 
-The [deployment considerations](#deployment-considerations) below are real concerns for production, internet-facing services — but many MCP servers don't run in that context. For single-instance servers, internal tools, and dev/test clusters, session affinity and memory overhead are largely irrelevant, and sessions provide the richest feature set with no practical downsides.
+The [deployment considerations](#deployment-considerations) below are real concerns for production, internet-facing services — but many MCP servers don't run in that context. For single-instance servers, internal tools, and dev/test clusters, session affinity and memory overhead are less of a concern, and sessions provide the richest feature set.
 
 ## Comparison
 
