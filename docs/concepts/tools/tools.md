@@ -39,7 +39,7 @@ Register the tool type when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithTools<MyTools>();
 ```
 

@@ -184,7 +184,7 @@ The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. T
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithTools<MyTools>();
 
 var app = builder.Build();

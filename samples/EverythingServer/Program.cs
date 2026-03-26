@@ -57,6 +57,10 @@ builder.Services
     })
     .WithHttpTransport(options =>
     {
+        // This sample uses subscriptions, SampleLlmTool (sampling), and RunSessionHandler.
+        // Set Stateless = false explicitly for forward compatibility in case the default changes.
+        options.Stateless = false;
+
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends
 #pragma warning disable MCPEXP002 // RunSessionHandler is experimental
         options.RunSessionHandler = async (httpContext, mcpServer, token) =>

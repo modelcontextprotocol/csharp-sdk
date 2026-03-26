@@ -303,6 +303,8 @@ For high-availability deployments, <xref:ModelContextProtocol.AspNetCore.ISessio
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
+        // Session migration is a stateful-mode feature.
+        options.Stateless = false;
         options.SessionMigrationHandler = new MySessionMigrationHandler();
     });
 ```
@@ -329,6 +331,8 @@ The server can store SSE events for replay when clients reconnect using the `Las
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
+        // Session resumability is a stateful-mode feature.
+        options.Stateless = false;
         options.EventStreamStore = new MyEventStreamStore();
     });
 ```
