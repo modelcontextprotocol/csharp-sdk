@@ -23,6 +23,13 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 > [!NOTE]
 > **Why isn't stateless the default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
 
+> [!WARNING]
+> **Stateful sessions are not safe for public internet deployments without additional hardening.** The SDK does not limit how long a handler can run or how many requests can be processed concurrently within a session. A misbehaving or compromised client can flood a stateful session with requests, and each request will spawn a handler that runs to completion. This can lead to thread starvation, GC pressure, or out-of-memory conditions that affect the entire server process — not just the offending session.
+>
+> Stateless mode is significantly more resilient here because each tool call is a standard HTTP request-response, so Kestrel and IIS connection limits, request timeouts, and rate-limiting middleware all apply naturally.
+>
+> If you must deploy a stateful server to the public internet, consider **process-level isolation** (e.g., one process or container per user/session) so that a single abusive session cannot starve the entire service. The <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> settings help protect against non-malicious overuse (e.g., a buggy client creating too many sessions), but they are not a substitute for HTTP-level protections.
+
 ## Stateless mode (recommended)
 
 Stateless mode is the recommended default for HTTP-based MCP servers. When enabled, the server doesn't track any state between requests, doesn't use the `Mcp-Session-Id` header, and treats each request independently. This is the simplest and most scalable deployment model.
@@ -200,7 +207,7 @@ Stateful sessions introduce several challenges for production, internet-facing s
 
 **Clients that don't send Mcp-Session-Id.** Some MCP clients may not send the `Mcp-Session-Id` header on every request. When this happens, the server responds with an error: `"Bad Request: A new session can only be created by an initialize request."` This can happen after a server restart, when a client loses its session ID, or when a client simply doesn't support sessions. If you see this error, consider whether your server actually needs sessions — and if not, switch to stateless mode.
 
-**No built-in backpressure on request handlers.** The SDK does not limit how long a handler can run or how many requests can be processed concurrently within a session. A misbehaving or compromised client can flood a stateful session with requests, and each request will spawn a handler that runs to completion. This can lead to thread starvation, GC pressure, or out-of-memory conditions that affect the entire HTTP server process — not just the offending session. Stateless mode is significantly more resilient here because each tool call is a standard HTTP request-response. This means Kestrel and IIS connection limits, request timeouts, and rate-limiting middleware all apply naturally. The <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> settings help protect against non-malicious overuse (e.g., a buggy client creating too many sessions), but they are not a substitute for HTTP-level protections.
+**No built-in backpressure on request handlers.** See the [warning at the top of this document](#sessions) for details on the security implications of unbounded request handling in stateful sessions.
 
 ### stdio transport
 
