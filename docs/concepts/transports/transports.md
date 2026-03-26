@@ -131,7 +131,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. See [Sessions](xref:sessions) for a detailed guide on when to use stateless vs. stateful mode and how to configure session options.
+By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. See [Sessions](xref:sessions) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:sessions#cancellation-and-disposal) behavior during shutdown.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 

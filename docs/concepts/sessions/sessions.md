@@ -384,6 +384,52 @@ await using McpServer server = McpServer.Create(
 | **stdio** | Application services | `true` (default, configurable) | New scope per handler invocation |
 | **McpServer.Create** | Caller-provided | Caller-controlled | Depends on `ScopeRequests` and whether the provider is already scoped |
 
+## Cancellation and disposal
+
+Every tool, prompt, and resource handler receives a `CancellationToken`. The source and behavior of that token depends on the transport and session mode. The SDK also supports the MCP [cancellation protocol](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) for client-initiated cancellation of individual requests.
+
+### Handler cancellation tokens
+
+| Mode | Token source | Cancelled when |
+|------|-------------|----------------|
+| **Stateless HTTP** | `HttpContext.RequestAborted` | Client disconnects, or ASP.NET Core shuts down. Identical to a standard minimal API or controller action. |
+| **Stateful Streamable HTTP** | Linked token: HTTP request + application shutdown + session disposal | Client disconnects, `ApplicationStopping` fires, or the session is terminated (idle timeout, DELETE, max idle count). |
+| **SSE (legacy)** | Linked token: GET request + application shutdown | Client disconnects the SSE stream, or `ApplicationStopping` fires. The entire session terminates with the GET stream. |
+| **stdio** | Token passed to `McpServer.RunAsync()` | stdin EOF (client process exits), or the token is cancelled (e.g., host shutdown via Ctrl+C). |
+
+Stateless mode has the simplest cancellation story: the handler's `CancellationToken` is `HttpContext.RequestAborted` — the same token any ASP.NET Core endpoint receives. No additional tokens, linked sources, or session-level lifecycle to reason about.
+
+### Client-initiated cancellation
+
+In stateful modes (Streamable HTTP, SSE, stdio), a client can cancel a specific in-flight request by sending a [`notifications/cancelled`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) notification with the request ID. The SDK looks up the running handler and cancels its `CancellationToken`. The handler receives an `OperationCanceledException` like any other cancellation.
+
+- The `initialize` request cannot be cancelled (per the MCP specification)
+- Invalid or unknown request IDs are silently ignored
+- In stateless mode, there is no persistent session to receive the notification on, so client-initiated cancellation does not apply
+
+### Server and session disposal
+
+When an `McpServer` is disposed — whether due to session termination, transport closure, or application shutdown — the SDK **awaits all in-flight handlers** before `DisposeAsync()` returns. This means:
+
+- Handlers have an opportunity to complete cleanup (e.g., flushing writes, releasing locks)
+- Scoped services created for the handler are disposed after the handler completes
+- The SDK logs each handler's completion at `Information` level, including elapsed time
+
+#### Graceful shutdown in ASP.NET Core
+
+When `ApplicationStopping` fires (e.g., `SIGTERM`, `Ctrl+C`, `app.StopAsync()`), the SDK immediately cancels active SSE and GET streams so that connected clients don't block shutdown. In-flight POST request handlers continue running and are awaited before the server finishes disposing. The total shutdown time is bounded by ASP.NET Core's `HostOptions.ShutdownTimeout` (default: **30 seconds**). In practice, the SDK completes shutdown well within this limit.
+
+For stateless servers, shutdown is even simpler: each request is independent, so there are no long-lived sessions to drain — just standard ASP.NET Core request completion.
+
+#### stdio process lifecycle
+
+- **Graceful shutdown** (stdin EOF, `SIGTERM`, `Ctrl+C`): The transport closes, in-flight handlers are awaited, and `McpServer.DisposeAsync()` runs normally.
+- **Process kill** (`SIGKILL`): No cleanup occurs. Handlers are interrupted mid-execution, and no disposal code runs. This is inherent to process-level termination and not specific to the SDK.
+
+### Stateless per-request logging
+
+In stateless mode, each HTTP request creates and disposes a short-lived `McpServer` instance. This produces session lifecycle log entries at `Trace` level (`session created` / `session disposed`) for every request. These are typically invisible at default log levels but may appear when troubleshooting with verbose logging enabled. There is no user-facing `initialize` handshake in stateless mode — the SDK handles the per-request server lifecycle internally.
+
 ## Security
 
 ### User binding
