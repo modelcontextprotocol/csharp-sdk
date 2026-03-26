@@ -15,6 +15,7 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 - Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
 - Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
+- Do you need to support clients that only speak the [legacy SSE transport](#sse-legacy)?  → **Use stateful.** (Legacy SSE endpoints are disabled in stateless mode.)
 - Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
 - Are you debugging a typically-stdio server over HTTP and want editors to be able to reset state by reconnecting?  → **Use stateful.**
 - Otherwise → **Use stateless** (`options.Stateless = true`).
@@ -58,12 +59,13 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
 - <xref:ModelContextProtocol.McpSession.SessionId> is `null`, and the `Mcp-Session-Id` header is not sent or expected
 - Each HTTP request creates a fresh server context — no state carries over between requests
 - <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> still works, but is called **per HTTP request** rather than once per session (see [Per-request configuration in stateless mode](#per-request-configuration-in-stateless-mode))
-- The `GET` and `DELETE` MCP endpoints are not mapped, and the legacy `/sse` endpoint is disabled
+- The `GET` and `DELETE` MCP endpoints are not mapped, and the [legacy SSE endpoints](#sse-legacy) (`/sse` and `/message`) are disabled — clients that only support the legacy SSE transport cannot connect
 - **Server-to-client requests are disabled**, including:
   - [Sampling](xref:sampling) (`SampleAsync`)
   - [Elicitation](xref:elicitation) (`ElicitAsync`)
   - [Roots](xref:roots) (`RequestRootsAsync`)
 - Unsolicited server-to-client notifications (e.g., resource update notifications, logging messages) are not supported
+- [Tasks](xref:tasks) **are supported** — the task store is shared across ephemeral server instances. However, task-augmented sampling and elicitation are disabled because they require server-to-client requests.
 
 These restrictions exist because in a stateless deployment, responses from the client could arrive at any server instance — not necessarily the one that sent the request.
 
@@ -118,6 +120,7 @@ Use stateful mode when your server needs one or more of:
 - **Server-to-client requests**: Tools that call `ElicitAsync`, `SampleAsync`, or `RequestRootsAsync` to interact with the client
 - **Unsolicited notifications**: Sending resource-changed notifications or log messages without a preceding client request
 - **Resource subscriptions**: Clients subscribing to resource changes and receiving updates
+- **Legacy SSE client support**: Clients that only speak the [legacy SSE transport](#sse-legacy) (the `/sse` and `/message` endpoints are only available in stateful mode)
 - **Session-scoped state**: Logic that must persist across multiple requests within the same session
 - **Concurrent client isolation**: Multiple agents or editor instances connecting simultaneously, where per-client state must not leak between users — separate working environments, independent scratch state, or parallel simulations where each participant needs its own context. The server — not the model — controls when sessions are created, so the harness decides the boundaries of isolation.
 - **Local development and debugging**: Testing a typically-stdio server over HTTP where you want to attach a debugger, see log output on stdout, and have editors like Claude Code, GitHub Copilot in VS Code, and Cursor reset the server's state by starting a new session — without requiring a process restart. This closely mirrors the stdio experience where restarting the server process gives the client a clean slate.
@@ -139,6 +142,7 @@ The [deployment considerations](#deployment-considerations) below are real conce
 | **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
 | **Concurrent client isolation** | No distinction between clients — all requests are independent | Each client gets its own session with isolated state |
 | **State reset on reconnect** | No concept of reconnection — every request stands alone | Client reconnection starts a new session with a clean slate |
+| **[Tasks](xref:tasks)** | Supported — shared task store, no per-session isolation | Supported — task store scoped per session |
 
 ## Transports and sessions
 
@@ -328,6 +332,7 @@ builder.Services.AddMcpServer()
     })
     .WithTools<DefaultTools>();
 ```
+ 
 ## Security
 
 ### User binding
@@ -345,6 +350,7 @@ When authentication is configured, the server automatically binds sessions to th
 4. If there's a mismatch, the server responds with `403 Forbidden`
 
 This binding is automatic — no configuration is needed. If no authentication middleware is configured, user binding is skipped (the session is not bound to any user).
+
 ## Service lifetimes and DI scopes
 
 How the server resolves scoped services depends on the transport and session mode. The <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> property controls whether the server creates a new `IServiceProvider` scope for each handler invocation.
@@ -422,6 +428,7 @@ In stateful modes (Streamable HTTP, SSE, stdio), a client can cancel a specific 
 - The `initialize` request cannot be cancelled (per the MCP specification)
 - Invalid or unknown request IDs are silently ignored
 - In stateless mode, there is no persistent session to receive the notification on, so client-initiated cancellation does not apply
+- For [task-augmented requests](xref:tasks), the MCP specification requires using [`tasks/cancel`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks#cancelling-tasks) instead of `notifications/cancelled`. The SDK uses a separate cancellation token per task (independent of the original HTTP request), so `tasks/cancel` can cancel a task even after the initial request has completed. See [Tasks and session modes](#tasks-and-session-modes) for details.
 
 ### Server and session disposal
 
@@ -445,6 +452,59 @@ For stateless servers, shutdown is even simpler: each request is independent, so
 ### Stateless per-request logging
 
 In stateless mode, each HTTP request creates and disposes a short-lived `McpServer` instance. This produces session lifecycle log entries at `Trace` level (`session created` / `session disposed`) for every request. These are typically invisible at default log levels but may appear when troubleshooting with verbose logging enabled. There is no user-facing `initialize` handshake in stateless mode — the SDK handles the per-request server lifecycle internally.
+
+### Tasks and session modes
+
+[Tasks](xref:tasks) enable a "call-now, fetch-later" pattern for long-running tool calls. Task support depends on having an <xref:ModelContextProtocol.IMcpTaskStore> configured (`McpServerOptions.TaskStore`), and behavior differs between session modes.
+
+#### Stateless mode
+
+Tasks are a natural fit for stateless servers. The client sends a task-augmented `tools/call` request, receives a task ID immediately, and polls for completion with `tasks/get` or `tasks/result` on subsequent independent HTTP requests. Because each request creates an ephemeral `McpServer` that shares the same `IMcpTaskStore`, all task operations work without any persistent session.
+
+In stateless mode, there is no `SessionId`, so the task store does not apply session-based isolation. All tasks are accessible from any request to the same server. This is typically fine for single-purpose servers or when authentication middleware already identifies the caller.
+
+#### Stateful mode
+
+In stateful mode, the `IMcpTaskStore` receives the session's `SessionId` on every operation — `CreateTaskAsync`, `GetTaskAsync`, `ListTasksAsync`, `CancelTaskAsync`, etc. The built-in <xref:ModelContextProtocol.InMemoryMcpTaskStore> enforces session isolation: tasks created in one session cannot be accessed from another.
+
+Tasks can outlive individual HTTP requests because the tool executes in the background after returning the initial `CreateTaskResult`. Task cleanup is governed by the task's TTL (time-to-live), not by session termination. However, the `InMemoryMcpTaskStore` loses all tasks if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.IMcpTaskStore> backed by an external store. See [Fault-tolerant task implementations](xref:tasks#fault-tolerant-task-implementations) for guidance.
+
+#### Task cancellation vs request cancellation
+
+The MCP specification defines two distinct cancellation mechanisms:
+
+- **`notifications/cancelled`** cancels a regular in-flight request by its JSON-RPC request ID. The SDK looks up the handler's `CancellationToken` and cancels it. This is a fire-and-forget notification with no response.
+- **`tasks/cancel`** cancels a task by its task ID. The SDK signals a separate per-task `CancellationToken` (independent of the original request) and updates the task's status to `cancelled` in the store. This is a request-response operation that returns the final task state.
+
+For task-augmented requests, the specification [requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) using `tasks/cancel` instead of `notifications/cancelled`.
+
+### Observability
+
+The SDK automatically integrates with [.NET's OpenTelemetry support](https://learn.microsoft.com/dotnet/core/diagnostics/distributed-tracing) and attaches session metadata to traces and metrics.
+
+#### Activity tags
+
+Every server-side request activity is tagged with `mcp.session.id` — the session's unique identifier. In stateless mode, this tag is `null` because there is no persistent session. Other tags include `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, and operation-specific tags like `gen_ai.tool.name` for tool calls.
+
+Use these tags to filter and correlate traces by session in your observability platform (Jaeger, Zipkin, Application Insights, etc.).
+
+#### Metrics
+
+The SDK records histograms under the `Experimental.ModelContextProtocol` meter:
+
+| Metric | Description |
+|--------|-------------|
+| `mcp.server.session.duration` | Duration of the MCP session on the server |
+| `mcp.client.session.duration` | Duration of the MCP session on the client |
+| `mcp.server.operation.duration` | Duration of each request/notification on the server |
+| `mcp.client.operation.duration` | Duration of each request/notification on the client |
+
+In stateless mode, each HTTP request is its own "session", so `mcp.server.session.duration` measures individual request lifetimes rather than long-lived session durations.
+
+#### Distributed tracing
+
+The SDK propagates [W3C trace context](https://www.w3.org/TR/trace-context/) (`traceparent` / `tracestate`) through JSON-RPC messages via the `_meta` field. This means a client's tool call and the server's handling of that call appear as parent-child spans in a distributed trace, regardless of transport.
+
 ## Advanced features
 
 ### Session migration
