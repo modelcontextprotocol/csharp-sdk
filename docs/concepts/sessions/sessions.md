@@ -159,7 +159,7 @@ The server tracks the last activity time for each session. Activity is recorded 
 
 Sessions that have no activity for the duration of <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> (default: **2 hours**) are automatically closed. The idle timeout is checked in the background every 5 seconds.
 
-A client can keep its session alive by maintaining an open `GET` request (SSE stream). Sessions with an active `GET` request are never considered idle.
+A client can keep its session alive by maintaining any open HTTP request (e.g., a long-running POST with a streamed response or an open `GET` for unsolicited messages). Sessions with active requests are never considered idle.
 
 When a session times out:
 
@@ -177,7 +177,7 @@ You can disable idle timeout by setting it to `Timeout.InfiniteTimeSpan`, though
 - The oldest idle sessions are terminated (even if they haven't reached their idle timeout)
 - Termination continues until the idle count is back below the limit
 
-Sessions with an active `GET` request (open SSE stream) don't count toward this limit.
+Sessions with any active HTTP request don't count toward this limit.
 
 #### Termination
 
@@ -305,7 +305,7 @@ How the server resolves scoped services depends on the transport and session mod
 
 #### Stateful HTTP
 
-In stateful mode, the server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider` — not a per-request scope. Because the server outlives individual HTTP requests, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> defaults to `true`: each handler invocation (tool call, resource read, etc.) creates a new async scope via `IServiceScopeFactory.CreateAsyncScope()`. The scoped `IServiceProvider` is available on <xref:ModelContextProtocol.Server.RequestContext`1.Services>.
+In stateful mode, the server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider` — not a per-request scope. Because the server outlives individual HTTP requests, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> defaults to `true`: each handler invocation (tool call, resource read, etc.) creates a new scope.
 
 This means:
 
@@ -342,9 +342,9 @@ builder.Services.AddMcpServer(options =>
 
 | Mode | Service provider | ScopeRequests | Handler scope |
 |------|-----------------|---------------|---------------|
-| **Stateful HTTP** | Application services | `true` (default) | New async scope per handler invocation |
+| **Stateful HTTP** | Application services | `true` (default) | New scope per handler invocation |
 | **Stateless HTTP** | `HttpContext.RequestServices` | `false` (forced) | Shared HTTP request scope |
-| **stdio** | Application services | `true` (default, configurable) | New async scope per handler invocation |
+| **stdio** | Application services | `true` (default, configurable) | New scope per handler invocation |
 
 ## Security
 

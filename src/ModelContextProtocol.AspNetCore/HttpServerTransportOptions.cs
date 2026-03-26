@@ -132,8 +132,8 @@ public class HttpServerTransportOptions
     /// </value>
     /// <remarks>
     /// Past this limit, the server logs a critical error and terminates the oldest idle sessions, even if they have not reached
-    /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Clients that keep their session open by
-    /// keeping a GET request open don't count towards this limit.
+    /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Sessions with any active HTTP request
+    /// are not considered idle and don't count towards this limit.
     /// </remarks>
     public int MaxIdleSessionCount { get; set; } = 10_000;
 
