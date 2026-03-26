@@ -333,12 +333,12 @@ This means:
 
 The stdio transport creates a single server for the lifetime of the process. The server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider`. By default, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is `true`, so each handler invocation gets its own scope — the same behavior as stateful HTTP.
 
-You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` if you want handlers to resolve services directly from the root container. This is a rare, advanced option — similar to how ASP.NET Core itself supports opting out of per-request scopes — and is generally not recommended because scoped services will then behave like singletons for the lifetime of the process, which most scoped registrations don't expect.
+You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` if the `IServiceProvider` passed to the server is already scoped to the desired lifetime. For example, when using <xref:ModelContextProtocol.McpServer.Create*> with a pre-scoped service provider, disabling `ScopeRequests` avoids creating redundant nested scopes. However, be cautious setting this globally via `AddMcpServer` for stdio servers — with the default hosting, the server receives the root application `IServiceProvider`, so scoped services would behave like singletons for the lifetime of the process.
 
 ```csharp
 builder.Services.AddMcpServer(options =>
 {
-    // Disable per-handler scoping. Scoped services will resolve from the root container.
+    // Disable per-handler scoping — only appropriate when the server's IServiceProvider is already scoped.
     options.ScopeRequests = false;
 })
 .WithStdioServerTransport()
