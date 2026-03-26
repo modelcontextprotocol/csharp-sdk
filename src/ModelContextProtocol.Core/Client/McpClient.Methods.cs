@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -57,6 +58,7 @@ public abstract partial class McpClient : McpSession
             // ConnectAsync already disposed the session (which includes awaiting Completion).
             // Check if the transport provided structured completion details indicating
             // why the transport closed that aren't already in the original exception chain.
+            Debug.Assert(clientSession.Completion.IsCompleted, "Completion should already be finished after ConnectAsync's DisposeAsync.");
             var completionDetails = await clientSession.Completion.ConfigureAwait(false);
 
             // If the transport closed with a non-graceful error (e.g., server process exited)
