@@ -186,7 +186,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // SSE requires stateful mode (the default). Set explicitly for clarity.
+        // SSE requires stateful mode (the default). Set explicitly for forward compatibility.
         options.Stateless = false;
     })
     .WithTools<MyTools>();
@@ -216,3 +216,35 @@ No additional configuration is needed. When a client connects using the SSE prot
 | Best for | Local tools, IDE integrations | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
 
 For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Sessions](xref:sessions).
+
+### In-memory transport
+
+The <xref:ModelContextProtocol.Server.StreamServerTransport> and <xref:ModelContextProtocol.Client.StreamClientTransport> types work with any `Stream`, including in-memory pipes. This is useful for testing, embedding an MCP server in a larger application, or running a client and server in the same process without network overhead.
+
+The following example creates a client and server connected via `System.IO.Pipelines` (from the [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/blob/51a4fde4d9cfa12ef9430deef7daeaac36625be8/samples/InMemoryTransport/Program.cs)):
+
+```csharp
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
+using System.IO.Pipelines;
+
+Pipe clientToServerPipe = new(), serverToClientPipe = new();
+
+// Create a server using a stream-based transport over an in-memory pipe.
+await using McpServer server = McpServer.Create(
+    new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
+    new McpServerOptions
+    {
+        ToolCollection = [McpServerTool.Create((string message) => $"Echo: {message}", new() { Name = "echo" })]
+    });
+_ = server.RunAsync();
+
+// Connect a client using a stream-based transport over the same in-memory pipe.
+await using McpClient client = await McpClient.CreateAsync(
+    new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
+
+// List and invoke tools.
+var tools = await client.ListToolsAsync();
+var echo = tools.First(t => t.Name == "echo");
+Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
+```
