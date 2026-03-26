@@ -178,13 +178,17 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. The same `MapMcp()` endpoint handles both protocols — clients connecting with SSE are automatically served using the legacy SSE mechanism:
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. The same `MapMcp()` endpoint handles both protocols — clients connecting with SSE are automatically served using the legacy SSE mechanism. SSE requires stateful mode (the default); legacy SSE endpoints are not mapped when `Stateless = true`.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(options =>
+    {
+        // SSE requires stateful mode (the default). Set explicitly for clarity.
+        options.Stateless = false;
+    })
     .WithTools<MyTools>();
 
 var app = builder.Build();
@@ -199,11 +203,16 @@ No additional configuration is needed. When a client connects using the SSE prot
 
 ### Transport mode comparison
 
-| Feature | stdio | Streamable HTTP | SSE (Legacy) |
-|---------|-------|----------------|--------------|
-| Process model | Child process | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Bidirectional | Server→client stream + client→server POST |
-| Session resumption | N/A | ✓ (stateful mode) | ✗ |
-| Stateless mode | N/A | ✓ ([recommended](xref:sessions)) | ✗ |
-| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
-| Best for | Local tools | Remote servers | Legacy compatibility |
+| Feature | stdio | Streamable HTTP (stateless) | Streamable HTTP (stateful) | SSE (legacy, stateful) |
+|---------|-------|-----------------------------|----------------------------|--------------|
+| Process model | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
+| Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server POST |
+| Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | `Mcp-Session-Id` tracked in memory |
+| Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
+| Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
+| Session resumption | N/A | N/A | ✓ | ✗ |
+| Horizontal scaling | N/A | No constraints | Requires session affinity | Requires session affinity |
+| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
+| Best for | Local tools, IDE integrations | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
+
+For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Sessions](xref:sessions).
