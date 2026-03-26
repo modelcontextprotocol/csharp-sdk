@@ -225,6 +225,7 @@ The following example creates a client and server connected via `System.IO.Pipel
 
 ```csharp
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.IO.Pipelines;
 
