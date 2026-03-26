@@ -333,16 +333,21 @@ This means:
 
 The stdio transport creates a single server for the lifetime of the process. The server's <xref:ModelContextProtocol.McpServer.Services> is the application-level `IServiceProvider`. By default, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is `true`, so each handler invocation gets its own scope — the same behavior as stateful HTTP.
 
-You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` if the `IServiceProvider` passed to the server is already scoped to the desired lifetime. For example, when using <xref:ModelContextProtocol.McpServer.Create*> with a pre-scoped service provider, disabling `ScopeRequests` avoids creating redundant nested scopes. However, be cautious setting this globally via `AddMcpServer` for stdio servers — with the default hosting, the server receives the root application `IServiceProvider`, so scoped services would behave like singletons for the lifetime of the process.
+You can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` when using <xref:ModelContextProtocol.McpServer.Create*> with an `IServiceProvider` that is already scoped to the desired lifetime — this avoids creating redundant nested scopes. The [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/InMemoryTransport) shows a minimal example of using `McpServer.Create` with in-memory pipes:
 
 ```csharp
-builder.Services.AddMcpServer(options =>
-{
-    // Disable per-handler scoping — only appropriate when the server's IServiceProvider is already scoped.
-    options.ScopeRequests = false;
-})
-.WithStdioServerTransport()
-.WithTools<MyTools>();
+Pipe clientToServerPipe = new(), serverToClientPipe = new();
+
+await using var scope = serviceProvider.CreateAsyncScope();
+
+await using McpServer server = McpServer.Create(
+    new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
+    new McpServerOptions
+    {
+        ScopeRequests = false, // The scope is already managed externally.
+        ToolCollection = [McpServerTool.Create((string arg) => $"Echo: {arg}", new() { Name = "Echo" })]
+    },
+    serviceProvider: scope.ServiceProvider);
 ```
 
 #### DI scope summary
