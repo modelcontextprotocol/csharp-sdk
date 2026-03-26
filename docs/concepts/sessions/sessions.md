@@ -328,12 +328,28 @@ builder.Services.AddMcpServer()
     })
     .WithTools<DefaultTools>();
 ```
+## Security
 
-### Service lifetimes and DI scopes
+### User binding
+
+When authentication is configured, the server automatically binds sessions to the authenticated user. This prevents one user from hijacking another user's session.
+
+#### How it works
+
+1. When a session is created, the server captures the authenticated user's identity from `HttpContext.User`
+2. The server extracts a user ID claim in priority order:
+   - `ClaimTypes.NameIdentifier` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`)
+   - `"sub"` (OpenID Connect subject claim)
+   - `ClaimTypes.Upn` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn`)
+3. On each subsequent request, the server validates that the current user matches the session's original user
+4. If there's a mismatch, the server responds with `403 Forbidden`
+
+This binding is automatic — no configuration is needed. If no authentication middleware is configured, user binding is skipped (the session is not bound to any user).
+## Service lifetimes and DI scopes
 
 How the server resolves scoped services depends on the transport and session mode. The <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> property controls whether the server creates a new `IServiceProvider` scope for each handler invocation.
 
-#### Stateful HTTP
+### Stateful HTTP
 
 In stateful mode, the server's <xref:ModelContextProtocol.Server.McpServer.Services> is the application-level `IServiceProvider` — not a per-request scope. Because the server outlives individual HTTP requests, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> defaults to `true`: each handler invocation (tool call, resource read, etc.) creates a new scope.
 
@@ -343,7 +359,7 @@ This means:
 - **Singleton services** resolve from the application container as usual
 - **Transient services** create a new instance per resolution, as usual
 
-#### Stateless HTTP
+### Stateless HTTP
 
 In stateless mode, the server uses ASP.NET Core's per-request `HttpContext.RequestServices` as its service provider, and <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is automatically set to `false`. No additional scopes are created — handlers share the same HTTP request scope that middleware and other ASP.NET Core components use.
 
@@ -352,11 +368,11 @@ This means:
 - **Scoped services** behave exactly like any other ASP.NET Core request-scoped service — middleware can set state on a scoped service and the tool handler will see it
 - The DI lifetime model is identical to a standard ASP.NET Core controller or minimal API endpoint
 
-#### stdio
+### stdio
 
 The stdio transport creates a single server for the lifetime of the process. The server's <xref:ModelContextProtocol.Server.McpServer.Services> is the application-level `IServiceProvider`. By default, <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> is `true`, so each handler invocation gets its own scope — the same behavior as stateful HTTP.
 
-#### McpServer.Create (custom transports)
+### McpServer.Create (custom transports)
 
 When you create a server directly with <xref:ModelContextProtocol.Server.McpServer.Create*>, you control the `IServiceProvider` and transport yourself. If you pass an already-scoped provider, you can set <xref:ModelContextProtocol.Server.McpServerOptions.ScopeRequests> to `false` to avoid creating redundant nested scopes. The [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/blob/51a4fde4d9cfa12ef9430deef7daeaac36625be8/samples/InMemoryTransport/Program.cs#L6-L14) shows a minimal example of using `McpServer.Create` with in-memory pipes:
 
@@ -375,7 +391,7 @@ await using McpServer server = McpServer.Create(
     serviceProvider: scope.ServiceProvider);
 ```
 
-#### DI scope summary
+### DI scope summary
 
 | Mode | Service provider | ScopeRequests | Handler scope |
 |------|-----------------|---------------|---------------|
@@ -383,7 +399,6 @@ await using McpServer server = McpServer.Create(
 | **Stateless HTTP** | `HttpContext.RequestServices` | `false` (forced) | Shared HTTP request scope |
 | **stdio** | Application services | `true` (default, configurable) | New scope per handler invocation |
 | **McpServer.Create** | Caller-provided | Caller-controlled | Depends on `ScopeRequests` and whether the provider is already scoped |
-
 ## Cancellation and disposal
 
 Every tool, prompt, and resource handler receives a `CancellationToken`. The source and behavior of that token depends on the transport and session mode. The SDK also supports the MCP [cancellation protocol](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) for client-initiated cancellation of individual requests.
@@ -429,25 +444,6 @@ For stateless servers, shutdown is even simpler: each request is independent, so
 ### Stateless per-request logging
 
 In stateless mode, each HTTP request creates and disposes a short-lived `McpServer` instance. This produces session lifecycle log entries at `Trace` level (`session created` / `session disposed`) for every request. These are typically invisible at default log levels but may appear when troubleshooting with verbose logging enabled. There is no user-facing `initialize` handshake in stateless mode — the SDK handles the per-request server lifecycle internally.
-
-## Security
-
-### User binding
-
-When authentication is configured, the server automatically binds sessions to the authenticated user. This prevents one user from hijacking another user's session.
-
-#### How it works
-
-1. When a session is created, the server captures the authenticated user's identity from `HttpContext.User`
-2. The server extracts a user ID claim in priority order:
-   - `ClaimTypes.NameIdentifier` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`)
-   - `"sub"` (OpenID Connect subject claim)
-   - `ClaimTypes.Upn` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn`)
-3. On each subsequent request, the server validates that the current user matches the session's original user
-4. If there's a mismatch, the server responds with `403 Forbidden`
-
-This binding is automatic — no configuration is needed. If no authentication middleware is configured, user binding is skipped (the session is not bound to any user).
-
 ## Advanced features
 
 ### Session migration
