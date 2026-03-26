@@ -425,7 +425,6 @@ Stateless mode has the simplest cancellation story: the handler's `CancellationT
 
 In stateful modes (Streamable HTTP, SSE, stdio), a client can cancel a specific in-flight request by sending a [`notifications/cancelled`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) notification with the request ID. The SDK looks up the running handler and cancels its `CancellationToken`. The handler receives an `OperationCanceledException` like any other cancellation.
 
-- The `initialize` request cannot be cancelled (per the MCP specification)
 - Invalid or unknown request IDs are silently ignored
 - In stateless mode, there is no persistent session to receive the notification on, so client-initiated cancellation does not apply
 - For [task-augmented requests](xref:tasks), the MCP specification requires using [`tasks/cancel`](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks#cancelling-tasks) instead of `notifications/cancelled`. The SDK uses a separate cancellation token per task (independent of the original HTTP request), so `tasks/cancel` can cancel a task even after the initial request has completed. See [Tasks and session modes](#tasks-and-session-modes) for details.
