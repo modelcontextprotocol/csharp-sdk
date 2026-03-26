@@ -207,7 +207,7 @@ No additional configuration is needed. When a client connects using the SSE prot
 |---------|-------|-----------------------------|----------------------------|--------------|
 | Process model | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
 | Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server POST |
-| Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | `Mcp-Session-Id` tracked in memory |
+| Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
 | Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
 | Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
 | Session resumption | N/A | N/A | ✓ | ✗ |
