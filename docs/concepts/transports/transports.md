@@ -119,13 +119,19 @@ Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTT
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        // Recommended for servers that don't need server-to-client requests.
+        options.Stateless = true;
+    })
     .WithTools<MyTools>();
 
 var app = builder.Build();
 app.MapMcp();
 app.Run();
 ```
+
+By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. See [Sessions](sessions/sessions.md) for a detailed guide on when to use stateless vs. stateful mode and how to configure session options.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
@@ -197,6 +203,7 @@ No additional configuration is needed. When a client connects using the SSE prot
 |---------|-------|----------------|--------------|
 | Process model | Child process | Remote HTTP | Remote HTTP |
 | Direction | Bidirectional | Bidirectional | Server→client stream + client→server POST |
-| Session resumption | N/A | ✓ | ✗ |
+| Session resumption | N/A | ✓ (stateful mode) | ✗ |
+| Stateless mode | N/A | ✓ ([recommended](sessions/sessions.md)) | ✗ |
 | Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
 | Best for | Local tools | Remote servers | Legacy compatibility |

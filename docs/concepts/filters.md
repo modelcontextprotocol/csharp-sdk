@@ -544,7 +544,10 @@ builder.Services.AddAuthentication("Bearer")
 builder.Services.AddAuthorization();
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
     .AddAuthorizationFilters() // Required for authorization support
     .WithTools<WeatherTools>()
     .WithRequestFilters(requestFilters =>

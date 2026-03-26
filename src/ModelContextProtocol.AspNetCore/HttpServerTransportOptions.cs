@@ -17,6 +17,11 @@ public class HttpServerTransportOptions
     /// Gets or sets an optional asynchronous callback to configure per-session <see cref="McpServerOptions"/>
     /// with access to the <see cref="HttpContext"/> of the request that initiated the session.
     /// </summary>
+    /// <remarks>
+    /// In stateful mode (the default), this callback is invoked once per session when the client sends the
+    /// <c>initialize</c> request. In <see cref="Stateless"/> mode, it is invoked on <b>every HTTP request</b>
+    /// because each request creates a fresh server context.
+    /// </remarks>
     public Func<HttpContext, McpServerOptions, CancellationToken, Task>? ConfigureSessionOptions { get; set; }
 
     /// <summary>

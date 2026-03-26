@@ -67,7 +67,13 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
     .WithTools<WeatherTools>()
-    .WithHttpTransport();
+    .WithHttpTransport(options =>
+    {
+        // Stateless mode is recommended for servers that don't need server-to-client
+        // requests like sampling or elicitation. It enables horizontal scaling without
+        // session affinity and works with clients that don't send Mcp-Session-Id.
+        options.Stateless = true;
+    });
 
 // Configure HttpClientFactory for weather.gov API
 builder.Services.AddHttpClient("WeatherApi", client =>

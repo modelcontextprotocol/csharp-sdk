@@ -21,6 +21,8 @@ items:
     uid: tasks
 - name: Client Features
   items:
+  - name: Sampling
+    uid: sampling
   - name: Roots
     uid: roots
   - name: Elicitation
@@ -37,6 +39,8 @@ items:
     uid: completions
   - name: Logging
     uid: logging
+  - name: Sessions
+    uid: sessions
   - name: HTTP Context
     uid: httpcontext
   - name: Filters

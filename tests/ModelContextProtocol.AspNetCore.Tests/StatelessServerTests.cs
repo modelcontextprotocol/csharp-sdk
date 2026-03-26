@@ -4,6 +4,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 
@@ -187,6 +188,92 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var toolResponse = await client.CallToolAsync("testScope", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
         Assert.Equal("From request middleware!", Assert.IsType<TextContentBlock>(toolContent).Text);
+    }
+
+    [Fact]
+    public async Task ProgressNotifications_Work_InStatelessMode()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+            })
+            .WithTools([McpServerTool.Create(
+                [System.ComponentModel.Description("Reports progress")] (IProgress<ProgressNotificationValue> progress) =>
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        progress.Report(new() { Progress = i, Total = 5, Message = $"Step {i}" });
+                    }
+                    return "complete";
+                }, new() { Name = "progressTool" })]);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        var progressMessages = new ConcurrentBag<string>();
+        var toolResponse = await client.CallToolAsync(
+            "progressTool",
+            progress: new Progress<ProgressNotificationValue>(p => progressMessages.Add(p.Message!)),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(toolResponse.Content);
+        Assert.Equal("complete", Assert.IsType<TextContentBlock>(content).Text);
+        // Progress<T> posts callbacks to the thread pool asynchronously, so we need to wait
+        // briefly for them to fire after CallToolAsync returns the tool response.
+        var sw = Stopwatch.StartNew();
+        while (progressMessages.IsEmpty && sw.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        Assert.NotEmpty(progressMessages);
+    }
+
+    [Fact]
+    public async Task ConfigureSessionOptions_RunsPerRequest_InStatelessMode()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+                options.ConfigureSessionOptions = (httpContext, mcpServerOptions, cancellationToken) =>
+                {
+                    // Dynamically add a tool based on a request header value.
+                    var toolSuffix = httpContext.Request.Headers["X-Tool-Suffix"].ToString();
+                    if (!string.IsNullOrEmpty(toolSuffix))
+                    {
+                        mcpServerOptions.ToolCollection =
+                        [
+                            McpServerTool.Create(() => $"configured-{toolSuffix}", new() { Name = "dynamicTool" })
+                        ];
+                    }
+
+                    return Task.CompletedTask;
+                };
+            });
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        // First request: set the header so ConfigureSessionOptions creates the tool.
+        HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "alpha");
+
+        await using var client = await ConnectMcpClientAsync();
+
+        var toolResponse = await client.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
+        var content = Assert.Single(toolResponse.Content);
+        Assert.Equal("configured-alpha", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     [McpServerTool(Name = "testSamplingErrors")]

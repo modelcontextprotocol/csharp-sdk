@@ -15,6 +15,13 @@ using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Note: This sample requires stateful (session-based) mode because it uses:
+// - SampleLlmTool: server-to-client sampling via SampleAsync
+// - Resource subscriptions: unsolicited notifications via SendNotificationAsync
+// - Per-session state: subscription tracking keyed by SessionId
+// See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions for details
+// on when to prefer stateless mode instead.
+
 // Dictionary of session IDs to a set of resource URIs they are subscribed to
 // The value is a ConcurrentDictionary used as a thread-safe HashSet
 // because .NET does not have a built-in concurrent HashSet
