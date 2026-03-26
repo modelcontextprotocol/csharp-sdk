@@ -4,7 +4,6 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 
@@ -193,18 +192,22 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     [Fact]
     public async Task ProgressNotifications_Work_InStatelessMode()
     {
+        // Use TCS to coordinate: the tool reports progress, then waits for the test to confirm
+        // the notification arrived before completing. This avoids the race where fire-and-forget
+        // NotifyProgressAsync hasn't flushed before the SSE stream closes.
+        var progressReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var toolCanComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
                 options.Stateless = true;
             })
             .WithTools([McpServerTool.Create(
-                [System.ComponentModel.Description("Reports progress")] (IProgress<ProgressNotificationValue> progress) =>
+                async (IProgress<ProgressNotificationValue> progress) =>
                 {
-                    for (int i = 0; i < 5; i++)
-                    {
-                        progress.Report(new() { Progress = i, Total = 5, Message = $"Step {i}" });
-                    }
+                    progress.Report(new() { Progress = 0, Total = 1, Message = "Working" });
+                    await toolCanComplete.Task;
                     return "complete";
                 }, new() { Name = "progressTool" })]);
 
@@ -217,23 +220,21 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         await using var client = await ConnectMcpClientAsync();
 
-        var progressMessages = new ConcurrentBag<string>();
-        var toolResponse = await client.CallToolAsync(
+        // Use a custom IProgress<T> that sets the TCS synchronously (no thread pool posting).
+        var callTask = client.CallToolAsync(
             "progressTool",
-            progress: new Progress<ProgressNotificationValue>(p => progressMessages.Add(p.Message!)),
+            progress: new SynchronousProgress<ProgressNotificationValue>(_ => progressReceived.TrySetResult()),
             cancellationToken: TestContext.Current.CancellationToken);
 
+        // Wait for the progress notification to arrive at the client.
+        await progressReceived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Let the tool complete now that we've confirmed progress was received.
+        toolCanComplete.SetResult();
+
+        var toolResponse = await callTask;
         var content = Assert.Single(toolResponse.Content);
         Assert.Equal("complete", Assert.IsType<TextContentBlock>(content).Text);
-        // Progress<T> posts callbacks to the thread pool asynchronously, so we need to wait
-        // briefly for them to fire after CallToolAsync returns the tool response.
-        var sw = Stopwatch.StartNew();
-        while (progressMessages.IsEmpty && sw.Elapsed < TimeSpan.FromSeconds(5))
-        {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-        }
-
-        Assert.NotEmpty(progressMessages);
     }
 
     [Fact]
@@ -349,5 +350,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     public class ScopedService
     {
         public string? State { get; set; }
+    }
+
+    private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 }
