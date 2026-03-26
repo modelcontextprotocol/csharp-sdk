@@ -135,7 +135,7 @@ The [deployment considerations](#deployment-considerations) below are real conce
 | **Server-to-client requests** | Not supported (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) for a stateless alternative) | Supported (sampling, elicitation, roots) |
 | **Unsolicited notifications** | Not supported | Supported (resource updates, logging) |
 | **Resource subscriptions** | Not supported | Supported |
-| **Client compatibility** | Works with all clients | Requires clients to track and send `Mcp-Session-Id` |
+| **Client compatibility** | Works with all Streamable HTTP clients | Also supports legacy SSE-only clients, but some Streamable HTTP clients [may not send `Mcp-Session-Id` correctly](#deployment-considerations) |
 | **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
 | **Concurrent client isolation** | No distinction between clients — all requests are independent | Each client gets its own session with isolated state |
 | **State reset on reconnect** | No concept of reconnection — every request stands alone | Client reconnection starts a new session with a clean slate |
@@ -159,7 +159,7 @@ All subsequent requests from the client must include this session ID.
 
 The server tracks the last activity time for each session. Activity is recorded when:
 
-- A request arrives for the session (POST, GET, or DELETE)
+- A request arrives for the session (POST or GET)
 - A response is sent for the session
 
 #### Idle timeout
