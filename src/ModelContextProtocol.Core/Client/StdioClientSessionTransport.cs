@@ -47,9 +47,13 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <inheritdoc/>
     protected override async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
-        // Only clean up once.
+        // Only run the full stdio cleanup once (handler detach, process kill, etc.).
+        // But always ensure the channel is completed so DisposeAsync's
+        // "await Completion" doesn't hang when the ReadMessagesAsync path
+        // is still mid-cleanup (e.g. blocked in WaitForExitAsync).
         if (Interlocked.Exchange(ref _cleanedUp, 1) != 0)
         {
+            SetDisconnected(error);
             return;
         }
 
