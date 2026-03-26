@@ -48,12 +48,16 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     protected override async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
         // Only run the full stdio cleanup once (handler detach, process kill, etc.).
-        // But always ensure the channel is completed so DisposeAsync's
-        // "await Completion" doesn't hang when the ReadMessagesAsync path
-        // is still mid-cleanup (e.g. blocked in WaitForExitAsync).
+        // But always call base.CleanupAsync — it cancels the shutdown CTS (which
+        // unblocks the primary path if it's stuck in WaitForExitAsync), waits for
+        // the read task to complete (so the primary path can call SetDisconnected
+        // with full StdioClientCompletionDetails), and calls SetDisconnected itself
+        // as a fallback. We wrap the error in TransportClosedException so the
+        // fallback SetDisconnected still produces StdioClientCompletionDetails
+        // rather than a bare ClientCompletionDetails.
         if (Interlocked.Exchange(ref _cleanedUp, 1) != 0)
         {
-            SetDisconnected(error);
+            await base.CleanupAsync(new TransportClosedException(BuildCompletionDetails(error)), cancellationToken).ConfigureAwait(false);
             return;
         }
 
