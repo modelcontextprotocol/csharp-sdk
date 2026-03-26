@@ -222,7 +222,7 @@ internal sealed class StreamableHttpHandler(
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: Mcp-Session-Id header is required for GET and DELETE requests when the server is using sessions. " +
                 "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.Stateless = true. " +
-                "See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions for more details.",
+                "See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions/sessions.html for more details.",
                 StatusCodes.Status400BadRequest);
             return null;
         }
@@ -308,7 +308,7 @@ internal sealed class StreamableHttpHandler(
                 await WriteJsonRpcErrorAsync(context,
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
                     "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
-                    "See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions for more details.",
+                    "See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions/sessions.html for more details.",
                     StatusCodes.Status400BadRequest);
                 return null;
             }

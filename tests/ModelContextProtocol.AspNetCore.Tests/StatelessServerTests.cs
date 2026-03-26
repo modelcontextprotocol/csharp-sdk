@@ -266,14 +266,24 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
 
-        // First request: set the header so ConfigureSessionOptions creates the tool.
+        // First request with "alpha" — proves ConfigureSessionOptions runs and configures the tool.
         HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "alpha");
 
-        await using var client = await ConnectMcpClientAsync();
+        await using var client1 = await ConnectMcpClientAsync();
 
-        var toolResponse = await client.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
-        var content = Assert.Single(toolResponse.Content);
-        Assert.Equal("configured-alpha", Assert.IsType<TextContentBlock>(content).Text);
+        var toolResponse1 = await client1.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
+        var content1 = Assert.Single(toolResponse1.Content);
+        Assert.Equal("configured-alpha", Assert.IsType<TextContentBlock>(content1).Text);
+
+        // Second request with "beta" — proves ConfigureSessionOptions runs again with new request data.
+        HttpClient.DefaultRequestHeaders.Remove("X-Tool-Suffix");
+        HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "beta");
+
+        await using var client2 = await ConnectMcpClientAsync();
+
+        var toolResponse2 = await client2.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
+        var content2 = Assert.Single(toolResponse2.Content);
+        Assert.Equal("configured-beta", Assert.IsType<TextContentBlock>(content2).Text);
     }
 
     [McpServerTool(Name = "testSamplingErrors")]
