@@ -52,15 +52,14 @@ public abstract partial class McpClient : McpSession
         {
             await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not TransportClosedException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not TransportClosedException)
         {
-            // ConnectAsync already disposed the session. Call DisposeAsync again (no-op)
-            // to ensure cleanup, then check if the transport provided structured completion
-            // details indicating why the transport closed.
+            // ConnectAsync already disposed the session (which includes awaiting Completion).
+            // Check if the transport provided structured completion details indicating
+            // why the transport closed that aren't already in the original exception chain.
             ClientCompletionDetails? completionDetails = null;
             try
             {
-                await clientSession.DisposeAsync().ConfigureAwait(false);
                 completionDetails = await clientSession.Completion.ConfigureAwait(false);
             }
             catch { } // allow the original exception to propagate if completion is unavailable
@@ -76,19 +75,6 @@ public abstract partial class McpClient : McpSession
             {
                 throw new TransportClosedException(completionDetails);
             }
-
-            throw;
-        }
-        catch
-        {
-            // The exception is already a TransportClosedException (e.g., from
-            // ProcessMessagesCoreAsync propagating channel completion details).
-            // Just ensure cleanup and re-throw.
-            try
-            {
-                await clientSession.DisposeAsync().ConfigureAwait(false);
-            }
-            catch { }
 
             throw;
         }
