@@ -11,6 +11,16 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 [Streamable HTTP transport]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
 
+**Quick guide — which mode should I use?**
+
+- Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
+- Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
+- Otherwise → **Use stateless** (`options.Stateless = true`).
+
+<!-- mlc-disable-next-line -->
+> [!NOTE]
+> **Why isn't stateless the default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
+
 ## Stateless mode (recommended)
 
 Stateless mode is the recommended default for HTTP-based MCP servers. When enabled, the server doesn't track any state between requests, doesn't use the `Mcp-Session-Id` header, and treats each request independently. This is the simplest and most scalable deployment model.
@@ -114,6 +124,12 @@ You can mitigate this with <xref:ModelContextProtocol.AspNetCore.HttpServerTrans
 #### Clients that don't send Mcp-Session-Id
 
 Some MCP clients may not send the `Mcp-Session-Id` header on every request. When this happens, the server responds with an error: `"Bad Request: A new session can only be created by an initialize request."` This can happen after a server restart, when a client loses its session ID, or when a client simply doesn't support sessions. If you see this error, consider whether your server actually needs sessions — and if not, switch to stateless mode.
+
+#### No built-in backpressure on request handlers
+
+The SDK does not limit how long a handler can run or how many requests can be processed concurrently within a session. A misbehaving or compromised client can flood a stateful session with requests, and each request will spawn a handler that runs to completion. This can lead to thread starvation, GC pressure, or out-of-memory conditions that affect the entire HTTP server process — not just the offending session.
+
+Stateless mode is significantly more resilient here because each tool call is a standard HTTP request-response. This means Kestrel and IIS connection limits, request timeouts, and rate-limiting middleware all apply naturally. The <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> settings help protect against non-malicious overuse (e.g., a buggy client creating too many sessions), but they are not a substitute for HTTP-level protections.
 
 ## stdio transport
 

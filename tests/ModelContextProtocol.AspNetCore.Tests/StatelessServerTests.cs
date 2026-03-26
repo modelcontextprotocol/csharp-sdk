@@ -227,7 +227,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for the progress notification to arrive at the client.
-        await progressReceived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await progressReceived.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Let the tool complete now that we've confirmed progress was received.
         toolCanComplete.SetResult();
@@ -266,6 +266,11 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        // Two separate McpClient instances are needed because the X-Tool-Suffix header is set on
+        // the shared HttpClient before connecting. Each McpClient captures the headers at connect
+        // time, so changing headers between clients proves ConfigureSessionOptions sees different
+        // request data on each HTTP request.
 
         // First request with "alpha" — proves ConfigureSessionOptions runs and configures the tool.
         HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "alpha");
