@@ -17,7 +17,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     protected abstract bool UseStreamableHttp { get; }
     protected abstract bool Stateless { get; }
 
-    protected void ConfigureStateless(HttpServerTransportOptions options)
+    protected virtual void ConfigureStateless(HttpServerTransportOptions options)
     {
         options.Stateless = Stateless;
     }
@@ -205,7 +205,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Server_ShutsDownQuickly_WhenClientIsConnected()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<ClaimsPrincipalTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
 
         await using var app = Builder.Build();
         app.MapMcp();

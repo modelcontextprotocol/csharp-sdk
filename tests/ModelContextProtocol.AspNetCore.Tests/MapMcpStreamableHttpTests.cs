@@ -7,6 +7,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -97,6 +98,27 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
+    public async Task SseEndpoints_AreDisabledByDefault_InStatefulMode()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            // Stateful mode, but SSE not explicitly enabled.
+            options.Stateless = false;
+        });
+        await using var app = Builder.Build();
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var sseResponse = await HttpClient.GetAsync("/sse", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, sseResponse.StatusCode);
+
+        using var messageResponse = await HttpClient.PostAsync("/message", new StringContent(""), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, messageResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task AutoDetectMode_Works_WithSseEndpoint()
     {
         Assert.SkipWhen(Stateless, "SSE endpoint is disabled in stateless mode.");
@@ -108,7 +130,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Name = "AutoDetectSseTestServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport(ConfigureStateless);
+        }).WithHttpTransport(options => { ConfigureStateless(options); options.EnableLegacySse = true; });
         await using var app = Builder.Build();
 
         app.MapMcp();
@@ -136,7 +158,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Name = "SseTestServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport(ConfigureStateless);
+        }).WithHttpTransport(options => { ConfigureStateless(options); options.EnableLegacySse = true; });
         await using var app = Builder.Build();
 
         app.MapMcp();

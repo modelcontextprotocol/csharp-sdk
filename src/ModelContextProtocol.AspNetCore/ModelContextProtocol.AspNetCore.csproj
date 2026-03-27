@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
   </ItemGroup>
 
   <ItemGroup>
