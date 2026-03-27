@@ -184,7 +184,7 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9003`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
 
 **Why SSE is disabled by default.** The SSE transport separates request and response channels: clients POST JSON-RPC messages to `/message` and receive all responses through a long-lived GET SSE stream on `/sse`. Because the POST endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each POST response open until the handler finishes, providing natural backpressure. See [Request backpressure](xref:stateless#request-backpressure) for a detailed comparison and mitigations if you must use SSE.
 
@@ -199,11 +199,11 @@ builder.Services.AddMcpServer()
         // SSE requires stateful mode (the default). Set explicitly for forward compatibility.
         options.Stateless = false;
 
-#pragma warning disable MCP9003 // EnableLegacySse is obsolete
+#pragma warning disable MCP9004 // EnableLegacySse is obsolete
         // Enable legacy SSE endpoints for clients that don't support Streamable HTTP.
         // See sessions doc for backpressure implications.
         options.EnableLegacySse = true;
-#pragma warning restore MCP9003
+#pragma warning restore MCP9004
     })
     .WithTools<MyTools>();
 

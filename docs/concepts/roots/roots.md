@@ -17,7 +17,7 @@ Roots provide a mechanism for the client to tell the server which directories, p
 
 - Scope file searches to the user's project directories
 - Understand which repositories are being worked on
-- Limit operations to specific filesystem boundaries
+- Focus operations on relevant filesystem locations
 
 Each root is represented by a <xref:ModelContextProtocol.Protocol.Root> with a URI and an optional human-readable name.
 

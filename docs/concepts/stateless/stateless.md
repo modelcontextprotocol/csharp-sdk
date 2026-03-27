@@ -40,7 +40,7 @@ The `Stateless` property is the single most important setting for forward-proofi
 
 ### Migrating from legacy SSE
 
-If your clients connect to a `/sse` endpoint (e.g., `https://my-server.example.com/sse`), they are using the [legacy SSE transport](#legacy-sse-transport) — regardless of any `Stateless` or session settings on the server. The `/sse` and `/message` endpoints are now **disabled by default** (<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is `false` and marked `[Obsolete]` with diagnostic `MCP9003`). Upgrading the server SDK without updating clients will break SSE connections.
+If your clients connect to a `/sse` endpoint (e.g., `https://my-server.example.com/sse`), they are using the [legacy SSE transport](#legacy-sse-transport) — regardless of any `Stateless` or session settings on the server. The `/sse` and `/message` endpoints are now **disabled by default** (<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is `false` and marked `[Obsolete]` with diagnostic `MCP9004`). Upgrading the server SDK without updating clients will break SSE connections.
 
 **Client-side migration.** Change the client `Endpoint` from the `/sse` path to the root MCP endpoint — the same URL your server passes to `MapMcp()`. For example:
 
@@ -54,7 +54,7 @@ Endpoint = new Uri("https://my-server.example.com/")
 
 With the default <xref:ModelContextProtocol.Client.HttpTransportMode.AutoDetect> transport mode, the client automatically tries Streamable HTTP first. You can also set `TransportMode = HttpTransportMode.StreamableHttp` explicitly if you know the server supports it.
 
-**Server-side migration.** If you previously relied on `/sse` being mapped automatically, you now need `EnableLegacySse = true` (suppressing the `MCP9003` warning) to keep serving those endpoints. The recommended path is to migrate all clients to Streamable HTTP and then remove `EnableLegacySse`.
+**Server-side migration.** If you previously relied on `/sse` being mapped automatically, you now need `EnableLegacySse = true` (suppressing the `MCP9004` warning) to keep serving those endpoints. The recommended path is to migrate all clients to Streamable HTTP and then remove `EnableLegacySse`.
 
 **Transition period.** If some clients still need SSE while others have already migrated to Streamable HTTP, set `EnableLegacySse = true` with `Stateless = false`. Both transports are served simultaneously by `MapMcp()` — Streamable HTTP on the root endpoint and SSE on `/sse` and `/message`. Once all clients have migrated, remove `EnableLegacySse` and optionally switch to `Stateless = true`.
 
@@ -720,7 +720,7 @@ In stateless mode, each HTTP request is its own "session", so `mcp.server.sessio
 
 ## Legacy SSE transport
 
-The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](#request-backpressure). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9003`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
+The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](#request-backpressure). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9004`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
 
 > [!NOTE]
 > Setting `EnableLegacySse = true` while `Stateless = true` throws an `InvalidOperationException` at startup, because SSE requires in-memory session state shared between the GET and POST requests.
