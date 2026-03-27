@@ -661,28 +661,28 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await using var app = Builder.Build();
 
         // This is the pattern documented in sessions.md — verify it actually works.
+        // Tag before next() so child spans inherit the value.
         app.MapMcp().AddEndpointFilter(async (context, next) =>
         {
             var httpContext = context.HttpContext;
 
             // Read from request headers — available on all non-initialize requests in stateful mode.
-            var beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"].FirstOrDefault();
+            string? beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"];
+
+            // Tag before next() so child activities created during the handler inherit it.
+            var activity = System.Diagnostics.Activity.Current;
+            if (beforeSessionId != null)
+            {
+                activity?.AddTag("mcp.transport.session.id", beforeSessionId);
+            }
+            var tagValue = activity?.GetTagItem("mcp.transport.session.id")?.ToString();
 
             var result = await next(context);
 
-            // After the handler, check response headers.
-            var afterSessionId = httpContext.Response.Headers["Mcp-Session-Id"].FirstOrDefault();
-            var sessionId = beforeSessionId ?? afterSessionId;
+            // After the handler, check response headers too (for test validation only).
+            string? afterSessionId = httpContext.Response.Headers["Mcp-Session-Id"];
 
             capturedSessionIds.Add((beforeSessionId, afterSessionId, httpContext.Request.Method));
-
-            // Verify Activity.Current is available and AddTag works (the documented pattern).
-            var activity = System.Diagnostics.Activity.Current;
-            if (sessionId is not null)
-            {
-                activity?.AddTag("mcp.transport.session.id", sessionId);
-            }
-            var tagValue = activity?.GetTagItem("mcp.transport.session.id")?.ToString();
             capturedActivityTags.Add((tagValue, activity is not null, httpContext.Request.Method));
 
             return result;
@@ -725,9 +725,11 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             // (the initialized notification or list_tools — but not the initial initialize request).
             Assert.Contains(postCaptures, c => c.BeforeNext == client.SessionId);
 
-            // Verify Activity.Current was available and the AddTag pattern works.
-            var postActivityTags = capturedActivityTags.Where(c => c.Method is "POST").ToList();
-            Assert.All(postActivityTags, c =>
+            // Verify Activity.Current was available and the AddTag pattern works before next().
+            // The tag is only set on non-initialize requests (where the request header has the session ID).
+            var taggedPosts = capturedActivityTags.Where(c => c.Method is "POST" && c.TagValue is not null).ToList();
+            Assert.NotEmpty(taggedPosts);
+            Assert.All(taggedPosts, c =>
             {
                 Assert.True(c.HadActivity, "Activity.Current should be non-null in the endpoint filter");
                 Assert.Equal(client.SessionId, c.TagValue);

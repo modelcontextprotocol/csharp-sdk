@@ -659,34 +659,23 @@ app.MapMcp().AddEndpointFilter(async (context, next) =>
 {
     var httpContext = context.HttpContext;
 
-    // Read from request headers first. This is available on all non-initialize
-    // requests in stateful mode, because the client echoes back the session ID
-    // it received from the server's initialize response.
-    var sessionId = httpContext.Request.Headers["Mcp-Session-Id"].FirstOrDefault();
-
-    var result = await next(context);
-
-    // After the handler runs, check response headers. In stateful mode, the server
-    // sets Mcp-Session-Id on every POST and GET response — not just initialize —
-    // so the session ID is always available here even for the first request.
-    // DELETE responses do not include the header, but the request header has it.
-    sessionId ??= httpContext.Response.Headers["Mcp-Session-Id"].FirstOrDefault();
-
-    // Tag the HTTP request Activity with the transport session ID so it appears
-    // alongside child MCP spans (which carry mcp.session.id) in your traces.
-    // sessionId is null only in stateless mode, where sessions don't exist.
-    if (sessionId is not null)
+    // The session ID is available in the request header on all non-initialize requests
+    // in stateful mode (the client echoes back the ID it received from the server's
+    // initialize response). It is null for the first initialize request and always null
+    // in stateless mode. Tag before next() so child spans inherit the value.
+    string? sessionId = httpContext.Request.Headers["Mcp-Session-Id"];
+    if (sessionId != null)
     {
         Activity.Current?.AddTag("mcp.transport.session.id", sessionId);
     }
 
-    return result;
+    return await next(context);
 });
 ```
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> In stateful mode, the `Mcp-Session-Id` response header is set on **every POST and GET response**, not just the `initialize` response. This means the session ID is always available in the filter after `await next(context)`. The only case where `sessionId` is `null` is in stateless mode, where the server doesn't use sessions at all.
+> The tag is added **before** calling `next()` so that any child activities created during request processing inherit it. The trade-off is that the very first `initialize` request won't have the tag, because the client doesn't have a session ID yet — the server assigns it in the response. All subsequent requests will have it.
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
