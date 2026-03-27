@@ -24,15 +24,6 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 > [!NOTE]
 > **Why isn't stateless the default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
 
-> [!WARNING]
-> **Stateful sessions require additional protections for public internet deployments.** In stateful mode, handler cancellation tokens are linked to the **session** lifetime, not the individual HTTP request. This means a client can disconnect from a POST request while the handler continues running — and there is no built-in limit on how many concurrent handlers a session can have. A misbehaving client can flood a session with requests, and each one spawns a handler that runs until it completes or the session is terminated. This can lead to thread starvation, memory pressure, or resource exhaustion that affects the entire server process.
->
-> This is more exposed than comparable ASP.NET Core protocols. SignalR limits concurrent hub invocations per client (`MaximumParallelInvocationsPerClient`, default: **1**). gRPC unary calls are bounded by HTTP/2 `MaxStreamsPerConnection` (default: **100**). MCP dispatches each incoming JSON-RPC message as a fire-and-forget background task with no concurrency limit, so work accumulates without any built-in backpressure.
->
-> **Stateless mode avoids this entirely.** In stateless mode, each handler's lifetime is the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all handlers before the POST response completes. This means Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection` (default: 100), request timeouts, and rate-limiting middleware all apply naturally.
->
-> If you must deploy a stateful server to the public internet, apply **HTTP rate-limiting middleware**, **reverse proxy limits**, and consider **process-level isolation** (one process or container per user/session) so a single abusive session cannot starve the service. <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> help with non-malicious overuse (buggy clients creating too many sessions) but are not a substitute for request-level protections.
-
 ## Stateless mode (recommended)
 
 Stateless mode is the recommended default for HTTP-based MCP servers. When enabled, the server doesn't track any state between requests, doesn't use the `Mcp-Session-Id` header, and treats each request independently. This is the simplest and most scalable deployment model.
@@ -213,7 +204,7 @@ Stateful sessions introduce several challenges for production, internet-facing s
 
 **Clients that don't send Mcp-Session-Id.** Some MCP clients may not send the `Mcp-Session-Id` header on every request. When this happens, the server responds with an error: `"Bad Request: A new session can only be created by an initialize request."` This can happen after a server restart, when a client loses its session ID, or when a client simply doesn't support sessions. If you see this error, consider whether your server actually needs sessions — and if not, switch to stateless mode.
 
-**No built-in backpressure on request handlers.** See the [warning at the top of this document](#sessions) for details on the security implications of unbounded request handling in stateful sessions.
+**No built-in backpressure on advanced features.** By default, each JSON-RPC request holds its HTTP POST open until the handler responds — providing natural HTTP/2 backpressure. However, advanced features like <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> and [Tasks](xref:tasks) can decouple handler execution from the HTTP request, removing this protection. See [Request backpressure](#request-backpressure) for details and mitigations.
 
 ### SSE (legacy)
 
@@ -478,6 +469,62 @@ The MCP specification defines two distinct cancellation mechanisms:
 - **`tasks/cancel`** cancels a task by its task ID. The SDK signals a separate per-task `CancellationToken` (independent of the original request) and updates the task's status to `cancelled` in the store. This is a request-response operation that returns the final task state.
 
 For task-augmented requests, the specification [requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) using `tasks/cancel` instead of `notifications/cancelled`.
+
+### Request backpressure
+
+How well the server is protected against a flood of concurrent requests depends on the session mode and which advanced features are enabled. The key factor is whether the HTTP POST response stays open while the handler runs — because when it does, HTTP/2's `MaxStreamsPerConnection` (default: **100**) naturally limits how many concurrent handlers a single client connection can drive.
+
+#### Default stateful mode (no EventStreamStore, no tasks)
+
+In the default configuration, each JSON-RPC request holds its POST response open until the handler produces a result. The POST response body is an SSE stream that carries the JSON-RPC response, and the server awaits the handler's completion before closing it. This means:
+
+- Each in-flight handler occupies one HTTP/2 stream
+- Kestrel's `MaxStreamsPerConnection` (default: **100**) limits concurrent handlers per connection
+- This is the same backpressure model as **gRPC unary calls** — one request occupies one stream until the response is sent
+
+One difference from gRPC: handler cancellation tokens are linked to the **session** lifetime, not `HttpContext.RequestAborted`. If a client disconnects from a POST mid-flight, the handler continues running until it completes or the session is terminated. But the client has freed a stream slot, so it can submit a new request — meaning the server could accumulate up to `MaxStreamsPerConnection` handlers that outlive their original connections. In practice this is bounded and comparable to how gRPC handlers behave when the client cancels an RPC.
+
+For comparison, ASP.NET Core SignalR limits concurrent hub invocations per client to **1** by default (`MaximumParallelInvocationsPerClient`). Default stateful MCP is less restrictive but still bounded by HTTP/2 stream limits.
+
+#### With EventStreamStore
+
+<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> is an advanced API that enables session resumability — storing SSE events so clients can reconnect and replay missed messages using the `Last-Event-ID` header. When configured, handlers gain the ability to call `EnablePollingAsync()`, which closes the POST response early and switches the client to polling mode.
+
+When a handler calls `EnablePollingAsync()`:
+
+- The POST response completes **before the handler finishes**
+- The handler continues running in the background, decoupled from any HTTP request
+- The client's HTTP/2 stream slot is freed, allowing it to submit more requests
+- **HTTP-level backpressure no longer applies** — there is no built-in limit on how many concurrent handlers can accumulate
+
+The `EventStreamStore` itself has TTL-based limits (default: 2-hour event expiration, 30-minute sliding window) that govern event retention, but these do not limit handler concurrency. If you enable `EventStreamStore` on a public-facing server, apply **HTTP rate-limiting middleware** and **reverse proxy limits** to compensate for the loss of stream-level backpressure.
+
+#### With tasks (experimental)
+
+[Tasks](xref:tasks) are an experimental feature that enables a "call-now, fetch-later" pattern for long-running tool calls. When a client sends a task-augmented `tools/call` request, the server creates a task record in the <xref:ModelContextProtocol.IMcpTaskStore>, starts the tool handler as a fire-and-forget background task, and returns the task ID immediately — the POST response completes **before the handler starts its real work**.
+
+This means:
+
+- **No HTTP-level backpressure on task handlers** — each POST returns almost immediately, freeing the stream slot
+- A client can rapidly submit many task-augmented requests, each spawning a background handler with no concurrency limit
+- Task cleanup is governed by TTL (time-to-live), not by handler completion or session termination
+
+Tasks are a natural fit for **stateless deployments at scale**, where the `IMcpTaskStore` is backed by an external store (database, distributed cache) and the client polls `tasks/get` independently. In this model, work distribution and concurrency control are handled by your infrastructure (job queues, worker pools) rather than by HTTP stream limits.
+
+For servers using the built-in automatic task handlers without external work distribution, apply the same rate-limiting and reverse-proxy protections recommended for `EventStreamStore` deployments.
+
+#### Stateless mode
+
+Stateless mode has the strongest backpressure story. Each handler's lifetime is the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all in-flight handlers before the POST response completes. This means Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection`, request timeouts, and rate-limiting middleware all apply naturally — identical to a standard ASP.NET Core minimal API or controller action.
+
+#### Summary
+
+| Configuration | POST held open? | Backpressure mechanism | Concurrent handler limit per connection |
+|---|---|---|---|
+| **Stateless** | Yes (handler = request) | HTTP/2 streams + Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
+| **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
 
 ### Observability
 
