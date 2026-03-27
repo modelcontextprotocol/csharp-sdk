@@ -37,7 +37,7 @@ When using the legacy SSE transport, be aware that the `HttpContext` returned by
 - The `HttpContext.User` may contain stale claims if the client's token was refreshed after the SSE connection was established.
 - Request headers, query strings, and other per-request metadata will reflect the initial SSE connection, not the current operation.
 
-The Streamable HTTP transport does not have this issue because each tool call is its own HTTP request, so `IHttpContextAccessor.HttpContext` always reflects the current request. In [stateless](xref:sessions) mode, this is guaranteed since every request creates a fresh server context.
+The Streamable HTTP transport does not have this issue because each tool call is its own HTTP request, so `IHttpContextAccessor.HttpContext` always reflects the current request. In [stateless](xref:stateless) mode, this is guaranteed since every request creates a fresh server context.
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]

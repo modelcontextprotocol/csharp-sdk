@@ -9,8 +9,8 @@ items:
     uid: capabilities
   - name: Transports
     uid: transports
-  - name: Sessions
-    uid: sessions
+  - name: Stateless and Stateful
+    uid: stateless
   - name: Ping
     uid: ping
   - name: Progress

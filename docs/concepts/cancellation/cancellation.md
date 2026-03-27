@@ -13,7 +13,7 @@ MCP supports [cancellation] of in-flight requests. Either side can cancel a prev
 [task cancellation]: https://learn.microsoft.com/dotnet/standard/parallel-programming/task-cancellation
 
 > [!NOTE]
-> The source and lifetime of the `CancellationToken` provided to server handlers depends on the transport and session mode. In [stateless mode](xref:sessions#stateless-mode-recommended), the token is tied to the HTTP request — if the client disconnects, the handler is cancelled. In [stateful mode](xref:sessions#stateful-mode-sessions), the token is tied to the session lifetime. See [Cancellation and disposal](xref:sessions#cancellation-and-disposal) for details.
+> The source and lifetime of the `CancellationToken` provided to server handlers depends on the transport and session mode. In [stateless mode](xref:stateless#stateless-mode-recommended), the token is tied to the HTTP request — if the client disconnects, the handler is cancelled. In [stateful mode](xref:stateless#stateful-mode-sessions), the token is tied to the session lifetime. See [Cancellation and disposal](xref:stateless#cancellation-and-disposal) for details.
 
 ### How cancellation maps to MCP notifications
 

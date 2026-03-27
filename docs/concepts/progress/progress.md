@@ -16,7 +16,7 @@ However, progress tracking is defined in the MCP specification as a general feat
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
 > [!NOTE]
-> Progress notifications are sent inline as part of the response to a request — they are not unsolicited. Progress tracking works in both [stateless and stateful](xref:sessions) modes as well as stdio.
+> Progress notifications are sent inline as part of the response to a request — they are not unsolicited. Progress tracking works in both [stateless and stateful](xref:stateless) modes as well as stdio.
 
 ### Server Implementation
 

@@ -1,11 +1,11 @@
 ---
-title: Sessions
+title: Stateless and stateful mode
 author: halter73
 description: When to use stateless vs. stateful mode in the MCP C# SDK, server-side session management, client-side session lifecycle, and distributed tracing.
-uid: sessions
+uid: stateless
 ---
 
-# Sessions
+# Stateless and stateful mode
 
 The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to send requests _to_ the client, push [unsolicited notifications](#how-streamable-http-delivers-messages), or maintain per-client state across requests.
 
