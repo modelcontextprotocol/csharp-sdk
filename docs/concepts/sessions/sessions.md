@@ -38,6 +38,26 @@ The `Stateless` property is the single most important setting for forward-proofi
 > [!TIP]
 > If you're not sure which to pick, start with `Stateless = true`. You can switch to `Stateless = false` later if you discover you need server-to-client requests or unsolicited notifications. Either way, setting the property explicitly means your server's behavior won't silently change when the SDK default is updated.
 
+### Migrating from legacy SSE
+
+If your clients connect to a `/sse` endpoint (e.g., `https://my-server.example.com/sse`), they are using the [legacy SSE transport](#legacy-sse-transport) — regardless of any `Stateless` or session settings on the server. The `/sse` and `/message` endpoints are now **disabled by default** (<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is `false` and marked `[Obsolete]` with diagnostic `MCP9003`). Upgrading the server SDK without updating clients will break SSE connections.
+
+**Client-side migration.** Change the client `Endpoint` from the `/sse` path to the root MCP endpoint — the same URL your server passes to `MapMcp()`. For example:
+
+```csharp
+// Before (legacy SSE):
+Endpoint = new Uri("https://my-server.example.com/sse")
+
+// After (Streamable HTTP):
+Endpoint = new Uri("https://my-server.example.com/")
+```
+
+With the default <xref:ModelContextProtocol.Client.HttpTransportMode.AutoDetect> transport mode, the client automatically tries Streamable HTTP first. You can also set `TransportMode = HttpTransportMode.StreamableHttp` explicitly if you know the server supports it.
+
+**Server-side migration.** If you previously relied on `/sse` being mapped automatically, you now need `EnableLegacySse = true` (suppressing the `MCP9003` warning) to keep serving those endpoints. The recommended path is to migrate all clients to Streamable HTTP and then remove `EnableLegacySse`.
+
+**Transition period.** If some clients still need SSE while others have already migrated to Streamable HTTP, set `EnableLegacySse = true` with `Stateless = false`. Both transports are served simultaneously by `MapMcp()` — Streamable HTTP on the root endpoint and SSE on `/sse` and `/message`. Once all clients have migrated, remove `EnableLegacySse` and optionally switch to `Stateless = true`.
+
 ## Stateless mode (recommended)
 
 Stateless mode is the recommended default for HTTP-based MCP servers. When enabled, the server doesn't track any state between requests, doesn't use the `Mcp-Session-Id` header, and treats each request independently. This is the simplest and most scalable deployment model.
