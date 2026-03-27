@@ -101,7 +101,7 @@ This means servers that need user confirmation, LLM reasoning, or other client i
 
 When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `false` (the default), the server assigns an `Mcp-Session-Id` to each client during the `initialize` handshake. The client must include this header in all subsequent requests. The server maintains an in-memory session for each connected client, enabling:
 
-- Server-to-client requests (sampling, elicitation, roots) via an open SSE stream
+- Server-to-client requests (sampling, elicitation, roots) via an open HTTP response stream
 - Unsolicited notifications (resource updates, logging messages)
 - Resource subscriptions
 - Session-scoped state (e.g., `RunSessionHandler`, state that persists across multiple requests within a session)
@@ -528,14 +528,14 @@ For servers using the built-in automatic task handlers without external work dis
 
 #### Stateless mode
 
-Stateless mode has the strongest backpressure story. Each handler's lifetime is the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all in-flight handlers before the POST response completes. This means Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection`, request timeouts, and rate-limiting middleware all apply naturally — identical to a standard ASP.NET Core minimal API or controller action.
+Stateless mode provides the same HTTP-level backpressure as default stateful mode, with one additional benefit: each handler's lifetime is identical to the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all in-flight handlers before the POST response completes. This means handlers cannot outlive their HTTP requests even if a client disconnects mid-flight. Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection`, request timeouts, and rate-limiting middleware all apply naturally — identical to a standard ASP.NET Core minimal API or controller action.
 
 #### Summary
 
 | Configuration | POST held open? | Backpressure mechanism | Concurrent handler limit per connection |
 |---|---|---|---|
-| **Stateless** | Yes (handler = request) | HTTP/2 streams + Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
-| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams | `MaxStreamsPerConnection` (default: 100) |
+| **Stateless** | Yes (handler = request) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
 | **SSE (legacy — opt-in)** | No (returns 202 Accepted) | None built-in; GET stream provides cleanup | Unbounded — apply rate limiting |
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
 | **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
