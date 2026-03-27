@@ -71,6 +71,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
   - [Sampling](xref:sampling) (`SampleAsync`)
   - [Elicitation](xref:elicitation) (`ElicitAsync`)
   - [Roots](xref:roots) (`RequestRootsAsync`)
+  - Ping — the server cannot ping the client to verify connectivity
 
   The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to bring these capabilities to stateless mode, but it is not yet available.
 - **[Unsolicited](#how-streamable-http-delivers-messages) server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client POST request — see [How Streamable HTTP delivers messages](#how-streamable-http-delivers-messages) for why.
