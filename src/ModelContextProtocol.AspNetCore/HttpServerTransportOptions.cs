@@ -62,6 +62,39 @@ public class HttpServerTransportOptions
     public bool Stateless { get; set; }
 
     /// <summary>
+    /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
+    /// for backward compatibility with clients that do not support the Streamable HTTP transport.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to map the legacy SSE endpoints; <see langword="false"/> to disable them. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The legacy SSE transport separates request and response channels: clients POST JSON-RPC messages
+    /// to <c>/message</c> and receive responses through a long-lived GET SSE stream on <c>/sse</c>.
+    /// Because the POST endpoint returns <c>202 Accepted</c> immediately, there is no HTTP-level
+    /// backpressure on handler concurrency — unlike Streamable HTTP, where each POST is held open
+    /// until the handler responds.
+    /// </para>
+    /// <para>
+    /// Use Streamable HTTP instead whenever possible. If you must support legacy SSE clients,
+    /// enable this property only for completely trusted clients in isolated processes, and apply
+    /// HTTP rate-limiting middleware and reverse proxy limits to compensate for the lack of
+    /// built-in backpressure.
+    /// </para>
+    /// <para>
+    /// Setting this to <see langword="true"/> while <see cref="Stateless"/> is also <see langword="true"/>
+    /// throws an <see cref="InvalidOperationException"/> at startup, because SSE requires in-memory session state.
+    /// </para>
+    /// <para>
+    /// This property can also be enabled via the <c>ModelContextProtocol.AspNetCore.EnableLegacySse</c>
+    /// <see cref="AppContext"/> switch.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.EnableLegacySse_Message, DiagnosticId = Obsoletions.EnableLegacySse_DiagnosticId, UrlFormat = Obsoletions.EnableLegacySse_Url)]
+    public bool EnableLegacySse { get; set; }
+
+    /// <summary>
     /// Gets or sets the event store for resumability support.
     /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>

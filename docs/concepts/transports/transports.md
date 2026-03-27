@@ -113,7 +113,7 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 
 #### Streamable HTTP server (ASP.NET Core)
 
-Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default). It also maps legacy SSE endpoints at `{route}/sse` and `{route}/message` for backward compatibility.
+Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default).
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -141,7 +141,7 @@ A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools]
 app.MapMcp("/mcp");
 ```
 
-When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:sessions#sse-legacy)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
 ### SSE transport (legacy)
 
@@ -178,7 +178,7 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. The same `MapMcp()` endpoint handles both protocols — clients connecting with SSE are automatically served using the legacy SSE mechanism. SSE requires stateful mode (the default); legacy SSE endpoints are not mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](xref:sessions#sse-legacy-1). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true`. SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -188,18 +188,24 @@ builder.Services.AddMcpServer()
     {
         // SSE requires stateful mode (the default). Set explicitly for forward compatibility.
         options.Stateless = false;
+
+#pragma warning disable MCP9003 // EnableLegacySse is obsolete
+        // Enable legacy SSE endpoints for clients that don't support Streamable HTTP.
+        // See sessions doc for backpressure implications.
+        options.EnableLegacySse = true;
+#pragma warning restore MCP9003
     })
     .WithTools<MyTools>();
 
 var app = builder.Build();
 
-// MapMcp() serves both Streamable HTTP and legacy SSE.
-// SSE clients connect to /sse (or {route}/sse for custom routes).
+// MapMcp() serves Streamable HTTP. Legacy SSE (/sse and /message) is also
+// available because EnableLegacySse is set to true above.
 app.MapMcp();
 app.Run();
 ```
 
-No additional configuration is needed. When a client connects using the SSE protocol, the server responds with an SSE stream for server-to-client messages and accepts client-to-server messages via a separate POST endpoint.
+See [Sessions — SSE (legacy)](xref:sessions#sse-legacy) for details on SSE session lifetime, configuration, and backpressure implications.
 
 ### Transport mode comparison
 

@@ -15,7 +15,7 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 - Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
 - Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
-- Do you need to support clients that only speak the [legacy SSE transport](#sse-legacy)?  → **Use stateful.** (Legacy SSE endpoints are disabled in stateless mode.)
+- Do you need to support clients that only speak the [legacy SSE transport](#sse-legacy)?  → **Use stateful** with <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default due to [backpressure concerns](#sse-legacy-1)).
 - Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
 - Are you debugging a typically-stdio server over HTTP and want editors to be able to reset state by reconnecting?  → **Use stateful.**
 - Otherwise → **Use stateless** (`options.Stateless = true`).
@@ -52,7 +52,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
 - <xref:ModelContextProtocol.McpSession.SessionId> is `null`, and the `Mcp-Session-Id` header is not sent or expected
 - Each HTTP request creates a fresh server context — no state carries over between requests
 - <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> still works, but is called **per HTTP request** rather than once per session (see [Per-request configuration in stateless mode](#per-request-configuration-in-stateless-mode))
-- The `GET` and `DELETE` MCP endpoints are not mapped, and the [legacy SSE endpoints](#sse-legacy) (`/sse` and `/message`) are disabled — clients that only support the legacy SSE transport cannot connect
+- The `GET` and `DELETE` MCP endpoints are not mapped, and [legacy SSE endpoints](#sse-legacy) (`/sse` and `/message`) are always disabled in stateless mode — clients that only support the legacy SSE transport cannot connect
 - **Server-to-client requests are disabled**, including:
   - [Sampling](xref:sampling) (`SampleAsync`)
   - [Elicitation](xref:elicitation) (`ElicitAsync`)
@@ -101,7 +101,7 @@ This means servers that need user confirmation, LLM reasoning, or other client i
 
 When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `false` (the default), the server assigns an `Mcp-Session-Id` to each client during the `initialize` handshake. The client must include this header in all subsequent requests. The server maintains an in-memory session for each connected client, enabling:
 
-- Server-to-client requests (sampling, elicitation, roots) via an open SSE stream
+- Server-to-client requests (sampling, elicitation, roots) via an open HTTP response stream
 - Unsolicited notifications (resource updates, logging messages)
 - Resource subscriptions
 - Session-scoped state (e.g., `RunSessionHandler`, state that persists across multiple requests within a session)
@@ -113,7 +113,7 @@ Use stateful mode when your server needs one or more of:
 - **Server-to-client requests**: Tools that call `ElicitAsync`, `SampleAsync`, or `RequestRootsAsync` to interact with the client
 - **Unsolicited notifications**: Sending resource-changed notifications or log messages without a preceding client request
 - **Resource subscriptions**: Clients subscribing to resource changes and receiving updates
-- **Legacy SSE client support**: Clients that only speak the [legacy SSE transport](#sse-legacy) (the `/sse` and `/message` endpoints are only available in stateful mode)
+- **Legacy SSE client support**: Clients that only speak the [legacy SSE transport](#sse-legacy) — requires <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default)
 - **Session-scoped state**: Logic that must persist across multiple requests within the same session
 - **Concurrent client isolation**: Multiple agents or editor instances connecting simultaneously, where per-client state must not leak between users — separate working environments, independent scratch state, or parallel simulations where each participant needs its own context. The server — not the model — controls when sessions are created, so the harness decides the boundaries of isolation.
 - **Local development and debugging**: Testing a typically-stdio server over HTTP where you want to attach a debugger, see log output on stdout, and have editors like Claude Code, GitHub Copilot in VS Code, and Cursor reset the server's state by starting a new session — without requiring a process restart. This closely mirrors the stdio experience where restarting the server process gives the client a clean slate.
@@ -131,7 +131,7 @@ The [deployment considerations](#deployment-considerations) below are real conce
 | **Server-to-client requests** | Not supported (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) for a stateless alternative) | Supported (sampling, elicitation, roots) |
 | **Unsolicited notifications** | Not supported | Supported (resource updates, logging) |
 | **Resource subscriptions** | Not supported | Supported |
-| **Client compatibility** | Works with all Streamable HTTP clients | Also supports legacy SSE-only clients, but some Streamable HTTP clients [may not send `Mcp-Session-Id` correctly](#deployment-considerations) |
+| **Client compatibility** | Works with all Streamable HTTP clients | Also supports legacy SSE-only clients via <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default), but some Streamable HTTP clients [may not send `Mcp-Session-Id` correctly](#deployment-considerations) |
 | **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
 | **Concurrent client isolation** | No distinction between clients — all requests are independent | Each client gets its own session with isolated state |
 | **State reset on reconnect** | No concept of reconnection — every request stands alone | Client reconnection starts a new session with a clean slate |
@@ -208,7 +208,10 @@ Stateful sessions introduce several challenges for production, internet-facing s
 
 ### SSE (legacy)
 
-The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are only mapped when `Stateless = false` (the default), because the GET and POST requests must be handled by the same server process sharing in-memory session state.
+The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** because the SSE transport has [no built-in HTTP-level backpressure](#sse-legacy-1). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9003`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
+
+> [!NOTE]
+> Setting `EnableLegacySse = true` while `Stateless = true` throws an `InvalidOperationException` at startup, because SSE requires in-memory session state shared between the GET and POST requests.
 
 #### How SSE sessions work
 
@@ -472,7 +475,7 @@ For task-augmented requests, the specification [requires](https://modelcontextpr
 
 ### Request backpressure
 
-How well the server is protected against a flood of concurrent requests depends on the session mode and which advanced features are enabled. The key factor is whether the HTTP POST response stays open while the handler runs — because when it does, HTTP/2's `MaxStreamsPerConnection` (default: **100**) naturally limits how many concurrent handlers a single client connection can drive.
+How well the server is protected against a flood of concurrent requests depends on the session mode and which advanced features are enabled. **In the default configuration, stateful and stateless modes provide identical HTTP-level backpressure** — both hold the POST response open while the handler runs, so HTTP/2's `MaxStreamsPerConnection` (default: **100**) naturally limits concurrent handlers per connection. The unbounded cases (legacy SSE, `EventStreamStore`, Tasks) are all **opt-in** advanced features.
 
 #### Default stateful mode (no EventStreamStore, no tasks)
 
@@ -486,7 +489,9 @@ One difference from gRPC: handler cancellation tokens are linked to the **sessio
 
 For comparison, ASP.NET Core SignalR limits concurrent hub invocations per client to **1** by default (`MaximumParallelInvocationsPerClient`). Default stateful MCP is less restrictive but still bounded by HTTP/2 stream limits.
 
-#### SSE (legacy)
+#### SSE (legacy — opt-in only)
+
+Legacy SSE endpoints are [disabled by default](#sse-legacy) and must be explicitly enabled via <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse>. This is the primary reason they are disabled — the SSE transport has no built-in HTTP-level backpressure.
 
 The legacy SSE transport separates the request and response channels: clients POST JSON-RPC messages to `/message` and receive responses through a long-lived GET SSE stream on `/sse`. The POST endpoint returns **202 Accepted immediately** after queuing the message — it does not wait for the handler to complete. This means there is **no HTTP-level backpressure** on handler concurrency, because each POST frees its connection immediately regardless of how long the handler runs.
 
@@ -523,15 +528,15 @@ For servers using the built-in automatic task handlers without external work dis
 
 #### Stateless mode
 
-Stateless mode has the strongest backpressure story. Each handler's lifetime is the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all in-flight handlers before the POST response completes. This means Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection`, request timeouts, and rate-limiting middleware all apply naturally — identical to a standard ASP.NET Core minimal API or controller action.
+Stateless mode provides the same HTTP-level backpressure as default stateful mode. In both modes, each POST is held open until the handler responds. The one difference is cancellation: in stateless mode, the handler's `CancellationToken` is `HttpContext.RequestAborted`, so if a client disconnects mid-flight, the handler is cancelled immediately — identical to a standard ASP.NET Core minimal API or controller action. In default stateful mode, the handler's token is session-scoped, so a disconnected client's handler continues running until it completes or the session is terminated (see [Handler cancellation tokens](#handler-cancellation-tokens) above).
 
 #### Summary
 
 | Configuration | POST held open? | Backpressure mechanism | Concurrent handler limit per connection |
 |---|---|---|---|
-| **Stateless** | Yes (handler = request) | HTTP/2 streams + Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
-| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams | `MaxStreamsPerConnection` (default: 100) |
-| **SSE (legacy)** | No (returns 202 Accepted) | None built-in; GET stream provides cleanup | Unbounded — apply rate limiting |
+| **Stateless** | Yes (handler = request) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **SSE (legacy — opt-in)** | No (returns 202 Accepted) | None built-in; GET stream provides cleanup | Unbounded — apply rate limiting |
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
 | **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
 

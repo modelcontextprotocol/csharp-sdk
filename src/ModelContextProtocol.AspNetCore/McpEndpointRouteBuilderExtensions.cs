@@ -13,6 +13,9 @@ namespace Microsoft.AspNetCore.Builder;
 /// </summary>
 public static class McpEndpointRouteBuilderExtensions
 {
+    private static bool EnableLegacySseSwitch { get; } =
+        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.EnableLegacySse", out var enabled) && enabled;
+
     /// <summary>
     /// Sets up endpoints for handling MCP Streamable HTTP transport.
     /// </summary>
@@ -22,12 +25,23 @@ public static class McpEndpointRouteBuilderExtensions
     /// <exception cref="InvalidOperationException">The required MCP services have not been registered. Ensure <see cref="HttpMcpServerBuilderExtensions.WithHttpTransport"/> has been called during application startup.</exception>
     /// <remarks>
     /// For details about the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">2025-11-25 protocol specification</see>.
-    /// This method also maps legacy SSE endpoints for backward compatibility at the path "/sse" and "/message". For details about the HTTP with SSE transport, see the <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">2024-11-05 protocol specification</see>.
+    /// When legacy SSE is enabled via <see cref="HttpServerTransportOptions.EnableLegacySse"/>, this method also maps legacy SSE endpoints at the path "/sse" and "/message". For details about the HTTP with SSE transport, see the <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">2024-11-05 protocol specification</see>.
     /// </remarks>
     public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "")
     {
         var streamableHttpHandler = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
+
+        var options = streamableHttpHandler.HttpServerTransportOptions;
+
+#pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
+        if (options.Stateless && (options.EnableLegacySse || EnableLegacySseSwitch))
+        {
+            throw new InvalidOperationException(
+                "Legacy SSE endpoints cannot be enabled in stateless mode because SSE requires in-memory session state " +
+                "shared between the GET /sse and POST /message requests. Remove the EnableLegacySse setting or disable stateless mode.");
+        }
+#pragma warning restore MCP9003
 
         var mcpGroup = endpoints.MapGroup(pattern);
         var streamableHttpGroup = mcpGroup.MapGroup("")
@@ -39,7 +53,7 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
-        if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
+        if (!options.Stateless)
         {
             // The GET endpoint is not mapped in Stateless mode since there's no way to send unsolicited messages.
             // Resuming streams via GET is currently not supported in Stateless mode.
@@ -49,17 +63,22 @@ public static class McpEndpointRouteBuilderExtensions
             // The DELETE endpoint is not mapped in Stateless mode since there is no server-side state for the DELETE to clean up.
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
-            // Map legacy HTTP with SSE endpoints only if not in Stateless mode, because we cannot guarantee the /message requests
-            // will be handled by the same process as the /sse request.
-            var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
-            var sseGroup = mcpGroup.MapGroup("")
-                .WithDisplayName(b => $"MCP HTTP with SSE | {b.DisplayName}");
+#pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
+            if (options.EnableLegacySse || EnableLegacySseSwitch)
+#pragma warning restore MCP9003
+            {
+                // Map legacy HTTP with SSE endpoints. These are disabled by default because the SSE transport
+                // has no built-in request backpressure (POST returns 202 immediately). Enable only for trusted clients.
+                var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
+                var sseGroup = mcpGroup.MapGroup("")
+                    .WithDisplayName(b => $"MCP HTTP with SSE | {b.DisplayName}");
 
-            sseGroup.MapGet("/sse", sseHandler.HandleSseRequestAsync)
-                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
-            sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
-                .WithMetadata(new AcceptsMetadata(["application/json"]))
-                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+                sseGroup.MapGet("/sse", sseHandler.HandleSseRequestAsync)
+                    .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+                sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
+                    .WithMetadata(new AcceptsMetadata(["application/json"]))
+                    .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+            }
         }
 
         return mcpGroup;
