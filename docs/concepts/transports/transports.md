@@ -178,7 +178,7 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](xref:sessions#sse-legacy-1). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true`. SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](xref:sessions#request-backpressure). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true`. SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -255,3 +255,5 @@ var tools = await client.ListToolsAsync();
 var echo = tools.First(t => t.Name == "echo");
 Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
 ```
+
+Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. See [Sessions](xref:sessions) for how session behavior varies across transports.

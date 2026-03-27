@@ -588,4 +588,124 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         // Dispose should still not hang
         await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task Client_CanReconnect_AfterSessionExpiry()
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        string? expiredSessionId = null;
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+
+        // Middleware that returns 404 for the expired session, simulating server-side session expiry.
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (expiredSessionId is not null &&
+                    context.Request.Headers["Mcp-Session-Id"].ToString() == expiredSessionId)
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Connect the first client and verify it works.
+        var client1 = await ConnectAsync();
+        var originalSessionId = client1.SessionId;
+        Assert.NotNull(originalSessionId);
+
+        var tools = await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotEmpty(tools);
+
+        // Simulate session expiry by having the middleware reject the original session.
+        expiredSessionId = originalSessionId;
+
+        // The next request should fail.
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        // Completion should resolve with a 404 status code.
+        var details = await client1.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Equal(HttpStatusCode.NotFound, httpDetails.HttpStatusCode);
+
+        await client1.DisposeAsync();
+
+        // Reconnect with a brand-new session.
+        await using var client2 = await ConnectAsync();
+        Assert.NotNull(client2.SessionId);
+        Assert.NotEqual(originalSessionId, client2.SessionId);
+
+        // The new session works normally.
+        tools = await client2.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotEmpty(tools);
+    }
+
+    [Fact]
+    public async Task EndpointFilter_CanReadSessionId_BeforeAndAfterHandler()
+    {
+        var capturedSessionIds = new ConcurrentBag<(string? BeforeNext, string? AfterNext, string Method)>();
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+
+        // This is the pattern documented in sessions.md — verify it actually works.
+        app.MapMcp().AddEndpointFilter(async (context, next) =>
+        {
+            var httpContext = context.HttpContext;
+
+            // Read from request headers — available on all non-initialize requests in stateful mode.
+            var beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"].FirstOrDefault();
+
+            var result = await next(context);
+
+            // After the handler, check response headers.
+            var afterSessionId = httpContext.Response.Headers["Mcp-Session-Id"].FirstOrDefault();
+
+            capturedSessionIds.Add((beforeSessionId, afterSessionId, httpContext.Request.Method));
+            return result;
+        });
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync();
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The filter ran for at least the initialize, initialized notification, and list_tools POSTs.
+        Assert.True(capturedSessionIds.Count >= 3);
+
+        if (Stateless)
+        {
+            // Stateless mode: no session IDs anywhere.
+            Assert.All(capturedSessionIds, c =>
+            {
+                Assert.Null(c.BeforeNext);
+                Assert.Null(c.AfterNext);
+            });
+        }
+        else
+        {
+            // Stateful mode: response header is set on every POST and GET response.
+            var postAndGetCaptures = capturedSessionIds.Where(c => c.Method is "POST" or "GET");
+            Assert.All(postAndGetCaptures, c =>
+            {
+                Assert.Equal(client.SessionId, c.AfterNext);
+            });
+
+            // At least one POST should have the session ID in the request header too
+            // (the initialized notification or list_tools — but not the initial initialize request).
+            Assert.Contains(capturedSessionIds, c => c.BeforeNext == client.SessionId);
+        }
+    }
 }

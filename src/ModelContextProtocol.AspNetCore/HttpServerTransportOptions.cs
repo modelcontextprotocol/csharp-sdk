@@ -92,7 +92,8 @@ public class HttpServerTransportOptions
     /// </para>
     /// </remarks>
     [Obsolete(Obsoletions.EnableLegacySse_Message, DiagnosticId = Obsoletions.EnableLegacySse_DiagnosticId, UrlFormat = Obsoletions.EnableLegacySse_Url)]
-    public bool EnableLegacySse { get; set; }
+    public bool EnableLegacySse { get; set; } =
+        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.EnableLegacySse", out var enabled) && enabled;
 
     /// <summary>
     /// Gets or sets the event store for resumability support.

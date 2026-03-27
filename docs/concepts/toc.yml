@@ -9,6 +9,8 @@ items:
     uid: capabilities
   - name: Transports
     uid: transports
+  - name: Sessions
+    uid: sessions
   - name: Ping
     uid: ping
   - name: Progress
@@ -39,8 +41,6 @@ items:
     uid: completions
   - name: Logging
     uid: logging
-  - name: Sessions
-    uid: sessions
   - name: HTTP Context
     uid: httpcontext
   - name: Filters

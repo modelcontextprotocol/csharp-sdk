@@ -11,6 +11,9 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 [sampling]: https://modelcontextprotocol.io/specification/2025-11-25/client/sampling
 
+> [!NOTE]
+> Sampling is a **server-to-client request** — the server sends a request back to the client over an open connection. This requires [stateful mode or stdio](xref:sessions). Sampling is not available in [stateless mode](xref:sessions#stateless-mode-recommended) because stateless servers cannot send requests to clients.
+
 ### How sampling works
 
 1. The server calls <xref:ModelContextProtocol.Server.McpServer.SampleAsync*> (or uses the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> adapter) during tool execution.

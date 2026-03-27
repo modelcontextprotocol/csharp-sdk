@@ -13,9 +13,6 @@ namespace Microsoft.AspNetCore.Builder;
 /// </summary>
 public static class McpEndpointRouteBuilderExtensions
 {
-    private static bool EnableLegacySseSwitch { get; } =
-        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.EnableLegacySse", out var enabled) && enabled;
-
     /// <summary>
     /// Sets up endpoints for handling MCP Streamable HTTP transport.
     /// </summary>
@@ -35,7 +32,7 @@ public static class McpEndpointRouteBuilderExtensions
         var options = streamableHttpHandler.HttpServerTransportOptions;
 
 #pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
-        if (options.Stateless && (options.EnableLegacySse || EnableLegacySseSwitch))
+        if (options.Stateless && options.EnableLegacySse)
         {
             throw new InvalidOperationException(
                 "Legacy SSE endpoints cannot be enabled in stateless mode because SSE requires in-memory session state " +
@@ -64,7 +61,7 @@ public static class McpEndpointRouteBuilderExtensions
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
 #pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
-            if (options.EnableLegacySse || EnableLegacySseSwitch)
+            if (options.EnableLegacySse)
 #pragma warning restore MCP9003
             {
                 // Map legacy HTTP with SSE endpoints. These are disabled by default because the SSE transport

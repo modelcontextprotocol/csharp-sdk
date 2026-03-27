@@ -1,13 +1,13 @@
 ---
 title: Sessions
 author: halter73
-description: How sessions work in the MCP C# SDK and when to use stateless vs. stateful mode for HTTP servers.
+description: When to use stateless vs. stateful mode in the MCP C# SDK, server-side session management, client-side session lifecycle, and distributed tracing.
 uid: sessions
 ---
 
 # Sessions
 
-The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. Sessions enable features like server-to-client requests (sampling, elicitation, roots), unsolicited notifications, resource subscriptions, and session-scoped state. However, **most servers don't need sessions and should run in stateless mode** to avoid unnecessary complexity, memory overhead, and deployment constraints.
+The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. Sessions enable features like server-to-client requests (sampling, elicitation, roots), unsolicited notifications, resource subscriptions, and session-scoped state. Both the server and client participate in session management — the server creates and tracks sessions, while the client automatically includes the session ID in subsequent requests, detects session expiry, and can resume sessions across reconnections. **Most servers don't need sessions and should run in stateless mode** to avoid unnecessary complexity, memory overhead, and deployment constraints.
 
 [Streamable HTTP transport]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
 
@@ -15,7 +15,7 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 - Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
 - Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
-- Do you need to support clients that only speak the [legacy SSE transport](#sse-legacy)?  → **Use stateful** with <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default due to [backpressure concerns](#sse-legacy-1)).
+- Do you need to support clients that only speak the [legacy SSE transport](#sse-legacy)?  → **Use stateful** with <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default due to [backpressure concerns](#request-backpressure)).
 - Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
 - Are you debugging a typically-stdio server over HTTP and want editors to be able to reset state by reconnecting?  → **Use stateful.**
 - Otherwise → **Use stateless** (`options.Stateless = true`).
@@ -45,7 +45,7 @@ app.MapMcp();
 app.Run();
 ```
 
-### What stateless mode disables
+### What stateless mode changes
 
 When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `true`:
 
@@ -57,7 +57,11 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
   - [Sampling](xref:sampling) (`SampleAsync`)
   - [Elicitation](xref:elicitation) (`ElicitAsync`)
   - [Roots](xref:roots) (`RequestRootsAsync`)
-- Unsolicited server-to-client notifications (e.g., resource update notifications, logging messages) are not supported
+
+  The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to bring these capabilities to stateless mode, but it is not yet available.
+- **Unsolicited server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client request.
+- **No concurrent client isolation.** Every request is independent — the server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
+- **No state reset on reconnect.** Stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start. If your server holds any external state, you must manage cleanup through other means.
 - [Tasks](xref:tasks) **are supported** — the task store is shared across ephemeral server instances. However, task-augmented sampling and elicitation are disabled because they require server-to-client requests.
 
 These restrictions exist because in a stateless deployment, responses from the client could arrive at any server instance — not necessarily the one that sent the request.
@@ -77,15 +81,6 @@ Most MCP servers fall into this category. Tools that call APIs, query databases,
 <!-- mlc-disable-next-line -->
 > [!TIP]
 > If you're unsure whether you need sessions, start with stateless mode. You can always switch to stateful mode later if you need server-to-client requests or other session features.
-
-### What you give up with stateless mode
-
-Stateless mode trades features for simplicity:
-
-- **No server-to-client requests.** Sampling, elicitation, and roots all require the server to send a JSON-RPC request back to the client over a persistent connection. Stateless mode has no such connection. The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to solve this, but it is not yet available.
-- **No push notifications.** The server cannot send unsolicited messages — log entries, resource-change events, or progress updates outside the scope of a tool call response. Every notification must be part of a direct response to a client request.
-- **No concurrent client isolation.** Every request is independent. The server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
-- **No state reset on reconnect.** When a client disconnects and reconnects (e.g., an editor restarting), stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start — because there was never a session to begin with. If your server holds any external state, you must manage cleanup through other means.
 
 ### Stateless alternatives for server-to-client interactions
 
@@ -208,7 +203,7 @@ Stateful sessions introduce several challenges for production, internet-facing s
 
 ### SSE (legacy)
 
-The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** because the SSE transport has [no built-in HTTP-level backpressure](#sse-legacy-1). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9003`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
+The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** because the SSE transport has [no built-in HTTP-level backpressure](#request-backpressure). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9003`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
 
 > [!NOTE]
 > Setting `EnableLegacySse = true` while `Stateless = true` throws an `InvalidOperationException` at startup, because SSE requires in-memory session state shared between the GET and POST requests.
@@ -448,23 +443,123 @@ For stateless servers, shutdown is even simpler: each request is independent, so
 
 In stateless mode, each HTTP request creates and disposes a short-lived `McpServer` instance. This produces session lifecycle log entries at `Trace` level (`session created` / `session disposed`) for every request. These are typically invisible at default log levels but may appear when troubleshooting with verbose logging enabled. There is no user-facing `initialize` handshake in stateless mode — the SDK handles the per-request server lifecycle internally.
 
-### Tasks and session modes
+## Client-side session behavior
+
+The SDK's MCP client (<xref:ModelContextProtocol.Client.McpClient>) participates in sessions automatically. The **server controls session creation and destruction** — the client has no say in when a session ends. This section describes how the client manages session state, detects failures, and reconnects.
+
+### Session lifecycle
+
+#### Joining a session
+
+When you call <xref:ModelContextProtocol.Client.McpClient.CreateAsync*>, the client:
+
+1. Connects to the server via the configured transport
+2. Sends an `initialize` JSON-RPC request (without an `Mcp-Session-Id` header)
+3. Receives the server's `InitializeResult` — if the response includes an `Mcp-Session-Id` header, the client stores it
+4. Automatically includes the session ID in all subsequent requests (POST, GET, DELETE)
+
+This is entirely automatic — you don't need to manage the session ID yourself. The <xref:ModelContextProtocol.McpSession.SessionId> property exposes the current session ID (or `null` for transports that don't support sessions, like stdio).
+
+#### Session expiry
+
+The server can terminate a session at any time — due to idle timeout, max session count exceeded, explicit shutdown, or any server-side policy. When this happens, subsequent requests with that session ID receive HTTP `404`. The client detects this and:
+
+1. Wraps the failure in a `TransportClosedException` with <xref:ModelContextProtocol.Client.HttpClientCompletionDetails> containing the HTTP status code
+2. Cancels all in-flight operations
+3. Completes the <xref:ModelContextProtocol.Client.McpClient.Completion> task
+
+**There is no automatic reconnection after session expiry.** Your application must handle this. You can either create a fresh session with <xref:ModelContextProtocol.Client.McpClient.CreateAsync*>, or attempt to resume the existing session with <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> if the server supports it.
+
+The following example demonstrates how to detect session expiry and reconnect:
+
+```csharp
+async Task<McpClient> ConnectWithRetryAsync(
+    HttpClientTransportOptions transportOptions,
+    HttpClient httpClient,
+    ILoggerFactory? loggerFactory = null,
+    CancellationToken cancellationToken = default)
+{
+    while (/* app-specific retry condition */)
+    {
+        await using var transport = new HttpClientTransport(transportOptions, httpClient, loggerFactory);
+        var client = await McpClient.CreateAsync(transport, loggerFactory: loggerFactory, cancellationToken: cancellationToken);
+
+        // Wait for the session to end — this could be graceful disposal or server-side expiry.
+        var details = await client.Completion.WaitAsync(cancellationToken);
+
+        if (details is HttpClientCompletionDetails { HttpStatusCode: System.Net.HttpStatusCode.NotFound })
+        {
+            // The server expired our session. Create a new one.
+            loggerFactory?.CreateLogger("Reconnect").LogInformation(
+                "Session expired (404). Reconnecting with a new session...");
+            continue;
+        }
+
+        // For other closures (graceful disposal, fatal errors), don't retry.
+        return client;
+    }
+}
+```
+
+#### Stream reconnection
+
+The Streamable HTTP client automatically reconnects its SSE event stream when the connection drops. This only applies to **stateful sessions** — the GET event stream is how the server sends unsolicited messages to the client, and it requires an active session. Stream reconnection is separate from session expiry: reconnection recovers the event stream within an existing session, while the example above handles creating a new session after the server has terminated the old one.
+
+If the server has an [event store](#session-resumability) configured, the client sends `Last-Event-ID` on reconnection so the server can replay missed events. See [Transports](xref:transports) for details on reconnection intervals and retry limits (<xref:ModelContextProtocol.Client.HttpClientTransportOptions.MaxReconnectionAttempts>, <xref:ModelContextProtocol.Client.HttpClientTransportOptions.DefaultReconnectionInterval>). If all reconnection attempts are exhausted, the transport closes and `McpClient.Completion` resolves.
+
+#### Resuming a session
+
+If the server is still tracking the session (or supports [session migration](#session-migration)), you can reconnect without re-initializing. Save the session metadata from the original client and pass it to <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*>:
+
+- <xref:ModelContextProtocol.McpSession.SessionId> — set via <xref:ModelContextProtocol.Client.HttpClientTransportOptions.KnownSessionId>
+- <xref:ModelContextProtocol.Client.McpClient.ServerCapabilities>
+- <xref:ModelContextProtocol.Client.McpClient.ServerInfo>
+- <xref:ModelContextProtocol.Client.McpClient.ServerInstructions> (optional)
+- <xref:ModelContextProtocol.McpSession.NegotiatedProtocolVersion> (optional)
+
+See the [Resuming sessions](xref:transports#resuming-sessions) section in the Transports guide for a code example.
+
+Session resumption is useful when:
+
+- The client process restarts but the server session is still alive
+- A transient network failure disconnects the client but the server hasn't timed out the session
+- You want to hand off a session between different parts of your application
+
+#### Terminating a session
+
+When you dispose an `McpClient` (via `await using` or explicit `DisposeAsync`), the client sends an HTTP `DELETE` request to the session endpoint with the `Mcp-Session-Id` header. This tells the server to clean up the session immediately rather than waiting for the idle timeout.
+
+The <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> property (default: `true`) controls this behavior. Set it to `false` when you're creating a transport purely to bootstrap session information (e.g., reading capabilities) without intending to own the session's lifetime.
+
+### Client transport options
+
+The following <xref:ModelContextProtocol.Client.HttpClientTransportOptions> properties affect client-side session behavior:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.KnownSessionId> | `null` | Pre-existing session ID for use with <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*>. When set, the client includes this session ID immediately and starts listening for unsolicited messages. |
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> | `true` | Whether to send a DELETE request when the client is disposed. Set to `false` when you don't want disposal to terminate the server session. |
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.AdditionalHeaders> | `null` | Custom headers included in all requests (e.g., for authentication). These are sent alongside the automatic `Mcp-Session-Id` header. |
+
+For transport-level options like reconnection intervals and transport mode, see [Transports](xref:transports).
+
+## Tasks and session modes
 
 [Tasks](xref:tasks) enable a "call-now, fetch-later" pattern for long-running tool calls. Task support depends on having an <xref:ModelContextProtocol.IMcpTaskStore> configured (`McpServerOptions.TaskStore`), and behavior differs between session modes.
 
-#### Stateless mode
+### Stateless mode
 
 Tasks are a natural fit for stateless servers. The client sends a task-augmented `tools/call` request, receives a task ID immediately, and polls for completion with `tasks/get` or `tasks/result` on subsequent independent HTTP requests. Because each request creates an ephemeral `McpServer` that shares the same `IMcpTaskStore`, all task operations work without any persistent session.
 
 In stateless mode, there is no `SessionId`, so the task store does not apply session-based isolation. All tasks are accessible from any request to the same server. This is typically fine for single-purpose servers or when authentication middleware already identifies the caller.
 
-#### Stateful mode
+### Stateful mode
 
 In stateful mode, the `IMcpTaskStore` receives the session's `SessionId` on every operation — `CreateTaskAsync`, `GetTaskAsync`, `ListTasksAsync`, `CancelTaskAsync`, etc. The built-in <xref:ModelContextProtocol.InMemoryMcpTaskStore> enforces session isolation: tasks created in one session cannot be accessed from another.
 
 Tasks can outlive individual HTTP requests because the tool executes in the background after returning the initial `CreateTaskResult`. Task cleanup is governed by the task's TTL (time-to-live), not by session termination. However, the `InMemoryMcpTaskStore` loses all tasks if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.IMcpTaskStore> backed by an external store. See [Fault-tolerant task implementations](xref:tasks#fault-tolerant-task-implementations) for guidance.
 
-#### Task cancellation vs request cancellation
+### Task cancellation vs request cancellation
 
 The MCP specification defines two distinct cancellation mechanisms:
 
@@ -473,11 +568,11 @@ The MCP specification defines two distinct cancellation mechanisms:
 
 For task-augmented requests, the specification [requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) using `tasks/cancel` instead of `notifications/cancelled`.
 
-### Request backpressure
+## Request backpressure
 
 How well the server is protected against a flood of concurrent requests depends on the session mode and which advanced features are enabled. **In the default configuration, stateful and stateless modes provide identical HTTP-level backpressure** — both hold the POST response open while the handler runs, so HTTP/2's `MaxStreamsPerConnection` (default: **100**) naturally limits concurrent handlers per connection. The unbounded cases (legacy SSE, `EventStreamStore`, Tasks) are all **opt-in** advanced features.
 
-#### Default stateful mode (no EventStreamStore, no tasks)
+### Default stateful mode (no EventStreamStore, no tasks)
 
 In the default configuration, each JSON-RPC request holds its POST response open until the handler produces a result. The POST response body is an SSE stream that carries the JSON-RPC response, and the server awaits the handler's completion before closing it. This means:
 
@@ -489,7 +584,7 @@ One difference from gRPC: handler cancellation tokens are linked to the **sessio
 
 For comparison, ASP.NET Core SignalR limits concurrent hub invocations per client to **1** by default (`MaximumParallelInvocationsPerClient`). Default stateful MCP is less restrictive but still bounded by HTTP/2 stream limits.
 
-#### SSE (legacy — opt-in only)
+### SSE (legacy — opt-in only)
 
 Legacy SSE endpoints are [disabled by default](#sse-legacy) and must be explicitly enabled via <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse>. This is the primary reason they are disabled — the SSE transport has no built-in HTTP-level backpressure.
 
@@ -499,7 +594,7 @@ Internally, handlers are dispatched with the same fire-and-forget pattern as Str
 
 The GET stream does provide **session lifetime bounds**: handler cancellation tokens are linked to the GET request's `HttpContext.RequestAborted`, so when the client disconnects the SSE stream, all in-flight handlers are cancelled. This is similar to SignalR's connection-bound lifetime model — but unlike SignalR, there is no per-client concurrency limit like `MaximumParallelInvocationsPerClient`. The GET stream provides cleanup on disconnect, not rate-limiting during the connection.
 
-#### With EventStreamStore
+### With EventStreamStore
 
 <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> is an advanced API that enables session resumability — storing SSE events so clients can reconnect and replay missed messages using the `Last-Event-ID` header. When configured, handlers gain the ability to call `EnablePollingAsync()`, which closes the POST response early and switches the client to polling mode.
 
@@ -512,7 +607,7 @@ When a handler calls `EnablePollingAsync()`:
 
 The `EventStreamStore` itself has TTL-based limits (default: 2-hour event expiration, 30-minute sliding window) that govern event retention, but these do not limit handler concurrency. If you enable `EventStreamStore` on a public-facing server, apply **HTTP rate-limiting middleware** and **reverse proxy limits** to compensate for the loss of stream-level backpressure.
 
-#### With tasks (experimental)
+### With tasks (experimental)
 
 [Tasks](xref:tasks) are an experimental feature that enables a "call-now, fetch-later" pattern for long-running tool calls. When a client sends a task-augmented `tools/call` request, the server creates a task record in the <xref:ModelContextProtocol.IMcpTaskStore>, starts the tool handler as a fire-and-forget background task, and returns the task ID immediately — the POST response completes **before the handler starts its real work**.
 
@@ -526,11 +621,11 @@ Tasks are a natural fit for **stateless deployments at scale**, where the `IMcpT
 
 For servers using the built-in automatic task handlers without external work distribution, apply the same rate-limiting and reverse-proxy protections recommended for `EventStreamStore` deployments.
 
-#### Stateless mode
+### Stateless mode
 
 Stateless mode provides the same HTTP-level backpressure as default stateful mode. In both modes, each POST is held open until the handler responds. The one difference is cancellation: in stateless mode, the handler's `CancellationToken` is `HttpContext.RequestAborted`, so if a client disconnects mid-flight, the handler is cancelled immediately — identical to a standard ASP.NET Core minimal API or controller action. In default stateful mode, the handler's token is session-scoped, so a disconnected client's handler continues running until it completes or the session is terminated (see [Handler cancellation tokens](#handler-cancellation-tokens) above).
 
-#### Summary
+### Summary
 
 | Configuration | POST held open? | Backpressure mechanism | Concurrent handler limit per connection |
 |---|---|---|---|
@@ -540,17 +635,64 @@ Stateless mode provides the same HTTP-level backpressure as default stateful mod
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
 | **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
 
-### Observability
+## Observability
 
-The SDK automatically integrates with [.NET's OpenTelemetry support](https://learn.microsoft.com/dotnet/core/diagnostics/distributed-tracing) and attaches session metadata to traces and metrics.
+The SDK's tracing and metrics work in **all modes** — stateful, stateless, and stdio — and do not depend on sessions. Distributed tracing is purely request-scoped: [W3C trace context](https://www.w3.org/TR/trace-context/) (`traceparent` / `tracestate`) propagates through the `_meta` field in JSON-RPC messages, so a client's tool call and the server's handling appear as parent-child spans regardless of transport or session mode.
 
-#### Activity tags
+### The `mcp.session.id` activity tag
 
-Every server-side request activity is tagged with `mcp.session.id` — the session's unique identifier. In stateless mode, this tag is `null` because there is no persistent session. Other tags include `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, and operation-specific tags like `gen_ai.tool.name` for tool calls.
+Every request `Activity` is tagged with `mcp.session.id` — a unique identifier generated independently by each <xref:ModelContextProtocol.Client.McpClient> and <xref:ModelContextProtocol.Server.McpServer> instance. **Despite the name, this is not the transport session ID** (`Mcp-Session-Id` header). It is a per-instance GUID that tracks the lifetime of that specific client or server object.
 
-Use these tags to filter and correlate traces by session in your observability platform (Jaeger, Zipkin, Application Insights, etc.).
+- **Stateful mode**: The server's `mcp.session.id` is stable for the lifetime of the session. This makes it useful for correlating all operations handled by a single long-lived `McpServer` instance — you can filter your observability platform to see every tool call, notification, and request within one session.
+- **Stateless mode**: Each HTTP request creates a new `McpServer` instance with its own `mcp.session.id`, so the tag effectively identifies individual requests. This is simpler — the HTTP request's own `Activity` is the natural parent, and there's no long-lived session to correlate.
+- The client and server always have **different** `mcp.session.id` values, even when they share the same transport session ID.
 
-#### Metrics
+### Correlating with the transport session ID
+
+The transport session ID (<xref:ModelContextProtocol.McpSession.SessionId>, the `Mcp-Session-Id` header value) and the `mcp.session.id` activity tag are not automatically correlated by the SDK. If you need to correlate them — for example, to match a log entry to a specific trace — you can read the transport session ID from the `Mcp-Session-Id` header using an [endpoint filter](https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/min-api-filters) on `MapMcp()`:
+
+```csharp
+app.MapMcp().AddEndpointFilter(async (context, next) =>
+{
+    var httpContext = context.HttpContext;
+
+    // Read from request headers first. This is available on all non-initialize
+    // requests in stateful mode, because the client echoes back the session ID
+    // it received from the server's initialize response.
+    var sessionId = httpContext.Request.Headers["Mcp-Session-Id"].FirstOrDefault();
+
+    var result = await next(context);
+
+    // After the handler runs, check response headers. In stateful mode, the server
+    // sets Mcp-Session-Id on every POST and GET response — not just initialize —
+    // so the session ID is always available here even for the first request.
+    // DELETE responses do not include the header, but the request header has it.
+    sessionId ??= httpContext.Response.Headers["Mcp-Session-Id"].FirstOrDefault();
+
+    // sessionId is null only in stateless mode, where the server doesn't use sessions.
+    // In stateful mode, every successful response carries the header.
+    if (sessionId is not null)
+    {
+        logger.LogInformation("MCP transport session: {SessionId}", sessionId);
+    }
+
+    return result;
+});
+```
+
+<!-- mlc-disable-next-line -->
+> [!NOTE]
+> In stateful mode, the `Mcp-Session-Id` response header is set on **every POST and GET response**, not just the `initialize` response. This means the session ID is always available in the filter after `await next(context)`. The only case where `sessionId` is `null` is in stateless mode, where the server doesn't use sessions at all.
+
+<!-- mlc-disable-next-line -->
+> [!NOTE]
+> The `AllowNewSessionForNonInitializeRequests` AppContext switch (`ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests`) is a back-compat escape hatch that allows creating new sessions from non-initialize POST requests that arrive without an `Mcp-Session-Id` header. When enabled, the server creates a **brand-new session** for each such request rather than rejecting it — the response still carries the `Mcp-Session-Id` header with the new session's ID. This is **non-compliant with the [Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http)**, which requires that only `initialize` requests create sessions. Use it only as a temporary workaround for clients that don't implement the session protocol correctly.
+
+### Other activity tags
+
+Other tags include `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, and operation-specific tags like `gen_ai.tool.name` for tool calls. Use these to filter and group traces in your observability platform (Jaeger, Zipkin, Application Insights, etc.).
+
+### Metrics
 
 The SDK records histograms under the `Experimental.ModelContextProtocol` meter:
 
@@ -562,10 +704,6 @@ The SDK records histograms under the `Experimental.ModelContextProtocol` meter:
 | `mcp.client.operation.duration` | Duration of each request/notification on the client |
 
 In stateless mode, each HTTP request is its own "session", so `mcp.server.session.duration` measures individual request lifetimes rather than long-lived session durations.
-
-#### Distributed tracing
-
-The SDK propagates [W3C trace context](https://www.w3.org/TR/trace-context/) (`traceparent` / `tracestate`) through JSON-RPC messages via the `_meta` field. This means a client's tool call and the server's handling of that call appear as parent-child spans in a distributed trace, regardless of transport.
 
 ## Advanced features
 
