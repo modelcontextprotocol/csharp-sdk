@@ -36,4 +36,4 @@ When APIs are marked as obsolete, a diagnostic is emitted to warn users that the
 | :------------ | :----- | :---------- |
 | `MCP9001` | In place | The `EnumSchema` and `LegacyTitledEnumSchema` APIs are deprecated as of specification version 2025-11-25. Use the current schema APIs instead. |
 | `MCP9002` | Removed | The `AddXxxFilter` extension methods on `IMcpServerBuilder` (e.g., `AddListToolsFilter`, `AddCallToolFilter`, `AddIncomingMessageFilter`) were superseded by `WithRequestFilters()` and `WithMessageFilters()`. |
-| `MCP9003` | In place | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> opts into the legacy SSE transport which has no built-in HTTP-level backpressure. Use Streamable HTTP instead. See [Sessions — SSE (legacy)](xref:sessions#sse-legacy) for details. |
+| `MCP9003` | In place | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> opts into the legacy SSE transport which has no built-in HTTP-level backpressure. Use Streamable HTTP instead. See [Sessions — Legacy SSE transport](xref:sessions#legacy-sse-transport) for details. |

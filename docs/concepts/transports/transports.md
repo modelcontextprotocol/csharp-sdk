@@ -141,7 +141,7 @@ A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools]
 app.MapMcp("/mcp");
 ```
 
-When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:sessions#sse-legacy)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:sessions#legacy-sse-transport)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
 ### SSE transport (legacy)
 
@@ -205,7 +205,7 @@ app.MapMcp();
 app.Run();
 ```
 
-See [Sessions — SSE (legacy)](xref:sessions#sse-legacy) for details on SSE session lifetime, configuration, and backpressure implications.
+See [Sessions — Legacy SSE transport](xref:sessions#legacy-sse-transport) for details on SSE session lifetime, configuration, and backpressure implications.
 
 ### Transport mode comparison
 

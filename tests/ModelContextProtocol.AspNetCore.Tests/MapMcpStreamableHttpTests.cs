@@ -654,6 +654,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     public async Task EndpointFilter_CanReadSessionId_BeforeAndAfterHandler()
     {
         var capturedSessionIds = new ConcurrentBag<(string? BeforeNext, string? AfterNext, string Method)>();
+        var capturedActivityTags = new ConcurrentBag<(string? TagValue, bool HadActivity, string Method)>();
 
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
@@ -671,8 +672,19 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
             // After the handler, check response headers.
             var afterSessionId = httpContext.Response.Headers["Mcp-Session-Id"].FirstOrDefault();
+            var sessionId = beforeSessionId ?? afterSessionId;
 
             capturedSessionIds.Add((beforeSessionId, afterSessionId, httpContext.Request.Method));
+
+            // Verify Activity.Current is available and AddTag works (the documented pattern).
+            var activity = System.Diagnostics.Activity.Current;
+            if (sessionId is not null)
+            {
+                activity?.AddTag("mcp.transport.session.id", sessionId);
+            }
+            var tagValue = activity?.GetTagItem("mcp.transport.session.id")?.ToString();
+            capturedActivityTags.Add((tagValue, activity is not null, httpContext.Request.Method));
+
             return result;
         });
 
@@ -682,8 +694,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // The filter ran for at least the initialize, initialized notification, and list_tools POSTs.
-        Assert.True(capturedSessionIds.Count >= 3);
+        // The filter must have observed at least one MCP request. Don't assert an exact
+        // minimum — the initialized notification or GET stream may not have completed yet.
+        Assert.NotEmpty(capturedSessionIds);
 
         if (Stateless)
         {
@@ -693,19 +706,32 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Assert.Null(c.BeforeNext);
                 Assert.Null(c.AfterNext);
             });
+
+            // Activity should exist but no transport session tag in stateless mode.
+            Assert.All(capturedActivityTags, c => Assert.Null(c.TagValue));
         }
         else
         {
             // Stateful mode: response header is set on every POST and GET response.
-            var postAndGetCaptures = capturedSessionIds.Where(c => c.Method is "POST" or "GET");
-            Assert.All(postAndGetCaptures, c =>
+            var postCaptures = capturedSessionIds.Where(c => c.Method is "POST").ToList();
+            Assert.NotEmpty(postCaptures);
+
+            Assert.All(postCaptures, c =>
             {
                 Assert.Equal(client.SessionId, c.AfterNext);
             });
 
             // At least one POST should have the session ID in the request header too
             // (the initialized notification or list_tools — but not the initial initialize request).
-            Assert.Contains(capturedSessionIds, c => c.BeforeNext == client.SessionId);
+            Assert.Contains(postCaptures, c => c.BeforeNext == client.SessionId);
+
+            // Verify Activity.Current was available and the AddTag pattern works.
+            var postActivityTags = capturedActivityTags.Where(c => c.Method is "POST").ToList();
+            Assert.All(postActivityTags, c =>
+            {
+                Assert.True(c.HadActivity, "Activity.Current should be non-null in the endpoint filter");
+                Assert.Equal(client.SessionId, c.TagValue);
+            });
         }
     }
 }
