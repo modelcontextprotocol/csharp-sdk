@@ -7,7 +7,7 @@ uid: sessions
 
 # Sessions
 
-The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to send requests _to_ the client, push unsolicited notifications, or maintain per-client state across requests.
+The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to send requests _to_ the client, push [unsolicited notifications](#how-streamable-http-delivers-messages), or maintain per-client state across requests.
 
 When sessions are enabled (the current C# SDK default), the server creates and tracks an in-memory session for each client, while the client automatically includes the session ID in subsequent requests. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header — this is not optional for the client. Session expiry detection and reconnection are the responsibility of the application using the client SDK (see [Client-side session behavior](#client-side-session-behavior)).
 
@@ -16,7 +16,7 @@ When sessions are enabled (the current C# SDK default), the server creates and t
 **Quick guide — which mode should I use?**
 
 - Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
-- Does your server send unsolicited notifications or support resource subscriptions?  → **Use stateful.**
+- Does your server send [unsolicited notifications](#how-streamable-http-delivers-messages) or support resource subscriptions?  → **Use stateful.**
 - Do you need to support clients that only speak the [legacy SSE transport](#legacy-sse-transport)?  → **Use stateful** with <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default due to [backpressure concerns](#request-backpressure)).
 - Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
 - Are you debugging a typically-stdio server over HTTP and want editors to be able to reset state by reconnecting?  → **Use stateful.**
@@ -24,7 +24,19 @@ When sessions are enabled (the current C# SDK default), the server creates and t
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> **Why isn't stateless the C# SDK default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
+> **Why isn't stateless the C# SDK default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features — see [Forward and backward compatibility](#forward-and-backward-compatibility) for guidance on choosing an explicit setting.
+
+## Forward and backward compatibility
+
+The `Stateless` property is the single most important setting for forward-proofing your MCP server. The current C# SDK default is `Stateless = false` (sessions enabled), but **we expect this default to change** once mechanisms like [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) bring server-to-client interactions (sampling, elicitation, roots) to stateless mode. We recommend every server set `Stateless` explicitly rather than relying on the default:
+
+- **`Stateless = true`** — the best forward-compatible choice. Your server opts out of sessions entirely. No matter how the SDK default changes in the future, your behavior stays the same. If you don't need [unsolicited notifications](#how-streamable-http-delivers-messages), server-to-client requests, or session-scoped state, this is the setting to use today.
+
+- **`Stateless = false`** — the right choice when your server depends on sessions for features like sampling, elicitation, roots, unsolicited notifications, or per-client isolation. Setting this explicitly protects your server from a future default change. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header, so compliant clients will always honor your server's session. Once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or a similar mechanism is available, you may be able to migrate server-to-client interactions to stateless mode and drop sessions entirely — but until then, explicit `Stateless = false` is the safe choice. See [Stateless alternatives for server-to-client interactions](#stateless-alternatives-for-server-to-client-interactions) for more on MRTR.
+
+<!-- mlc-disable-next-line -->
+> [!TIP]
+> If you're not sure which to pick, start with `Stateless = true`. You can switch to `Stateless = false` later if you discover you need server-to-client requests or unsolicited notifications. Either way, setting the property explicitly means your server's behavior won't silently change when the SDK default is updated.
 
 ## Stateless mode (recommended)
 
@@ -61,7 +73,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
   - [Roots](xref:roots) (`RequestRootsAsync`)
 
   The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to bring these capabilities to stateless mode, but it is not yet available.
-- **Unsolicited server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client request.
+- **[Unsolicited](#how-streamable-http-delivers-messages) server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client POST request — see [How Streamable HTTP delivers messages](#how-streamable-http-delivers-messages) for why.
 - **No concurrent client isolation.** Every request is independent — the server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
 - **No state reset on reconnect.** Stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start. If your server holds any external state, you must manage cleanup through other means.
 - [Tasks](xref:tasks) **are supported** — the task store is shared across ephemeral server instances. However, task-augmented sampling and elicitation are disabled because they require server-to-client requests.
@@ -78,11 +90,7 @@ Use stateless mode when your server:
 - Needs to scale horizontally behind a load balancer without session affinity
 - Is deployed to serverless environments (Azure Functions, AWS Lambda, etc.)
 
-Most MCP servers fall into this category. Tools that call APIs, query databases, process data, or return computed results are all natural fits for stateless mode.
-
-<!-- mlc-disable-next-line -->
-> [!TIP]
-> If you're unsure whether you need sessions, start with stateless mode. You can always switch to stateful mode later if you need server-to-client requests or other session features.
+Most MCP servers fall into this category. Tools that call APIs, query databases, process data, or return computed results are all natural fits for stateless mode. See [Forward and backward compatibility](#forward-and-backward-compatibility) for guidance on choosing between stateless and stateful mode.
 
 ### Stateless alternatives for server-to-client interactions
 
@@ -99,7 +107,7 @@ This means servers that need user confirmation, LLM reasoning, or other client i
 When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `false` (the default), the server assigns an `Mcp-Session-Id` to each client during the `initialize` handshake. The client must include this header in all subsequent requests. The server maintains an in-memory session for each connected client, enabling:
 
 - Server-to-client requests (sampling, elicitation, roots) via an open HTTP response stream
-- Unsolicited notifications (resource updates, logging messages)
+- [Unsolicited notifications](#how-streamable-http-delivers-messages) (resource updates, logging messages) via the GET stream
 - Resource subscriptions
 - Session-scoped state (e.g., `RunSessionHandler`, state that persists across multiple requests within a session)
 
@@ -108,7 +116,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
 Use stateful mode when your server needs one or more of:
 
 - **Server-to-client requests**: Tools that call `ElicitAsync`, `SampleAsync`, or `RequestRootsAsync` to interact with the client
-- **Unsolicited notifications**: Sending resource-changed notifications or log messages without a preceding client request
+- **[Unsolicited notifications](#how-streamable-http-delivers-messages)**: Sending resource-changed notifications or log messages outside the context of any active request handler — these require the [GET stream](#how-streamable-http-delivers-messages)
 - **Resource subscriptions**: Clients subscribing to resource changes and receiving updates
 - **Legacy SSE client support**: Clients that only speak the [legacy SSE transport](#legacy-sse-transport) — requires <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default)
 - **Session-scoped state**: Logic that must persist across multiple requests within the same session
@@ -126,7 +134,7 @@ The [deployment considerations](#deployment-considerations) below are real conce
 | **Server restarts** | No impact — each request is independent | All sessions lost; clients must reinitialize |
 | **Memory** | Per-request only | Per-session (default: up to 10,000 sessions × 2 hours) |
 | **Server-to-client requests** | Not supported (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) for a stateless alternative) | Supported (sampling, elicitation, roots) |
-| **Unsolicited notifications** | Not supported | Supported (resource updates, logging) |
+| **[Unsolicited notifications](#how-streamable-http-delivers-messages)** | Not supported | Supported (resource updates, logging) |
 | **Resource subscriptions** | Not supported | Supported |
 | **Client compatibility** | Works with all Streamable HTTP clients | Also supports legacy SSE-only clients via <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default), but some Streamable HTTP clients [may not send `Mcp-Session-Id` correctly](#deployment-considerations) |
 | **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
@@ -137,6 +145,24 @@ The [deployment considerations](#deployment-considerations) below are real conce
 ## Transports and sessions
 
 ### Streamable HTTP
+
+#### How Streamable HTTP delivers messages
+
+Understanding how messages flow between client and server over HTTP is key to understanding why sessions exist and when you can avoid them.
+
+**POST response streams (solicited messages).** Every JSON-RPC request from the client arrives as an HTTP POST. The server holds the POST response body open as a [Server-Sent Events (SSE)](https://html.spec.whatwg.org/multipage/server-sent-events.html) stream and writes messages back to it: the JSON-RPC response, any intermediate messages the handler produces (progress notifications, log messages), and — critically — any **server-to-client requests** the handler makes during execution, such as sampling, elicitation, or roots requests. This is a **solicited** interaction: the client's POST request solicited the server's response, and the server writes everything related to that request into the same HTTP response body. The POST response completes when the final JSON-RPC response is sent.
+
+**The GET stream (unsolicited messages).** The client can optionally open a long-lived HTTP GET request to the same MCP endpoint. This stream is the **only** channel for **unsolicited** messages — notifications or server-to-client requests that the server initiates _outside the context of any active request handler_. For example:
+
+- A resource-changed notification fired by a background file watcher
+- A log message emitted asynchronously after all request handlers have returned
+- A server-to-client request that isn't triggered by a tool call
+
+These messages are "unsolicited" because no client POST solicited them. There is no POST response body to write them to — because outside of POST requests that solicit the server 1:1 with a JSON-RPC request, there is simply no HTTP response body stream available. The GET stream fills this gap.
+
+**No GET stream = messages silently dropped.** Clients are not required to open a GET stream. If the client hasn't opened one, the server has no delivery path for unsolicited messages and silently drops them. This is by design in the [Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) — unsolicited messages are best-effort.
+
+**Why stateless mode can't support unsolicited messages.** In stateless mode, the GET endpoint is not mapped at all. Every message the server sends must be part of a POST response — there is no other HTTP response body to write to. This is also why server-to-client requests (sampling, elicitation, roots) are disabled: the server could initiate a request down the POST response stream during a handler, but the client's response to that request would arrive as a _new_ POST — which in stateless mode creates a completely independent server context with no connection to the original handler. The server has no way to correlate the client's reply with the handler that asked the question. Sessions solve this by keeping the handler alive across multiple HTTP round-trips within the same in-memory session.
 
 #### Session lifecycle
 

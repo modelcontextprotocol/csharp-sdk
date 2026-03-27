@@ -131,7 +131,13 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. See [Sessions](xref:sessions) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:sessions#cancellation-and-disposal) behavior during shutdown.
+By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. We recommend setting `Stateless` explicitly (rather than relying on the current default) for [forward compatibility](xref:sessions#forward-and-backward-compatibility). See [Sessions](xref:sessions) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:sessions#cancellation-and-disposal) behavior during shutdown.
+
+#### How messages flow
+
+In Streamable HTTP, client requests arrive as HTTP POST requests. The server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each POST holds its connection until the handler completes.
+
+In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:sessions#how-streamable-http-delivers-messages) for a detailed breakdown.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
@@ -178,7 +184,11 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** due to [backpressure concerns](xref:sessions#request-backpressure). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true`. SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9003`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+
+**Why SSE is disabled by default.** The SSE transport separates request and response channels: clients POST JSON-RPC messages to `/message` and receive all responses through a long-lived GET SSE stream on `/sse`. Because the POST endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each POST response open until the handler finishes, providing natural backpressure. See [Request backpressure](xref:sessions#request-backpressure) for a detailed comparison and mitigations if you must use SSE.
+
+To enable legacy SSE, set `EnableLegacySse` to `true`:
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -205,7 +215,7 @@ app.MapMcp();
 app.Run();
 ```
 
-See [Sessions — Legacy SSE transport](xref:sessions#legacy-sse-transport) for details on SSE session lifetime, configuration, and backpressure implications.
+See [Sessions — Legacy SSE transport](xref:sessions#legacy-sse-transport) for details on SSE session lifetime and configuration.
 
 ### Transport mode comparison
 
@@ -216,6 +226,7 @@ See [Sessions — Legacy SSE transport](xref:sessions#legacy-sse-transport) for 
 | Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
 | Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
 | Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
+| Backpressure | Implicit (stdin/stdout flow control) | ✓ (POST held open until handler completes) | ✓ (POST held open until handler completes) | ✗ (POST returns 202 immediately — see [backpressure](xref:sessions#request-backpressure)) |
 | Session resumption | N/A | N/A | ✓ | ✗ |
 | Horizontal scaling | N/A | No constraints | Requires session affinity | Requires session affinity |
 | Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
