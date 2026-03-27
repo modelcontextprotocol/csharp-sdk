@@ -9,4 +9,6 @@ internal static class McpAttributeNames
     public const string McpServerPromptAttribute = "ModelContextProtocol.Server.McpServerPromptAttribute";
     public const string McpServerResourceAttribute = "ModelContextProtocol.Server.McpServerResourceAttribute";
     public const string DescriptionAttribute = "System.ComponentModel.DescriptionAttribute";
+    public const string HttpMcpServerBuilderExtensions = "Microsoft.Extensions.DependencyInjection.HttpMcpServerBuilderExtensions";
+    public const string HttpServerTransportOptions = "ModelContextProtocol.AspNetCore.HttpServerTransportOptions";
 }
