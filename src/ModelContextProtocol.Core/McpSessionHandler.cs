@@ -583,15 +583,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, request, method, target);
             }
 
-            if (_logger.IsEnabled(LogLevel.Trace))
-            {
-                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-            }
-            else
-            {
-                LogSendingRequest(EndpointName, request.Method);
-            }
-
             await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
@@ -678,29 +669,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            await _outgoingMessageFilter(async (msg, ct) =>
+            await SendToRelatedTransportAsync(message, cancellationToken).ConfigureAwait(false);
+
+            // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
+            // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
+            // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
+            if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
+                GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
+                _pendingRequests.TryRemove(cn.RequestId, out var tcs))
             {
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-                }
-                else
-                {
-                    LogSendingMessage(EndpointName);
-                }
-
-                await SendToRelatedTransportAsync(msg, ct).ConfigureAwait(false);
-
-                // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
-                // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
-                // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
-                if (msg is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-                    GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
-                    _pendingRequests.TryRemove(cn.RequestId, out var tcs))
-                {
-                    tcs.TrySetCanceled(default);
-                }
-            })(message, cancellationToken).ConfigureAwait(false);
+                tcs.TrySetCanceled(default);
+            }
         }
         catch (Exception ex) when (addTags)
         {
@@ -717,7 +696,33 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     // Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
     // the HTTP response body for the POST request containing the corresponding JSON-RPC request.
     private Task SendToRelatedTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
-        => (message.Context?.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
+        => _outgoingMessageFilter((msg, ct) =>
+        {
+            if (msg is JsonRpcRequest request)
+            {
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+                }
+                else
+                {
+                    LogSendingRequest(EndpointName, request.Method);
+                }
+            }
+            else
+            {
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+                }
+                else
+                {
+                    LogSendingMessage(EndpointName);
+                }
+            }
+
+            return (msg.Context?.RelatedTransport ?? _transport).SendMessageAsync(msg, ct);
+        })(message, cancellationToken);
 
     private static CancelledNotificationParams? GetCancelledNotificationParams(JsonNode? notificationParams)
     {

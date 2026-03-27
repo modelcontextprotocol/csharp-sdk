@@ -212,7 +212,7 @@ builder.Services.AddMcpServer()
     .WithResources<MyResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             // Track the subscription (e.g., in a concurrent dictionary)
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
@@ -221,7 +221,7 @@ builder.Services.AddMcpServer()
     })
     .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
         }

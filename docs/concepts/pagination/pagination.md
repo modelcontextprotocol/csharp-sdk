@@ -77,7 +77,7 @@ builder.Services.AddMcpServer()
         int startIndex = 0;
 
         // Parse cursor to determine starting position
-        if (ctx.Params?.Cursor is { } cursor)
+        if (ctx.Params.Cursor is { } cursor)
         {
             startIndex = int.Parse(cursor);
         }

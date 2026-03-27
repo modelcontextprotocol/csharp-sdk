@@ -15,7 +15,7 @@ public class LongRunningTools
         int duration = 10,
         int steps = 5)
     {
-        var progressToken = context.Params?.ProgressToken;
+        var progressToken = context.Params.ProgressToken;
         var stepDuration = duration / steps;
 
         for (int i = 1; i <= steps; i++)

@@ -907,7 +907,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             return await CallToolAsync(
@@ -1037,7 +1037,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             var result = await SendRequestAsync(
