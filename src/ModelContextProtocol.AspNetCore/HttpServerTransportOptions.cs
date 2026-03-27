@@ -152,8 +152,14 @@ public class HttpServerTransportOptions
     /// The amount of time the server waits between any active requests before timing out an MCP session. The default is 2 hours.
     /// </value>
     /// <remarks>
+    /// <para>
     /// This value is checked in the background every 5 seconds. A client trying to resume a session will receive a 404 status code
     /// and should restart their session. A client can keep their session open by keeping a GET request open.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are not subject to this timeout — their lifetime is
+    /// tied to the open GET <c>/sse</c> request, and they are removed immediately when the client disconnects.
+    /// </para>
     /// </remarks>
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
@@ -164,9 +170,16 @@ public class HttpServerTransportOptions
     /// The maximum number of idle sessions to track in memory. The default is 10,000 sessions.
     /// </value>
     /// <remarks>
+    /// <para>
     /// Past this limit, the server logs a critical error and terminates the oldest idle sessions, even if they have not reached
     /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Sessions with any active HTTP request
     /// are not considered idle and don't count towards this limit.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are never considered idle because their lifetime is
+    /// tied to the open GET <c>/sse</c> request. They are not subject to <see cref="IdleTimeout"/> or this limit — they exist
+    /// exactly as long as the SSE connection is open.
+    /// </para>
     /// </remarks>
     public int MaxIdleSessionCount { get; set; } = 10_000;
 
