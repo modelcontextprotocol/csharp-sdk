@@ -482,7 +482,7 @@ How well the server is protected against a flood of concurrent requests depends 
 In the default configuration, each JSON-RPC request holds its POST response open until the handler produces a result. The POST response body is an SSE stream that carries the JSON-RPC response, and the server awaits the handler's completion before closing it. This means:
 
 - Each in-flight handler occupies one HTTP/2 stream
-- Kestrel's `MaxStreamsPerConnection` (default: **100**) limits concurrent handlers per connection
+- The HTTP server's `MaxStreamsPerConnection` (default: **100** in Kestrel) limits concurrent handlers per connection
 - This is the same backpressure model as **gRPC unary calls** — one request occupies one stream until the response is sent
 
 One difference from gRPC: handler cancellation tokens are linked to the **session** lifetime, not `HttpContext.RequestAborted`. If a client disconnects from a POST mid-flight, the handler continues running until it completes or the session is terminated. But the client has freed a stream slot, so it can submit a new request — meaning the server could accumulate up to `MaxStreamsPerConnection` handlers that outlive their original connections. In practice this is bounded and comparable to how gRPC handlers behave when the client cancels an RPC.
@@ -534,8 +534,8 @@ Stateless mode provides the same HTTP-level backpressure as default stateful mod
 
 | Configuration | POST held open? | Backpressure mechanism | Concurrent handler limit per connection |
 |---|---|---|---|
-| **Stateless** | Yes (handler = request) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
-| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams, Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateless** | Yes (handler = request) | HTTP/2 streams, server timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams, server timeouts | `MaxStreamsPerConnection` (default: 100) |
 | **SSE (legacy — opt-in)** | No (returns 202 Accepted) | None built-in; GET stream provides cleanup | Unbounded — apply rate limiting |
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
 | **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
