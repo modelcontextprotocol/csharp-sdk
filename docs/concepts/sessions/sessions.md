@@ -486,6 +486,14 @@ One difference from gRPC: handler cancellation tokens are linked to the **sessio
 
 For comparison, ASP.NET Core SignalR limits concurrent hub invocations per client to **1** by default (`MaximumParallelInvocationsPerClient`). Default stateful MCP is less restrictive but still bounded by HTTP/2 stream limits.
 
+#### SSE (legacy)
+
+The legacy SSE transport separates the request and response channels: clients POST JSON-RPC messages to `/message` and receive responses through a long-lived GET SSE stream on `/sse`. The POST endpoint returns **202 Accepted immediately** after queuing the message — it does not wait for the handler to complete. This means there is **no HTTP-level backpressure** on handler concurrency, because each POST frees its connection immediately regardless of how long the handler runs.
+
+Internally, handlers are dispatched with the same fire-and-forget pattern as Streamable HTTP (`_ = ProcessMessageAsync()`). A client can send unlimited POST requests to `/message` while keeping the GET stream open, and each one spawns a concurrent handler with no built-in limit.
+
+The GET stream does provide **session lifetime bounds**: handler cancellation tokens are linked to the GET request's `HttpContext.RequestAborted`, so when the client disconnects the SSE stream, all in-flight handlers are cancelled. This is similar to SignalR's connection-bound lifetime model — but unlike SignalR, there is no per-client concurrency limit like `MaximumParallelInvocationsPerClient`. The GET stream provides cleanup on disconnect, not rate-limiting during the connection.
+
 #### With EventStreamStore
 
 <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> is an advanced API that enables session resumability — storing SSE events so clients can reconnect and replay missed messages using the `Last-Event-ID` header. When configured, handlers gain the ability to call `EnablePollingAsync()`, which closes the POST response early and switches the client to polling mode.
@@ -523,6 +531,7 @@ Stateless mode has the strongest backpressure story. Each handler's lifetime is 
 |---|---|---|---|
 | **Stateless** | Yes (handler = request) | HTTP/2 streams + Kestrel timeouts | `MaxStreamsPerConnection` (default: 100) |
 | **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams | `MaxStreamsPerConnection` (default: 100) |
+| **SSE (legacy)** | No (returns 202 Accepted) | None built-in; GET stream provides cleanup | Unbounded — apply rate limiting |
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
 | **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
 
