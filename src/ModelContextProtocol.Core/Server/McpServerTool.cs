@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
 
@@ -156,6 +157,13 @@ public abstract class McpServerTool : IMcpServerPrimitive
 
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the tool defers task creation, allowing
+    /// ephemeral MRTR exchanges before committing to a background task.
+    /// </summary>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public virtual bool DeferTaskCreation => false;
 
     /// <summary>
     /// Gets the metadata for this tool instance.

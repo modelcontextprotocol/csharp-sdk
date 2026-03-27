@@ -480,12 +480,25 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is not null)
         {
-            message.Context = new()
+            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+            var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+
+            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
             {
-                User = context.User,
-            };
+                message.Context ??= new();
+
+                if (isAuthenticated)
+                {
+                    message.Context.User = context.User;
+                }
+
+                if (!string.IsNullOrEmpty(protocolVersion))
+                {
+                    message.Context.ProtocolVersion = protocolVersion;
+                }
+            }
         }
 
         return message;
@@ -520,11 +533,12 @@ internal sealed class StreamableHttpHandler(
     /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,
     /// but an invalid or unsupported value must be rejected with 400 Bad Request per the MCP spec.
     /// </summary>
-    private static bool ValidateProtocolVersionHeader(HttpContext context, out string? errorMessage)
+    private bool ValidateProtocolVersionHeader(HttpContext context, out string? errorMessage)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
-            !s_supportedProtocolVersions.Contains(protocolVersionHeader))
+            !s_supportedProtocolVersions.Contains(protocolVersionHeader) &&
+            !(mcpServerOptionsSnapshot.Value.ExperimentalProtocolVersion is { } experimentalVersion && protocolVersionHeader == experimentalVersion))
         {
             errorMessage = $"Bad Request: The MCP-Protocol-Version header value '{protocolVersionHeader}' is not supported.";
             return false;

@@ -32,6 +32,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>
+    /// The experimental protocol version that enables MRTR (Multi Round-Trip Requests).
+    /// This version is not in <see cref="SupportedProtocolVersions"/> and is only accepted
+    /// when <see cref="McpServerOptions.ExperimentalProtocolVersion"/> or
+    /// <see cref="McpClientOptions.ExperimentalProtocolVersion"/> is set to this value.
+    /// </summary>
+    internal const string ExperimentalProtocolVersion = "2026-06-XX";
+
+    /// <summary>
     /// All protocol versions supported by this implementation.
     /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
     /// </summary>
@@ -585,7 +593,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
+            await _outgoingMessageFilter(SendToRelatedTransportAsync)(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
@@ -642,6 +650,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
+
+        if (message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' request via {nameof(SendMessageAsync)}. " +
+                $"Use {nameof(SendRequestAsync)} instead to get a correlated response.");
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
 

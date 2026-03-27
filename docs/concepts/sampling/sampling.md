@@ -117,3 +117,76 @@ McpClientOptions options = new()
 ### Capability negotiation
 
 Sampling requires the client to advertise the `sampling` capability. This is handled automatically — when a <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> is set, the client includes the sampling capability during initialization. The server can check whether the client supports sampling before calling <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>; if sampling is not supported, the method throws <xref:System.InvalidOperationException>.
+
+### Multi Round-Trip Requests (MRTR)
+
+When both the client and server opt in to the experimental [MRTR](xref:mrtr) protocol, sampling requests are handled via incomplete result / retry instead of a direct JSON-RPC request. This is transparent — the existing `SampleAsync` and `AsSamplingChatClient` APIs work identically regardless of whether MRTR is active.
+
+#### High-level API
+
+No code changes are needed. `SampleAsync` and `AsSamplingChatClient` automatically use MRTR when both sides have opted in, and fall back to legacy JSON-RPC requests otherwise:
+
+```csharp
+// This code works the same with or without MRTR — the SDK handles it transparently.
+var result = await server.SampleAsync(
+    new CreateMessageRequestParams
+    {
+        Messages =
+        [
+            new SamplingMessage
+            {
+                Role = Role.User,
+                Content = [new TextContentBlock { Text = "Summarize the data" }]
+            }
+        ],
+        MaxTokens = 256,
+    },
+    cancellationToken);
+```
+
+#### Low-level API
+
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with a sampling input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+
+```csharp
+[McpServerTool, Description("Tool that samples via low-level MRTR")]
+public static string SampleWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's sampling response
+    if (context.Params!.InputResponses?.TryGetValue("llm_call", out var response) is true)
+    {
+        var text = response.SamplingResult?.Content
+            .OfType<TextContentBlock>().FirstOrDefault()?.Text;
+        return $"LLM said: {text}";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support.";
+    }
+
+    // First call — request LLM completion from the client
+    throw new IncompleteResultException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["llm_call"] = InputRequest.ForSampling(new CreateMessageRequestParams
+            {
+                Messages =
+                [
+                    new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content = [new TextContentBlock { Text = "Summarize the data" }]
+                    }
+                ],
+                MaxTokens = 256
+            })
+        },
+        requestState: "awaiting-sample");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.

@@ -158,6 +158,7 @@ public sealed class McpServerToolAttribute : Attribute
     internal bool? _openWorld;
     internal bool? _readOnly;
     internal ToolTaskSupport? _taskSupport;
+    internal bool? _deferTaskCreation;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerToolAttribute"/> class.
@@ -324,5 +325,29 @@ public sealed class McpServerToolAttribute : Attribute
     {
         get => _taskSupport ?? ToolTaskSupport.Forbidden;
         set => _taskSupport = value;
+    }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the tool defers task creation, allowing
+    /// ephemeral MRTR exchanges before committing to a background task via
+    /// <see cref="McpServer.CreateTaskAsync(CancellationToken)"/>.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the tool handler can perform MRTR interactions before
+    /// deciding whether to create a task; <see langword="false"/> if a task is created
+    /// immediately when the client provides task metadata.
+    /// The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// When enabled and the client provides task metadata, the handler runs through the
+    /// normal MRTR-wrapped path. The handler may call
+    /// <see cref="McpServer.CreateTaskAsync(CancellationToken)"/> to transition to a
+    /// background task, or it may return a normal result without creating a task.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public bool DeferTaskCreation
+    {
+        get => _deferTaskCreation ?? false;
+        set => _deferTaskCreation = value;
     }
 }
