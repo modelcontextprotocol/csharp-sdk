@@ -7,7 +7,9 @@ uid: sessions
 
 # Sessions
 
-The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. Sessions enable features like server-to-client requests (sampling, elicitation, roots), unsolicited notifications, resource subscriptions, and session-scoped state. Both the server and client participate in session management — the server creates and tracks sessions, while the client automatically includes the session ID in subsequent requests, detects session expiry, and can resume sessions across reconnections. **Most servers don't need sessions and should run in stateless mode** to avoid unnecessary complexity, memory overhead, and deployment constraints.
+The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to send requests _to_ the client, push unsolicited notifications, or maintain per-client state across requests.
+
+When sessions are enabled (the current C# SDK default), the server creates and tracks an in-memory session for each client, while the client automatically includes the session ID in subsequent requests. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header — this is not optional for the client. Session expiry detection and reconnection are the responsibility of the application using the client SDK (see [Client-side session behavior](#client-side-session-behavior)).
 
 [Streamable HTTP transport]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
 
@@ -22,7 +24,7 @@ The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to asso
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> **Why isn't stateless the default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
+> **Why isn't stateless the C# SDK default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features. If your server _does_ depend on stateful behavior, consider setting `Stateless = false` explicitly so your code is resilient to a potential future default change once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or similar mechanisms bring server-to-client interactions to stateless mode.
 
 ## Stateless mode (recommended)
 
