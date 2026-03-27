@@ -1138,6 +1138,19 @@ internal sealed partial class McpServerImpl : McpServer
         // Execute the tool asynchronously in the background
         _ = Task.Run(async () =>
         {
+            // When per-request service scoping is enabled, InvokeHandlerAsync creates a new
+            // IServiceScope and disposes it once the handler returns. Since ExecuteToolAsTaskAsync
+            // returns immediately (before the tool runs), the scope is disposed before the tool
+            // gets a chance to resolve any DI services. Create a fresh scope here, tied to this
+            // background task's lifetime, so the tool's DI resolution uses a live provider.
+            var taskScope = _servicesScopePerRequest
+                ? Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope()
+                : null;
+            if (taskScope is not null)
+            {
+                request.Services = taskScope.Value.ServiceProvider;
+            }
+
             // Set up the task execution context for automatic input_required status tracking
             TaskExecutionContext.Current = new TaskExecutionContext
             {
@@ -1233,6 +1246,12 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Clean up task cancellation tracking
                 _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
+
+                // Dispose the per-task service scope (if one was created)
+                if (taskScope is not null)
+                {
+                    await taskScope.Value.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }, CancellationToken.None);
 
