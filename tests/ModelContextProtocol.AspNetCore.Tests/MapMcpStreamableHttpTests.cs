@@ -119,6 +119,27 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
+    public async Task SseEndpoints_AreDisabled_InStatelessMode_EvenWithEnableLegacySse()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.Stateless = true;
+            options.EnableLegacySse = true;
+        });
+        await using var app = Builder.Build();
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var sseResponse = await HttpClient.GetAsync("/sse", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, sseResponse.StatusCode);
+
+        using var messageResponse = await HttpClient.PostAsync("/message", new StringContent(""), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, messageResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task AutoDetectMode_Works_WithSseEndpoint()
     {
         Assert.SkipWhen(Stateless, "SSE endpoint is disabled in stateless mode.");
