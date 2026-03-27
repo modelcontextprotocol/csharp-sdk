@@ -36,3 +36,4 @@ When APIs are marked as obsolete, a diagnostic is emitted to warn users that the
 | :------------ | :----- | :---------- |
 | `MCP9001` | In place | The `EnumSchema` and `LegacyTitledEnumSchema` APIs are deprecated as of specification version 2025-11-25. Use the current schema APIs instead. |
 | `MCP9002` | Removed | The `AddXxxFilter` extension methods on `IMcpServerBuilder` (e.g., `AddListToolsFilter`, `AddCallToolFilter`, `AddIncomingMessageFilter`) were superseded by `WithRequestFilters()` and `WithMessageFilters()`. |
+| `MCP9003` | In place | The `RequestContext<TParams>(McpServer, JsonRpcRequest)` constructor is obsolete. Use the overload that accepts a `parameters` argument: `RequestContext<TParams>(McpServer, JsonRpcRequest, TParams)`. |

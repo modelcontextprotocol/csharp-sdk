@@ -954,7 +954,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, jsonRpcRequest, cancellationToken);
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
@@ -966,17 +966,17 @@ internal sealed partial class McpServerImpl : McpServer
 
     private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
         McpRequestHandler<TParams, TResult> handler,
-        TParams? args,
+        TParams args,
         JsonRpcRequest jsonRpcRequest,
         CancellationToken cancellationToken = default)
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, jsonRpcRequest, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
+            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest, args), cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             McpRequestHandler<TParams, TResult> handler,
-            TParams? args,
+            TParams args,
             JsonRpcRequest jsonRpcRequest,
             CancellationToken cancellationToken)
         {
@@ -984,10 +984,9 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest)
+                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest, args)
                     {
                         Services = scope?.ServiceProvider ?? Services,
-                        Params = args
                     },
                     cancellationToken).ConfigureAwait(false);
             }

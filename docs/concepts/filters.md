@@ -317,7 +317,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
     {
         var logger = context.Services?.GetService<ILogger<Program>>();
 
-        logger?.LogInformation($"Processing request from {context.Params?.ProgressToken}");
+        logger?.LogInformation($"Processing request from {context.Params.ProgressToken}");
         var result = await next(context, cancellationToken);
         logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools");
         return result;
@@ -339,7 +339,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
         catch (Exception ex)
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
-            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Params?.ProgressToken);
+            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Params.ProgressToken);
 
             return new CallToolResult
             {
