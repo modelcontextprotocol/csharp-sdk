@@ -459,7 +459,7 @@ public class Program
         }
 
         builder.Services.AddMcpServer(ConfigureOptions)
-            .WithHttpTransport();
+            .WithHttpTransport(options => options.EnableLegacySse = true);
 
         var app = builder.Build();
 

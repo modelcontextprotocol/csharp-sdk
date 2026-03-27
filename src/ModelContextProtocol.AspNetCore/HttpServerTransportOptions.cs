@@ -17,6 +17,11 @@ public class HttpServerTransportOptions
     /// Gets or sets an optional asynchronous callback to configure per-session <see cref="McpServerOptions"/>
     /// with access to the <see cref="HttpContext"/> of the request that initiated the session.
     /// </summary>
+    /// <remarks>
+    /// In stateful mode (the default), this callback is invoked once per session when the client sends the
+    /// <c>initialize</c> request. In <see cref="Stateless"/> mode, it is invoked on <b>every HTTP request</b>
+    /// because each request creates a fresh server context.
+    /// </remarks>
     public Func<HttpContext, McpServerOptions, CancellationToken, Task>? ConfigureSessionOptions { get; set; }
 
     /// <summary>
@@ -55,6 +60,40 @@ public class HttpServerTransportOptions
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </remarks>
     public bool Stateless { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
+    /// for backward compatibility with clients that do not support the Streamable HTTP transport.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to map the legacy SSE endpoints; <see langword="false"/> to disable them. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The legacy SSE transport separates request and response channels: clients POST JSON-RPC messages
+    /// to <c>/message</c> and receive responses through a long-lived GET SSE stream on <c>/sse</c>.
+    /// Because the POST endpoint returns <c>202 Accepted</c> immediately, there is no HTTP-level
+    /// backpressure on handler concurrency — unlike Streamable HTTP, where each POST is held open
+    /// until the handler responds.
+    /// </para>
+    /// <para>
+    /// Use Streamable HTTP instead whenever possible. If you must support legacy SSE clients,
+    /// enable this property only for completely trusted clients in isolated processes, and apply
+    /// HTTP rate-limiting middleware and reverse proxy limits to compensate for the lack of
+    /// built-in backpressure.
+    /// </para>
+    /// <para>
+    /// Setting this to <see langword="true"/> while <see cref="Stateless"/> is also <see langword="true"/>
+    /// throws an <see cref="InvalidOperationException"/> at startup, because SSE requires in-memory session state.
+    /// </para>
+    /// <para>
+    /// This property can also be enabled via the <c>ModelContextProtocol.AspNetCore.EnableLegacySse</c>
+    /// <see cref="AppContext"/> switch.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.EnableLegacySse_Message, DiagnosticId = Obsoletions.EnableLegacySse_DiagnosticId, UrlFormat = Obsoletions.EnableLegacySse_Url)]
+    public bool EnableLegacySse { get; set; } =
+        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.EnableLegacySse", out var enabled) && enabled;
 
     /// <summary>
     /// Gets or sets the event store for resumability support.
@@ -114,8 +153,14 @@ public class HttpServerTransportOptions
     /// The amount of time the server waits between any active requests before timing out an MCP session. The default is 2 hours.
     /// </value>
     /// <remarks>
+    /// <para>
     /// This value is checked in the background every 5 seconds. A client trying to resume a session will receive a 404 status code
     /// and should restart their session. A client can keep their session open by keeping a GET request open.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are not subject to this timeout — their lifetime is
+    /// tied to the open GET <c>/sse</c> request, and they are removed immediately when the client disconnects.
+    /// </para>
     /// </remarks>
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
@@ -126,9 +171,16 @@ public class HttpServerTransportOptions
     /// The maximum number of idle sessions to track in memory. The default is 10,000 sessions.
     /// </value>
     /// <remarks>
+    /// <para>
     /// Past this limit, the server logs a critical error and terminates the oldest idle sessions, even if they have not reached
-    /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Clients that keep their session open by
-    /// keeping a GET request open don't count towards this limit.
+    /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Sessions with any active HTTP request
+    /// are not considered idle and don't count towards this limit.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are never considered idle because their lifetime is
+    /// tied to the open GET <c>/sse</c> request. They are not subject to <see cref="IdleTimeout"/> or this limit — they exist
+    /// exactly as long as the SSE connection is open.
+    /// </para>
     /// </remarks>
     public int MaxIdleSessionCount { get; set; } = 10_000;
 

@@ -57,7 +57,7 @@ await using var client = await McpClient.CreateAsync(transport, options);
 
 ### Requesting roots from the server
 
-Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>:
+Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended).
 
 ```csharp
 [McpServerTool, Description("Lists the user's project roots")]

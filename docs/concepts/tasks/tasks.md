@@ -64,7 +64,7 @@ builder.Services.AddMcpServer(options =>
     // Enable tasks by providing a task store
     options.TaskStore = taskStore;
 })
-.WithHttpTransport()
+.WithHttpTransport(o => o.Stateless = true)
 .WithTools<MyTools>();
 ```
 
@@ -566,7 +566,7 @@ builder.Services.AddMcpServer(options =>
 {
     options.TaskStore = taskStore;
 })
-.WithHttpTransport()
+.WithHttpTransport(o => o.Stateless = true)
 .WithTools<TaskTools>();
 ```
 

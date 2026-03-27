@@ -5,7 +5,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
     .WithTools<LongRunningTools>();
 
 builder.Logging.AddConsole(options =>

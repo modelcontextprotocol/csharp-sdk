@@ -74,7 +74,7 @@ Register resource types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithResources<MyResources>()
     .WithResources<DocumentResources>();
 ```
@@ -208,7 +208,9 @@ Register subscription handlers when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    // Subscriptions require stateful mode because the server pushes change notifications
+    // to clients. Set Stateless = false explicitly for forward compatibility.
+    .WithHttpTransport(o => o.Stateless = false)
     .WithResources<MyResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
