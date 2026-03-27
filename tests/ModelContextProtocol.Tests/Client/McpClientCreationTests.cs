@@ -104,16 +104,16 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
     }
 
     [Fact]
-    public async Task CreateAsync_TransportChannelClosed_ThrowsTransportClosedException()
+    public async Task CreateAsync_TransportChannelClosed_ThrowsClientTransportClosedException()
     {
-        // Arrange - transport completes its read channel with TransportClosedException
+        // Arrange - transport completes its read channel with ClientTransportClosedException
         // when the client tries to send the initialize request (simulating a server process
         // exit detected by the reader loop). SendMessageAsync returns successfully —
         // only the read side fails.
         var transport = new ChannelClosedDuringInitTransport();
 
         // Act & Assert
-        var ex = await Assert.ThrowsAsync<TransportClosedException>(
+        var ex = await Assert.ThrowsAsync<ClientTransportClosedException>(
             () => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         var details = Assert.IsType<StdioClientCompletionDetails>(ex.Details);
@@ -132,8 +132,8 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
     public async Task CreateAsync_SendFails_PropagatesOriginalIOException()
     {
         // Arrange - transport throws IOException from SendMessageAsync, but the channel
-        // is not completed with TransportClosedException. The original IOException should
-        // propagate without being wrapped in TransportClosedException.
+        // is not completed with ClientTransportClosedException. The original IOException should
+        // propagate without being wrapped in ClientTransportClosedException.
         var transport = new SendFailsDuringInitTransport();
 
         // Act & Assert
@@ -230,7 +230,7 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
         public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             // Simulate the server process exiting: complete the channel with a
-            // TransportClosedException carrying structured completion details.
+            // ClientTransportClosedException carrying structured completion details.
             // The send itself succeeds — the failure comes from the read side.
             var details = new StdioClientCompletionDetails
             {
@@ -240,14 +240,14 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
                 Exception = new IOException("MCP server process exited unexpectedly (exit code: 42)"),
             };
 
-            _channel.Writer.TryComplete(new TransportClosedException(details));
+            _channel.Writer.TryComplete(new ClientTransportClosedException(details));
             return Task.CompletedTask;
         }
     }
 
     /// <summary>
     /// Simulates a transport where SendMessageAsync throws IOException but the channel
-    /// doesn't carry a TransportClosedException (e.g., a write pipe break without structured details).
+    /// doesn't carry a ClientTransportClosedException (e.g., a write pipe break without structured details).
     /// </summary>
     private sealed class SendFailsDuringInitTransport : NopTransport
     {

@@ -4,7 +4,7 @@ using System.Threading.Channels;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// An <see cref="IOException"/> that indicates the transport was closed, carrying
+/// An <see cref="IOException"/> that indicates the client transport was closed, carrying
 /// structured <see cref="ClientCompletionDetails"/> about why the closure occurred.
 /// </summary>
 /// <remarks>
@@ -25,7 +25,7 @@ namespace ModelContextProtocol.Client;
 /// <see cref="ChannelWriter{T}"/> with this exception.
 /// </para>
 /// </remarks>
-public sealed class TransportClosedException(ClientCompletionDetails details) :
+public sealed class ClientTransportClosedException(ClientCompletionDetails details) :
     IOException(details.Exception?.Message ?? "The transport was closed.", details.Exception)
 {
     /// <summary>

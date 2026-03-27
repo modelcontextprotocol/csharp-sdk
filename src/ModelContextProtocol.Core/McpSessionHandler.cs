@@ -156,7 +156,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <summary>
     /// Gets a task that completes when the client session has completed, providing details about the closure.
     /// Completion details are resolved from the transport's channel completion exception: if a transport
-    /// completes its channel with a <see cref="TransportClosedException"/>, the wrapped
+    /// completes its channel with a <see cref="ClientTransportClosedException"/>, the wrapped
     /// <see cref="ClientCompletionDetails"/> is unwrapped. Otherwise, a default instance is returned.
     /// </summary>
     internal Task<ClientCompletionDetails> CompletionTask => 
@@ -325,7 +325,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             }
 
             // Fail any pending requests, as they'll never be satisfied.
-            // If the transport's channel was completed with a TransportClosedException,
+            // If the transport's channel was completed with a ClientTransportClosedException,
             // propagate it so callers can access the structured completion details.
             Exception pendingException =
                 _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion &&
@@ -341,7 +341,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Resolves <see cref="ClientCompletionDetails"/> from the transport's channel completion.
-    /// If the channel was completed with a <see cref="TransportClosedException"/>, the wrapped
+    /// If the channel was completed with a <see cref="ClientTransportClosedException"/>, the wrapped
     /// details are returned. Otherwise a default instance is created from the completion state.
     /// </summary>
     private static async Task<ClientCompletionDetails> GetCompletionDetailsAsync(Task channelCompletion)
@@ -351,7 +351,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             await channelCompletion.ConfigureAwait(false);
             return new ClientCompletionDetails();
         }
-        catch (TransportClosedException tce)
+        catch (ClientTransportClosedException tce)
         {
             return tce.Details;
         }
@@ -944,7 +944,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             catch
             {
                 // Ignore exceptions from the message processing loop. It may fault with
-                // OperationCanceledException on normal shutdown or TransportClosedException
+                // OperationCanceledException on normal shutdown or ClientTransportClosedException
                 // when the transport's channel completes with an error.
             }
         }

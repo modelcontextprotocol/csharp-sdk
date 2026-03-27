@@ -129,7 +129,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails()));
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 
@@ -190,7 +190,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             else
             {
-                SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails
+                SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails
                 {
                     HttpStatusCode = failureStatusCode,
                     Exception = ex,
@@ -203,7 +203,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails()));
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 

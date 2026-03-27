@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Tests.Client;
 public class ClientCompletionDetailsTests
 {
     [Fact]
-    public void TransportClosedException_ExposesDetails()
+    public void ClientTransportClosedException_ExposesDetails()
     {
         var details = new StdioClientCompletionDetails
         {
@@ -15,7 +15,7 @@ public class ClientCompletionDetailsTests
             Exception = new IOException("process exited"),
         };
 
-        var exception = new TransportClosedException(details);
+        var exception = new ClientTransportClosedException(details);
 
         Assert.IsType<StdioClientCompletionDetails>(exception.Details);
         var stdioDetails = (StdioClientCompletionDetails)exception.Details;
@@ -27,11 +27,11 @@ public class ClientCompletionDetailsTests
     }
 
     [Fact]
-    public void TransportClosedException_WithNullException_HasDefaultMessage()
+    public void ClientTransportClosedException_WithNullException_HasDefaultMessage()
     {
         var details = new ClientCompletionDetails();
 
-        var exception = new TransportClosedException(details);
+        var exception = new ClientTransportClosedException(details);
 
         Assert.Equal("The transport was closed.", exception.Message);
         Assert.Null(exception.InnerException);
@@ -39,11 +39,11 @@ public class ClientCompletionDetailsTests
     }
 
     [Fact]
-    public void TransportClosedException_IsIOException()
+    public void ClientTransportClosedException_IsIOException()
     {
         var details = new ClientCompletionDetails();
-        IOException exception = new TransportClosedException(details);
-        Assert.IsType<TransportClosedException>(exception);
+        IOException exception = new ClientTransportClosedException(details);
+        Assert.IsType<ClientTransportClosedException>(exception);
     }
 
     [Fact]

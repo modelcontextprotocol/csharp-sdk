@@ -53,7 +53,7 @@ public abstract partial class McpClient : McpSession
         {
             await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException and not TransportClosedException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not ClientTransportClosedException)
         {
             // ConnectAsync already disposed the session (which includes awaiting Completion).
             // Check if the transport provided structured completion details indicating
@@ -63,14 +63,14 @@ public abstract partial class McpClient : McpSession
 
             // If the transport closed with a non-graceful error (e.g., server process exited)
             // and the completion details carry an exception that's NOT already in the original
-            // exception chain, throw a TransportClosedException with the structured details so
+            // exception chain, throw a ClientTransportClosedException with the structured details so
             // callers can programmatically inspect the closure reason (exit code, stderr, etc.).
             // When the same exception is already in the chain (e.g., HttpRequestException from
             // an HTTP transport), the original exception is more appropriate to re-throw.
             if (completionDetails.Exception is { } detailsException &&
                 !ExceptionChainContains(ex, detailsException))
             {
-                throw new TransportClosedException(completionDetails);
+                throw new ClientTransportClosedException(completionDetails);
             }
 
             throw;

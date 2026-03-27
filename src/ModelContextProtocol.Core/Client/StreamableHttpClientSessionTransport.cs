@@ -25,7 +25,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private string? _negotiatedProtocolVersion;
     private Task? _getReceiveTask;
-    private volatile TransportClosedException? _disconnectError;
+    private volatile ClientTransportClosedException? _disconnectError;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
@@ -200,7 +200,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             {
                 // _disconnectError is set when the server returns 404 indicating session expiry.
                 // When null, this is a graceful client-initiated closure (no error).
-                SetDisconnected(_disconnectError ?? new TransportClosedException(new HttpClientCompletionDetails()));
+                SetDisconnected(_disconnectError ?? new ClientTransportClosedException(new HttpClientCompletionDetails()));
             }
         }
     }
@@ -491,7 +491,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         // Store the error before canceling so DisposeAsync can use it if it races us, especially
         // after the call to Cancel below, to invoke SetDisconnected.
-        _disconnectError = new TransportClosedException(new HttpClientCompletionDetails
+        _disconnectError = new ClientTransportClosedException(new HttpClientCompletionDetails
         {
             HttpStatusCode = HttpStatusCode.NotFound,
             Exception = new McpException(
