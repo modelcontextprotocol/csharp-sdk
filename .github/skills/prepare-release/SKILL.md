@@ -45,8 +45,8 @@ Sort every PR into one of four categories. See [references/categorization.md](re
 ```
 
 **Attribution rules:**
-- Harvest `Co-authored-by` trailers from all commits in each PR's merge commit
-- For Copilot-authored PRs, check the `copilot_work_started` timeline event to identify the triggering user. That person becomes the primary author; `@Copilot` becomes a co-author
+- Harvest `Co-authored-by` trailers from **all commits** in each PR (not just the merge commit) to identify co-authors. Do this for every PR regardless of primary author.
+- For Copilot-authored PRs, additionally check the `copilot_work_started` timeline event to identify the triggering user. That person becomes the primary author; `@Copilot` becomes a co-author.
 - Omit the co-author parenthetical when there are none
 - Sort entries within each section by merge date (chronological)
 
@@ -187,7 +187,7 @@ Only after explicit user confirmation in Step 11:
 ## Edge Cases
 
 - **PR spans categories**: categorize by primary intent
-- **Copilot timeline missing**: fall back to `Co-authored-by` trailers; if still unclear, use `@Copilot` as primary author
+- **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
 - **No breaking changes**: omit the Breaking Changes section from release notes entirely
 - **Single breaking change**: use the same numbered format as multiple
 - **No user-facing changes**: if all PRs are documentation, tests, or infrastructure, flag that a release may not be warranted and ask the user whether to proceed
