@@ -32,6 +32,17 @@ public static class McpEndpointRouteBuilderExtensions
         var streamableHttpHandler = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
 
+        var options = streamableHttpHandler.HttpServerTransportOptions;
+
+#pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
+        if (options.Stateless && (options.EnableLegacySse || EnableLegacySseSwitch))
+        {
+            throw new InvalidOperationException(
+                "Legacy SSE endpoints cannot be enabled in stateless mode because SSE requires in-memory session state " +
+                "shared between the GET /sse and POST /message requests. Remove the EnableLegacySse setting or disable stateless mode.");
+        }
+#pragma warning restore MCP9003
+
         var mcpGroup = endpoints.MapGroup(pattern);
         var streamableHttpGroup = mcpGroup.MapGroup("")
             .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
@@ -42,7 +53,7 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
-        if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
+        if (!options.Stateless)
         {
             // The GET endpoint is not mapped in Stateless mode since there's no way to send unsolicited messages.
             // Resuming streams via GET is currently not supported in Stateless mode.
@@ -53,7 +64,7 @@ public static class McpEndpointRouteBuilderExtensions
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
 #pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
-            if (streamableHttpHandler.HttpServerTransportOptions.EnableLegacySse || EnableLegacySseSwitch)
+            if (options.EnableLegacySse || EnableLegacySseSwitch)
 #pragma warning restore MCP9003
             {
                 // Map legacy HTTP with SSE endpoints. These are disabled by default because the SSE transport

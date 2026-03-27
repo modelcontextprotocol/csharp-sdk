@@ -83,7 +83,8 @@ public class HttpServerTransportOptions
     /// built-in backpressure.
     /// </para>
     /// <para>
-    /// Legacy SSE endpoints are never mapped in <see cref="Stateless"/> mode regardless of this setting.
+    /// Setting this to <see langword="true"/> while <see cref="Stateless"/> is also <see langword="true"/>
+    /// throws an <see cref="InvalidOperationException"/> at startup, because SSE requires in-memory session state.
     /// </para>
     /// <para>
     /// This property can also be enabled via the <c>ModelContextProtocol.AspNetCore.EnableLegacySse</c>

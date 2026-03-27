@@ -119,7 +119,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task SseEndpoints_AreDisabled_InStatelessMode_EvenWithEnableLegacySse()
+    public async Task SseEndpoints_ThrowOnMapMcp_InStatelessMode_WithEnableLegacySse()
     {
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
         {
@@ -128,15 +128,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         });
         await using var app = Builder.Build();
 
-        app.MapMcp();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        using var sseResponse = await HttpClient.GetAsync("/sse", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NotFound, sseResponse.StatusCode);
-
-        using var messageResponse = await HttpClient.PostAsync("/message", new StringContent(""), TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NotFound, messageResponse.StatusCode);
+        var ex = Assert.Throws<InvalidOperationException>(() => app.MapMcp());
+        Assert.Contains("stateless", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("EnableLegacySse", ex.Message);
     }
 
     [Fact]

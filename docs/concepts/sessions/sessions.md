@@ -211,7 +211,7 @@ Stateful sessions introduce several challenges for production, internet-facing s
 The legacy [SSE (Server-Sent Events)](https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse) transport is also supported by `MapMcp()` and always uses stateful mode. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** because the SSE transport has [no built-in HTTP-level backpressure](#sse-legacy-1). To enable them, set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> to `true` — this property is marked `[Obsolete]` with a diagnostic warning (`MCP9003`) to signal that it should only be used when you need to support legacy SSE-only clients and understand the backpressure implications. Alternatively, set the `ModelContextProtocol.AspNetCore.EnableLegacySse` [AppContext switch](https://learn.microsoft.com/dotnet/api/system.appcontext) to `true`.
 
 > [!NOTE]
-> SSE endpoints are always disabled in stateless mode regardless of the `EnableLegacySse` setting, because the GET and POST requests must be handled by the same server process sharing in-memory session state.
+> Setting `EnableLegacySse = true` while `Stateless = true` throws an `InvalidOperationException` at startup, because SSE requires in-memory session state shared between the GET and POST requests.
 
 #### How SSE sessions work
 
