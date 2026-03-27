@@ -99,8 +99,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         try
         {
             // The process has exited, but we still need to ensure stderr has been flushed.
+            // Use a bounded wait: the process is already dead, we're just draining pipe
+            // buffers. If the caller's token is never canceled (e.g. _shutdownCts hasn't
+            // been canceled yet), an unbounded wait here can hang indefinitely when the
+            // threadpool is slow to deliver the stderr EOF callback.
 #if NET
-            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(_options.ShutdownTimeout);
+            await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
 #else
             _process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds);
 #endif
