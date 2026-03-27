@@ -528,7 +528,7 @@ For servers using the built-in automatic task handlers without external work dis
 
 #### Stateless mode
 
-Stateless mode provides the same HTTP-level backpressure as default stateful mode, with one additional benefit: each handler's lifetime is identical to the HTTP request's lifetime — `McpServer.DisposeAsync()` awaits all in-flight handlers before the POST response completes. This means handlers cannot outlive their HTTP requests even if a client disconnects mid-flight. Kestrel's connection limits, HTTP/2 `MaxStreamsPerConnection`, request timeouts, and rate-limiting middleware all apply naturally — identical to a standard ASP.NET Core minimal API or controller action.
+Stateless mode provides the same HTTP-level backpressure as default stateful mode. In both modes, each POST is held open until the handler responds. The one difference is cancellation: in stateless mode, the handler's `CancellationToken` is `HttpContext.RequestAborted`, so if a client disconnects mid-flight, the handler is cancelled immediately — identical to a standard ASP.NET Core minimal API or controller action. In default stateful mode, the handler's token is session-scoped, so a disconnected client's handler continues running until it completes or the session is terminated (see [Handler cancellation tokens](#handler-cancellation-tokens) above).
 
 #### Summary
 
