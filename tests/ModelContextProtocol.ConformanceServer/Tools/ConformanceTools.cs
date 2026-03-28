@@ -132,7 +132,7 @@ public class ConformanceTools
         RequestContext<CallToolRequestParams> context,
         CancellationToken cancellationToken)
     {
-        var progressToken = context.Params?.ProgressToken;
+        var progressToken = context.Params.ProgressToken;
 
         if (progressToken is not null)
         {
