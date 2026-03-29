@@ -82,6 +82,11 @@ public sealed class Program
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
     /// <summary>
+    /// Gets the most recent dynamic client registration request received by the server.
+    /// </summary>
+    public ClientRegistrationRequest? LastRegistrationRequest { get; private set; }
+
+    /// <summary>
     /// Entry point for the application.
     /// </summary>
     /// <param name="args">Command line arguments.</param>
@@ -500,6 +505,8 @@ public sealed class Program
                     ErrorDescription = "Invalid registration request"
                 });
             }
+
+            LastRegistrationRequest = registrationRequest;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)

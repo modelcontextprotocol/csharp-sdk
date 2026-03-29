@@ -5,7 +5,7 @@ namespace ModelContextProtocol.TestOAuthServer;
 /// <summary>
 /// Represents a client registration request as defined in RFC 7591.
 /// </summary>
-internal sealed class ClientRegistrationRequest
+public sealed class ClientRegistrationRequest
 {
     /// <summary>
     /// Gets or sets the redirect URIs for the client.
@@ -54,6 +54,12 @@ internal sealed class ClientRegistrationRequest
     /// </summary>
     [JsonPropertyName("scope")]
     public string? Scope { get; init; }
+
+    /// <summary>
+    /// Gets or sets the application type.
+    /// </summary>
+    [JsonPropertyName("application_type")]
+    public string? ApplicationType { get; init; }
 
     /// <summary>
     /// Gets or sets the contacts for the client.

@@ -48,4 +48,15 @@ internal sealed class DynamicClientRegistrationRequest
     /// </summary>
     [JsonPropertyName("scope")]
     public string? Scope { get; init; }
+
+    /// <summary>
+    /// Gets or sets the application type for the client, as defined in OpenID Connect Dynamic Client Registration 1.0.
+    /// </summary>
+    /// <remarks>
+    /// Valid values are "native" and "web". MCP clients MUST specify this during Dynamic Client Registration.
+    /// Native applications (desktop, mobile, CLI, localhost web apps) should use "native".
+    /// Web applications (remote browser-based) should use "web".
+    /// </remarks>
+    [JsonPropertyName("application_type")]
+    public string? ApplicationType { get; init; }
 }
