@@ -51,6 +51,11 @@ public class ClientConformanceTests
     // [InlineData("auth/client-credentials-jwt")]
     // [InlineData("auth/client-credentials-basic")]
 
+    // HTTP Standardization (SEP-2243)
+    [InlineData("http-standard-headers")]
+    [InlineData("http-custom-headers")]
+    [InlineData("http-invalid-tool-headers")]
+
     public async Task RunConformanceTest(string scenario)
     {
         // Run the conformance test suite

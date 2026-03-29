@@ -127,6 +127,28 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    [Fact]
+    public async Task RunConformanceTest_HttpHeaderValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-header-validation");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunConformanceTest_HttpCustomHeaderServerValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-custom-header-server-validation");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
         var startInfo = NodeHelpers.ConformanceTestStartInfo(arguments);

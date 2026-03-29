@@ -80,6 +80,13 @@ public static class NodeHelpers
     {
         EnsureNpmDependenciesInstalled();
 
+        // If MCP_CONFORMANCE_PROTOCOL_VERSION is set, pass it as --spec-version to the runner.
+        var protocolVersion = Environment.GetEnvironmentVariable("MCP_CONFORMANCE_PROTOCOL_VERSION");
+        if (!string.IsNullOrEmpty(protocolVersion))
+        {
+            arguments += $" --spec-version {protocolVersion}";
+        }
+
         var repoRoot = FindRepoRoot();
         var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
 
