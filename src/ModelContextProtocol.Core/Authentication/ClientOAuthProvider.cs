@@ -717,8 +717,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private static bool IsLocalhostRedirectUri(Uri redirectUri)
         => redirectUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-        || redirectUri.Host.Equals("127.0.0.1", StringComparison.Ordinal)
-        || redirectUri.Host.Equals("::1", StringComparison.Ordinal);
+        || (System.Net.IPAddress.TryParse(redirectUri.Host, out var ipAddress) && System.Net.IPAddress.IsLoopback(ipAddress));
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {

@@ -53,7 +53,9 @@ internal sealed class DynamicClientRegistrationRequest
     /// Gets or sets the application type for the client, as defined in OpenID Connect Dynamic Client Registration 1.0.
     /// </summary>
     /// <remarks>
-    /// Valid values are "native" and "web". MCP clients MUST specify this during Dynamic Client Registration.
+    /// Valid values are "native" and "web". Per the MCP specification, MCP clients MUST specify an appropriate
+    /// application type during Dynamic Client Registration. This field is automatically populated by the SDK
+    /// based on the redirect URI if not explicitly set via <see cref="DynamicClientRegistrationOptions.ApplicationType"/>.
     /// Native applications (desktop, mobile, CLI, localhost web apps) should use "native".
     /// Web applications (remote browser-based) should use "web".
     /// </remarks>
