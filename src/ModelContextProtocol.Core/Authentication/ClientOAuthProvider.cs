@@ -736,8 +736,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // all previously requested scopes to prevent losing previously granted permissions.
         if (_lastRequestedScopes is not null && newScopes is not null)
         {
-            var combined = new HashSet<string>(_lastRequestedScopes.Split(' '), StringComparer.Ordinal);
-            foreach (var scope in newScopes.Split(' '))
+            var combined = new HashSet<string>(_lastRequestedScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
+            foreach (var scope in newScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
                 combined.Add(scope);
             }

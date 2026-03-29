@@ -477,8 +477,8 @@ public class AuthTests : OAuthTestBase
                     // If they don't, it shouldn't get here due to middleware
                     // The token scope may include accumulated scopes, so check for containment
                     var scopeClaim = user.FindFirst("scope")?.Value ?? "";
-                    var userScopes = new HashSet<string>(scopeClaim.Split(' '), StringComparer.Ordinal);
-                    Assert.True(adminScopes.Split(' ').All(s => userScopes.Contains(s)), "User should have admin scopes when tool executes");
+                    var userScopes = new HashSet<string>(scopeClaim.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
+                    Assert.True(adminScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(s => userScopes.Contains(s)), "User should have admin scopes when tool executes");
                     return "Admin tool executed.";
                 }),
             ]);
@@ -516,8 +516,8 @@ public class AuthTests : OAuthTestBase
                             // Check if user has all required scopes (token may include accumulated scopes)
                             var user = context.User;
                             var scopeClaim = user.FindFirst("scope")?.Value ?? "";
-                            var userScopes = new HashSet<string>(scopeClaim.Split(' '), StringComparer.Ordinal);
-                            if (!adminScopes.Split(' ').All(s => userScopes.Contains(s)))
+                            var userScopes = new HashSet<string>(scopeClaim.Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
+                            if (!adminScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(s => userScopes.Contains(s)))
                             {
                                 // User lacks required scopes, return 403 before MapMcp processes the request
                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
