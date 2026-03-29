@@ -475,7 +475,10 @@ public class AuthTests : OAuthTestBase
                 {
                     // Tool now just checks if user has the required scopes
                     // If they don't, it shouldn't get here due to middleware
-                    Assert.True(user.HasClaim("scope", adminScopes), "User should have admin scopes when tool executes");
+                    // The token scope may include accumulated scopes, so check for containment
+                    var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                    var userScopes = new HashSet<string>(scopeClaim.Split(' '), StringComparer.Ordinal);
+                    Assert.True(adminScopes.Split(' ').All(s => userScopes.Contains(s)), "User should have admin scopes when tool executes");
                     return "Admin tool executed.";
                 }),
             ]);
@@ -510,9 +513,11 @@ public class AuthTests : OAuthTestBase
 
                         if (toolCallParams?.Name == "admin-tool")
                         {
-                            // Check if user has required scopes
+                            // Check if user has all required scopes (token may include accumulated scopes)
                             var user = context.User;
-                            if (!user.HasClaim("scope", adminScopes))
+                            var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                            var userScopes = new HashSet<string>(scopeClaim.Split(' '), StringComparer.Ordinal);
+                            if (!adminScopes.Split(' ').All(s => userScopes.Contains(s)))
                             {
                                 // User lacks required scopes, return 403 before MapMcp processes the request
                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -554,7 +559,12 @@ public class AuthTests : OAuthTestBase
         var adminResult = await client.CallToolAsync("admin-tool", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("Admin tool executed.", adminResult.Content[0].ToString());
 
-        Assert.Equal(adminScopes, requestedScope);
+        // After the 403 insufficient_scope challenge with adminScopes, the client should re-authorize
+        // with the union of previously requested scopes ("mcp:tools") and the newly challenged scopes.
+        var accumulatedScopes = requestedScope!.Split(' ');
+        Assert.Contains("mcp:tools", accumulatedScopes);
+        Assert.Contains("admin:read", accumulatedScopes);
+        Assert.Contains("admin:write", accumulatedScopes);
     }
 
     [Fact]

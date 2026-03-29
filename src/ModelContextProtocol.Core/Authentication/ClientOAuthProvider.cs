@@ -47,6 +47,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private string? _lastRequestedScopes;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -714,16 +715,37 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
+        string? newScopes;
+
         if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
         {
-            return protectedResourceMetadata.WwwAuthenticateScope;
+            newScopes = protectedResourceMetadata.WwwAuthenticateScope;
         }
         else if (protectedResourceMetadata.ScopesSupported.Count > 0)
         {
-            return string.Join(" ", protectedResourceMetadata.ScopesSupported);
+            newScopes = string.Join(" ", protectedResourceMetadata.ScopesSupported);
+        }
+        else
+        {
+            newScopes = _configuredScopes;
         }
 
-        return _configuredScopes;
+        // Union with previously requested scopes to avoid losing permissions during step-up
+        // authorization. Per the MCP spec (aligned with RFC 6750 §3.1), servers should emit only
+        // per-operation scopes in 403 insufficient_scope challenges, so clients SHOULD accumulate
+        // all previously requested scopes to prevent losing previously granted permissions.
+        if (_lastRequestedScopes is not null && newScopes is not null)
+        {
+            var combined = new HashSet<string>(_lastRequestedScopes.Split(' '), StringComparer.Ordinal);
+            foreach (var scope in newScopes.Split(' '))
+            {
+                combined.Add(scope);
+            }
+            newScopes = string.Join(" ", combined);
+        }
+
+        _lastRequestedScopes = newScopes;
+        return newScopes;
     }
 
     /// <summary>
