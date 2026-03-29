@@ -1177,4 +1177,136 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(DateTimeOffset?))]
     [JsonSerializable(typeof(Person))]
     partial class JsonContext2 : JsonSerializerContext;
+
+    // ===== x-mcp-header tests =====
+
+    [Fact]
+    public void Create_WithMcpHeaderAttribute_AddsXMcpHeaderExtension()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithSingleHeader))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+        var regionProp = props.GetProperty("region");
+        Assert.True(regionProp.TryGetProperty("x-mcp-header", out var headerValue));
+        Assert.Equal("Region", headerValue.GetString());
+    }
+
+    [Fact]
+    public void Create_WithMultipleMcpHeaderAttributes_AddsAllExtensions()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithMultipleHeaders))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+
+        var regionProp = props.GetProperty("region");
+        Assert.True(regionProp.TryGetProperty("x-mcp-header", out var regionHeader));
+        Assert.Equal("Region", regionHeader.GetString());
+
+        var tenantProp = props.GetProperty("tenantId");
+        Assert.True(tenantProp.TryGetProperty("x-mcp-header", out var tenantHeader));
+        Assert.Equal("TenantId", tenantHeader.GetString());
+    }
+
+    [Fact]
+    public void Create_WithDuplicateHeaderNames_ThrowsInvalidOperationException()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithDuplicateHeaders))!));
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnNonPrimitiveType_ThrowsInvalidOperationException()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNonPrimitiveHeader))!));
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnNumericType_AddsExtension()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNumericHeader))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+        var countProp = props.GetProperty("count");
+        Assert.True(countProp.TryGetProperty("x-mcp-header", out var headerValue));
+        Assert.Equal("Count", headerValue.GetString());
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnBooleanType_AddsExtension()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithBooleanHeader))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+        var flagProp = props.GetProperty("flag");
+        Assert.True(flagProp.TryGetProperty("x-mcp-header", out var headerValue));
+        Assert.Equal("Flag", headerValue.GetString());
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnNullableType_AddsExtension()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNullableHeader))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+        var countProp = props.GetProperty("count");
+        Assert.True(countProp.TryGetProperty("x-mcp-header", out var headerValue));
+        Assert.Equal("Count", headerValue.GetString());
+    }
+
+    [Fact]
+    public void Create_WithoutMcpHeaderAttribute_NoXMcpHeaderExtension()
+    {
+        var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithoutHeaders))!);
+        var schema = tool.ProtocolTool.InputSchema;
+        var props = schema.GetProperty("properties");
+        var regionProp = props.GetProperty("region");
+        Assert.False(regionProp.TryGetProperty("x-mcp-header", out _));
+    }
+
+    private static class McpHeaderToolType
+    {
+        [McpServerTool]
+        public static string ToolWithSingleHeader(
+            [McpHeader("Region")] string region,
+            string query)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithMultipleHeaders(
+            [McpHeader("Region")] string region,
+            [McpHeader("TenantId")] string tenantId,
+            string query)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithDuplicateHeaders(
+            [McpHeader("Region")] string region1,
+            [McpHeader("REGION")] string region2)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithNonPrimitiveHeader(
+            [McpHeader("Data")] object data)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithNumericHeader(
+            [McpHeader("Count")] int count)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithBooleanHeader(
+            [McpHeader("Flag")] bool flag)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithNullableHeader(
+            [McpHeader("Count")] int? count)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithoutHeaders(string region, string query)
+            => "result";
+    }
 }

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using System.Threading.Channels;
 using System.Net;
@@ -90,6 +91,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         };
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
+
+        AddMcpRequestHeaders(httpRequestMessage.Headers, message);
 
         var response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);
 
@@ -431,17 +434,17 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         if (sessionId is not null)
         {
-            headers.Add("Mcp-Session-Id", sessionId);
+            headers.Add(McpHttpHeaders.SessionId, sessionId);
         }
 
         if (protocolVersion is not null)
         {
-            headers.Add("MCP-Protocol-Version", protocolVersion);
+            headers.Add(McpHttpHeaders.ProtocolVersion, protocolVersion);
         }
 
         if (lastEventId is not null)
         {
-            headers.Add("Last-Event-ID", lastEventId);
+            headers.Add(McpHttpHeaders.LastEventId, lastEventId);
         }
 
         if (additionalHeaders is null)
@@ -456,6 +459,78 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 throw new InvalidOperationException($"Failed to add header '{header.Key}' with value '{header.Value}' from {nameof(HttpClientTransportOptions.AdditionalHeaders)}.");
             }
         }
+    }
+
+    /// <summary>
+    /// Adds standard MCP request headers (Mcp-Method, Mcp-Name) and custom parameter headers
+    /// (Mcp-Param-{Name}) to an HTTP request based on the JSON-RPC message being sent.
+    /// </summary>
+    internal static void AddMcpRequestHeaders(HttpRequestHeaders headers, JsonRpcMessage message)
+    {
+        string? method = message switch
+        {
+            JsonRpcRequest request => request.Method,
+            JsonRpcNotification notification => notification.Method,
+            _ => null,
+        };
+
+        if (method is null)
+        {
+            return;
+        }
+
+        headers.Add(McpHttpHeaders.Method, method);
+
+        // Add Mcp-Name header for methods that target a specific named resource
+        string? name = message switch
+        {
+            JsonRpcRequest { Method: RequestMethods.ToolsCall or RequestMethods.PromptsGet } request
+                => GetParamsStringProperty(request.Params, "name"),
+            JsonRpcRequest { Method: RequestMethods.ResourcesRead } request
+                => GetParamsStringProperty(request.Params, "uri"),
+            _ => null,
+        };
+
+        if (name is not null)
+        {
+            headers.Add(McpHttpHeaders.Name, name);
+        }
+
+        // Add custom Mcp-Param-{Name} headers for tools/call requests with x-mcp-header annotations
+        if (method == RequestMethods.ToolsCall &&
+            message is JsonRpcRequest toolsCallRequest &&
+            toolsCallRequest.Context?.Items?.TryGetValue(McpHttpHeaders.ToolContextKey, out var toolObj) == true &&
+            toolObj is Tool tool)
+        {
+            var arguments = GetParamsArguments(toolsCallRequest.Params);
+            McpHeaderExtractor.AddParameterHeaders(headers, tool, arguments);
+        }
+    }
+
+    /// <summary>
+    /// Extracts a string property from the JSON-RPC params object.
+    /// </summary>
+    private static string? GetParamsStringProperty(JsonNode? paramsNode, string propertyName)
+    {
+        if (paramsNode is JsonObject obj && obj.TryGetPropertyValue(propertyName, out var value))
+        {
+            return value?.GetValue<string>();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts the arguments property from a tools/call params object as a JsonElement.
+    /// </summary>
+    private static JsonElement? GetParamsArguments(JsonNode? paramsNode)
+    {
+        if (paramsNode is JsonObject obj && obj.TryGetPropertyValue("arguments", out var argsNode) && argsNode is not null)
+        {
+            return JsonSerializer.Deserialize<JsonElement>(argsNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+        }
+
+        return null;
     }
 
     /// <summary>

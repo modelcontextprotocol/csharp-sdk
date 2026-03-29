@@ -184,6 +184,7 @@ public abstract partial class McpClient : McpSession
             tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
+                OnToolDiscovered(tool);
                 tools.Add(new(this, tool, options?.JsonSerializerOptions));
             }
 
@@ -192,6 +193,17 @@ public abstract partial class McpClient : McpSession
         while (requestParams.Cursor is not null);
 
         return tools;
+    }
+
+    /// <summary>
+    /// Called when a tool definition is discovered from a <c>tools/list</c> response.
+    /// </summary>
+    /// <remarks>
+    /// Override this method to cache or process tool definitions for use in
+    /// subsequent <c>tools/call</c> requests (e.g., for adding custom HTTP headers).
+    /// </remarks>
+    internal virtual void OnToolDiscovered(Tool tool)
+    {
     }
 
     /// <summary>

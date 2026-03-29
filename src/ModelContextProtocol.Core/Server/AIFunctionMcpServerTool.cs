@@ -124,6 +124,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Icons = options?.Icons,
         };
 
+        // Add x-mcp-header extensions to the input schema based on McpHeaderAttribute on parameters
+        if (function.UnderlyingMethod is { } method)
+        {
+            tool.InputSchema = AddMcpHeaderExtensions(tool.InputSchema, method);
+        }
+
         if (options is not null)
         {
             if (options.Title is not null ||
@@ -599,5 +605,86 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    /// <summary>
+    /// Post-processes the input schema to add <c>x-mcp-header</c> extensions based on
+    /// <see cref="McpHeaderAttribute"/> on method parameters.
+    /// </summary>
+    private static JsonElement AddMcpHeaderExtensions(JsonElement inputSchema, MethodInfo method)
+    {
+        // Collect parameters with McpHeaderAttribute
+        var headerParams = new List<(string ParameterName, string HeaderName, ParameterInfo Parameter)>();
+        var headerNamesSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var param in method.GetParameters())
+        {
+            var attr = param.GetCustomAttribute<McpHeaderAttribute>();
+            if (attr is null)
+            {
+                continue;
+            }
+
+            // Validate primitive type only
+            var paramType = Nullable.GetUnderlyingType(param.ParameterType) ?? param.ParameterType;
+            if (!IsPrimitiveHeaderType(paramType))
+            {
+                throw new InvalidOperationException(
+                    $"Parameter '{param.Name}' on method '{method.Name}' has [McpHeader] but is not a primitive type. " +
+                    "Only string, numeric, and boolean types may be annotated with [McpHeader].");
+            }
+
+            // Validate case-insensitive uniqueness
+            if (!headerNamesSet.Add(attr.Name))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate x-mcp-header name '{attr.Name}' (case-insensitive) found on method '{method.Name}'. " +
+                    "Header names must be case-insensitively unique within a tool's input schema.");
+            }
+
+            headerParams.Add((param.Name!, attr.Name, param));
+        }
+
+        if (headerParams.Count == 0)
+        {
+            return inputSchema;
+        }
+
+        // Parse the schema to a mutable JsonNode, add extensions, and convert back
+        var schemaNode = JsonNode.Parse(inputSchema.GetRawText());
+        if (schemaNode is not JsonObject schemaObj ||
+            !schemaObj.TryGetPropertyValue("properties", out var propertiesNode) ||
+            propertiesNode is not JsonObject propertiesObj)
+        {
+            return inputSchema;
+        }
+
+        foreach (var (parameterName, headerName, _) in headerParams)
+        {
+            if (propertiesObj.TryGetPropertyValue(parameterName, out var propNode) &&
+                propNode is JsonObject propObj)
+            {
+                propObj["x-mcp-header"] = headerName;
+            }
+        }
+
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+    }
+
+    private static bool IsPrimitiveHeaderType(Type type)
+    {
+        return type == typeof(string) ||
+               type == typeof(bool) ||
+               type == typeof(byte) ||
+               type == typeof(sbyte) ||
+               type == typeof(short) ||
+               type == typeof(ushort) ||
+               type == typeof(int) ||
+               type == typeof(uint) ||
+               type == typeof(long) ||
+               type == typeof(ulong) ||
+               type == typeof(float) ||
+               type == typeof(double) ||
+               type == typeof(decimal);
     }
 }
