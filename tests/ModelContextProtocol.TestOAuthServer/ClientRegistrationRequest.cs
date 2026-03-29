@@ -5,7 +5,7 @@ namespace ModelContextProtocol.TestOAuthServer;
 /// <summary>
 /// Represents a client registration request as defined in RFC 7591.
 /// </summary>
-public sealed class ClientRegistrationRequest
+internal sealed class ClientRegistrationRequest
 {
     /// <summary>
     /// Gets or sets the redirect URIs for the client.

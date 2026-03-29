@@ -82,9 +82,9 @@ public sealed class Program
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
     /// <summary>
-    /// Gets the most recent dynamic client registration request received by the server.
+    /// Gets the application type from the most recent dynamic client registration request received by the server.
     /// </summary>
-    public ClientRegistrationRequest? LastRegistrationRequest { get; private set; }
+    public string? LastRegistrationApplicationType { get; private set; }
 
     /// <summary>
     /// Entry point for the application.
@@ -506,7 +506,7 @@ public sealed class Program
                 });
             }
 
-            LastRegistrationRequest = registrationRequest;
+            LastRegistrationApplicationType = registrationRequest.ApplicationType;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)

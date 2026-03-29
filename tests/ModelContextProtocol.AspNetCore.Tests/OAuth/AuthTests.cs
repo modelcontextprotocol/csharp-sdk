@@ -1284,7 +1284,7 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("native", TestOAuthServer.LastRegistrationRequest?.ApplicationType);
+        Assert.Equal("native", TestOAuthServer.LastRegistrationApplicationType);
     }
 
     [Fact]
@@ -1309,7 +1309,7 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("web", TestOAuthServer.LastRegistrationRequest?.ApplicationType);
+        Assert.Equal("web", TestOAuthServer.LastRegistrationApplicationType);
     }
 
     [Fact]
@@ -1337,6 +1337,6 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("web", TestOAuthServer.LastRegistrationRequest?.ApplicationType);
+        Assert.Equal("web", TestOAuthServer.LastRegistrationApplicationType);
     }
 }
