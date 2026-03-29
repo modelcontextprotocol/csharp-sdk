@@ -90,7 +90,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
         _dcrApplicationType = options.DynamicClientRegistration?.ApplicationType;
+#pragma warning restore MCPEXP001
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 

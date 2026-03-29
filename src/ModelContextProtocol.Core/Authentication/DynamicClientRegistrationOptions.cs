@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
@@ -61,5 +63,6 @@ public sealed class DynamicClientRegistrationOptions
     /// should use "native", and web applications (remote browser-based) should use "web".
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.DcrApplicationType_DiagnosticId, UrlFormat = Experimentals.DcrApplicationType_Url)]
     public string? ApplicationType { get; set; }
 }

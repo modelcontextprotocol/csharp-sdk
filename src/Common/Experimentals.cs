@@ -110,4 +110,23 @@ internal static class Experimentals
     /// URL for the experimental <c>RunSessionHandler</c> API.
     /// </summary>
     public const string RunSessionHandler_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental <c>application_type</c> parameter in Dynamic Client Registration per SEP-837.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Tasks_DiagnosticId"/> because it is an experimental
+    /// feature in the MCP specification itself.
+    /// </remarks>
+    public const string DcrApplicationType_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental <c>application_type</c> parameter in Dynamic Client Registration.
+    /// </summary>
+    public const string DcrApplicationType_Message = "The application_type parameter in Dynamic Client Registration is part of a future MCP specification version (SEP-837) and is subject to change.";
+
+    /// <summary>
+    /// URL for the experimental <c>application_type</c> parameter in Dynamic Client Registration.
+    /// </summary>
+    public const string DcrApplicationType_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 }

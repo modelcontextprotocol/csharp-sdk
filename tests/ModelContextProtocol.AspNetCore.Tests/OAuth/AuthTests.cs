@@ -1313,6 +1313,7 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
     public async Task DynamicClientRegistration_UsesExplicitApplicationType_WhenConfigured()
     {
         await using var app = await StartMcpServerAsync();
@@ -1333,6 +1334,7 @@ public class AuthTests : OAuthTestBase
                 },
             },
         }, HttpClient, LoggerFactory);
+#pragma warning restore MCPEXP001
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
