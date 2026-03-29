@@ -1032,7 +1032,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     }
 
     private static bool UrisAreEquivalent(Uri a, Uri b) =>
-        string.Equals(a.AbsoluteUri.TrimEnd('/'), b.AbsoluteUri.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+        Uri.Compare(a, b,
+            UriComponents.Scheme | UriComponents.Host | UriComponents.Port | UriComponents.Path,
+            UriFormat.SafeUnescaped,
+            StringComparison.OrdinalIgnoreCase) == 0;
 
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
