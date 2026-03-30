@@ -61,6 +61,11 @@ jobs:
       run: make build CONFIGURATION=${{ matrix.configuration }}
 
     - name: 🧪 Test
+      # TODO: Remove DOTNET_RuntimeAsync=0 workaround once the .NET runtime fix is available.
+      # Tracked by: https://github.com/dotnet/runtime/issues/126325
+      # xUnit v3 test host hangs intermittently on .NET 10 with RuntimeAsync enabled.
+      env:
+        DOTNET_RuntimeAsync: "0"
       run: make test CONFIGURATION=${{ matrix.configuration }}
 
     - name: 🧪 AOT Compatibility
