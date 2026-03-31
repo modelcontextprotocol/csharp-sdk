@@ -737,20 +737,17 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (_lastRequestedScopes is not null && newScopes is not null)
         {
             var combined = new HashSet<string>(StringComparer.Ordinal);
+
             foreach (var scope in _lastRequestedScopes.Split(' '))
             {
-                if (scope.Length > 0)
-                {
-                    combined.Add(scope);
-                }
+                combined.Add(scope);
             }
+
             foreach (var scope in newScopes.Split(' '))
             {
-                if (scope.Length > 0)
-                {
-                    combined.Add(scope);
-                }
+                combined.Add(scope);
             }
+
             newScopes = string.Join(" ", combined);
         }
 
