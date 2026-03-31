@@ -8,6 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
+using System.Net.Http;
 using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -270,132 +271,109 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     }
 
     [Fact]
-    public async Task ListTools_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task ListTools_WithoutAuthFilters_ReturnsAllTools()
     {
+        // Without AddAuthorizationFilters(), all tools are visible in listings (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for tools/list operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        // All tools should be visible regardless of [Authorize] attributes when AddAuthorizationFilters() is not called.
+        Assert.Equal(3, tools.Count);
+        var toolNames = tools.Select(t => t.Name).OrderBy(n => n).ToList();
+        Assert.Equal(["admin_tool", "anonymous_tool", "authorized_tool"], toolNames);
     }
 
     [Fact]
-    public async Task CallTool_WithoutAuthFilters_ReturnsError()
+    public async Task CallTool_WithoutAuthFilters_ReturnsForbidden()
     {
+        // Without AddAuthorizationFilters(), calling an [Authorize] tool returns HTTP 403 (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
         var client = await ConnectAsync();
 
-        var toolResult = await client.CallToolAsync(
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.CallToolAsync(
                 "authorized_tool",
                 new Dictionary<string, object?> { ["message"] = "test" },
-                cancellationToken: TestContext.Current.CancellationToken);
+                cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.True(toolResult.IsError);
-
-        var errorContent = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
-        Assert.Equal("An error occurred invoking 'authorized_tool'.", errorContent.Text);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Error &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for tools/call operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, exception.StatusCode);
     }
 
     [Fact]
-    public async Task ListPrompts_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task ListPrompts_WithoutAuthFilters_ReturnsAllPrompts()
     {
+        // Without AddAuthorizationFilters(), all prompts are visible in listings (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for prompts/list operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        // All prompts should be visible regardless of [Authorize] attributes when AddAuthorizationFilters() is not called.
+        Assert.Equal(2, prompts.Count);
+        var promptNames = prompts.Select(p => p.Name).OrderBy(n => n).ToList();
+        Assert.Equal(["anonymous_prompt", "authorized_prompt"], promptNames);
     }
 
     [Fact]
-    public async Task GetPrompt_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task GetPrompt_WithoutAuthFilters_ReturnsForbidden()
     {
+        // Without AddAuthorizationFilters(), getting an [Authorize] prompt returns HTTP 403 (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.GetPromptAsync(
                 "authorized_prompt",
                 new Dictionary<string, object?> { ["message"] = "test" },
                 cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for prompts/get operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, exception.StatusCode);
     }
 
     [Fact]
-    public async Task ListResources_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task ListResources_WithoutAuthFilters_ReturnsAllResources()
     {
+        // Without AddAuthorizationFilters(), all resources are visible in listings (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken));
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for resources/list operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        // All resources should be visible regardless of [Authorize] attributes when AddAuthorizationFilters() is not called.
+        Assert.Equal(2, resources.Count);
+        var uris = resources.Select(r => r.Uri).OrderBy(u => u).ToList();
+        Assert.Equal(["resource://anonymous", "resource://authorized"], uris);
     }
 
     [Fact]
-    public async Task ReadResource_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task ReadResource_WithoutAuthFilters_ReturnsForbidden()
     {
+        // Without AddAuthorizationFilters(), reading an [Authorize] resource returns HTTP 403 (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.ReadResourceAsync(
                 "resource://authorized",
                 cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for resources/read operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, exception.StatusCode);
     }
 
     [Fact]
-    public async Task ListResourceTemplates_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task ListResourceTemplates_WithoutAuthFilters_ReturnsAllTemplates()
     {
+        // Without AddAuthorizationFilters(), all resource templates are visible in listings (incremental consent model).
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken));
+        var templates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Exception is InvalidOperationException &&
-            log.Exception.Message.Contains("Authorization filter was not invoked for resources/templates/list operation") &&
-            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+        // All resource templates should be visible regardless of [Authorize] attributes when AddAuthorizationFilters() is not called.
+        Assert.Single(templates);
+        Assert.Equal("resource://authorized/{id}", templates[0].UriTemplate);
     }
 
     [Fact]
