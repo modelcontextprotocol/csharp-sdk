@@ -84,7 +84,9 @@ jobs:
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
       with:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
-        path: artifacts/testresults/**
+        path: |
+          artifacts/testresults/**
+          artifacts/bin/*Tests/*/xunit-runtest-diag.log
 
   publish-coverage:
     if: github.actor != 'dependabot[bot]'
