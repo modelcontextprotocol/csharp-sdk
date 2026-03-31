@@ -18,6 +18,7 @@ Install the SDK and build your first MCP client and server.
 | [Progress tracking](progress/progress.md) | Learn how to track progress for long-running operations through notification messages. |
 | [Cancellation](cancellation/cancellation.md) | Learn how to cancel in-flight MCP requests using cancellation tokens and notifications. |
 | [Pagination](pagination/pagination.md) | Learn how to use cursor-based pagination when listing tools, prompts, and resources. |
+| [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 
 ### Client Features
 
