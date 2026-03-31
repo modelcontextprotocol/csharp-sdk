@@ -91,6 +91,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private CancellationTokenSource? _messageProcessingCts;
     private Task? _messageProcessingTask;
+    private volatile bool _messageProcessingComplete;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSessionHandler"/> class.
@@ -325,6 +326,9 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             }
 
             // Fail any pending requests, as they'll never be satisfied.
+            // Set the flag before sweeping so that any request registered concurrently
+            // via SendRequestAsync after the sweep will see it and fail itself.
+            _messageProcessingComplete = true;
             foreach (var entry in _pendingRequests)
             {
                 entry.Value.TrySetException(new IOException("The server shut down unexpectedly."));
@@ -569,6 +573,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         var tcs = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;
+
+        // If message processing has already completed (transport closed), fail the request
+        // immediately. This handles the race where the reading loop's cleanup sweep ran
+        // before this request was registered, so it was missed by the sweep.
+        if (_messageProcessingComplete)
+        {
+            if (_pendingRequests.TryRemove(request.Id, out var removed))
+            {
+                removed.TrySetException(new IOException("The server shut down unexpectedly."));
+            }
+        }
+
         try
         {
             if (addTags)
