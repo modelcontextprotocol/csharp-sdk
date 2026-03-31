@@ -86,7 +86,7 @@ jobs:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
         path: |
           artifacts/testresults/**
-          artifacts/bin/*Tests/*/xunit-runtest-diag.log
+          **/xunit-runtest-diag.log
 
   publish-coverage:
     if: github.actor != 'dependabot[bot]'
