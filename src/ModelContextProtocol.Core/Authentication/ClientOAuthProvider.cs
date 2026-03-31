@@ -734,28 +734,28 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     private static string? AugmentScopeWithOfflineAccess(string? scope, AuthorizationServerMetadata authServerMetadata)
     {
-        const string offlineAccess = "offline_access";
+        const string OfflineAccess = "offline_access";
 
-        if (authServerMetadata.ScopesSupported is null || !authServerMetadata.ScopesSupported.Contains(offlineAccess))
+        if (authServerMetadata.ScopesSupported?.Contains(OfflineAccess) is not true)
         {
             return scope;
         }
 
         if (scope is null)
         {
-            return offlineAccess;
+            return OfflineAccess;
         }
 
         // Check if offline_access is already in the scope string (space-separated tokens).
         foreach (var token in scope.Split(' '))
         {
-            if (token == offlineAccess)
+            if (token == OfflineAccess)
             {
                 return scope;
             }
         }
 
-        return scope + " " + offlineAccess;
+        return scope + " " + OfflineAccess;
     }
 
     /// <summary>
