@@ -113,19 +113,31 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 
 #### Streamable HTTP server (ASP.NET Core)
 
-Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default). It also maps legacy SSE endpoints at `{route}/sse` and `{route}/message` for backward compatibility.
+Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default).
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        // Recommended for servers that don't need server-to-client requests.
+        options.Stateless = true;
+    })
     .WithTools<MyTools>();
 
 var app = builder.Build();
 app.MapMcp();
 app.Run();
 ```
+
+By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. We recommend setting `Stateless` explicitly (rather than relying on the current default) for [forward compatibility](xref:stateless#forward-and-backward-compatibility). See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
+
+#### How messages flow
+
+In Streamable HTTP, client requests arrive as HTTP POST requests. The server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each POST holds its connection until the handler completes.
+
+In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages) for a detailed breakdown.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
@@ -135,7 +147,7 @@ A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools]
 app.MapMcp("/mcp");
 ```
 
-When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:stateless#legacy-sse-transport)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
 
 ### SSE transport (legacy)
 
@@ -172,31 +184,87 @@ SSE-specific configuration options:
 
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. The same `MapMcp()` endpoint handles both protocols — clients connecting with SSE are automatically served using the legacy SSE mechanism:
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+
+**Why SSE is disabled by default.** The SSE transport separates request and response channels: clients POST JSON-RPC messages to `/message` and receive all responses through a long-lived GET SSE stream on `/sse`. Because the POST endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each POST response open until the handler finishes, providing natural backpressure. See [Request backpressure](xref:stateless#request-backpressure) for a detailed comparison and mitigations if you must use SSE.
+
+To enable legacy SSE, set `EnableLegacySse` to `true`:
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        // SSE requires stateful mode (the default). Set explicitly for forward compatibility.
+        options.Stateless = false;
+
+#pragma warning disable MCP9004 // EnableLegacySse is obsolete
+        // Enable legacy SSE endpoints for clients that don't support Streamable HTTP.
+        // See sessions doc for backpressure implications.
+        options.EnableLegacySse = true;
+#pragma warning restore MCP9004
+    })
     .WithTools<MyTools>();
 
 var app = builder.Build();
 
-// MapMcp() serves both Streamable HTTP and legacy SSE.
-// SSE clients connect to /sse (or {route}/sse for custom routes).
+// MapMcp() serves Streamable HTTP. Legacy SSE (/sse and /message) is also
+// available because EnableLegacySse is set to true above.
 app.MapMcp();
 app.Run();
 ```
 
-No additional configuration is needed. When a client connects using the SSE protocol, the server responds with an SSE stream for server-to-client messages and accepts client-to-server messages via a separate POST endpoint.
+See [Sessions — Legacy SSE transport](xref:stateless#legacy-sse-transport) for details on SSE session lifetime and configuration.
 
 ### Transport mode comparison
 
-| Feature | stdio | Streamable HTTP | SSE (Legacy) |
-|---------|-------|----------------|--------------|
-| Process model | Child process | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Bidirectional | Server→client stream + client→server POST |
-| Session resumption | N/A | ✓ | ✗ |
-| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
-| Best for | Local tools | Remote servers | Legacy compatibility |
+| Feature | stdio | Streamable HTTP (stateless) | Streamable HTTP (stateful) | SSE (legacy, stateful) |
+|---------|-------|-----------------------------|----------------------------|--------------|
+| Process model | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
+| Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server POST |
+| Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
+| Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
+| Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
+| Backpressure | Implicit (stdin/stdout flow control) | ✓ (POST held open until handler completes) | ✓ (POST held open until handler completes) | ✗ (POST returns 202 immediately — see [backpressure](xref:stateless#request-backpressure)) |
+| Session resumption | N/A | N/A | ✓ | ✗ |
+| Horizontal scaling | N/A | No constraints | Requires session affinity | Requires session affinity |
+| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
+| Best for | Local tools, IDE integrations | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
+
+For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Sessions](xref:stateless).
+
+### In-memory transport
+
+The <xref:ModelContextProtocol.Server.StreamServerTransport> and <xref:ModelContextProtocol.Protocol.StreamClientTransport> types work with any `Stream`, including in-memory pipes. This is useful for testing, embedding an MCP server in a larger application, or running a client and server in the same process without network overhead.
+
+The following example creates a client and server connected via `System.IO.Pipelines` (from the [InMemoryTransport sample](https://github.com/modelcontextprotocol/csharp-sdk/blob/51a4fde4d9cfa12ef9430deef7daeaac36625be8/samples/InMemoryTransport/Program.cs)):
+
+```csharp
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.IO.Pipelines;
+
+Pipe clientToServerPipe = new(), serverToClientPipe = new();
+
+// Create a server using a stream-based transport over an in-memory pipe.
+await using McpServer server = McpServer.Create(
+    new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
+    new McpServerOptions
+    {
+        ToolCollection = [McpServerTool.Create((string message) => $"Echo: {message}", new() { Name = "echo" })]
+    });
+_ = server.RunAsync();
+
+// Connect a client using a stream-based transport over the same in-memory pipe.
+await using McpClient client = await McpClient.CreateAsync(
+    new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
+
+// List and invoke tools.
+var tools = await client.ListToolsAsync();
+var echo = tools.First(t => t.Name == "echo");
+Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
+```
+
+Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. See [Sessions](xref:stateless) for how session behavior varies across transports.

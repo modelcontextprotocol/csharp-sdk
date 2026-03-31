@@ -19,7 +19,7 @@ public class SimpleResourceType
         int index = id - 1;
         if ((uint)index >= ResourceGenerator.Resources.Count)
         {
-            throw new NotSupportedException($"Unknown resource: {requestContext.Params?.Uri}");
+            throw new NotSupportedException($"Unknown resource: {requestContext.Params.Uri}");
         }
 
         var resource = ResourceGenerator.Resources[index];

@@ -39,7 +39,7 @@ Register the tool type when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithTools<MyTools>();
 ```
 
@@ -262,7 +262,7 @@ if (result.IsError is true)
 
 ### Tool list change notifications
 
-Servers can dynamically add, remove, or modify tools at runtime. When the tool list changes, the server notifies connected clients so they can refresh their tool list.
+Servers can dynamically add, remove, or modify tools at runtime. When the tool list changes, the server notifies connected clients so they can refresh their tool list. These are unsolicited notifications, so they require [stateful mode or stdio](xref:stateless) — [stateless](xref:stateless#stateless-mode-recommended) servers cannot send unsolicited notifications.
 
 #### Sending notifications from the server
 

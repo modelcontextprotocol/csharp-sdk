@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -52,18 +53,47 @@ public abstract partial class McpClient : McpSession
         {
             await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException and not ClientTransportClosedException)
         {
-            try
+            // ConnectAsync already disposed the session (which includes awaiting Completion).
+            // Check if the transport provided structured completion details indicating
+            // why the transport closed that aren't already in the original exception chain.
+            Debug.Assert(clientSession.Completion.IsCompleted, "Completion should already be finished after ConnectAsync's DisposeAsync.");
+            var completionDetails = await clientSession.Completion.ConfigureAwait(false);
+
+            // If the transport closed with a non-graceful error (e.g., server process exited)
+            // and the completion details carry an exception that's NOT already in the original
+            // exception chain, throw a ClientTransportClosedException with the structured details so
+            // callers can programmatically inspect the closure reason (exit code, stderr, etc.).
+            // When the same exception is already in the chain (e.g., HttpRequestException from
+            // an HTTP transport), the original exception is more appropriate to re-throw.
+            if (completionDetails.Exception is { } detailsException &&
+                !ExceptionChainContains(ex, detailsException))
             {
-                await clientSession.DisposeAsync().ConfigureAwait(false);
+                throw new ClientTransportClosedException(completionDetails);
             }
-            catch { } // allow the original exception to propagate
 
             throw;
         }
 
         return clientSession;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> if <paramref name="target"/> is the same object as
+    /// <paramref name="exception"/> or any exception in its <see cref="Exception.InnerException"/> chain.
+    /// </summary>
+    private static bool ExceptionChainContains(Exception exception, Exception target)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -877,7 +907,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             return await CallToolAsync(
@@ -1007,7 +1037,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             var result = await SendRequestAsync(

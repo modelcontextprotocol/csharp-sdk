@@ -189,6 +189,109 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Assert.Equal("From request middleware!", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
+    [Fact]
+    public async Task ProgressNotifications_Work_InStatelessMode()
+    {
+        // Use TCS to coordinate: the tool reports progress, then waits for the test to confirm
+        // the notification arrived before completing. This avoids the race where fire-and-forget
+        // NotifyProgressAsync hasn't flushed before the SSE stream closes.
+        var progressReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var toolCanComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+            })
+            .WithTools([McpServerTool.Create(
+                async (IProgress<ProgressNotificationValue> progress) =>
+                {
+                    progress.Report(new() { Progress = 0, Total = 1, Message = "Working" });
+                    await toolCanComplete.Task;
+                    return "complete";
+                }, new() { Name = "progressTool" })]);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        // Use a custom IProgress<T> that sets the TCS synchronously (no thread pool posting).
+        var callTask = client.CallToolAsync(
+            "progressTool",
+            progress: new SynchronousProgress<ProgressNotificationValue>(_ => progressReceived.TrySetResult()),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Wait for the progress notification to arrive at the client.
+        await progressReceived.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        // Let the tool complete now that we've confirmed progress was received.
+        toolCanComplete.SetResult();
+
+        var toolResponse = await callTask;
+        var content = Assert.Single(toolResponse.Content);
+        Assert.Equal("complete", Assert.IsType<TextContentBlock>(content).Text);
+    }
+
+    [Fact]
+    public async Task ConfigureSessionOptions_RunsPerRequest_InStatelessMode()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+                options.ConfigureSessionOptions = (httpContext, mcpServerOptions, cancellationToken) =>
+                {
+                    // Dynamically add a tool based on a request header value.
+                    var toolSuffix = httpContext.Request.Headers["X-Tool-Suffix"].ToString();
+                    if (!string.IsNullOrEmpty(toolSuffix))
+                    {
+                        mcpServerOptions.ToolCollection =
+                        [
+                            McpServerTool.Create(() => $"configured-{toolSuffix}", new() { Name = "dynamicTool" })
+                        ];
+                    }
+
+                    return Task.CompletedTask;
+                };
+            });
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        // Two separate McpClient instances are needed because the X-Tool-Suffix header is set on
+        // the shared HttpClient before connecting. Each McpClient captures the headers at connect
+        // time, so changing headers between clients proves ConfigureSessionOptions sees different
+        // request data on each HTTP request.
+
+        // First request with "alpha" — proves ConfigureSessionOptions runs and configures the tool.
+        HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "alpha");
+
+        await using var client1 = await ConnectMcpClientAsync();
+
+        var toolResponse1 = await client1.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
+        var content1 = Assert.Single(toolResponse1.Content);
+        Assert.Equal("configured-alpha", Assert.IsType<TextContentBlock>(content1).Text);
+
+        // Second request with "beta" — proves ConfigureSessionOptions runs again with new request data.
+        HttpClient.DefaultRequestHeaders.Remove("X-Tool-Suffix");
+        HttpClient.DefaultRequestHeaders.Add("X-Tool-Suffix", "beta");
+
+        await using var client2 = await ConnectMcpClientAsync();
+
+        var toolResponse2 = await client2.CallToolAsync("dynamicTool", cancellationToken: TestContext.Current.CancellationToken);
+        var content2 = Assert.Single(toolResponse2.Content);
+        Assert.Equal("configured-beta", Assert.IsType<TextContentBlock>(content2).Text);
+    }
+
     [McpServerTool(Name = "testSamplingErrors")]
     public static async Task<string> TestSamplingErrors(McpServer server)
     {
@@ -252,5 +355,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     public class ScopedService
     {
         public string? State { get; set; }
+    }
+
+    private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 }

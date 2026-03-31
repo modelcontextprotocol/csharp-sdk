@@ -5,6 +5,48 @@ namespace ModelContextProtocol.Tests.Client;
 public class ClientCompletionDetailsTests
 {
     [Fact]
+    public void ClientTransportClosedException_ExposesDetails()
+    {
+        var details = new StdioClientCompletionDetails
+        {
+            ExitCode = 42,
+            ProcessId = 12345,
+            StandardErrorTail = ["error line"],
+            Exception = new IOException("process exited"),
+        };
+
+        var exception = new ClientTransportClosedException(details);
+
+        Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        var stdioDetails = (StdioClientCompletionDetails)exception.Details;
+        Assert.Equal(42, stdioDetails.ExitCode);
+        Assert.Equal(12345, stdioDetails.ProcessId);
+        Assert.Equal(["error line"], stdioDetails.StandardErrorTail);
+        Assert.Equal("process exited", exception.Message);
+        Assert.IsType<IOException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void ClientTransportClosedException_WithNullException_HasDefaultMessage()
+    {
+        var details = new ClientCompletionDetails();
+
+        var exception = new ClientTransportClosedException(details);
+
+        Assert.Equal("The transport was closed.", exception.Message);
+        Assert.Null(exception.InnerException);
+        Assert.Same(details, exception.Details);
+    }
+
+    [Fact]
+    public void ClientTransportClosedException_IsIOException()
+    {
+        var details = new ClientCompletionDetails();
+        IOException exception = new ClientTransportClosedException(details);
+        Assert.IsType<ClientTransportClosedException>(exception);
+    }
+
+    [Fact]
     public void ClientCompletionDetails_PropertiesRoundtrip()
     {
         var exception = new InvalidOperationException("test");
