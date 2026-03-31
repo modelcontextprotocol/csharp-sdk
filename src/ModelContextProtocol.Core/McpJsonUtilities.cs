@@ -187,6 +187,13 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 
+    // MCP Apps extension types
+    [JsonSerializable(typeof(Server.McpUiToolMeta))]
+    [JsonSerializable(typeof(Server.McpUiClientCapabilities))]
+    [JsonSerializable(typeof(Server.McpUiResourceMeta))]
+    [JsonSerializable(typeof(Server.McpUiResourceCsp))]
+    [JsonSerializable(typeof(Server.McpUiResourcePermissions))]
+
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]
     [JsonSerializable(typeof(byte))]

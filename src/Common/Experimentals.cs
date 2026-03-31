@@ -72,6 +72,25 @@ internal static class Experimentals
     public const string Extensions_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 
     /// <summary>
+    /// Diagnostic ID for experimental MCP Apps extension APIs.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Extensions_DiagnosticId"/> because
+    /// MCP Apps is implemented as an MCP extension (<c>"io.modelcontextprotocol/ui"</c>).
+    /// </remarks>
+    public const string Apps_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental MCP Apps extension APIs.
+    /// </summary>
+    public const string Apps_Message = "The MCP Apps extension is experimental and subject to change as the specification evolves.";
+
+    /// <summary>
+    /// URL for the experimental MCP Apps extension APIs.
+    /// </summary>
+    public const string Apps_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
+
+    /// <summary>
     /// Diagnostic ID for experimental SDK APIs unrelated to the MCP specification,
     /// such as subclassing <c>McpClient</c>/<c>McpServer</c> or referencing <c>RunSessionHandler</c>.
     /// </summary>
