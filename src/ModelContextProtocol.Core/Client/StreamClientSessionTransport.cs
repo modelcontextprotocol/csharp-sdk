@@ -85,6 +85,10 @@ internal class StreamClientSessionTransport : TransportBase
             await _serverInputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _serverInputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);

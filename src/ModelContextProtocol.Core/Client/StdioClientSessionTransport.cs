@@ -74,12 +74,12 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
                 _process, 
                 processRunning: true,
                 _options.ShutdownTimeout,
-                beforeDispose: () => SetDisconnected(new TransportClosedException(BuildCompletionDetails(error))));
+                beforeDispose: () => SetDisconnected(new ClientTransportClosedException(BuildCompletionDetails(error))));
         }
         catch (Exception ex)
         {
             LogTransportShutdownFailed(Name, ex);
-            SetDisconnected(new TransportClosedException(BuildCompletionDetails(error)));
+            SetDisconnected(new ClientTransportClosedException(BuildCompletionDetails(error)));
         }
 
         // And handle cleanup in the base type. SetDisconnected has already been
