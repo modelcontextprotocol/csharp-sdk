@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Authentication;
@@ -60,5 +61,6 @@ internal sealed class DynamicClientRegistrationRequest
     /// Web applications (remote browser-based) should use "web".
     /// </remarks>
     [JsonPropertyName("application_type")]
+    [Experimental(Experimentals.DcrApplicationType_DiagnosticId, UrlFormat = Experimentals.DcrApplicationType_Url)]
     public string? ApplicationType { get; init; }
 }

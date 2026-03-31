@@ -658,7 +658,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = GetScopeParameter(protectedResourceMetadata),
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
             ApplicationType = _dcrApplicationType ?? (IsLocalhostRedirectUri(_redirectUri) ? "native" : "web"),
+#pragma warning restore MCPEXP001
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
