@@ -533,7 +533,7 @@ internal sealed partial class McpClientImpl : McpClient
         {
             // We don't want the ConnectAsync token to cancel the message processing loop after we've successfully connected.
             // The session handler handles cancelling the loop upon its disposal.
-            _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
+            var processingTask = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -543,7 +543,7 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 // Send initialize request
                 string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                var initializeResponse = await SendRequestAsync(
+                var initializeTask = SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {
@@ -553,7 +553,22 @@ internal sealed partial class McpClientImpl : McpClient
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
+                    cancellationToken: initializationCts.Token).AsTask();
+
+                // Race the initialize request against the message processing loop.
+                // If the processing loop exits first (e.g., the server process died and
+                // its stdout closed), the initialize request will never get a response.
+                // Detect this immediately rather than waiting for the initialization timeout.
+                if (await Task.WhenAny(initializeTask, processingTask).ConfigureAwait(false) == processingTask)
+                {
+                    // Observe the processing task so its exception isn't unobserved.
+                    try { await processingTask.ConfigureAwait(false); }
+                    catch { }
+
+                    throw new IOException("Transport closed before initialization could complete.");
+                }
+
+                var initializeResponse = await initializeTask.ConfigureAwait(false);
 
                 // Store server information
                 if (_logger.IsEnabled(LogLevel.Information))
