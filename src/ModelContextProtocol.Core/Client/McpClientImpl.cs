@@ -533,7 +533,7 @@ internal sealed partial class McpClientImpl : McpClient
         {
             // We don't want the ConnectAsync token to cancel the message processing loop after we've successfully connected.
             // The session handler handles cancelling the loop upon its disposal.
-            _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
+            Task processingTask = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -543,7 +543,7 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 // Send initialize request
                 string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                var initializeResponse = await SendRequestAsync(
+                Task<InitializeResult> initializeTask = SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {
@@ -553,7 +553,20 @@ internal sealed partial class McpClientImpl : McpClient
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
+                    cancellationToken: initializationCts.Token).AsTask();
+
+                // Race the initialize request against the processing loop. If the server process
+                // exits before responding, processingTask completes first and we must ensure the
+                // pending request TCS is signaled. The lock-based sweep in ProcessMessagesCoreAsync
+                // handles most cases, but if ConcurrentDictionary's non-atomic iteration missed the
+                // TCS, this explicit re-sweep catches it.
+                if (await Task.WhenAny(initializeTask, processingTask).ConfigureAwait(false) == processingTask
+                    && !initializeTask.IsCompleted)
+                {
+                    _sessionHandler.FailPendingRequests();
+                }
+
+                var initializeResponse = await initializeTask.ConfigureAwait(false);
 
                 // Store server information
                 if (_logger.IsEnabled(LogLevel.Information))

@@ -356,6 +356,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     }
 
     /// <summary>
+    /// Signals all pending requests with an appropriate exception derived from the transport's
+    /// channel completion state. Called as a fallback when ProcessMessagesCoreAsync has completed
+    /// but a concurrent SendRequestAsync may have been missed by the cleanup sweep.
+    /// </summary>
+    internal void FailPendingRequests()
+    {
+        Exception pendingException =
+            _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion &&
+                completion.Exception?.InnerException is { } innerException
+                ? innerException
+                : new IOException("The server shut down unexpectedly.");
+
+        foreach (var entry in _pendingRequests)
+        {
+            entry.Value.TrySetException(pendingException);
+        }
+    }
+
+    /// <summary>
     /// Resolves <see cref="ClientCompletionDetails"/> from the transport's channel completion.
     /// If the channel was completed with a <see cref="ClientTransportClosedException"/>, the wrapped
     /// details are returned. Otherwise a default instance is created from the completion state.
