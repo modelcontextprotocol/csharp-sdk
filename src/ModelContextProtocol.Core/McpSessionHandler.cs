@@ -338,9 +338,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     ? innerException
                     : new IOException("The server shut down unexpectedly.");
 
-            foreach (var entry in _pendingRequests)
+            // ConcurrentDictionary.GetEnumerator() is non-atomic: it traverses buckets
+            // one-by-one without locks. An entry added to an already-traversed bucket
+            // during iteration can be missed. Sweep twice so the second pass catches any
+            // entries the first pass skipped. Entries registered after the flag is set are
+            // self-handled by SendRequestAsync's flag check.
+            for (int pass = 0; pass < 2; pass++)
             {
-                entry.Value.TrySetException(pendingException);
+                foreach (var entry in _pendingRequests)
+                {
+                    entry.Value.TrySetException(pendingException);
+                }
             }
         }
     }

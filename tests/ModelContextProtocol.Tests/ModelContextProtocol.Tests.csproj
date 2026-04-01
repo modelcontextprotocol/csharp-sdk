@@ -98,15 +98,4 @@
     </Content>
   </ItemGroup>
 
-  <!-- TEMPORARY: Replace xUnit DLLs with instrumented versions that add tracing to
-       TestRunner.RunTest to diagnose intermittent hang where finished TCS is never signaled.
-       Remove this target once the root cause is identified. -->
-  <Target Name="ReplaceXunitWithInstrumented" AfterTargets="Build"
-          Condition="Exists('$(MSBuildThisFileDirectory)..\Common\InstrumentedXunit\xunit.v3.core.dll')">
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\Common\InstrumentedXunit\xunit.v3.core.dll"
-          DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\Common\InstrumentedXunit\xunit.v3.common.dll"
-          DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
-  </Target>
-
 </Project>
