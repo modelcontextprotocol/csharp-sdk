@@ -91,7 +91,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private CancellationTokenSource? _messageProcessingCts;
     private Task? _messageProcessingTask;
-    private volatile bool _messageProcessingComplete;
+
+    // Gate used to make the completion flag + sweep in ProcessMessagesCoreAsync mutually exclusive
+    // with the flag check in SendRequestAsync. This ensures that either the sweep finds the TCS or
+    // SendRequestAsync sees the flag, even if ConcurrentDictionary's non-atomic iteration races
+    // with a concurrent add. The lock also provides full memory barriers on all architectures.
+    private readonly object _completionSweepGate = new();
+    private bool _messageProcessingComplete;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSessionHandler"/> class.
@@ -325,11 +331,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
-            // Fail any pending requests, as they'll never be satisfied.
-            // Set the flag before sweeping so that any request registered concurrently
-            // via SendRequestAsync after the sweep will see it and fail itself.
-            _messageProcessingComplete = true;
-            
             // If the transport's channel was completed with a ClientTransportClosedException,
             // propagate it so callers can access the structured completion details.
             Exception pendingException =
@@ -338,13 +339,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     ? innerException
                     : new IOException("The server shut down unexpectedly.");
 
-            // ConcurrentDictionary.GetEnumerator() is non-atomic: it traverses buckets
-            // one-by-one without locks. An entry added to an already-traversed bucket
-            // during iteration can be missed. Sweep twice so the second pass catches any
-            // entries the first pass skipped. Entries registered after the flag is set are
-            // self-handled by SendRequestAsync's flag check.
-            for (int pass = 0; pass < 2; pass++)
+            // Fail any pending requests, as they'll never be satisfied.
+            // The lock ensures mutual exclusion with SendRequestAsync's flag check:
+            // either our sweep finds the TCS, or SendRequestAsync sees the flag — even if
+            // ConcurrentDictionary's non-atomic iteration misses a concurrent add.
+            lock (_completionSweepGate)
             {
+                _messageProcessingComplete = true;
+
                 foreach (var entry in _pendingRequests)
                 {
                     entry.Value.TrySetException(pendingException);
@@ -592,13 +594,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         _pendingRequests[request.Id] = tcs;
 
         // If message processing has already completed (transport closed), fail the request
-        // immediately. This handles the race where the reading loop's cleanup sweep ran
-        // before this request was registered, so it was missed by the sweep.
-        if (_messageProcessingComplete)
+        // immediately. The lock ensures mutual exclusion with ProcessMessagesCoreAsync's
+        // sweep: either the sweep found this TCS, or we see the flag here. This eliminates
+        // the race where ConcurrentDictionary's non-atomic iteration misses a concurrent add.
+        lock (_completionSweepGate)
         {
-            if (_pendingRequests.TryRemove(request.Id, out var removed))
+            if (_messageProcessingComplete)
             {
-                removed.TrySetException(new IOException("The server shut down unexpectedly."));
+                if (_pendingRequests.TryRemove(request.Id, out var removed))
+                {
+                    removed.TrySetException(new IOException("The server shut down unexpectedly."));
+                }
             }
         }
 
