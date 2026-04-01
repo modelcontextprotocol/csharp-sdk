@@ -5,6 +5,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
