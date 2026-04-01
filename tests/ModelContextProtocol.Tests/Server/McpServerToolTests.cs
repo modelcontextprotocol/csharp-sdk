@@ -813,12 +813,9 @@ public partial class McpServerToolTests
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
-
-        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
@@ -858,12 +855,9 @@ public partial class McpServerToolTests
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
         var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest())
-        {
-            Params = new CallToolRequestParams { Name = "tool" },
-        };
-
-        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
