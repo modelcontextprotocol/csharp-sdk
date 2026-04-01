@@ -581,8 +581,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 }
             }
 
-            // ToList() creates a snapshot because the $ref assignment above may invalidate the enumerator.
-            foreach (var property in obj.ToList())
+            // Safe to iterate without snapshot: the $ref assignment above completes before
+            // this enumerator is created, and recursive calls only mutate descendant objects.
+            foreach (var property in obj)
             {
                 RewriteRefPointers(property.Value);
             }
