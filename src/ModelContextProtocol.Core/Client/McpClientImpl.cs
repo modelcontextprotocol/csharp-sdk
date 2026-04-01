@@ -555,15 +555,43 @@ internal sealed partial class McpClientImpl : McpClient
                     McpJsonUtilities.JsonContext.Default.InitializeResult,
                     cancellationToken: initializationCts.Token).AsTask();
 
-                // Race the initialize request against the processing loop. If the server process
-                // exits before responding, processingTask completes first and we must ensure the
-                // pending request TCS is signaled. The lock-based sweep in ProcessMessagesCoreAsync
-                // handles most cases, but if ConcurrentDictionary's non-atomic iteration missed the
-                // TCS, this explicit re-sweep catches it.
-                if (await Task.WhenAny(initializeTask, processingTask).ConfigureAwait(false) == processingTask
-                    && !initializeTask.IsCompleted)
+                // Race the initialize request against the processing loop and an independently-
+                // rooted timeout. Task.Delay creates a System.Threading.Timer rooted in the
+                // runtime's timer queue, which provides a GC root for the WhenAny continuation
+                // chain (Timer Queue → Timer → Task.Delay → WhenAny → ConnectAsync). This
+                // ensures ConnectAsync always resumes even in edge cases where the
+                // initializeTask/processingTask chains become otherwise GC-unreachable.
+                // Use a dedicated CTS (not the caller's cancellationToken) so external
+                // cancellation flows through initializeTask via initializationCts, preserving
+                // the expected OperationCanceledException propagation path.
+                using var delayCts = new CancellationTokenSource();
+                Task delayTask = Task.Delay(_options.InitializationTimeout, delayCts.Token);
+                try
                 {
-                    _sessionHandler.FailPendingRequests();
+                    Task completed = await Task.WhenAny(initializeTask, processingTask, delayTask).ConfigureAwait(false);
+
+                    if (completed == processingTask && !initializeTask.IsCompleted)
+                    {
+                        // The server process exited before initialization completed. Re-sweep
+                        // pending requests to signal the TCS in case ProcessMessagesCoreAsync's
+                        // sweep missed it due to ConcurrentDictionary's non-atomic iteration.
+                        // The TCS uses RunContinuationsAsynchronously, so initializeTask may not
+                        // be completed yet, but it will complete shortly — await it below.
+                        _sessionHandler.FailPendingRequests();
+                    }
+                    // When delayTask wins, the CancelAfter timer (same timeout, started earlier)
+                    // will cancel initializationCts.Token, causing the WaitAsync in SendRequestAsync
+                    // to throw OperationCanceledException. The catch block below converts that to
+                    // TimeoutException, preserving the expected exception type for callers.
+                }
+                finally
+                {
+                    // Cancel the delay timer to avoid leaking it after ConnectAsync completes.
+#if NET
+                    await delayCts.CancelAsync().ConfigureAwait(false);
+#else
+                    delayCts.Cancel();
+#endif
                 }
 
                 var initializeResponse = await initializeTask.ConfigureAwait(false);
