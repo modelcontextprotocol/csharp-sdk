@@ -443,8 +443,11 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
         // The outermost filter's "after" callback runs after the response has been
         // sent to the client, so ListToolsAsync may return before it executes.
-        // Wait for it to complete before asserting.
-        await allFiltersComplete.Task.WaitAsync(TestContext.Current.CancellationToken);
+        // Wait for it to complete before asserting, but use a timeout to avoid hanging
+        // the test indefinitely if the filter pipeline regresses.
+        using var allFiltersCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        allFiltersCts.CancelAfter(TestConstants.DefaultTimeout);
+        await allFiltersComplete.Task.WaitAsync(allFiltersCts.Token);
 
         Assert.Equal(["filter1-before", "filter2-before", "filter2-after", "filter1-after"], executionOrder);
     }
