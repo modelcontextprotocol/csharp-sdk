@@ -394,6 +394,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     public async Task OutgoingFilter_MultipleFilters_ExecuteInOrder()
     {
         var executionOrder = new List<string>();
+        var allFiltersComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Builder.Services.AddMcpServer()
             .WithHttpTransport(ConfigureStateless)
@@ -411,6 +412,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                     if (context.JsonRpcMessage is JsonRpcResponse r2 && r2.Result is JsonObject obj2 && obj2.ContainsKey("tools"))
                     {
                         executionOrder.Add("filter1-after");
+                        allFiltersComplete.TrySetResult();
                     }
                 });
 
@@ -438,6 +440,11 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         await using var client = await ConnectAsync();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The outermost filter's "after" callback runs after the response has been
+        // sent to the client, so ListToolsAsync may return before it executes.
+        // Wait for it to complete before asserting.
+        await allFiltersComplete.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["filter1-before", "filter2-before", "filter2-after", "filter1-after"], executionOrder);
     }
