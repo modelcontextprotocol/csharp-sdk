@@ -907,13 +907,13 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Use a TCS as a sync point: set when the reader has confirmed receipt of the first event.
         // This guarantees the streaming enumerator is definitely active before we write events 2 and 3.
-        var readerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var readTask = Task.Run(async () =>
         {
             await foreach (var evt in reader.ReadEventsAsync(cts.Token))
             {
-                readerStarted.TrySetResult();
+                readerStarted.TrySetResult(true);
                 events.Add(evt);
                 if (events.Count >= 3)
                 {
