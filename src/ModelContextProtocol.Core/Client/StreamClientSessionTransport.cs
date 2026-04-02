@@ -97,8 +97,16 @@ internal class StreamClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    public override ValueTask DisposeAsync() =>
-        CleanupAsync(cancellationToken: CancellationToken.None);
+    public override async ValueTask DisposeAsync()
+    {
+        await CleanupAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        // Ensure the channel is always completed after disposal, even if CleanupAsync
+        // returned early because another caller (e.g. ReadMessagesAsync) was already
+        // running cleanup. SetDisconnected is idempotent—if the channel was already
+        // completed by the other cleanup path, this is a no-op.
+        SetDisconnected();
+    }
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
