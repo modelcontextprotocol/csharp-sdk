@@ -107,7 +107,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
             await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
 #else
-            _process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds);
+            // WaitForExit(int) does not guarantee all ErrorDataReceived events have been
+            // dispatched. The parameterless WaitForExit() does, so call it after the timed
+            // wait confirms the process exited. Since the process is already dead, the
+            // parameterless overload returns almost immediately—it just drains the event queue.
+            if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
+            {
+                _process.WaitForExit();
+            }
 #endif
         }
         catch { }
