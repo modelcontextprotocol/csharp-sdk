@@ -203,12 +203,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             LogTransportProcessStarted(logger, endpointName, process.Id);
 
-            // Suppress ExecutionContext flow so the Process's internal async
-            // stderr reader thread doesn't capture the caller's context.
-            using (ExecutionContext.SuppressFlow())
-            {
-                process.BeginErrorReadLine();
-            }
+            process.BeginErrorReadLine();
 
             return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, _loggerFactory);
         }

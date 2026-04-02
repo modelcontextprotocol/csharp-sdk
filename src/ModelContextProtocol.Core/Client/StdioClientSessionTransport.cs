@@ -35,7 +35,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         {
             // We failed to send due to an I/O error. If the server process has exited, which is then very likely the cause
             // for the I/O error, we should throw an exception for that instead.
-            if (await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false) is Exception processExitException)
+            if (await GetUnexpectedExitExceptionAsync().ConfigureAwait(false) is Exception processExitException)
             {
                 throw processExitException;
             }
@@ -59,7 +59,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         // We've not yet forcefully terminated the server. If it's already shut down, something went wrong,
         // so create an exception with details about that.
-        error ??= await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false);
+        error ??= await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
 
         // Detach the stderr handler so no further ErrorDataReceived events
         // are dispatched during or after process disposal.
@@ -88,7 +88,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         await base.CleanupAsync(error, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<Exception?> GetUnexpectedExitExceptionAsync(CancellationToken cancellationToken)
+    private async ValueTask<Exception?> GetUnexpectedExitExceptionAsync()
     {
         if (!StdioClientTransport.HasExited(_process))
         {
@@ -100,12 +100,11 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         {
             // The process has exited, but we still need to ensure stderr has been flushed.
             // Use a bounded wait: the process is already dead, we're just draining pipe
-            // buffers. If the caller's token is never canceled (e.g. _shutdownCts hasn't
-            // been canceled yet), an unbounded wait here can hang indefinitely when the
-            // threadpool is slow to deliver the stderr EOF callback.
+            // buffers. Don't link to the caller's token—a concurrent CancelShutdown() call
+            // would cancel the drain prematurely and lose stderr lines that haven't been
+            // delivered via ErrorDataReceived yet.
 #if NET
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(_options.ShutdownTimeout);
+            using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
             await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
 #else
             _process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds);
