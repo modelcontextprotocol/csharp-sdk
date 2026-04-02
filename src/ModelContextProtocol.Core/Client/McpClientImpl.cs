@@ -533,7 +533,7 @@ internal sealed partial class McpClientImpl : McpClient
         {
             // We don't want the ConnectAsync token to cancel the message processing loop after we've successfully connected.
             // The session handler handles cancelling the loop upon its disposal.
-            Task processingTask = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
+            _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -543,7 +543,7 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 // Send initialize request
                 string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                Task<InitializeResult> initializeTask = SendRequestAsync(
+                var initializeResponse = await SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {
@@ -553,48 +553,7 @@ internal sealed partial class McpClientImpl : McpClient
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).AsTask();
-
-                // Race the initialize request against the processing loop and an independently-
-                // rooted timeout. Task.Delay creates a System.Threading.Timer rooted in the
-                // runtime's timer queue, which provides a GC root for the WhenAny continuation
-                // chain (Timer Queue → Timer → Task.Delay → WhenAny → ConnectAsync). This
-                // ensures ConnectAsync always resumes even in edge cases where the
-                // initializeTask/processingTask chains become otherwise GC-unreachable.
-                // Use a dedicated CTS (not the caller's cancellationToken) so external
-                // cancellation flows through initializeTask via initializationCts, preserving
-                // the expected OperationCanceledException propagation path.
-                using var delayCts = new CancellationTokenSource();
-                Task delayTask = Task.Delay(_options.InitializationTimeout, delayCts.Token);
-                try
-                {
-                    Task completed = await Task.WhenAny(initializeTask, processingTask, delayTask).ConfigureAwait(false);
-
-                    if (completed == processingTask && !initializeTask.IsCompleted)
-                    {
-                        // The server process exited before initialization completed. Re-sweep
-                        // pending requests to signal the TCS in case ProcessMessagesCoreAsync's
-                        // sweep missed it due to ConcurrentDictionary's non-atomic iteration.
-                        // The TCS uses RunContinuationsAsynchronously, so initializeTask may not
-                        // be completed yet, but it will complete shortly — await it below.
-                        _sessionHandler.FailPendingRequests();
-                    }
-                    // When delayTask wins, the CancelAfter timer (same timeout, started earlier)
-                    // will cancel initializationCts.Token, causing the WaitAsync in SendRequestAsync
-                    // to throw OperationCanceledException. The catch block below converts that to
-                    // TimeoutException, preserving the expected exception type for callers.
-                }
-                finally
-                {
-                    // Cancel the delay timer to avoid leaking it after ConnectAsync completes.
-#if NET
-                    await delayCts.CancelAsync().ConfigureAwait(false);
-#else
-                    delayCts.Cancel();
-#endif
-                }
-
-                var initializeResponse = await initializeTask.ConfigureAwait(false);
+                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 if (_logger.IsEnabled(LogLevel.Information))

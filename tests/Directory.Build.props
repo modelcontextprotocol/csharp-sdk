@@ -8,4 +8,21 @@
     <!-- Suppress the obsolete SSE warning in test projects that need to test legacy SSE -->
     <NoWarn>$(NoWarn);MCP9004</NoWarn>
   </PropertyGroup>
+
+  <!--
+    Replace xUnit v3 DLLs with instrumented builds that fix a GC-collectibility bug
+    in TestRunner.RunTest's async void state machine. The instrumented build extracts
+    the async void body into an async Task method and holds a reference to the returned
+    Task, preventing the entire async chain from being garbage-collected when the only
+    references form a cycle.
+    See: https://github.com/modelcontextprotocol/csharp-sdk/pull/1449
+    TODO: Remove once xUnit ships a fix upstream.
+  -->
+  <PropertyGroup>
+    <InstrumentedXunitDir>$(MSBuildThisFileDirectory)Common\InstrumentedXunit\</InstrumentedXunitDir>
+  </PropertyGroup>
+  <Target Name="ReplaceXunitWithInstrumented" AfterTargets="Build" Condition="Exists('$(InstrumentedXunitDir)xunit.v3.core.dll')">
+    <Copy SourceFiles="$(InstrumentedXunitDir)xunit.v3.core.dll" DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" />
+    <Copy SourceFiles="$(InstrumentedXunitDir)xunit.v3.common.dll" DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" />
+  </Target>
 </Project>

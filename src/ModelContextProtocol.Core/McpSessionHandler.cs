@@ -92,13 +92,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     private CancellationTokenSource? _messageProcessingCts;
     private Task? _messageProcessingTask;
 
-    // Gate used to make the completion flag + sweep in ProcessMessagesCoreAsync mutually exclusive
-    // with the flag check in SendRequestAsync. This ensures that either the sweep finds the TCS or
-    // SendRequestAsync sees the flag, even if ConcurrentDictionary's non-atomic iteration races
-    // with a concurrent add. The lock also provides full memory barriers on all architectures.
-    private readonly object _completionSweepGate = new();
-    private bool _messageProcessingComplete;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSessionHandler"/> class.
     /// </summary>
@@ -331,6 +324,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
+            // Fail any pending requests, as they'll never be satisfied.
             // If the transport's channel was completed with a ClientTransportClosedException,
             // propagate it so callers can access the structured completion details.
             Exception pendingException =
@@ -338,39 +332,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     completion.Exception?.InnerException is { } innerException
                     ? innerException
                     : new IOException("The server shut down unexpectedly.");
-
-            // Fail any pending requests, as they'll never be satisfied.
-            // The lock ensures mutual exclusion with SendRequestAsync's flag check:
-            // either our sweep finds the TCS, or SendRequestAsync sees the flag — even if
-            // ConcurrentDictionary's non-atomic iteration misses a concurrent add.
-            lock (_completionSweepGate)
+            foreach (var entry in _pendingRequests)
             {
-                _messageProcessingComplete = true;
-
-                foreach (var entry in _pendingRequests)
-                {
-                    entry.Value.TrySetException(pendingException);
-                }
+                entry.Value.TrySetException(pendingException);
             }
-        }
-    }
-
-    /// <summary>
-    /// Signals all pending requests with an appropriate exception derived from the transport's
-    /// channel completion state. Called as a fallback when ProcessMessagesCoreAsync has completed
-    /// but a concurrent SendRequestAsync may have been missed by the cleanup sweep.
-    /// </summary>
-    internal void FailPendingRequests()
-    {
-        Exception pendingException =
-            _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion &&
-                completion.Exception?.InnerException is { } innerException
-                ? innerException
-                : new IOException("The server shut down unexpectedly.");
-
-        foreach (var entry in _pendingRequests)
-        {
-            entry.Value.TrySetException(pendingException);
         }
     }
 
@@ -611,22 +576,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         var tcs = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;
-
-        // If message processing has already completed (transport closed), fail the request
-        // immediately. The lock ensures mutual exclusion with ProcessMessagesCoreAsync's
-        // sweep: either the sweep found this TCS, or we see the flag here. This eliminates
-        // the race where ConcurrentDictionary's non-atomic iteration misses a concurrent add.
-        lock (_completionSweepGate)
-        {
-            if (_messageProcessingComplete)
-            {
-                if (_pendingRequests.TryRemove(request.Id, out var removed))
-                {
-                    removed.TrySetException(new IOException("The server shut down unexpectedly."));
-                }
-            }
-        }
-
         try
         {
             if (addTags)
