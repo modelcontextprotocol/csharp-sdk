@@ -657,7 +657,106 @@ public class ToolTaskSupportTests : LoggedTest
 
     #endregion
 
-    /// <summary>
+    #region Tool Returning McpTask Tests
+
+#pragma warning disable MCPEXP001 // Tasks feature is experimental
+    [Fact]
+    public async Task Tool_ReturningMcpTask_BypassesSdkTaskWrapping()
+    {
+        // Arrange - Server with task store and a tool that creates and returns its own McpTask
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    async (IMcpTaskStore store) =>
+                    {
+                        // Tool creates its own task explicitly
+                        var task = await store.CreateTaskAsync(
+                            new McpTaskMetadata(),
+                            new RequestId("tool-req"),
+                            new JsonRpcRequest { Method = "tools/call" });
+                        return task;
+                    },
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "self-managing-tool",
+                        Description = "A tool that creates and returns its own McpTask",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        // Act - Call the tool with task metadata (task-augmented request)
+        var callResult = await fixture.Client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "self-managing-tool",
+                Task = new McpTaskMetadata()
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Only 1 task should exist (the tool-created one), not 2
+        Assert.NotNull(callResult.Task);
+
+        var allTasks = await fixture.Client.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Single(allTasks);
+        Assert.Equal(callResult.Task.TaskId, allTasks[0].TaskId);
+    }
+
+    [Fact]
+    public async Task Tool_ReturningMcpTask_WithoutTaskMetadata_ReturnsTaskDirectly()
+    {
+        // Arrange - Server with task store and a tool that returns McpTask
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    async (IMcpTaskStore store) =>
+                    {
+                        var task = await store.CreateTaskAsync(
+                            new McpTaskMetadata(),
+                            new RequestId("tool-req"),
+                            new JsonRpcRequest { Method = "tools/call" });
+                        return task;
+                    },
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "self-managing-tool",
+                        Description = "A tool that creates and returns its own McpTask",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        // Act - Call without task metadata (normal invocation)
+        var callResult = await fixture.Client.CallToolAsync(
+            "self-managing-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Tool's McpTask should be on the result
+        Assert.NotNull(callResult.Task);
+
+        var allTasks = await fixture.Client.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Single(allTasks);
+        Assert.Equal(callResult.Task.TaskId, allTasks[0].TaskId);
+    }
+#pragma warning restore MCPEXP001
+
+    #endregion
     /// A fixture that creates a connected MCP client-server pair for testing.
     /// </summary>
     private sealed class ClientServerFixture : IAsyncDisposable

@@ -244,10 +244,29 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
+
+        // Detect if the tool's underlying method returns McpTask (directly or wrapped in Task<>/ValueTask<>).
+        if (function.UnderlyingMethod is { } method)
+        {
+            Type returnType = method.ReturnType;
+            if (returnType.IsGenericType)
+            {
+                Type gt = returnType.GetGenericTypeDefinition();
+                if (gt == typeof(Task<>) || gt == typeof(ValueTask<>))
+                {
+                    returnType = returnType.GetGenericArguments()[0];
+                }
+            }
+
+            ReturnsMcpTask = returnType == typeof(McpTask);
+        }
     }
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
+
+    /// <inheritdoc />
+    internal override bool ReturnsMcpTask { get; }
 
     /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _metadata;
@@ -310,6 +329,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             },
 
             CallToolResult callToolResponse => callToolResponse,
+
+            McpTask mcpTask => new()
+            {
+                Task = mcpTask,
+            },
 
             _ => new()
             {

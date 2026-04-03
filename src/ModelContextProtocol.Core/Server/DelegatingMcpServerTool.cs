@@ -24,6 +24,9 @@ public abstract class DelegatingMcpServerTool : McpServerTool
     public override Tool ProtocolTool => _innerTool.ProtocolTool;
 
     /// <inheritdoc />
+    internal override bool ReturnsMcpTask => _innerTool.ReturnsMcpTask;
+
+    /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _innerTool.Metadata;
 
     /// <inheritdoc />

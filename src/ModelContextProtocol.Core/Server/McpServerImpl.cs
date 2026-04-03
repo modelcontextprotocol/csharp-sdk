@@ -707,6 +707,13 @@ internal sealed partial class McpServerImpl : McpServer
                                 McpErrorCode.InvalidParams);
                         }
 
+                        // If the tool manages its own task lifecycle (returns McpTask),
+                        // invoke it directly and return its result without SDK task wrapping.
+                        if (tool.ReturnsMcpTask)
+                        {
+                            return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+                        }
+
                         // Task augmentation requested - return CreateTaskResult
                         return await ExecuteToolAsTaskAsync(tool, request, taskMetadata, taskStore, sendNotifications, cancellationToken).ConfigureAwait(false);
                     }
