@@ -15,7 +15,7 @@ public class McpServerLoggingLevelTests
     }
 
     [Fact]
-    public void CanCreateServerWithLoggingLevelHandler()
+    public async Task CanCreateServerWithLoggingLevelHandler()
     {
         var services = new ServiceCollection();
 
@@ -23,13 +23,13 @@ public class McpServerLoggingLevelTests
             .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<McpServer>();
     }
 
     [Fact]
-    public void AddingLoggingLevelHandlerSetsLoggingCapability()
+    public async Task AddingLoggingLevelHandlerSetsLoggingCapability()
     {
         var services = new ServiceCollection();
 
@@ -37,7 +37,7 @@ public class McpServerLoggingLevelTests
             .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         var server = provider.GetRequiredService<McpServer>();
 
@@ -46,12 +46,12 @@ public class McpServerLoggingLevelTests
     }
 
     [Fact]
-    public void ServerWithoutCallingLoggingLevelHandlerDoesNotSetLoggingCapability()
+    public async Task ServerWithoutCallingLoggingLevelHandlerDoesNotSetLoggingCapability()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
             .WithStreamServerTransport(Stream.Null, Stream.Null);
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         var server = provider.GetRequiredService<McpServer>();
         Assert.Null(server.ServerOptions.Capabilities?.Logging);
     }

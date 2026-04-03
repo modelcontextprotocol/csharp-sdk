@@ -85,7 +85,7 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
     }
 
     [Fact]
-    public void Resources_AreExposed_WhenSubscribeCapabilitySetInAddMcpServerOptions()
+    public async Task Resources_AreExposed_WhenSubscribeCapabilitySetInAddMcpServerOptions()
     {
         // Create a fresh service collection to test the exact scenario from the issue
         var services = new ServiceCollection();
@@ -108,7 +108,7 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
             .WithResources<LiveResources>()
             .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        using var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Verify capabilities are preserved
@@ -122,7 +122,7 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
     }
 
     [Fact]
-    public void ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
+    public async Task ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
     {
         // Test that ResourcesCapability is created even without handlers or manual setting
         var services = new ServiceCollection();
@@ -130,7 +130,7 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
             .WithResources<LiveResources>()
             .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        using var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Resources are registered

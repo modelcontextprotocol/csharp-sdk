@@ -164,7 +164,7 @@ public class McpServerOptionsSetupTests
     }
 
     [Fact]
-    public void ServerCapabilities_WithManualResourceSubscribeCapability_AndWithResources_ExposesSubscribeCapability()
+    public async Task ServerCapabilities_WithManualResourceSubscribeCapability_AndWithResources_ExposesSubscribeCapability()
     {
         // This test would require a full client-server setup, so we'll test via options validation instead
         var services = new ServiceCollection();
@@ -183,7 +183,7 @@ public class McpServerOptionsSetupTests
         .WithResources<SimpleResourceType>()
         .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        using var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
         var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
         
         // The options should preserve the user's manually set capabilities
