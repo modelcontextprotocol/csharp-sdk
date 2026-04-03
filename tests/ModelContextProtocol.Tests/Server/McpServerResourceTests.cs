@@ -29,7 +29,7 @@ public partial class McpServerResourceTests
     }
 
     [Fact]
-    public async Task CanCreateServerWithResource()
+    public void CanCreateServerWithResource()
     {
         var services = new ServiceCollection();
 
@@ -58,14 +58,14 @@ public partial class McpServerResourceTests
                 };
             });
 
-        await using var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<McpServer>();
     }
 
 
     [Fact]
-    public async Task CanCreateServerWithResourceTemplates()
+    public void CanCreateServerWithResourceTemplates()
     {
         var services = new ServiceCollection();
 
@@ -94,13 +94,13 @@ public partial class McpServerResourceTests
                 };
             });
 
-        await using var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<McpServer>();
     }
 
     [Fact]
-    public async Task CreatingReadHandlerWithNoListHandlerSucceeds()
+    public void CreatingReadHandlerWithNoListHandlerSucceeds()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
@@ -117,7 +117,7 @@ public partial class McpServerResourceTests
                     }]
                 };
             });
-        await using var sp = services.BuildServiceProvider();
+        using var sp = services.BuildServiceProvider();
 
         sp.GetRequiredService<McpServer>();
     }

@@ -15,7 +15,7 @@ internal class StreamClientSessionTransport : TransportBase
     private readonly TextReader _serverOutput;
     private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private CancellationTokenSource? _shutdownCts = new();
+    private readonly CancellationTokenSource _shutdownCts = new();
     private Task? _readTask;
 
     /// <summary>
@@ -182,24 +182,14 @@ internal class StreamClientSessionTransport : TransportBase
     /// </summary>
     protected void CancelShutdown()
     {
-        try
-        {
-            _shutdownCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        _shutdownCts.Cancel();
     }
 
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
         LogTransportShuttingDown(Name);
 
-        if (Interlocked.Exchange(ref _shutdownCts, null) is { } shutdownCts)
-        {
-            await shutdownCts.CancelAsync().ConfigureAwait(false);
-            shutdownCts.Dispose();
-        }
+        await _shutdownCts.CancelAsync().ConfigureAwait(false);
 
         if (Interlocked.Exchange(ref _readTask, null) is Task readTask)
         {
