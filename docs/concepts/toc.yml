@@ -41,6 +41,8 @@ items:
     uid: logging
   - name: Pagination
     uid: pagination
+  - name: Identity and Roles
+    uid: identity
   - name: HTTP Context
     uid: httpcontext
   - name: Filters
