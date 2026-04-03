@@ -61,6 +61,15 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // so create an exception with details about that.
         error ??= await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
 
+        // Ensure all pending ErrorDataReceived events are drained before detaching
+        // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
+        // true, but there is a narrow window on Linux where the process has closed
+        // stdout (causing EOF in ReadMessagesAsync) yet hasn't been fully reaped,
+        // so HasExited returns false and the drain is skipped. An unconditional
+        // wait here covers that gap. When the drain already happened above, the
+        // call returns immediately.
+        await WaitForProcessExitAsync().ConfigureAwait(false);
+
         // Detach the stderr handler so no further ErrorDataReceived events
         // are dispatched during or after process disposal.
         _process.ErrorDataReceived -= _errorHandler;
@@ -96,28 +105,8 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         }
 
         Debug.Assert(StdioClientTransport.HasExited(_process));
-        try
-        {
-            // The process has exited, but we still need to ensure stderr has been flushed.
-            // Use a bounded wait: the process is already dead, we're just draining pipe
-            // buffers. Don't link to the caller's token—a concurrent CancelShutdown() call
-            // would cancel the drain prematurely and lose stderr lines that haven't been
-            // delivered via ErrorDataReceived yet.
-#if NET
-            using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
-            await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
-#else
-            // WaitForExit(int) does not guarantee all ErrorDataReceived events have been
-            // dispatched. The parameterless WaitForExit() does, so call it after the timed
-            // wait confirms the process exited. Since the process is already dead, the
-            // parameterless overload returns almost immediately—it just drains the event queue.
-            if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
-            {
-                _process.WaitForExit();
-            }
-#endif
-        }
-        catch { }
+
+        await WaitForProcessExitAsync().ConfigureAwait(false);
 
         string errorMessage = "MCP server process exited unexpectedly";
 
@@ -140,6 +129,35 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         }
 
         return new IOException(errorMessage);
+    }
+
+    /// <summary>
+    /// Waits for the process to exit within <see cref="StdioClientTransportOptions.ShutdownTimeout"/>
+    /// and flushes pending <see cref="Process.ErrorDataReceived"/> events.
+    /// </summary>
+    /// <remarks>
+    /// On .NET, <c>Process.WaitForExitAsync</c> also waits for asynchronous output readers
+    /// to complete, ensuring all events have been dispatched. On .NET Framework,
+    /// <see cref="Process.WaitForExit(int)"/> does not guarantee this; the parameterless
+    /// <see cref="Process.WaitForExit()"/> overload is needed to flush the event queue.
+    /// This method is idempotent—calling it after the process has already been waited on
+    /// returns immediately.
+    /// </remarks>
+    private async ValueTask WaitForProcessExitAsync()
+    {
+        try
+        {
+#if NET
+            using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
+            await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+#else
+            if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
+            {
+                _process.WaitForExit();
+            }
+#endif
+        }
+        catch { }
     }
 
     private StdioClientCompletionDetails BuildCompletionDetails(Exception? error)
