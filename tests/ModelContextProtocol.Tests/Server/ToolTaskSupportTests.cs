@@ -666,6 +666,11 @@ public class ToolTaskSupportTests : LoggedTest
         // Arrange - Server with task store and a tool that creates and returns its own McpTask
         var taskStore = new InMemoryMcpTaskStore();
 
+        // Build a service provider so the tool can resolve IMcpTaskStore at creation time
+        var toolServices = new ServiceCollection();
+        toolServices.AddSingleton<IMcpTaskStore>(taskStore);
+        var toolServiceProvider = toolServices.BuildServiceProvider();
+
         await using var fixture = new ClientServerFixture(
             LoggerFactory,
             configureServer: builder =>
@@ -684,7 +689,8 @@ public class ToolTaskSupportTests : LoggedTest
                     {
                         Name = "self-managing-tool",
                         Description = "A tool that creates and returns its own McpTask",
-                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional },
+                        Services = toolServiceProvider
                     })]);
             },
             configureServices: services =>
@@ -716,6 +722,11 @@ public class ToolTaskSupportTests : LoggedTest
         // Arrange - Server with task store and a tool that returns McpTask
         var taskStore = new InMemoryMcpTaskStore();
 
+        // Build a service provider so the tool can resolve IMcpTaskStore at creation time
+        var toolServices = new ServiceCollection();
+        toolServices.AddSingleton<IMcpTaskStore>(taskStore);
+        var toolServiceProvider = toolServices.BuildServiceProvider();
+
         await using var fixture = new ClientServerFixture(
             LoggerFactory,
             configureServer: builder =>
@@ -733,7 +744,8 @@ public class ToolTaskSupportTests : LoggedTest
                     {
                         Name = "self-managing-tool",
                         Description = "A tool that creates and returns its own McpTask",
-                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional },
+                        Services = toolServiceProvider
                     })]);
             },
             configureServices: services =>
