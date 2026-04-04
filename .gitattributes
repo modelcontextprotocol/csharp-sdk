@@ -62,3 +62,5 @@
 *.fsproj text
 *.dbproj text
 *.sln text eol=crlf
+
+.github/workflows/*.lock.yml linguist-generated=true merge=ours
