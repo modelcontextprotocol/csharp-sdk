@@ -6,6 +6,13 @@ permissions:
   issues: read
   pull-requests: read
 
+network:
+  allowed:
+    - defaults
+    - node
+    - dotnet
+    - github
+
 safe-outputs:
   create-issue:
     title-prefix: "[C# SDK Tier Audit] "
@@ -21,43 +28,51 @@ tools:
 
 if: github.repository_owner == 'modelcontextprotocol' || github.event_name == 'workflow_dispatch'
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 concurrency:
   group: tier-audit-${{ github.event.inputs.scope || 'Conformance + Repo Health' }}
   cancel-in-progress: true
 
+timeout-minutes: 120
+
 runtimes:
   node:
-    version: "22"
+    version: "24"
   dotnet:
     version: "10.0"
 
-network:
-  allowed:
-    - defaults
-    - node
-    - dotnet
-    - github
-
-timeout-minutes: 120
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 steps:
-  - name: Write tier-check scorecard to file
+  - name: Write tier-check outputs to files
     env:
       TIER_CHECK_JSON: ${{ needs.tier-check.outputs.tier_check_json }}
-    run: echo "$TIER_CHECK_JSON" > /tmp/tier-check-scorecard.json
+      AUDIT_SCOPE: ${{ needs.tier-check.outputs.scope }}
+      AUDIT_OUTPUT: ${{ needs.tier-check.outputs.output }}
+      AUDIT_SDK_REPO: ${{ needs.tier-check.outputs.csharp_sdk_repo }}
+      AUDIT_SDK_BRANCH: ${{ needs.tier-check.outputs.csharp_sdk_branch }}
+      AUDIT_CONF_REPO: ${{ needs.tier-check.outputs.conformance_repo }}
+      AUDIT_CONF_BRANCH: ${{ needs.tier-check.outputs.conformance_branch }}
+    run: |
+      echo "$TIER_CHECK_JSON" > /tmp/tier-check-scorecard.json
+      mkdir -p /tmp/audit-params
+      echo "$AUDIT_SCOPE" > /tmp/audit-params/scope
+      echo "$AUDIT_OUTPUT" > /tmp/audit-params/output
+      echo "$AUDIT_SDK_REPO" > /tmp/audit-params/csharp-sdk-repo
+      echo "$AUDIT_SDK_BRANCH" > /tmp/audit-params/csharp-sdk-branch
+      echo "$AUDIT_CONF_REPO" > /tmp/audit-params/conformance-repo
+      echo "$AUDIT_CONF_BRANCH" > /tmp/audit-params/conformance-branch
 
 post-steps:
-  - name: Upload audit report
+  - name: Write audit report to action summary
     if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: audit-report
-      path: /tmp/audit-report.md
-      retention-days: 90
-      if-no-files-found: ignore
+    run: |
+      if [ -f /tmp/audit-report.md ]; then
+        cat /tmp/audit-report.md >> "$GITHUB_STEP_SUMMARY"
+      else
+        echo "## Tier Audit: No Report" >> "$GITHUB_STEP_SUMMARY"
+        echo "The agent did not produce /tmp/audit-report.md." >> "$GITHUB_STEP_SUMMARY"
+      fi
 
 on:
   schedule: weekly on thursday around 6:30am utc-5
@@ -266,12 +281,18 @@ Perform a tier audit of the C# MCP SDK. The deterministic tier-check scorecard h
 
 ## Inputs
 
-- **Scope**: ${{ needs.tier-check.outputs.scope }}
-- **Output mode**: ${{ needs.tier-check.outputs.output }}
-- **C# SDK**: ${{ needs.tier-check.outputs.csharp_sdk_repo }} (branch: ${{ needs.tier-check.outputs.csharp_sdk_branch }})
-- **Conformance**: ${{ needs.tier-check.outputs.conformance_repo }} (branch: ${{ needs.tier-check.outputs.conformance_branch }})
+All parameters are written to `/tmp/audit-params/` by a pre-agent step. Read them:
 
-The scorecard is at `/tmp/tier-check-scorecard.json` (written by a pre-agent step from the `tier-check` job output).
+```bash
+SCOPE=$(cat /tmp/audit-params/scope)
+OUTPUT_MODE=$(cat /tmp/audit-params/output)
+SDK_REPO=$(cat /tmp/audit-params/csharp-sdk-repo)
+SDK_BRANCH=$(cat /tmp/audit-params/csharp-sdk-branch)
+CONF_REPO=$(cat /tmp/audit-params/conformance-repo)
+CONF_BRANCH=$(cat /tmp/audit-params/conformance-branch)
+```
+
+The tier-check scorecard is at `/tmp/tier-check-scorecard.json`.
 
 ## Tier-Check Scorecard (pre-computed)
 
@@ -283,33 +304,33 @@ cat /tmp/tier-check-scorecard.json
 
 ## Step 1: Setup
 
-Clone both repositories for the AI-assisted evaluations. Use shallow clones.
+Read the parameters from `/tmp/audit-params/` and clone both repositories for the AI-assisted evaluations. Use shallow clones.
 
 ```bash
-git clone --depth 1 -b <csharp_sdk_branch> https://github.com/<csharp_sdk_repo>.git /tmp/csharp-sdk
-git clone --depth 1 -b <conformance_branch> https://github.com/<conformance_repo>.git /tmp/conformance
+SDK_REPO=$(cat /tmp/audit-params/csharp-sdk-repo)
+SDK_BRANCH=$(cat /tmp/audit-params/csharp-sdk-branch)
+CONF_REPO=$(cat /tmp/audit-params/conformance-repo)
+CONF_BRANCH=$(cat /tmp/audit-params/conformance-branch)
+
+git clone --depth 1 -b "$SDK_BRANCH" "https://github.com/${SDK_REPO}.git" /tmp/csharp-sdk
+git clone --depth 1 -b "$CONF_BRANCH" "https://github.com/${CONF_REPO}.git" /tmp/conformance
 ```
 
 You do NOT need to build either repo or start any servers — the conformance tests have already run.
 
 ## Step 2: AI-Assisted Evaluation
 
-Read the **"Any Other AI Coding Agent"** section from `/tmp/conformance/.claude/skills/mcp-sdk-tier-audit/README.md`. Follow steps **2 through 5** only (skip step 1 — the CLI has already run):
+Read the **"Any Other AI Coding Agent"** section from `/tmp/conformance/.claude/skills/mcp-sdk-tier-audit/README.md`. Follow those instructions exactly — steps 2 through 5 (skip step 1, the CLI has already run). The conformance skill's instructions are the single source of truth for tier logic, documentation evaluation criteria, policy evaluation criteria, and report templates. **Do not apply your own tier logic or scoring — use only the conformance skill's thresholds, rules, and templates.**
 
-2. **Evaluate documentation coverage** using the prompt in `references/docs-coverage-prompt.md`
-3. **Evaluate policies** using the prompt in `references/policy-evaluation-prompt.md` — pass the `policy_signals` section from the tier-check JSON above
-4. **Apply tier logic** using the thresholds in `references/tier-requirements.md` — combine the scorecard above with your evaluation results
-5. **Generate report** using the template in `references/report-template.md`
+The tier-check scorecard JSON is at `/tmp/tier-check-scorecard.json`. The SDK checkout at `/tmp/csharp-sdk` is the local path for documentation and policy evaluations.
 
-The SDK checkout at `/tmp/csharp-sdk` is the local path for documentation and policy evaluations.
-
-Write the assessment and remediation reports to `/tmp/conformance/results/`:
+The conformance skill will produce assessment and remediation reports. Write them to `/tmp/conformance/results/`:
 - `results/<YYYY-MM-DD>-csharp-sdk-assessment.md`
 - `results/<YYYY-MM-DD>-csharp-sdk-remediation.md`
 
-## Step 3: Compose the Audit Report
+## Step 3: Compose and Save the Audit Report
 
-After the evaluation completes, compose the full audit report as a single markdown file at `/tmp/audit-report.md`. This file is used for both issue creation and the action summary artifact.
+After the evaluation completes, compose a single markdown file at `/tmp/audit-report.md`. This same content is used for both output modes: issue body and action summary.
 
 ### Report structure
 
@@ -328,53 +349,41 @@ The report must contain these sections in order:
 
 Use horizontal rules (`---`) to separate sections.
 
-### Write the report
+### Save the report file
 
-Write the composed report to `/tmp/audit-report.md`. This file will be uploaded as a workflow artifact by a post-execution step.
+Write the composed report to `/tmp/audit-report.md`. A post-execution step will write it to the GitHub Action Summary (visible on the workflow run's summary page).
 
-### Write the action summary
-
-Always write the full audit report to the GitHub Step Summary so it appears on the workflow run's summary page:
-
-```bash
-cat /tmp/audit-report.md >> "$GITHUB_STEP_SUMMARY"
-```
+Verify the file exists before proceeding to Step 4.
 
 ## Step 4: Publish Results
+
+Read the output mode: `cat /tmp/audit-params/output`
 
 ### If output mode is "Create Issue"
 
 Create a GitHub issue using the `create-issue` safe output.
 
-**Issue title** — The dynamic part (after the `[C# SDK Tier Audit] ` prefix):
+**Issue title** — Read the scope from `cat /tmp/audit-params/scope`. The dynamic part (after the `[C# SDK Tier Audit] ` prefix):
 
 - **"Conformance + Repo Health" scope**: `<YYYY-MM-DD> - Tier <N>`
 - **"Repo Health" scope**: `<YYYY-MM-DD> - Tier <N> (Repo Health)`
 
 Where `<YYYY-MM-DD>` is today's date and `<N>` is the computed tier number (1, 2, or 3).
 
-**Issue body** — Use the contents of `/tmp/audit-report.md` as the issue body.
+**Issue body** — Use the exact contents of `/tmp/audit-report.md` as the issue body. The issue body must be identical to what was written to the action summary.
 
 ### If output mode is "Action Summary"
 
-Do NOT create an issue. The report is already written to `$GITHUB_STEP_SUMMARY` and will be uploaded as an artifact. No further action is needed.
+Do NOT create an issue. Call `noop` with a message like "Audit complete — results in Action Summary." The report will be displayed on the workflow run's summary page by a post-execution step.
 
 ## Failure Handling
 
 If the evaluation fails at any step, or if the audit does not produce assessment/remediation results:
 
 1. **Do NOT create an issue.** Do not use the `create-issue` safe output.
-2. **Write a GitHub Step Summary** explaining what happened:
-
-```bash
-echo "## Tier Audit: No Results" >> "$GITHUB_STEP_SUMMARY"
-echo "" >> "$GITHUB_STEP_SUMMARY"
-echo "The tier audit did not produce results. Reason: <describe the failure>" >> "$GITHUB_STEP_SUMMARY"
-echo "" >> "$GITHUB_STEP_SUMMARY"
-echo "No issue was filed for this run." >> "$GITHUB_STEP_SUMMARY"
-```
-
-3. The `noop` safe output will apply automatically when no `create-issue` output is produced.
+2. **Write a failure report** to `/tmp/audit-report.md` explaining what happened. The post-execution step will display it on the action summary page.
+3. Call `noop` with a message describing the failure.
+4. The post-execution step will handle displaying the failure on the action summary page.
 
 ---
 
