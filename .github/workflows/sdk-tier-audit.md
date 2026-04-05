@@ -4,23 +4,14 @@ description: "SDK Tier Audit"
 permissions:
   contents: read
   issues: read
-  pull-requests: read
 
 safe-outputs:
   create-issue:
     title-prefix: "[C# SDK Tier Audit] "
     labels: [automation]
     close-older-issues: true
-    max: 1
-
-tools:
-  github:
-    min-integrity: approved
 
 if: github.repository_owner == 'modelcontextprotocol' || github.event_name == 'workflow_dispatch'
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 concurrency:
   group: tier-audit-${{ github.event.inputs.scope || 'Conformance + Repo Health' }}
@@ -42,24 +33,10 @@ network:
 timeout-minutes: 120
 
 steps:
-  - name: Write tier-check outputs to files
+  - name: Write tier-check scorecard to file
     env:
       TIER_CHECK_JSON: ${{ needs.tier-check.outputs.tier_check_json }}
-      AUDIT_SCOPE: ${{ needs.tier-check.outputs.scope }}
-      AUDIT_OUTPUT: ${{ needs.tier-check.outputs.output }}
-      AUDIT_SDK_REPO: ${{ needs.tier-check.outputs.csharp_sdk_repo }}
-      AUDIT_SDK_BRANCH: ${{ needs.tier-check.outputs.csharp_sdk_branch }}
-      AUDIT_CONF_REPO: ${{ needs.tier-check.outputs.conformance_repo }}
-      AUDIT_CONF_BRANCH: ${{ needs.tier-check.outputs.conformance_branch }}
-    run: |
-      echo "$TIER_CHECK_JSON" > /tmp/tier-check-scorecard.json
-      mkdir -p /tmp/audit-params
-      echo "$AUDIT_SCOPE" > /tmp/audit-params/scope
-      echo "$AUDIT_OUTPUT" > /tmp/audit-params/output
-      echo "$AUDIT_SDK_REPO" > /tmp/audit-params/csharp-sdk-repo
-      echo "$AUDIT_SDK_BRANCH" > /tmp/audit-params/csharp-sdk-branch
-      echo "$AUDIT_CONF_REPO" > /tmp/audit-params/conformance-repo
-      echo "$AUDIT_CONF_BRANCH" > /tmp/audit-params/conformance-branch
+    run: echo "$TIER_CHECK_JSON" > /tmp/tier-check-scorecard.json
 
 post-steps:
   - name: Upload audit report
@@ -278,18 +255,12 @@ Perform a tier audit of the C# MCP SDK. The deterministic tier-check scorecard h
 
 ## Inputs
 
-All parameters are written to `/tmp/audit-params/` by a pre-agent step. Read them:
+- **Scope**: ${{ needs.tier-check.outputs.scope }}
+- **Output mode**: ${{ needs.tier-check.outputs.output }}
+- **C# SDK**: ${{ needs.tier-check.outputs.csharp_sdk_repo }} (branch: ${{ needs.tier-check.outputs.csharp_sdk_branch }})
+- **Conformance**: ${{ needs.tier-check.outputs.conformance_repo }} (branch: ${{ needs.tier-check.outputs.conformance_branch }})
 
-```bash
-SCOPE=$(cat /tmp/audit-params/scope)
-OUTPUT_MODE=$(cat /tmp/audit-params/output)
-SDK_REPO=$(cat /tmp/audit-params/csharp-sdk-repo)
-SDK_BRANCH=$(cat /tmp/audit-params/csharp-sdk-branch)
-CONF_REPO=$(cat /tmp/audit-params/conformance-repo)
-CONF_BRANCH=$(cat /tmp/audit-params/conformance-branch)
-```
-
-The tier-check scorecard is at `/tmp/tier-check-scorecard.json`.
+The scorecard is at `/tmp/tier-check-scorecard.json` (written by a pre-agent step from the `tier-check` job output).
 
 ## Tier-Check Scorecard (pre-computed)
 
@@ -301,16 +272,11 @@ cat /tmp/tier-check-scorecard.json
 
 ## Step 1: Setup
 
-Read the parameters from `/tmp/audit-params/` and clone both repositories for the AI-assisted evaluations. Use shallow clones.
+Clone both repositories for the AI-assisted evaluations. Use shallow clones.
 
 ```bash
-SDK_REPO=$(cat /tmp/audit-params/csharp-sdk-repo)
-SDK_BRANCH=$(cat /tmp/audit-params/csharp-sdk-branch)
-CONF_REPO=$(cat /tmp/audit-params/conformance-repo)
-CONF_BRANCH=$(cat /tmp/audit-params/conformance-branch)
-
-git clone --depth 1 -b "$SDK_BRANCH" "https://github.com/${SDK_REPO}.git" /tmp/csharp-sdk
-git clone --depth 1 -b "$CONF_BRANCH" "https://github.com/${CONF_REPO}.git" /tmp/conformance
+git clone --depth 1 -b <csharp_sdk_branch> https://github.com/<csharp_sdk_repo>.git /tmp/csharp-sdk
+git clone --depth 1 -b <conformance_branch> https://github.com/<conformance_repo>.git /tmp/conformance
 ```
 
 You do NOT need to build either repo or start any servers — the conformance tests have already run.
@@ -365,13 +331,11 @@ cat /tmp/audit-report.md >> "$GITHUB_STEP_SUMMARY"
 
 ## Step 4: Publish Results
 
-Read the output mode: `cat /tmp/audit-params/output`
-
 ### If output mode is "Create Issue"
 
 Create a GitHub issue using the `create-issue` safe output.
 
-**Issue title** — Read the scope from `cat /tmp/audit-params/scope`. The dynamic part (after the `[C# SDK Tier Audit] ` prefix):
+**Issue title** — The dynamic part (after the `[C# SDK Tier Audit] ` prefix):
 
 - **"Conformance + Repo Health" scope**: `<YYYY-MM-DD> - Tier <N>`
 - **"Repo Health" scope**: `<YYYY-MM-DD> - Tier <N> (Repo Health)`
