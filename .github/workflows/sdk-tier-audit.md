@@ -4,14 +4,25 @@ description: "SDK Tier Audit"
 permissions:
   contents: read
   issues: read
+  pull-requests: read
 
 safe-outputs:
   create-issue:
     title-prefix: "[C# SDK Tier Audit] "
     labels: [automation]
     close-older-issues: true
+    max: 1
+  noop:
+    report-as-issue: false
+
+tools:
+  github:
+    min-integrity: approved
 
 if: github.repository_owner == 'modelcontextprotocol' || github.event_name == 'workflow_dispatch'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 concurrency:
   group: tier-audit-${{ github.event.inputs.scope || 'Conformance + Repo Health' }}
