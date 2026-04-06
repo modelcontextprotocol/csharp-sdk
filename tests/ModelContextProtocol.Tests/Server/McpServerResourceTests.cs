@@ -29,12 +29,12 @@ public partial class McpServerResourceTests
     }
 
     [Fact]
-    public void CanCreateServerWithResource()
+    public async Task CanCreateServerWithResource()
     {
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithListResourcesHandler(async (ctx, ct) =>
             {
                 return new ListResourcesResult
@@ -58,19 +58,19 @@ public partial class McpServerResourceTests
                 };
             });
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<McpServer>();
     }
 
 
     [Fact]
-    public void CanCreateServerWithResourceTemplates()
+    public async Task CanCreateServerWithResourceTemplates()
     {
         var services = new ServiceCollection();
 
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithListResourceTemplatesHandler(async (ctx, ct) =>
             {
                 return new ListResourceTemplatesResult
@@ -94,17 +94,17 @@ public partial class McpServerResourceTests
                 };
             });
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<McpServer>();
     }
 
     [Fact]
-    public void CreatingReadHandlerWithNoListHandlerSucceeds()
+    public async Task CreatingReadHandlerWithNoListHandlerSucceeds()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(Stream.Null, Stream.Null)
             .WithReadResourceHandler(async (ctx, ct) =>
             {
                 return new ReadResourceResult
@@ -117,7 +117,7 @@ public partial class McpServerResourceTests
                     }]
                 };
             });
-        var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
         sp.GetRequiredService<McpServer>();
     }
