@@ -61,7 +61,6 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
-<<<<<<< suppress-ec-flow-stderr
     public async Task CreateAsync_StdErrCallback_DoesNotCaptureCallerAsyncLocal()
     {
         var asyncLocal = new AsyncLocal<string>();
@@ -100,7 +99,9 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         // The callback should NOT see the caller's AsyncLocal value because
         // ExecutionContext flow is suppressed for the stderr reader thread.
         Assert.Null(capturedValue);
-=======
+    }
+
+    [Fact(Skip= "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task CreateAsync_StdErrCallbackThrows_DoesNotCrashProcess()
     {
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
@@ -109,7 +110,6 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 
         // Should throw IOException for the failed server, not crash the host process.
         await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
->>>>>>> main
     }
 
     [Theory]
