@@ -17,8 +17,6 @@ items:
     uid: progress
   - name: Cancellation
     uid: cancellation
-  - name: Pagination
-    uid: pagination
   - name: Tasks
     uid: tasks
 - name: Client Features
@@ -41,6 +39,8 @@ items:
     uid: completions
   - name: Logging
     uid: logging
+  - name: Pagination
+    uid: pagination
   - name: HTTP Context
     uid: httpcontext
   - name: Filters
