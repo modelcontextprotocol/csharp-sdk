@@ -32,6 +32,8 @@ on:
 
 jobs:
   build-all-configs:
+    # Don't run scheduled/release triggers on forks; allow manual workflow_dispatch
+    if: ${{ github.repository == 'modelcontextprotocol/csharp-sdk' || github.event_name == 'workflow_dispatch' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]

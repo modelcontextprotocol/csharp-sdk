@@ -85,22 +85,39 @@ The SDK consists of three main packages:
 - Test servers in `tests/ModelContextProtocol.Test*Server/` for integration scenarios
 - Filter manual tests with `[Trait("Execution", "Manual")]` - these require external dependencies
 
-### Test Infrastructure and Helpers
-- **LoggedTest**: Base class for tests that need logging output captured to xUnit test output
-  - Provides `ILoggerFactory` and `ITestOutputHelper` for test logging
-  - Use when debugging or when tests need to verify log output
-- **TestServerTransport**: In-memory transport for testing client-server interactions without network I/O
-- **MockLoggerProvider**: For capturing and asserting on log messages
-- **XunitLoggerProvider**: Routes `ILogger` output to xUnit's `ITestOutputHelper`
-- **KestrelInMemoryTransport** (AspNetCore.Tests): In-memory Kestrel connection for HTTP transport testing without network stack
+### Test Base Classes
+- **`LoggedTest`**: Base class that wires up `ILoggerFactory` with `XunitLoggerProvider` (test output) and `MockLoggerProvider` (log assertions). Inherit from this for any test needing logging.
+- **`ClientServerTestBase`**: Sets up in-memory client/server pair via `Pipe`. Override `ConfigureServices` to register tools/prompts/resources, then call `CreateMcpClientForServer()`. Handles async disposal automatically.
+- **`KestrelInMemoryTest`** (AspNetCore tests): Hosts ASP.NET Core with in-memory transport — no ports needed.
+- **`TestServerTransport`**: In-memory mock transport for testing client logic without a real server.
 
-### Test Best Practices
-- Inherit from `LoggedTest` for tests needing logging infrastructure
-- Use `TestServerTransport` for in-memory client-server testing
-- Mock external dependencies (filesystem, HTTP clients) rather than calling real services
-- Use `CancellationTokenSource` with timeouts to prevent hanging tests
-- Dispose resources properly (servers, clients, transports) using `IDisposable` or `await using`
-- Run tests with: `dotnet test --filter '(Execution!=Manual)'`
+### Transport Selection in Tests
+- **Never use `WithStdioServerTransport()` in unit tests.** It reads from the test host's stdin, which cannot be closed, permanently leaking a thread pool thread per test.
+- For DI-only tests: `WithStreamServerTransport(Stream.Null, Stream.Null)`
+- For client/server interaction: inherit `ClientServerTestBase`
+- For client-only logic: use `TestServerTransport`
+- For HTTP/SSE: inherit `KestrelInMemoryTest`
+- For process lifecycle tests: `StdioClientTransport` (only when testing actual process behavior)
+
+### Resource Management
+- **Always `await using` the `ServiceProvider`** when MCP server services are registered — `McpServerImpl` only implements `IAsyncDisposable`. Synchronous `using` throws at runtime.
+- **Always dispose clients and servers** — use `await using var client = ...`
+- **Use `TestContext.Current.CancellationToken`** for async MCP calls so xUnit can cancel on timeout.
+
+### Timeouts
+- **Always use `TestConstants.DefaultTimeout`** (60s) instead of hardcoded values. CI machines are slower than dev workstations.
+- For HTTP polling operations use `TestConstants.HttpClientPollingTimeout` (2s).
+
+### Synchronization
+- **Never use `Task.Delay` for synchronization.** Use `TaskCompletionSource`, `SemaphoreSlim`, or `Channel` so tests don't depend on timing.
+
+### Background Logging
+- `ITestOutputHelper.WriteLine` throws after the test method returns. Background threads (process event handlers, async continuations) can outlive the test, causing unhandled exceptions that crash the test host.
+- Route logging through `LoggedTest.LoggerFactory` — `XunitLoggerProvider` already catches post-test exceptions.
+- If calling `ITestOutputHelper` directly from an event handler, wrap in try/catch for `InvalidOperationException`.
+
+### Parallelism
+- Tests run in parallel by default. Apply `[Collection(nameof(DisableParallelization))]` to test classes that touch global state (e.g., `ActivitySource` listeners).
 
 ## Build and Development
 

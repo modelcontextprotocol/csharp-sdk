@@ -59,6 +59,17 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Contains(id, sb.ToString());
     }
 
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task CreateAsync_StdErrCallbackThrows_DoesNotCrashProcess()
+    {
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new() { Command = "cmd", Arguments = ["/c", "echo fail >&2 & exit /b 1"], StandardErrorLines = _ => throw new InvalidOperationException("boom") }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", "echo fail >&2; exit 1"], StandardErrorLines = _ => throw new InvalidOperationException("boom") }, LoggerFactory);
+
+        // Should throw IOException for the failed server, not crash the host process.
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("argument with spaces")]

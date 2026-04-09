@@ -17,7 +17,7 @@ Install the SDK and build your first MCP client and server.
 | [Ping](ping/ping.md) | Learn how to verify connection health using the ping mechanism. |
 | [Progress tracking](progress/progress.md) | Learn how to track progress for long-running operations through notification messages. |
 | [Cancellation](cancellation/cancellation.md) | Learn how to cancel in-flight MCP requests using cancellation tokens and notifications. |
-| [Pagination](pagination/pagination.md) | Learn how to use cursor-based pagination when listing tools, prompts, and resources. |
+| [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 
 ### Client Features
 
@@ -36,6 +36,7 @@ Install the SDK and build your first MCP client and server.
 | [Prompts](prompts/prompts.md) | Learn how to implement and consume reusable prompt templates with rich content types. |
 | [Completions](completions/completions.md) | Learn how to implement argument auto-completion for prompts and resource templates. |
 | [Logging](logging/logging.md) | Learn how to implement logging in MCP servers and how clients can consume log messages. |
+| [Pagination](pagination/pagination.md) | Learn how to use cursor-based pagination when listing tools, prompts, and resources. |
 | [Stateless and Stateful](stateless/stateless.md) | Learn when to use stateless vs. stateful mode for HTTP servers and how to configure sessions. |
 | [HTTP Context](httpcontext/httpcontext.md) | Learn how to access the underlying `HttpContext` for a request. |
 | [MCP Server Handler Filters](filters.md) | Learn how to add filters to the handler pipeline. Filters let you wrap the original handler with additional functionality. |
