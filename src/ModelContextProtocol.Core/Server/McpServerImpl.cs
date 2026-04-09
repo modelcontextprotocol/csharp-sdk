@@ -98,6 +98,18 @@ internal sealed partial class McpServerImpl : McpServer
             _notificationHandlers.RegisterRange(notificationHandlers);
         }
 
+        // In stateless mode, the server cannot send unsolicited notifications,
+        // so listChanged should not be advertised.
+        if (transport is StreamableHttpServerTransport { Stateless: true })
+        {
+            if (ServerCapabilities.Tools is not null)
+                ServerCapabilities.Tools.ListChanged = null;
+            if (ServerCapabilities.Prompts is not null)
+                ServerCapabilities.Prompts.ListChanged = null;
+            if (ServerCapabilities.Resources is not null)
+                ServerCapabilities.Resources.ListChanged = null;
+        }
+
         // Now that everything has been configured, subscribe to any necessary notifications.
         if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
         {
