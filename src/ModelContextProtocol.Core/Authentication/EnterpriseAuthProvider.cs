@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Context provided to the assertion callback for Enterprise Managed Authorization (SEP-990).
+/// Context provided to the assertion callback for Enterprise Managed Authorization.
 /// Contains the URLs discovered during the OAuth flow that are needed for the token exchange step.
 /// </summary>
 public sealed class EnterpriseAuthAssertionContext
@@ -23,7 +23,7 @@ public sealed class EnterpriseAuthAssertionContext
 }
 
 /// <summary>
-/// Provides Enterprise Managed Authorization (SEP-990) as a standalone, non-interactive provider
+/// Provides Enterprise Managed Authorization as a standalone, non-interactive provider
 /// that can be used alongside the MCP client's OAuth infrastructure.
 /// </summary>
 /// <remarks>
