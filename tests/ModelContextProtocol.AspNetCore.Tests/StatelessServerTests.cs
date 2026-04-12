@@ -292,6 +292,32 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Assert.Equal("configured-beta", Assert.IsType<TextContentBlock>(content2).Text);
     }
 
+    [Fact]
+    public async Task StatelessMode_DoesNotAdvertise_ListChangedCapabilities()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+            })
+            .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
+            .WithPrompts([McpServerPrompt.Create(() => new GetPromptResult(), new() { Name = "myPrompt" })])
+            .WithResources([McpServerResource.Create(() => new ReadResourceResult(), new() { UriTemplate = "resource://test" })]);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        Assert.Null(client.ServerCapabilities.Tools?.ListChanged);
+        Assert.Null(client.ServerCapabilities.Prompts?.ListChanged);
+        Assert.Null(client.ServerCapabilities.Resources?.ListChanged);
+    }
+
     [McpServerTool(Name = "testSamplingErrors")]
     public static async Task<string> TestSamplingErrors(McpServer server)
     {

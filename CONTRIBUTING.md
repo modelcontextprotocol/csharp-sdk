@@ -65,6 +65,70 @@ dotnet test tests/ModelContextProtocol.Tests/
 
 Tools like Visual Studio, JetBrains Rider, and VS Code also provide integrated test runners that can be used to run and debug individual tests.
 
+### Writing Tests
+
+The test projects include shared infrastructure in `tests/Common/Utils/` that most tests build on. Familiarize yourself with these helpers before writing new tests.
+
+#### Test base classes
+
+- **`LoggedTest`** — Base class that wires up `ILoggerFactory` with both `XunitLoggerProvider` (routes to test output) and `MockLoggerProvider` (captures logs for assertions). Inherit from this for any test that needs logging.
+- **`ClientServerTestBase`** — Sets up an in-memory client/server pair connected via `Pipe` with proper async disposal. Override `ConfigureServices` to register tools, prompts, and resources, then call `CreateMcpClientForServer()` to get a connected client.
+- **`KestrelInMemoryTest`** (ASP.NET Core tests) — Hosts an ASP.NET Core server with in-memory transport so HTTP/SSE tests run without allocating ports.
+
+#### Choosing a transport
+
+| Scenario | Transport | Why |
+|---|---|---|
+| Unit tests that only need DI | `WithStreamServerTransport(Stream.Null, Stream.Null)` | No threads blocked, no process spawned |
+| Client/server interaction tests | `ClientServerTestBase` (uses `Pipe`) | Full bidirectional MCP, in-process |
+| Client-only logic | `TestServerTransport` | In-memory mock that auto-responds to standard MCP requests |
+| HTTP/SSE integration | `KestrelInMemoryTest` | Real HTTP stack, no network |
+| External process tests | `StdioClientTransport` | Only when testing actual process lifecycle |
+
+> **Do not** use `WithStdioServerTransport()` in unit tests. The stdio server transport reads from the test host process's standard input, which the test does not own and cannot close. This means the transport's background read loop can never terminate, permanently leaking a thread pool thread per test. Use `WithStreamServerTransport(Stream.Null, Stream.Null)` for tests that only need the DI container.
+
+#### Resource management
+
+- **Always `await using` the `ServiceProvider`** when MCP server services are registered — `McpServerImpl` only implements `IAsyncDisposable`, not `IDisposable`. A synchronous `using` will throw at runtime, and skipping disposal leaks transports and background threads.
+- **Use `TestContext.Current.CancellationToken`** when calling async MCP methods so that xUnit can cancel the test on timeout rather than hanging.
+- **Dispose clients and servers** explicitly. Prefer `await using var client = ...` over relying on finalizers. `ClientServerTestBase` handles this if you inherit from it.
+
+#### Timeouts
+
+Use `TestConstants.DefaultTimeout` (60 seconds) rather than hardcoded values. CI machines are often slower than developer workstations, and short timeouts cause flaky failures.
+
+```csharp
+// Good
+using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+cts.CancelAfter(TestConstants.DefaultTimeout);
+await client.CallToolAsync("my-tool", args, cts.Token);
+
+// Bad — too short for CI
+cts.CancelAfter(TimeSpan.FromSeconds(5));
+```
+
+#### Synchronization
+
+Avoid `Task.Delay` for synchronization. Use explicit signaling primitives (`TaskCompletionSource`, `SemaphoreSlim`, `Channel`) so tests don't depend on timing. If a producer/consumer test writes events for a streaming reader, use a `TaskCompletionSource` to confirm the reader is active before writing.
+
+#### Background logging
+
+`ITestOutputHelper.WriteLine` throws after the test method returns. Background threads (process event handlers, async continuations) can outlive the test. This manifests as unhandled exceptions that crash the test host. Two mitigations:
+
+1. **`XunitLoggerProvider`** already catches these exceptions. Route logging through `LoggedTest.LoggerFactory` rather than calling `ITestOutputHelper` directly from callbacks.
+2. **If you must call `ITestOutputHelper` from an event handler**, wrap it in a try/catch:
+   ```csharp
+   process.ErrorDataReceived += (s, e) =>
+   {
+       try { testOutputHelper.WriteLine(e.Data); }
+       catch (InvalidOperationException) { }
+   };
+   ```
+
+#### Parallelism
+
+Tests run in parallel by default. If a test class touches global state (e.g., `ActivitySource` listeners in diagnostics tests), apply `[Collection(nameof(DisableParallelization))]` to run it sequentially.
+
 ### Building the Documentation
 
 This project uses [DocFX](https://dotnet.github.io/docfx/) to generate its conceptual and reference documentation.
