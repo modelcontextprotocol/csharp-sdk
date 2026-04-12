@@ -4,9 +4,13 @@ using System.Text.Json;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Provides Enterprise Managed Authorization utilities for the Identity Assertion Authorization Grant flow (SEP-990).
+/// Provides Enterprise Managed Authorization utilities for the Identity Assertion Authorization Grant flow.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Implements the Enterprise Managed Authorization flow as specified at
+/// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
+/// </para>
 /// <para>
 /// This class provides standalone functions for:
 /// </para>
@@ -384,146 +388,6 @@ public static class EnterpriseAuth
     #endregion
 }
 
-#region Options Types
-
-/// <summary>
-/// Options for requesting a JWT Authorization Grant from an Identity Provider via RFC 8693 Token Exchange.
-/// </summary>
-public sealed class RequestJwtAuthGrantOptions
-{
-    /// <summary>
-    /// Gets or sets the IDP's token endpoint URL.
-    /// </summary>
-    public required string TokenEndpoint { get; set; }
-
-    /// <summary>
-    /// Gets or sets the MCP authorization server URL (used as the <c>audience</c> parameter).
-    /// </summary>
-    public required string Audience { get; set; }
-
-    /// <summary>
-    /// Gets or sets the MCP resource server URL (used as the <c>resource</c> parameter).
-    /// </summary>
-    public required string Resource { get; set; }
-
-    /// <summary>
-    /// Gets or sets the OIDC ID token to exchange.
-    /// </summary>
-    public required string IdToken { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client ID for authentication with the IDP.
-    /// </summary>
-    public required string ClientId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client secret for authentication with the IDP. Optional.
-    /// </summary>
-    public string? ClientSecret { get; set; }
-
-    /// <summary>
-    /// Gets or sets the scopes to request (space-separated). Optional.
-    /// </summary>
-    public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the HTTP client for making requests. If not provided, a default HttpClient will be used.
-    /// </summary>
-    public HttpClient? HttpClient { get; set; }
-}
-
-/// <summary>
-/// Options for discovering an IDP's token endpoint and requesting a JWT Authorization Grant.
-/// Extends <see cref="RequestJwtAuthGrantOptions"/> semantics but replaces <c>TokenEndpoint</c>
-/// with <c>IdpUrl</c>/<c>IdpTokenEndpoint</c> for automatic discovery.
-/// </summary>
-public sealed class DiscoverAndRequestJwtAuthGrantOptions
-{
-    /// <summary>
-    /// Gets or sets the Identity Provider's base URL for OAuth/OIDC discovery.
-    /// Used when <see cref="IdpTokenEndpoint"/> is not specified.
-    /// </summary>
-    public string? IdpUrl { get; set; }
-
-    /// <summary>
-    /// Gets or sets the IDP token endpoint URL. When provided, skips IDP metadata discovery.
-    /// </summary>
-    public string? IdpTokenEndpoint { get; set; }
-
-    /// <summary>
-    /// Gets or sets the MCP authorization server URL (used as the <c>audience</c> parameter).
-    /// </summary>
-    public required string Audience { get; set; }
-
-    /// <summary>
-    /// Gets or sets the MCP resource server URL (used as the <c>resource</c> parameter).
-    /// </summary>
-    public required string Resource { get; set; }
-
-    /// <summary>
-    /// Gets or sets the OIDC ID token to exchange.
-    /// </summary>
-    public required string IdToken { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client ID for authentication with the IDP.
-    /// </summary>
-    public required string ClientId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client secret for authentication with the IDP. Optional.
-    /// </summary>
-    public string? ClientSecret { get; set; }
-
-    /// <summary>
-    /// Gets or sets the scopes to request (space-separated). Optional.
-    /// </summary>
-    public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the HTTP client for making requests.
-    /// </summary>
-    public HttpClient? HttpClient { get; set; }
-}
-
-/// <summary>
-/// Options for exchanging a JWT Authorization Grant for an access token via RFC 7523.
-/// </summary>
-public sealed class ExchangeJwtBearerGrantOptions
-{
-    /// <summary>
-    /// Gets or sets the MCP Server's authorization server token endpoint URL.
-    /// </summary>
-    public required string TokenEndpoint { get; set; }
-
-    /// <summary>
-    /// Gets or sets the JWT Authorization Grant (JAG) assertion obtained from token exchange.
-    /// </summary>
-    public required string Assertion { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client ID for authentication with the MCP authorization server.
-    /// </summary>
-    public required string ClientId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client secret for authentication with the MCP authorization server. Optional.
-    /// </summary>
-    public string? ClientSecret { get; set; }
-
-    /// <summary>
-    /// Gets or sets the scopes to request (space-separated). Optional.
-    /// </summary>
-    public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the HTTP client for making requests.
-    /// </summary>
-    public HttpClient? HttpClient { get; set; }
-}
-
-#endregion
-
 #region Response Types
 
 /// <summary>
@@ -534,20 +398,20 @@ internal sealed class JagTokenExchangeResponse
 {
     /// <summary>
     /// Gets or sets the issued JAG. Despite the name "access_token" (required by RFC 8693),
-    /// for SEP-990 this contains a JAG JWT, not an OAuth access token.
+    /// this contains a JAG JWT, not an OAuth access token.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("access_token")]
     public string AccessToken { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the type of the security token issued.
-    /// For SEP-990, this MUST be <see cref="EnterpriseAuth.TokenTypeIdJag"/>.
+    /// This MUST be <see cref="EnterpriseAuth.TokenTypeIdJag"/>.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("issued_token_type")]
     public string IssuedTokenType { get; set; } = null!;
 
     /// <summary>
-    /// Gets or sets the token type. For SEP-990, this MUST be "N_A" per RFC 8693 §2.2.1.
+    /// Gets or sets the token type. This MUST be "N_A" per RFC 8693 §2.2.1.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("token_type")]
     public string TokenType { get; set; } = null!;
@@ -624,60 +488,6 @@ internal sealed class OAuthErrorResponse
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("error_uri")]
     public string? ErrorUri { get; set; }
-}
-
-#endregion
-
-#region Exception Type
-
-/// <summary>
-/// Represents an error that occurred during Enterprise Managed Authorization (SEP-990) operations,
-/// including token exchange (RFC 8693) and JWT bearer grant (RFC 7523) failures.
-/// </summary>
-public sealed class EnterpriseAuthException : Exception
-{
-    /// <summary>
-    /// Gets the OAuth error code, if available (e.g., "invalid_request", "invalid_grant").
-    /// </summary>
-    public string? ErrorCode { get; }
-
-    /// <summary>
-    /// Gets the human-readable error description from the OAuth error response.
-    /// </summary>
-    public string? ErrorDescription { get; }
-
-    /// <summary>
-    /// Gets the URI identifying a human-readable web page with error information.
-    /// </summary>
-    public string? ErrorUri { get; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="EnterpriseAuthException"/> class.
-    /// </summary>
-    /// <param name="message">The error message.</param>
-    /// <param name="errorCode">The OAuth error code.</param>
-    /// <param name="errorDescription">The human-readable error description.</param>
-    /// <param name="errorUri">The error URI.</param>
-    public EnterpriseAuthException(string message, string? errorCode = null, string? errorDescription = null, string? errorUri = null)
-        : base(FormatMessage(message, errorCode, errorDescription))
-    {
-        ErrorCode = errorCode;
-        ErrorDescription = errorDescription;
-        ErrorUri = errorUri;
-    }
-
-    private static string FormatMessage(string message, string? errorCode, string? errorDescription)
-    {
-        if (!string.IsNullOrEmpty(errorCode))
-        {
-            message = $"{message} Error: {errorCode}";
-            if (!string.IsNullOrEmpty(errorDescription))
-            {
-                message = $"{message} ({errorDescription})";
-            }
-        }
-        return message;
-    }
 }
 
 #endregion
