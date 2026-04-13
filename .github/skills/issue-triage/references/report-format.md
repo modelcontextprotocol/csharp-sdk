@@ -98,7 +98,7 @@ Group by theme: OAuth, SSE, Streamable HTTP, Structured Content, Tasks, etc.}
 
 ### Bugs ({N})
 
-{Full table: #, Created, Age, Labels, Title, Remaining Actions}
+{Full table: #, Created, Age, Labels, Community, Title, Remaining Actions}
 
 ### Enhancements ({N})
 
@@ -171,10 +171,12 @@ provided workarounds, whether there are linked PRs. End with the current blockin
 For the collapsed backlog, use compact tables:
 
 ```markdown
-| # | Created | Age | Labels | Title | Remaining Actions |
-|---|---|---|---|---|---|
-| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | Short title | Add `P2`; consider closing |
+| # | Created | Age | Labels | Community | Title | Remaining Actions |
+|---|---|---|---|---|---|---|
+| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | ✅ | Short title | Add `P2`; consider closing |
 ```
+
+The **Community** column shows ✅ when the `Community-contribution` label is present on the issue, and is left blank otherwise.
 
 ### Section Emoji Prefixes
 
