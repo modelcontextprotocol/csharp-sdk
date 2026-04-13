@@ -98,7 +98,7 @@ Group by theme: OAuth, SSE, Streamable HTTP, Structured Content, Tasks, etc.}
 
 ### Bugs ({N})
 
-{Full table: #, Created, Age, Labels, Community, Title, Remaining Actions}
+{Full table: #, Created, Age, Labels, Title, Remaining Actions}
 
 ### Enhancements ({N})
 
@@ -111,6 +111,17 @@ Group by theme: OAuth, SSE, Streamable HTTP, Structured Content, Tasks, etc.}
 ### Documentation ({N})
 
 {Full table}
+
+</details>
+
+---
+
+<details>
+<summary>🔃 Open Pull Requests ({N} PRs)</summary>
+
+| # | Created | Age | Labels | Community | Title | Author |
+|---|---|---|---|---|---|---|
+| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | ✅ | Short title | @author |
 
 </details>
 
@@ -168,15 +179,25 @@ provided workarounds, whether there are linked PRs. End with the current blockin
 
 ### Backlog Tables
 
-For the collapsed backlog, use compact tables:
+For the collapsed issue backlog, use compact tables:
 
 ```markdown
-| # | Created | Age | Labels | Community | Title | Remaining Actions |
-|---|---|---|---|---|---|---|
-| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | ✅ | Short title | Add `P2`; consider closing |
+| # | Created | Age | Labels | Title | Remaining Actions |
+|---|---|---|---|---|---|
+| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | Short title | Add `P2`; consider closing |
 ```
 
-The **Community** column shows ✅ when the `Community-contribution` label is present on the issue, and is left blank otherwise.
+### PR Tables
+
+For the collapsed open PR list, use compact tables:
+
+```markdown
+| # | Created | Age | Labels | Community | Title | Author |
+|---|---|---|---|---|---|---|
+| [#N](url) | YYYY-MM-DD | Nd | `label1`, `label2` | ✅ | Short title | @author |
+```
+
+The **Community** column shows ✅ when the `Community-contribution` label is present on the PR, and is left blank otherwise.
 
 ### Section Emoji Prefixes
 

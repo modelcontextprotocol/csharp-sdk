@@ -45,6 +45,16 @@ Paginate through all open issues in `modelcontextprotocol/csharp-sdk` via the Gi
 - Comment count
 - Assignees
 
+### Step 2b: Fetch All Open Pull Requests
+
+Paginate through all open pull requests in `modelcontextprotocol/csharp-sdk` via the GitHub API. For each PR, capture:
+- Number, title
+- Author login
+- Created date, updated date
+- All labels (note whether `Community-contribution` is present)
+
+This data is used to populate the Open Pull Requests table in the report.
+
 ### Step 3: Classify Triage Status
 
 Using the label definitions extracted from `sdk-tiers.mdx` in Step 1, classify each issue:
