@@ -808,7 +808,7 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
+    public async Task CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
     {
         const string requestedResourcePath = "/mcp/tools";
 
@@ -839,11 +839,46 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenResourceMetadataUriDoesNotMatch()
+    {
+        const string requestedResourcePath = "/mcp/tools";
+        const string differentResourceUri = "http://different-server.example.com";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            await McpClient.CreateAsync(
-                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = differentResourceUri,
+                AuthorizationServers = { OAuthServerUrl },
+            };
         });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should fail because the resource URI doesn't match
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match", ex.Message);
     }
@@ -853,7 +888,7 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that automatically derived resource URIs don't have trailing slashes
         // and that the client doesn't add them during authentication
-        
+
         // Don't explicitly set Resource - let it be derived from the request
         await using var app = await StartMcpServerAsync();
 
@@ -993,10 +1028,10 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that explicitly configured trailing slashes are preserved
         const string resourceWithTrailingSlash = "http://localhost:5000/";
-        
+
         // Configure ValidResources to accept the trailing slash version for this test
         TestOAuthServer.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
-        
+
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
             options.ResourceMetadata = new ProtectedResourceMetadata

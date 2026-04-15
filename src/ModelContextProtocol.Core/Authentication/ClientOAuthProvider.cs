@@ -743,14 +743,21 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return false;
         }
 
-        // Per RFC: The resource value must be identical to the URL that the client used
-        // to make the request to the resource server. Compare entire URIs, not just the host.
-
         // Normalize the URIs to ensure consistent comparison
         string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
 
-        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+        // Accept exact match with the full MCP endpoint URI
+        if (string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Per MCP spec: "The authorization base URL MUST be derived by discarding the path component from the MCP server URL"
+        // Accept match with the base URL (authority only, path discarded) as this is the expected behavior per MCP spec
+
+        string normalizedBaseUrl = NormalizeUri(new Uri(resourceLocation.GetLeftPart(UriPartial.Authority)));
+        return string.Equals(normalizedMetadataResource, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
