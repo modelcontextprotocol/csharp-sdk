@@ -807,6 +807,12 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("does not match", ex.Message);
     }
 
+    /// <summary>
+    /// Verifies that OAuth authentication succeeds when the protected resource metadata URI
+    /// matches the root server URL, even when the actual MCP endpoint is at a subpath.
+    /// This tests the flexible URI matching behavior where the resource URI can be less specific
+    /// than the actual endpoint being accessed.
+    /// </summary>
     [Fact]
     public async Task CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
     {
@@ -843,6 +849,11 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// Verifies that OAuth authentication fails when the protected resource metadata URI
+    /// does not match the requested MCP server endpoint. This ensures that clients cannot
+    /// use OAuth tokens intended for one server to access a different server.
+    /// </summary>
     [Fact]
     public async Task CannotAuthenticate_WhenResourceMetadataUriDoesNotMatch()
     {
