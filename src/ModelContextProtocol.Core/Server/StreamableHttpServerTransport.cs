@@ -137,33 +137,54 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
         }
 
-        using (await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            if (_getHttpRequestStarted)
+            using (await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false))
             {
-                throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
+                if (_getHttpRequestStarted)
+                {
+                    throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
+                }
+
+                _getHttpRequestStarted = true;
+                _httpSseWriter = new SseEventWriter(sseResponseStream);
+                _httpResponseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _storeSseWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
+                if (_storeSseWriter is not null)
+                {
+                    var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
+                    await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    // If there's no priming write, flush the stream to ensure HTTP response headers are
+                    // sent to the client now that the transport is ready to accept messages via SendMessageAsync.
+                    await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
-            _getHttpRequestStarted = true;
-            _httpSseWriter = new SseEventWriter(sseResponseStream);
-            _httpResponseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _storeSseWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
-            if (_storeSseWriter is not null)
+            // Wait for the response to be written before returning from the handler.
+            // This keeps the HTTP response open until the final response message is sent.
+            await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Release the SseEventWriter's reference to the response stream promptly when the GET
+            // request ends, regardless of how it exits. Otherwise the response stream (and the
+            // underlying Kestrel connection and associated memory pool buffers) remains pinned
+            // in memory until the session itself is disposed (via explicit DELETE or idle timeout).
+            // Clients that disconnect without sending DELETE — common with long-lived SSE — would
+            // otherwise accumulate significant unmanaged memory per session during that interval.
+            using (await _unsolicitedMessageLock.LockAsync(CancellationToken.None).ConfigureAwait(false))
             {
-                var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
-                await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                // If there's no priming write, flush the stream to ensure HTTP response headers are
-                // sent to the client now that the transport is ready to accept messages via SendMessageAsync.
-                await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                _getHttpResponseCompleted = true;
+                if (_httpSseWriter is { } writer)
+                {
+                    _httpSseWriter = null;
+                    writer.Dispose();
+                }
             }
         }
-
-        // Wait for the response to be written before returning from the handler.
-        // This keeps the HTTP response open until the final response message is sent.
-        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -219,7 +240,10 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             return;
         }
 
-        Debug.Assert(_httpSseWriter is not null);
+        // _httpSseWriter may be null here if the GET request has already ended (e.g. client
+        // disconnected). _getHttpResponseCompleted is set to true in that case, so the write
+        // below is correctly skipped. The event store writer (if configured) still captures
+        // the message so a reconnecting client can replay it via Last-Event-ID.
         Debug.Assert(_httpResponseTcs is not null);
 
         var item = SseItem.Message(message);
@@ -229,13 +253,13 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             item = await _storeSseWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_getHttpResponseCompleted)
+        if (!_getHttpResponseCompleted && _httpSseWriter is { } writer)
         {
             // Only write the message to the response if the response has not completed.
 
             try
             {
-                await _httpSseWriter!.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+                await writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
