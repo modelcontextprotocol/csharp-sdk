@@ -133,6 +133,55 @@ app.Run();
 
 By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. We recommend setting `Stateless` explicitly (rather than relying on the current default) for [forward compatibility](xref:stateless#forward-and-backward-compatibility). See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
 
+#### Host name validation
+
+Use ASP.NET Core host filtering to limit which host names the server will respond to. Configure `AllowedHosts` in app configuration, such as `appsettings.Development.json` for local loopback values and environment-specific configuration for deployed hosts. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering).
+
+```json
+// appsettings.Development.json
+{
+  "AllowedHosts": "localhost;127.0.0.1;[::1]"
+}
+```
+
+#### Request origin validation
+
+Use a restrictive ASP.NET Core CORS policy so only trusted browser origins can call the MCP endpoint. This is ASP.NET Core's built-in mechanism for validating the browser `Origin` header on cross-origin requests. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
+
+For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it.
+
+```json
+// appsettings.Development.json
+{
+  "Mcp": {
+    "AllowedOrigins": [
+      "http://localhost:5173"
+    ]
+  }
+}
+```
+
+```csharp
+var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("McpBrowserClient", policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .WithMethods("POST")
+            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version");
+    });
+});
+
+var app = builder.Build();
+
+app.UseCors();
+app.MapMcp("/mcp").RequireCors("McpBrowserClient");
+```
+
+`Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration. For local development, we recommend keeping `AllowedHosts` limited to loopback values such as `localhost;127.0.0.1;[::1]`.
+
 #### How messages flow
 
 In Streamable HTTP, client requests arrive as HTTP POST requests. The server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each POST holds its connection until the handler completes.

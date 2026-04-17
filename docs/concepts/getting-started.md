@@ -101,6 +101,16 @@ public static class EchoTool
 }
 ```
 
+#### Host name validation
+
+Use ASP.NET Core host filtering to limit which host names the server will respond to. Set `AllowedHosts` in configuration, commonly in `appsettings.Development.json` for local loopback development and in environment-specific configuration for deployed hosts. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering).
+
+#### Request origin validation
+
+Use a restrictive ASP.NET Core CORS policy to limit which browser origins can call the MCP endpoint. This is ASP.NET Core's built-in mechanism for validating the browser `Origin` header on cross-origin requests. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
+
+For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#request-origin-validation).
+
 ### Building an MCP client
 
 Create a new console app, add the package, and replace `Program.cs` with the code below. This client connects to the MCP "everything" reference server, lists its tools, and calls one:

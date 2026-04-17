@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ProtectedMcpServer.Tools;
 using System.Net.Http.Headers;
@@ -9,6 +10,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
+var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
+
+// This sample is intended to be callable from a browser-based client, so we enable a
+// restrictive CORS policy here. If your server is not meant for browser access, leave CORS disabled.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("McpBrowserClient", policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .WithMethods("POST")
+            .WithHeaders(HeaderNames.ContentType, HeaderNames.Authorization, "MCP-Protocol-Version")
+            .WithExposedHeaders(HeaderNames.WWWAuthenticate);
+    });
+});
 
 builder.Services.AddAuthentication(options =>
 {
@@ -84,11 +99,12 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
 // Use the default MCP policy name that we've configured
-app.MapMcp().RequireAuthorization();
+app.MapMcp().RequireAuthorization().RequireCors("McpBrowserClient");
 
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
 Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");
