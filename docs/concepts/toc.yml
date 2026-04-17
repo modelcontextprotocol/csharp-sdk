@@ -45,3 +45,5 @@ items:
     uid: httpcontext
   - name: Filters
     uid: filters
+  - name: Identity and Roles
+    uid: identity
