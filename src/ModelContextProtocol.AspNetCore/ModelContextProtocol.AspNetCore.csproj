@@ -17,11 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="README.md" pack="true" PackagePath="\" />
+    <None Include="..\PACKAGE.md" Pack="true" PackagePath="\README.md" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -15,7 +15,7 @@ internal class StreamClientSessionTransport : TransportBase
     private readonly TextReader _serverOutput;
     private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private CancellationTokenSource? _shutdownCts = new();
+    private readonly CancellationTokenSource _shutdownCts = new();
     private Task? _readTask;
 
     /// <summary>
@@ -85,6 +85,10 @@ internal class StreamClientSessionTransport : TransportBase
             await _serverInputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _serverInputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
@@ -93,8 +97,16 @@ internal class StreamClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    public override ValueTask DisposeAsync() =>
-        CleanupAsync(cancellationToken: CancellationToken.None);
+    public override async ValueTask DisposeAsync()
+    {
+        await CleanupAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        // Ensure the channel is always completed after disposal, even if CleanupAsync
+        // returned early because another caller (e.g. ReadMessagesAsync) was already
+        // running cleanup. SetDisconnected is idempotent—if the channel was already
+        // completed by the other cleanup path, this is a no-op.
+        SetDisconnected();
+    }
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
@@ -164,15 +176,20 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
+    /// <summary>
+    /// Cancels the shutdown token to signal that the transport is shutting down,
+    /// without performing any other cleanup.
+    /// </summary>
+    protected void CancelShutdown()
+    {
+        _shutdownCts.Cancel();
+    }
+
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
         LogTransportShuttingDown(Name);
 
-        if (Interlocked.Exchange(ref _shutdownCts, null) is { } shutdownCts)
-        {
-            await shutdownCts.CancelAsync().ConfigureAwait(false);
-            shutdownCts.Dispose();
-        }
+        await _shutdownCts.CancelAsync().ConfigureAwait(false);
 
         if (Interlocked.Exchange(ref _readTask, null) is Task readTask)
         {

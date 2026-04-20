@@ -105,85 +105,96 @@ var clientTransport = new HttpClientTransport(new()
     OAuth = oauthOptions,
 }, loggerFactory: consoleLoggerFactory);
 
-await using var mcpClient = await McpClient.CreateAsync(clientTransport, options, loggerFactory: consoleLoggerFactory);
-
-bool success = true;
-
-switch (scenario)
+try
 {
-    case "tools_call":
-    {
-        var tools = await mcpClient.ListToolsAsync();
-        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+    await using var mcpClient = await McpClient.CreateAsync(clientTransport, options, loggerFactory: consoleLoggerFactory);
 
-        // Call the "add_numbers" tool
-        var toolName = "add_numbers";
-        Console.WriteLine($"Calling tool: {toolName}");
-        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
-        {
-            { "a", 5 },
-            { "b", 10 }
-        });
-        success &= !(result.IsError == true);
-        break;
-    }
-    case "elicitation-sep1034-client-defaults":
-    {
-        var tools = await mcpClient.ListToolsAsync();
-        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
-        var toolName = "test_client_elicitation_defaults";
-        Console.WriteLine($"Calling tool: {toolName}");
-        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
-        success &= !(result.IsError == true);
-        break;
-    }
-    case "sse-retry":
-    {
-        var tools = await mcpClient.ListToolsAsync();
-        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
-        var toolName = "test_reconnection";
-        Console.WriteLine($"Calling tool: {toolName}");
-        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
-        success &= !(result.IsError == true);
-        break;
-    }
-    case "auth/scope-step-up":
-    {
-        // Just testing that we can authenticate and list tools
-        var tools = await mcpClient.ListToolsAsync();
-        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+    bool success = true;
 
-        // Call the "test_tool" tool
-        var toolName = "test-tool";
-        Console.WriteLine($"Calling tool: {toolName}");
-        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
-        {
-            { "foo", "bar" },
-        });
-        success &= !(result.IsError == true);
-        break;
-    }
-    case "auth/scope-retry-limit":
+    switch (scenario)
     {
-        // Try to list tools - this triggers the auth flow that always fails with 403.
-        // The test validates the client doesn't retry indefinitely.
-        try
+        case "tools_call":
         {
-            await mcpClient.ListToolsAsync();
+            var tools = await mcpClient.ListToolsAsync();
+            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+            // Call the "add_numbers" tool
+            var toolName = "add_numbers";
+            Console.WriteLine($"Calling tool: {toolName}");
+            var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
+            {
+                { "a", 5 },
+                { "b", 10 }
+            });
+            success &= !(result.IsError == true);
+            break;
         }
-        catch (Exception ex)
+        case "elicitation-sep1034-client-defaults":
         {
-            Console.WriteLine($"Expected auth failure: {ex.Message}");
+            var tools = await mcpClient.ListToolsAsync();
+            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+            var toolName = "test_client_elicitation_defaults";
+            Console.WriteLine($"Calling tool: {toolName}");
+            var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
+            success &= !(result.IsError == true);
+            break;
         }
-        break;
+        case "sse-retry":
+        {
+            var tools = await mcpClient.ListToolsAsync();
+            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+            var toolName = "test_reconnection";
+            Console.WriteLine($"Calling tool: {toolName}");
+            var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
+            success &= !(result.IsError == true);
+            break;
+        }
+        case "auth/scope-step-up":
+        {
+            // Just testing that we can authenticate and list tools
+            var tools = await mcpClient.ListToolsAsync();
+            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+            // Call the "test_tool" tool
+            var toolName = "test-tool";
+            Console.WriteLine($"Calling tool: {toolName}");
+            var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
+            {
+                { "foo", "bar" },
+            });
+            success &= !(result.IsError == true);
+            break;
+        }
+        case "auth/scope-retry-limit":
+        {
+            // Try to list tools - this triggers the auth flow that always fails with 403.
+            // The test validates the client doesn't retry indefinitely.
+            try
+            {
+                await mcpClient.ListToolsAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Expected auth failure: {ex.Message}");
+            }
+            break;
+        }
+        default:
+            // No extra processing for other scenarios
+            break;
     }
-    default:
-        // No extra processing for other scenarios
-        break;
+
+    // Exit code 0 on success, 1 on failure
+    return success ? 0 : 1;
 }
-
-// Exit code 0 on success, 1 on failure
-return success ? 0 : 1;
+catch (Exception ex)
+{
+    // Report the error to stderr and exit with a non-zero code rather than
+    // crashing the process with an unhandled exception. An unhandled exception
+    // generates a crash dump which can abort the parent test host.
+    Console.Error.WriteLine($"Conformance client failed: {ex}");
+    return 1;
+}
 
 // Copied from ProtectedMcpClient sample
 // Simulate a user opening the browser and logging in

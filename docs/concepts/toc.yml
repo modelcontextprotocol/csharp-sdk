@@ -9,18 +9,20 @@ items:
     uid: capabilities
   - name: Transports
     uid: transports
+  - name: Stateless and Stateful
+    uid: stateless
   - name: Ping
     uid: ping
   - name: Progress
     uid: progress
   - name: Cancellation
     uid: cancellation
-  - name: Pagination
-    uid: pagination
   - name: Tasks
     uid: tasks
 - name: Client Features
   items:
+  - name: Sampling
+    uid: sampling
   - name: Roots
     uid: roots
   - name: Elicitation
@@ -37,7 +39,11 @@ items:
     uid: completions
   - name: Logging
     uid: logging
+  - name: Pagination
+    uid: pagination
   - name: HTTP Context
     uid: httpcontext
   - name: Filters
     uid: filters
+  - name: Identity and Roles
+    uid: identity

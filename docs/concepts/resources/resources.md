@@ -43,7 +43,7 @@ public class MyResources
 
 Template resources use [URI templates (RFC 6570)] with parameters. They are returned separately in the resource templates list and can match a range of URIs:
 
-[URI templates (RFC 6570)]: https://tools.ietf.org/html/rfc6570
+[URI templates (RFC 6570)]: https://datatracker.ietf.org/doc/html/rfc6570
 
 ```csharp
 [McpServerResourceType]
@@ -74,7 +74,7 @@ Register resource types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithResources<MyResources>()
     .WithResources<DocumentResources>();
 ```
@@ -208,11 +208,13 @@ Register subscription handlers when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    // Subscriptions require stateful mode because the server pushes change notifications
+    // to clients. Set Stateless = false explicitly for forward compatibility.
+    .WithHttpTransport(o => o.Stateless = false)
     .WithResources<MyResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             // Track the subscription (e.g., in a concurrent dictionary)
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
@@ -221,7 +223,7 @@ builder.Services.AddMcpServer()
     })
     .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
         }

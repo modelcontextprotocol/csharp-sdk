@@ -10,12 +10,18 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     protected override bool UseStreamableHttp => false;
     protected override bool Stateless => false;
 
+    protected override void ConfigureStateless(HttpServerTransportOptions options)
+    {
+        base.ConfigureStateless(options);
+        options.EnableLegacySse = true;
+    }
+
     [Theory]
     [InlineData("/mcp")]
     [InlineData("/mcp/secondary")]
     public async Task Allows_Customizing_Route(string pattern)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
+        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true);
         await using var app = Builder.Build();
 
         app.MapMcp(pattern);
@@ -47,7 +53,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
                 Name = "TestCustomRouteServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport();
+        }).WithHttpTransport(options => options.EnableLegacySse = true);
         await using var app = Builder.Build();
 
         app.MapMcp(routePattern);
@@ -77,7 +83,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
             return "Complete";
         }, options: new() { Name = "polling_tool" });
 
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools([pollingTool]);
+        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true).WithTools([pollingTool]);
 
         await using var app = Builder.Build();
         app.MapMcp();

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
@@ -57,11 +58,15 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
-            throw new InvalidOperationException("Failed to connect transport", ex);
+            throw new IOException("Failed to connect transport.", ex);
         }
     }
 
@@ -124,7 +129,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected();
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 
@@ -143,6 +148,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
     private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
     {
+        HttpStatusCode? failureStatusCode = null;
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
@@ -150,6 +156,11 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
 
             using var response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                failureStatusCode = response.StatusCode;
+            }
 
             await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
@@ -179,6 +190,12 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             else
             {
+                SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails
+                {
+                    HttpStatusCode = failureStatusCode,
+                    Exception = ex,
+                }));
+
                 LogTransportReadMessagesFailed(Name, ex);
                 _connectionEstablished.TrySetException(ex);
                 throw;
@@ -186,7 +203,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected();
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 

@@ -241,6 +241,29 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.PostAsync("", JsonContent(ListToolsRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Mcp-Session-Id", body);
+        Assert.Contains("Stateless", body);
+    }
+
+    [Fact]
+    public async Task GetWithoutSessionId_Returns400_WithStatelessGuidance()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // Clear session ID and send GET without it.
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Mcp-Session-Id", body);
+        Assert.Contains("Stateless", body);
     }
 
     [Fact]

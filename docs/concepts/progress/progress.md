@@ -15,6 +15,9 @@ Typically progress tracking is supported by server tools that perform operations
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
+> [!NOTE]
+> Progress notifications are sent inline as part of the response to a request — they are not unsolicited. Progress tracking works in both [stateless and stateful](xref:stateless) modes as well as stdio.
+
 ### Server Implementation
 
 When processing a request, the server can use the <xref:ModelContextProtocol.McpSession.SendNotificationAsync*> extension method of <xref:ModelContextProtocol.Server.McpServer> to send progress updates,

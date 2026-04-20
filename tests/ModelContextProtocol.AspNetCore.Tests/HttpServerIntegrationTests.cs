@@ -303,4 +303,19 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
     }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_ReturnsCompletionDetails()
+    {
+        var client = await GetClientAsync();
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.Exception);
+        Assert.Null(httpDetails.HttpStatusCode);
+    }
 }

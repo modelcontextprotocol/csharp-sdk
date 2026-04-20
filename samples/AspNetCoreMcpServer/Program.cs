@@ -6,8 +6,12 @@ using AspNetCoreMcpServer.Resources;
 using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
+// Note: This sample uses SampleLlmTool which calls server.AsSamplingChatClient() to send
+// a server-to-client sampling request. This requires stateful (session-based) mode. Set
+// Stateless = false explicitly for forward compatibility in case the default changes.
+// See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions/sessions.html for details.
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = false)
     .WithTools<EchoTool>()
     .WithTools<SampleLlmTool>()
     .WithTools<WeatherTools>()

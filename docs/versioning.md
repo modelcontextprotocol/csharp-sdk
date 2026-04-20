@@ -43,7 +43,7 @@ All releases are posted to https://github.com/modelcontextprotocol/csharp-sdk/re
 
 ### Specification schema changes
 
-If the MCP specification changes the schema for JSON payloads, the C# SDK might use the [`McpSession.NegotiatedProtocolVersion`](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpSession.html#ModelContextProtocol_McpSession_NegotiatedProtocolVersion) to dynamically change the payload schema, potentially using internal data transfer objects (DTOs) to achieve the needed deserialization behavior. These techniques will be applied where feasible to maintain backward-compatibility and forward-compatibility between MCP specification versions.
+If the MCP specification changes the schema for JSON payloads, the C# SDK might use the [`McpSession.NegotiatedProtocolVersion`](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.McpSession.html#ModelContextProtocol_McpSession_NegotiatedProtocolVersion) to dynamically change the payload schema, potentially using internal data transfer objects (DTOs) to achieve the needed deserialization behavior. These techniques will be applied where feasible to maintain backward-compatibility and forward-compatibility between MCP specification versions.
 
 For illustrations of how this could be achieved, see the following prototypes:
 

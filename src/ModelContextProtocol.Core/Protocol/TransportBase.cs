@@ -90,12 +90,14 @@ public abstract partial class TransportBase : ITransport
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     protected async Task WriteMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected.");
+            // Transport disconnected concurrently. Silently drop rather than throw,
+            // to avoid surfacing spurious errors during shutdown races.
+            return;
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {

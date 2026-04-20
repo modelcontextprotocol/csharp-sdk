@@ -5,10 +5,12 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Claims;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -17,7 +19,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     protected abstract bool UseStreamableHttp { get; }
     protected abstract bool Stateless { get; }
 
-    protected void ConfigureStateless(HttpServerTransportOptions options)
+    protected virtual void ConfigureStateless(HttpServerTransportOptions options)
     {
         options.Stateless = Stateless;
     }
@@ -205,7 +207,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Server_ShutsDownQuickly_WhenClientIsConnected()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<ClaimsPrincipalTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
 
         await using var app = Builder.Build();
         app.MapMcp();
@@ -288,6 +290,210 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             }
         }
 
+    }
+
+    [Fact]
+    public async Task IncomingFilter_SeesClientRequests()
+    {
+        var observedMethods = new List<string>();
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest request)
+                {
+                    observedMethods.Add(request.Method);
+                }
+
+                await next(context, cancellationToken);
+            }))
+            .WithTools<EchoHttpContextUserTools>();
+
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync();
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await client.CallToolAsync("echo_with_user_name",
+            new Dictionary<string, object?> { ["message"] = "hi" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(RequestMethods.Initialize, observedMethods);
+        Assert.Contains(RequestMethods.ToolsList, observedMethods);
+        Assert.Contains(RequestMethods.ToolsCall, observedMethods);
+    }
+
+    [Fact]
+    public async Task OutgoingFilter_SeesResponsesAndRequests()
+    {
+        Assert.SkipWhen(Stateless, "Server-originated requests are not supported in stateless mode.");
+
+        var observedMessageTypes = new List<string>();
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+            {
+                var typeName = context.JsonRpcMessage switch
+                {
+                    JsonRpcRequest request => $"request:{request.Method}",
+                    JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("protocolVersion") => "initialize-response",
+                    JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("tools") => "tools-list-response",
+                    JsonRpcResponse r when r.Result is JsonObject obj && obj.ContainsKey("content") => "tool-call-response",
+                    _ => null,
+                };
+
+                if (typeName is not null)
+                {
+                    observedMessageTypes.Add(typeName);
+                }
+
+                await next(context, cancellationToken);
+            }))
+            .WithTools<ClaimsPrincipalTools>()
+            .WithTools<SamplingRegressionTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new() { Sampling = new() },
+            Handlers = new()
+            {
+                SamplingHandler = (_, _, _) => new(new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "sampled response" }],
+                    Model = "test-model",
+                }),
+            },
+        };
+
+        await using var client = await ConnectAsync(clientOptions: clientOptions);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await client.CallToolAsync("echo_claims_principal",
+            new Dictionary<string, object?> { ["message"] = "hi" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await client.CallToolAsync("sampling-tool",
+            new Dictionary<string, object?> { ["prompt"] = "Hello" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains("initialize-response", observedMessageTypes);
+        Assert.Contains("tools-list-response", observedMessageTypes);
+        Assert.Contains("tool-call-response", observedMessageTypes);
+        Assert.Contains($"request:{RequestMethods.SamplingCreateMessage}", observedMessageTypes);
+    }
+
+    [Fact]
+    public async Task OutgoingFilter_MultipleFilters_ExecuteInOrder()
+    {
+        var executionOrder = new List<string>();
+        var allFiltersComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters =>
+            {
+                filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+                {
+                    if (context.JsonRpcMessage is JsonRpcResponse r && r.Result is JsonObject obj && obj.ContainsKey("tools"))
+                    {
+                        executionOrder.Add("filter1-before");
+                    }
+
+                    await next(context, cancellationToken);
+
+                    if (context.JsonRpcMessage is JsonRpcResponse r2 && r2.Result is JsonObject obj2 && obj2.ContainsKey("tools"))
+                    {
+                        executionOrder.Add("filter1-after");
+                        allFiltersComplete.TrySetResult();
+                    }
+                });
+
+                filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+                {
+                    if (context.JsonRpcMessage is JsonRpcResponse r && r.Result is JsonObject obj && obj.ContainsKey("tools"))
+                    {
+                        executionOrder.Add("filter2-before");
+                    }
+
+                    await next(context, cancellationToken);
+
+                    if (context.JsonRpcMessage is JsonRpcResponse r2 && r2.Result is JsonObject obj2 && obj2.ContainsKey("tools"))
+                    {
+                        executionOrder.Add("filter2-after");
+                    }
+                });
+            })
+            .WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync();
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The outermost filter's "after" callback runs after the response has been
+        // sent to the client, so ListToolsAsync may return before it executes.
+        // Wait for it to complete before asserting, but use a timeout to avoid hanging
+        // the test indefinitely if the filter pipeline regresses.
+        using var allFiltersCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        allFiltersCts.CancelAfter(TestConstants.DefaultTimeout);
+        await allFiltersComplete.Task.WaitAsync(allFiltersCts.Token);
+
+        Assert.Equal(["filter1-before", "filter2-before", "filter2-after", "filter1-after"], executionOrder);
+    }
+
+    [Fact]
+    public async Task OutgoingFilter_CanSendAdditionalMessages()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters => filters.AddOutgoingFilter((next) => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcResponse response &&
+                    response.Result is JsonObject result && result.ContainsKey("tools"))
+                {
+                    var extraNotification = new JsonRpcNotification
+                    {
+                        Method = "test/extra",
+                        Params = new JsonObject { ["message"] = "injected" },
+                        Context = new JsonRpcMessageContext { RelatedTransport = context.JsonRpcMessage.Context?.RelatedTransport },
+                    };
+
+                    await next(new MessageContext(context.Server, extraNotification), cancellationToken);
+                }
+
+                await next(context, cancellationToken);
+            }))
+            .WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync();
+
+        var extraReceived = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = client.RegisterNotificationHandler("test/extra", (notification, _) =>
+        {
+            extraReceived.TrySetResult(notification.Params?["message"]?.GetValue<string>());
+            return default;
+        });
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var extraMessage = await extraReceived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal("injected", extraMessage);
     }
 
     private ClaimsPrincipal CreateUser(string name)

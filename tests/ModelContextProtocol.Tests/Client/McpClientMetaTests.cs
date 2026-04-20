@@ -37,7 +37,7 @@ public class McpClientMetaTests : ClientServerTestBase
             async (RequestContext<CallToolRequestParams> context) =>
             {
                 // Access the foo property of _meta field from the request parameters
-                var metaFoo = context.Params?.Meta?["foo"]?.ToString();
+                var metaFoo = context.Params.Meta?["foo"]?.ToString();
 
                 // Assert that the meta foo is correctly passed
                 Assert.NotNull(metaFoo);
@@ -73,7 +73,7 @@ public class McpClientMetaTests : ClientServerTestBase
             (RequestContext<ReadResourceRequestParams> context) =>
             {
                 // Access the foo property of _meta field from the request parameters
-                var metaFoo = context.Params?.Meta?["foo"]?.ToString();
+                var metaFoo = context.Params.Meta?["foo"]?.ToString();
 
                 // Assert that the meta foo is correctly passed
                 Assert.NotNull(metaFoo);
@@ -109,7 +109,7 @@ public class McpClientMetaTests : ClientServerTestBase
             (RequestContext<GetPromptRequestParams> context) =>
             {
                 // Access the foo property of _meta field from the request parameters
-                var metaFoo = context.Params?.Meta?["foo"]?.ToString();
+                var metaFoo = context.Params.Meta?["foo"]?.ToString();
 
                 // Assert that the meta foo is correctly passed
                 Assert.NotNull(metaFoo);

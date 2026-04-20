@@ -116,6 +116,11 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Other returned types will result in an <see cref="InvalidOperationException"/> being thrown.
 /// </para>
+/// <para>
+/// Parameters of type <see cref="string"/> that are decorated with <c>AllowedValuesAttribute</c>
+/// will automatically have their allowed values surfaced as completions in response to <c>completion/complete</c> requests from clients,
+/// without requiring a custom <see cref="McpServerHandlers.CompleteHandler"/> to be configured.
+/// </para>
 /// </remarks>
 public abstract class McpServerPrompt : IMcpServerPrimitive
 {

@@ -521,6 +521,9 @@ internal sealed partial class McpClientImpl : McpClient
     /// <inheritdoc/>
     public override string? ServerInstructions => _serverInstructions;
 
+    /// <inheritdoc/>
+    public override Task<ClientCompletionDetails> Completion => _sessionHandler.CompletionTask;
+
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
     /// </summary>
@@ -655,6 +658,14 @@ internal sealed partial class McpClientImpl : McpClient
         _taskCancellationTokenProvider?.Dispose();
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);
+
+        // After disposal, the channel writer is complete but ProcessMessagesCoreAsync
+        // may have been cancelled with unread items still buffered. ChannelReader.Completion
+        // only resolves once all items are consumed, so drain remaining items.
+        while (_transport.MessageReader.TryRead(out var _));
+
+        // Then ensure all work has quiesced.
+        await Completion.ConfigureAwait(false);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]

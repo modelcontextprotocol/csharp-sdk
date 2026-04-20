@@ -31,7 +31,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
+        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -83,6 +83,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Builder.Services.AddMcpServer()
             .WithHttpTransport(httpTransportOptions =>
             {
+                httpTransportOptions.EnableLegacySse = true;
 #pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 httpTransportOptions.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
@@ -127,7 +128,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             {
                 firstOptionsCallbackCallCount++;
             })
-            .WithHttpTransport()
+            .WithHttpTransport(options => options.EnableLegacySse = true)
             .WithTools<EchoTool>();
 
         Builder.Services.AddMcpServer(options =>
@@ -171,7 +172,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     public async Task AdditionalHeaders_AreSent_InGetAndPostRequests()
     {
         Builder.Services.AddMcpServer()
-            .WithHttpTransport();
+            .WithHttpTransport(options => options.EnableLegacySse = true);
 
         await using var app = Builder.Build();
 
@@ -218,7 +219,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     public async Task EmptyAdditionalHeadersKey_Throws_InvalidOperationException()
     {
         Builder.Services.AddMcpServer()
-            .WithHttpTransport();
+            .WithHttpTransport(options => options.EnableLegacySse = true);
 
         await using var app = Builder.Build();
 
@@ -305,6 +306,25 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                 await context.Response.WriteAsync("Accepted");
             }
         });
+    }
+
+    [Fact]
+    public async Task Completion_ServerShutdown_ReturnsHttpCompletionDetails()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true);
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var mcpClient = await ConnectMcpClientAsync();
+        Assert.False(mcpClient.Completion.IsCompleted);
+
+        // Stop the server while the client is still connected.
+        await app.StopAsync(TestContext.Current.CancellationToken);
+
+        var details = await mcpClient.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 
     public class Envelope

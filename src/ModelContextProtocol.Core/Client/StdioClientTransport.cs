@@ -59,6 +59,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
         Process? process = null;
         bool processStarted = false;
+        DataReceivedEventHandler? errorHandler = null;
 
         string command = _options.Command;
         IList<string>? arguments = _options.Arguments;
@@ -136,7 +137,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             // few lines in a rolling log for use in exceptions.
             const int MaxStderrLength = 10; // keep the last 10 lines of stderr
             Queue<string> stderrRollingLog = new(MaxStderrLength);
-            process.ErrorDataReceived += (sender, args) =>
+            errorHandler = (sender, args) =>
             {
                 string? data = args.Data;
                 if (data is not null)
@@ -151,11 +152,22 @@ public sealed partial class StdioClientTransport : IClientTransport
                         stderrRollingLog.Enqueue(data);
                     }
 
-                    _options.StandardErrorLines?.Invoke(data);
+                    try
+                    {
+                        _options.StandardErrorLines?.Invoke(data);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Prevent exceptions in the user callback from propagating
+                        // to the background thread that dispatches ErrorDataReceived,
+                        // which would crash the process.
+                        LogStderrCallbackFailed(logger, endpointName, ex);
+                    }
 
                     LogReadStderr(logger, endpointName, data);
                 }
             };
+            process.ErrorDataReceived += errorHandler;
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
@@ -193,7 +205,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             process.BeginErrorReadLine();
 
-            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, _loggerFactory);
+            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, _loggerFactory);
         }
         catch (Exception ex)
         {
@@ -201,6 +213,11 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             try
             {
+                if (process is not null && errorHandler is not null)
+                {
+                    process.ErrorDataReceived -= errorHandler;
+                }
+
                 DisposeProcess(process, processStarted, _options.ShutdownTimeout);
             }
             catch (Exception ex2)
@@ -213,7 +230,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     }
 
     internal static void DisposeProcess(
-        Process? process, bool processRunning, TimeSpan shutdownTimeout)
+        Process? process, bool processRunning, TimeSpan shutdownTimeout, Action? beforeDispose = null)
     {
         if (process is not null)
         {
@@ -228,17 +245,9 @@ public sealed partial class StdioClientTransport : IClientTransport
                     process.KillTree(shutdownTimeout);
                 }
 
-                // Ensure all redirected stderr/stdout events have been dispatched
-                // before disposing. Only the no-arg WaitForExit() guarantees this;
-                // WaitForExit(int) (as used by KillTree) does not.
-                // This should not hang: either the process already exited on its own
-                // (no child processes holding handles), or KillTree killed the entire
-                // process tree. If it does take too long, the test infrastructure's
-                // own timeout will catch it.
-                if (!processRunning && HasExited(process))
-                {
-                    process.WaitForExit();
-                }
+                // Invoke the callback while the process handle is still valid,
+                // e.g. to read ExitCode before Dispose() invalidates it.
+                beforeDispose?.Invoke();
             }
             finally
             {
@@ -294,6 +303,9 @@ public sealed partial class StdioClientTransport : IClientTransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received stderr log: '{Data}'.")]
     private static partial void LogReadStderr(ILogger logger, string endpointName, string data);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} StandardErrorLines callback failed.")]
+    private static partial void LogStderrCallbackFailed(ILogger logger, string endpointName, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} started server process with PID {ProcessId}.")]
     private static partial void LogTransportProcessStarted(ILogger logger, string endpointName, int processId);

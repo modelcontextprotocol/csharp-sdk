@@ -53,9 +53,10 @@ public static class NotificationMethods
     /// <remarks>
     /// <para>
     /// This notification informs the server that the client's "roots" have changed.
-    /// Roots define the boundaries of where servers can operate within the filesystem,
-    /// allowing them to understand which directories and files they have access to. Servers
-    /// can request the list of roots from supporting clients and receive notifications when that list changes.
+    /// Roots inform servers about the directories and files the client considers relevant,
+    /// so that servers can focus their operations accordingly. They are informational guidance
+    /// rather than an access-control mechanism; the protocol does not enforce that servers stay within roots.
+    /// Servers can request the list of roots from supporting clients and receive notifications when that list changes.
     /// </para>
     /// <para>
     /// After receiving this notification, servers can refresh their knowledge of roots by calling the appropriate
