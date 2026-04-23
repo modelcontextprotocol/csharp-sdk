@@ -486,10 +486,10 @@ internal sealed partial class McpClientImpl : McpClient
 
         // Advertise task capabilities
         _options.Capabilities ??= new();
-        var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
+        var tasksCapability = _options.Capabilities.Tasks ??= new ClientMcpTasksCapability();
         tasksCapability.List ??= new ListMcpTasksCapability();
         tasksCapability.Cancel ??= new CancelMcpTasksCapability();
-        var requestsCapability = tasksCapability.Requests ??= new RequestMcpTasksCapability();
+        var requestsCapability = tasksCapability.Requests ??= new ClientRequestMcpTasksCapability();
 
         // Only advertise sampling tasks if sampling handler is present
         if (_options.Handlers.SamplingHandler is not null)
