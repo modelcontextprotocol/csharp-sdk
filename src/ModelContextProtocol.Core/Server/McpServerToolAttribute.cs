@@ -287,6 +287,48 @@ public sealed class McpServerToolAttribute : Attribute
     public Type? OutputSchemaType { get; set; }
 
     /// <summary>
+    /// Gets or sets a <see cref="Type"/> from which the tool's description is loaded at discovery time.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the description is taken from the
+    /// <see cref="System.ComponentModel.DescriptionAttribute"/> applied to the method (if any).
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set together with <see cref="DescriptionResourceName"/>, the description is resolved at
+    /// tool-discovery time by looking up <see cref="DescriptionResourceName"/> on the specified type.
+    /// This mirrors the resource-lookup pattern used by
+    /// <c>System.ComponentModel.DataAnnotations.DisplayAttribute</c> and lets descriptions live
+    /// outside compiled string literals (resource files, configuration-backed accessors, etc.),
+    /// addressing the scenario in https://github.com/modelcontextprotocol/csharp-sdk/issues/1516.
+    /// </para>
+    /// <para>
+    /// The lookup probes the type for, in this order:
+    /// </para>
+    /// <list type="number">
+    ///   <item><description>A public static property named <see cref="DescriptionResourceName"/> returning <see cref="string"/>.</description></item>
+    ///   <item><description>A public static field named <see cref="DescriptionResourceName"/> of type <see cref="string"/>.</description></item>
+    ///   <item><description>A public static parameterless method named <see cref="DescriptionResourceName"/> returning <see cref="string"/>.</description></item>
+    ///   <item><description>A public static <c>System.Resources.ResourceManager</c> property named <c>ResourceManager</c>; the string is looked up by <see cref="DescriptionResourceName"/>.</description></item>
+    /// </list>
+    /// <para>
+    /// If the lookup succeeds, its value takes precedence over any <see cref="System.ComponentModel.DescriptionAttribute"/>
+    /// on the method. If both <see cref="DescriptionResourceType"/> and <see cref="DescriptionResourceName"/> are unset,
+    /// behavior is unchanged. The description value is read once when the tool is created; to refresh it, recreate the tool.
+    /// </para>
+    /// </remarks>
+    public Type? DescriptionResourceType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the name used to look up the tool's description on <see cref="DescriptionResourceType"/>.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="DescriptionResourceType"/> for resolution rules. Has no effect unless
+    /// <see cref="DescriptionResourceType"/> is also set.
+    /// </remarks>
+    public string? DescriptionResourceName { get; set; }
+
+    /// <summary>
     /// Gets or sets the source URI for the tool's icon.
     /// </summary>
     /// <remarks>
@@ -315,7 +357,7 @@ public sealed class McpServerToolAttribute : Attribute
     /// When set to <see cref="ToolTaskSupport.Required"/>, clients must invoke the tool as a task.
     /// </para>
     /// <para>
-    /// If this property is not explicitly set on the attribute, the task support behavior will be determined 
+    /// If this property is not explicitly set on the attribute, the task support behavior will be determined
     /// automatically based on the tool's characteristics (e.g., async methods default to <see cref="ToolTaskSupport.Optional"/>).
     /// </para>
     /// </remarks>
