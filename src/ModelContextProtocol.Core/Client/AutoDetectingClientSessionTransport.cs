@@ -75,11 +75,15 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             }
             else
             {
-                // If the status code is not success, fall back to SSE
+                // Streamable HTTP failed. Capture the underlying error (status + body) before falling back to SSE
+                // so that, if SSE also fails, we can surface the real Streamable HTTP diagnostic to the caller
+                // instead of dropping it on the floor (see https://github.com/modelcontextprotocol/csharp-sdk/issues/1526).
                 LogStreamableHttpFailed(_name, response.StatusCode);
 
+                var streamableHttpError = await CreateStreamableHttpErrorAsync(response, cancellationToken).ConfigureAwait(false);
+
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
-                await InitializeSseTransportAsync(message, cancellationToken).ConfigureAwait(false);
+                await InitializeSseTransportAsync(message, streamableHttpError, cancellationToken).ConfigureAwait(false);
             }
         }
         catch
@@ -91,7 +95,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         }
     }
 
-    private async Task InitializeSseTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+    private async Task InitializeSseTransportAsync(JsonRpcMessage message, HttpRequestException? streamableHttpError, CancellationToken cancellationToken)
     {
         if (_options.KnownSessionId is not null)
         {
@@ -109,11 +113,50 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             LogUsingSSE(_name);
             ActiveTransport = sseTransport;
         }
+        catch (Exception sseError) when (streamableHttpError is not null && sseError is not OperationCanceledException)
+        {
+            // SSE fallback also failed. Surface the original Streamable HTTP error as the primary failure
+            // so the user sees the real server diagnostic (e.g. 415 Unsupported Media Type) instead of the
+            // unrelated SSE-fallback error (e.g. a 405 from a Streamable-HTTP-only server that doesn't accept GET).
+            await sseTransport.DisposeAsync().ConfigureAwait(false);
+            LogSseFallbackFailedAfterStreamableHttp(_name, sseError);
+            throw new AggregateException(
+                "Streamable HTTP transport failed and the SSE fallback also failed. " +
+                "The first inner exception is the original Streamable HTTP error (the real server response); " +
+                "the second is the SSE fallback failure.",
+                streamableHttpError,
+                sseError);
+        }
         catch
         {
             await sseTransport.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    private static async Task<HttpRequestException> CreateStreamableHttpErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        // Best-effort read of the response body so the exception message includes the server's diagnostic
+        // (e.g. "Content-Type must be 'application/json'" on a 415). Mirrors EnsureSuccessStatusCodeWithResponseBodyAsync.
+        string? responseBody = null;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            responseBody = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+
+            const int MaxResponseBodyLength = 1024;
+            if (responseBody.Length > MaxResponseBodyLength)
+            {
+                responseBody = responseBody.Substring(0, MaxResponseBodyLength) + "...";
+            }
+        }
+        catch
+        {
+            // Ignore all errors reading the response body (e.g., stream closed, timeout, cancellation) - we'll throw without it.
+        }
+
+        return HttpResponseMessageExtensions.CreateHttpRequestException(response, responseBody);
     }
 
     public async ValueTask DisposeAsync()
@@ -147,4 +190,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using SSE transport.")]
     private partial void LogUsingSSE(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} SSE fallback failed after Streamable HTTP also failed; surfacing both errors.")]
+    private partial void LogSseFallbackFailedAfterStreamableHttp(string endpointName, Exception sseError);
 }
