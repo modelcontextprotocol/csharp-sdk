@@ -40,3 +40,4 @@ Install the SDK and build your first MCP client and server.
 | [Stateless and Stateful](stateless/stateless.md) | Learn when to use stateless vs. stateful mode for HTTP servers and how to configure sessions. |
 | [HTTP Context](httpcontext/httpcontext.md) | Learn how to access the underlying `HttpContext` for a request. |
 | [MCP Server Handler Filters](filters.md) | Learn how to add filters to the handler pipeline. Filters let you wrap the original handler with additional functionality. |
+| [Identity and Roles](identity/identity.md) | Learn how to access caller identity and roles in MCP tool, prompt, and resource handlers. |
