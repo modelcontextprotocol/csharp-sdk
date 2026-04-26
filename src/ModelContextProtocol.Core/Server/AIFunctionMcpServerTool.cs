@@ -153,7 +153,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             if (options.AppUi is { } appUi)
             {
                 seededMeta = seededMeta is not null ? CloneJsonObject(seededMeta) : new JsonObject();
-                McpApps.ApplyUiToolMetaToJsonObject(appUi, seededMeta);
+                McpAppsInternal.ApplyUiToolMetaToJsonObject(appUi, seededMeta);
             }
 
             tool.Meta = function.UnderlyingMethod is not null ?
@@ -170,7 +170,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Auto-detect async methods and mark with taskSupport = "optional" unless explicitly configured.
         // This enables implicit task support for async tools: clients can choose to invoke them
         // synchronously (wait for completion) or as a task (receive taskId, poll for result).
-        if (function.UnderlyingMethod is not null && 
+        if (function.UnderlyingMethod is not null &&
             IsAsyncMethod(function.UnderlyingMethod) &&
             tool.Execution?.TaskSupport is null)
         {
@@ -426,7 +426,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return meta;
     }
 
-    /// <summary>Creates a shallow-content clone of a <see cref="JsonObject"/> so that keys can be added without mutating the original.</summary>
+    /// <summary>Creates a copy of a <see cref="JsonObject"/> so that keys can be added without mutating the original.</summary>
     private static JsonObject CloneJsonObject(JsonObject source)
     {
         var clone = new JsonObject();

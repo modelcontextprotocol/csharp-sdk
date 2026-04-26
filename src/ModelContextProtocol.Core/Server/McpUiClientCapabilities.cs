@@ -8,11 +8,8 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This object is the value associated with the <see cref="McpApps.ExtensionId"/> key in the
+/// This object is the value associated with the <c>"io.modelcontextprotocol/ui"</c> key in the
 /// <see cref="Protocol.ClientCapabilities.Extensions"/> dictionary.
-/// </para>
-/// <para>
-/// Use <see cref="McpApps.GetUiCapability"/> to read this from <see cref="Protocol.ClientCapabilities"/>.
 /// </para>
 /// </remarks>
 [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
@@ -22,8 +19,7 @@ public sealed class McpUiClientCapabilities
     /// Gets or sets the list of MIME types supported by the client for MCP App UI resources.
     /// </summary>
     /// <remarks>
-    /// A client that supports MCP Apps must include <see cref="McpApps.ResourceMimeType"/>
-    /// (<c>"text/html;profile=mcp-app"</c>) in this list.
+    /// A client that supports MCP Apps must include <c>"text/html;profile=mcp-app"</c> in this list.
     /// </remarks>
     [JsonPropertyName("mimeTypes")]
     public IList<string>? MimeTypes { get; set; }

@@ -22,7 +22,6 @@ public class McpAppsTests
     {
         Assert.Equal("text/html;profile=mcp-app", McpApps.ResourceMimeType);
         Assert.Equal("io.modelcontextprotocol/ui", McpApps.ExtensionId);
-        Assert.Equal("ui/resourceUri", McpApps.ResourceUriMetaKey);
     }
 
     [Fact]
@@ -212,9 +211,6 @@ public class McpAppsTests
         var uiNode = meta["ui"]?.AsObject();
         Assert.NotNull(uiNode);
         Assert.Equal("ui://weather/view.html", uiNode["resourceUri"]?.GetValue<string>());
-
-        // Legacy flat key
-        Assert.Equal("ui://weather/view.html", meta[McpApps.ResourceUriMetaKey]?.GetValue<string>());
     }
 
     [Fact]
@@ -248,9 +244,6 @@ public class McpAppsTests
         Assert.NotNull(uiNode);
         Assert.Equal("ui://app-ui/view.html", uiNode["resourceUri"]?.GetValue<string>());
 
-        // The legacy key should be from McpAppUiAttribute
-        Assert.Equal("ui://app-ui/view.html", meta[McpApps.ResourceUriMetaKey]?.GetValue<string>());
-
         // Other McpMeta attributes should still be present
         Assert.Equal("extra-value", meta["extraKey"]?.GetValue<string>());
     }
@@ -263,14 +256,12 @@ public class McpAppsTests
         var explicitMeta = new JsonObject
         {
             ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/override.html" },
-            [McpApps.ResourceUriMetaKey] = "ui://explicit/override.html",
         };
 
         var tool = McpServerTool.Create(method, target: null, new McpServerToolCreateOptions { Meta = explicitMeta });
 
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
         Assert.Equal("ui://explicit/override.html", uiNode?["resourceUri"]?.GetValue<string>());
-        Assert.Equal("ui://explicit/override.html", tool.ProtocolTool.Meta?[McpApps.ResourceUriMetaKey]?.GetValue<string>());
     }
 
     #endregion
@@ -294,7 +285,6 @@ public class McpAppsTests
         var uiNode = meta["ui"]?.AsObject();
         Assert.NotNull(uiNode);
         Assert.Equal("ui://weather/view.html", uiNode["resourceUri"]?.GetValue<string>());
-        Assert.Equal("ui://weather/view.html", meta[McpApps.ResourceUriMetaKey]?.GetValue<string>());
     }
 
     [Fact]
@@ -343,9 +333,8 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void AppUi_NullResourceUri_DoesNotPopulateLegacyKey()
+    public void AppUi_NullResourceUri_ProducesUiObjectWithoutResourceUri()
     {
-        // AppUi with no ResourceUri should not add the legacy flat key
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
             new McpServerToolCreateOptions
@@ -354,7 +343,9 @@ public class McpAppsTests
                 AppUi = new McpUiToolMeta { Visibility = [McpUiToolVisibility.App] },
             });
 
-        Assert.Null(tool.ProtocolTool.Meta?[McpApps.ResourceUriMetaKey]);
+        var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
+        Assert.NotNull(uiNode);
+        Assert.Null(uiNode["resourceUri"]);
     }
 
     [Fact]
@@ -373,7 +364,6 @@ public class McpAppsTests
         var meta = tool.ProtocolTool.Meta;
         Assert.NotNull(meta);
         Assert.NotNull(meta["ui"]);
-        Assert.NotNull(meta[McpApps.ResourceUriMetaKey]);
     }
 
     #endregion

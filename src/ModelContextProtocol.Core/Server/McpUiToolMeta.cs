@@ -12,10 +12,6 @@ namespace ModelContextProtocol.Server;
 /// It associates the tool with a UI resource (identified by a <c>ui://</c> URI) and optionally
 /// controls which principals (model, app) can call the tool.
 /// </para>
-/// <para>
-/// When this metadata is applied, both the structured <c>_meta.ui</c> object and the legacy
-/// <c>_meta["ui/resourceUri"]</c> flat key are populated for backward compatibility with older hosts.
-/// </para>
 /// </remarks>
 [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
 public sealed class McpUiToolMeta

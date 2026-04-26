@@ -203,8 +203,7 @@ public sealed class McpServerToolCreateOptions
     /// <remarks>
     /// <para>
     /// When set, this metadata is merged into <see cref="Meta"/> during tool creation, populating
-    /// both the structured <c>_meta.ui</c> object and the legacy <c>_meta["ui/resourceUri"]</c>
-    /// flat key for backward compatibility with older MCP hosts.
+    /// the structured <c>_meta.ui</c> object.
     /// </para>
     /// <para>
     /// Explicit entries already present in <see cref="Meta"/> take precedence over values from
