@@ -37,6 +37,7 @@ internal sealed class StreamableHttpHandler(
         "2025-03-26",
         "2025-06-18",
         "2025-11-25",
+        "DRAFT-2026-v1",
     ];
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
