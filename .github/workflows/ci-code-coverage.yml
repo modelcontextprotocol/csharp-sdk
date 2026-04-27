@@ -24,7 +24,7 @@ jobs:
           pattern: testresults-*
 
       - name: Combine coverage reports
-        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.4
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.5
         with:
           reports: "**/*.cobertura.xml"
           targetdir: "${{ github.workspace }}/report"
@@ -36,7 +36,7 @@ jobs:
           toolpath: "reportgeneratortool"
 
       - name: Upload combined coverage XML
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
           path: ${{ github.workspace }}/report
@@ -56,7 +56,7 @@ jobs:
           thresholds: "60 80"
 
       - name: Upload combined coverage markdown
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-markdown
           path: ${{ github.workspace }}/code-coverage-results.md
