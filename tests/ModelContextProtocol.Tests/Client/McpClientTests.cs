@@ -587,6 +587,15 @@ public class McpClientTests : ClientServerTestBase
         Assert.Equal(protocolVersion ?? "2025-11-25", client.NegotiatedProtocolVersion);
     }
 
+    [Theory]
+    [InlineData("2025-11-25", "2025-06-18")]
+    public async Task AcceptsLowerServerProtocolVersion(string clientVersion, string serverVersion)
+    {
+        Server.ServerOptions.ProtocolVersion = serverVersion;
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = clientVersion });
+        Assert.Equal(serverVersion, client.NegotiatedProtocolVersion);
+    }
+
     [Fact]
     public async Task EndToEnd_SamplingWithTools_ServerUsesIChatClientWithFunctionInvocation_ClientHandlesSamplingWithIChatClient()
     {
