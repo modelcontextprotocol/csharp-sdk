@@ -569,8 +569,8 @@ internal sealed partial class McpClientImpl : McpClient
 
                 // Validate protocol version
                 bool isResponseProtocolValid =
-                    _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion) ||
+                    (_options.ProtocolVersion is { } optionsProtocol && optionsProtocol == initializeResponse.ProtocolVersion);
                 if (!isResponseProtocolValid)
                 {
                     LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
