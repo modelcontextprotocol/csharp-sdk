@@ -144,21 +144,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 };
             }
 
-            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available.
-            // Priority order (highest to lowest):
-            //   1. Explicit options.Meta entries
-            //   2. AppUi metadata (from McpAppUiAttribute or McpServerToolCreateOptions.AppUi)
-            //   3. McpMetaAttribute entries on the method
-            JsonObject? seededMeta = options.Meta;
-            if (options.AppUi is { } appUi)
-            {
-                seededMeta = seededMeta is not null ? CloneJsonObject(seededMeta) : new JsonObject();
-                McpAppsInternal.ApplyUiToolMetaToJsonObject(appUi, seededMeta);
-            }
-
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
             tool.Meta = function.UnderlyingMethod is not null ?
-                CreateMetaFromAttributes(function.UnderlyingMethod, seededMeta) :
-                seededMeta;
+                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta) :
+                options.Meta;
 
             // Apply user-specified Execution settings if provided
             if (options.Execution is not null)
@@ -234,16 +223,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
         {
             newOptions.Description ??= descAttr.Description;
-        }
-
-        // Process McpAppUiAttribute — takes precedence over options.AppUi set via constructor.
-        if (method.GetCustomAttribute<McpAppUiAttribute>() is { } appUiAttr)
-        {
-            newOptions.AppUi = new McpUiToolMeta
-            {
-                ResourceUri = appUiAttr.ResourceUri,
-                Visibility = appUiAttr.Visibility,
-            };
         }
 
         // Set metadata if not already provided
@@ -424,18 +403,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return meta;
-    }
-
-    /// <summary>Creates a copy of a <see cref="JsonObject"/> so that keys can be added without mutating the original.</summary>
-    private static JsonObject CloneJsonObject(JsonObject source)
-    {
-        var clone = new JsonObject();
-        foreach (var kvp in source)
-        {
-            // DeepClone each value to avoid sharing nodes between two JsonObject instances.
-            clone[kvp.Key] = kvp.Value?.DeepClone();
-        }
-        return clone;
     }
 
 #if NET

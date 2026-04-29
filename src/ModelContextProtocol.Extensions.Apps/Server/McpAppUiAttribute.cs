@@ -8,12 +8,14 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// Apply this attribute alongside <see cref="McpServerToolAttribute"/> to associate an MCP Apps
-/// UI resource with the tool. When processed, it populates the structured <c>_meta.ui</c> object
-/// in the tool's metadata.
+/// UI resource with the tool. When processed by <see cref="McpApps.ApplyAppUiAttributes(McpServerTool)"/>
+/// or <see cref="McpApps.ApplyAppUiAttributes(IEnumerable{McpServerTool})"/>, it populates the
+/// structured <c>_meta.ui</c> object in the tool's metadata.
 /// </para>
 /// <para>
 /// This attribute takes precedence over any raw <c>[McpMeta("ui", ...)]</c> attribute on the
-/// same method.
+/// same method, but explicit <c>Meta["ui"]</c> set via <see cref="McpServerToolCreateOptions"/>
+/// takes precedence over this attribute.
 /// </para>
 /// </remarks>
 /// <example>

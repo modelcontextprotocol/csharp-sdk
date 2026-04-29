@@ -198,35 +198,6 @@ public sealed class McpServerToolCreateOptions
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets the MCP Apps UI metadata for this tool.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When set, this metadata is merged into <see cref="Meta"/> during tool creation, populating
-    /// the structured <c>_meta.ui</c> object.
-    /// </para>
-    /// <para>
-    /// Explicit entries already present in <see cref="Meta"/> take precedence over values from
-    /// this property. The <see cref="McpAppUiAttribute"/> on a method overrides this property
-    /// when both are specified.
-    /// </para>
-    /// </remarks>
-    /// <example>
-    /// <code language="csharp">
-    /// var tool = McpServerTool.Create(handler, new McpServerToolCreateOptions
-    /// {
-    ///     AppUi = new McpUiToolMeta
-    ///     {
-    ///         ResourceUri = "ui://weather/view.html",
-    ///         Visibility = [McpUiToolVisibility.Model, McpUiToolVisibility.App]
-    ///     }
-    /// });
-    /// </code>
-    /// </example>
-    [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
-    public McpUiToolMeta? AppUi { get; set; }
-
-    /// <summary>
     /// Gets or sets the execution hints for this tool.
     /// </summary>
     /// <remarks>
@@ -264,7 +235,6 @@ public sealed class McpServerToolCreateOptions
             Metadata = Metadata,
             Icons = Icons,
             Meta = Meta,
-            AppUi = AppUi,
             Execution = Execution,
         };
 }

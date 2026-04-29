@@ -66,7 +66,7 @@
     <Project Path="src/ModelContextProtocol.Analyzers/ModelContextProtocol.Analyzers.csproj" />
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
-    <Project Path="src/ModelContextProtocol.ExtApps/ModelContextProtocol.ExtApps.csproj" />
+    <Project Path="src/ModelContextProtocol.Extensions.Apps/ModelContextProtocol.Extensions.Apps.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>
   <Folder Name="/tests/">

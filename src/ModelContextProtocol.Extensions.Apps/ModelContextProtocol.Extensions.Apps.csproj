@@ -4,11 +4,11 @@
     <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
-    <PackageId>ModelContextProtocol.ExtApps</PackageId>
+    <PackageId>ModelContextProtocol.Extensions.Apps</PackageId>
     <Description>MCP Apps extension for the .NET Model Context Protocol (MCP) SDK</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress the experimental tasks/extensions/apps warning -->
-    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Suppress the experimental MCP Apps warning -->
+    <NoWarn>$(NoWarn);MCPEXP003</NoWarn>
     <!-- New package with no published baseline yet -->
     <EnablePackageValidation>false</EnablePackageValidation>
   </PropertyGroup>

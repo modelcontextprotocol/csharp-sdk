@@ -1,9 +1,8 @@
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP003
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -11,7 +10,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Tests for MCP Apps extension support: McpApps constants, typed metadata models,
-/// McpAppUiAttribute, and McpServerToolCreateOptions.AppUi.
+/// McpAppUiAttribute, SetAppUi, and ApplyAppUiAttributes.
 /// </summary>
 public class McpAppsTests
 {
@@ -52,8 +51,8 @@ public class McpAppsTests
             Visibility = [McpUiToolVisibility.Model, McpUiToolVisibility.App],
         };
 
-        var json = JsonSerializer.Serialize(meta, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpJsonUtilities.DefaultOptions);
+        var json = JsonSerializer.Serialize(meta, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpApps.SerializerOptions);
 
         Assert.NotNull(deserialized);
         Assert.Equal("ui://weather/view.html", deserialized.ResourceUri);
@@ -64,7 +63,7 @@ public class McpAppsTests
     public void McpUiToolMeta_OmitsNullProperties()
     {
         var meta = new McpUiToolMeta { ResourceUri = "ui://app" };
-        var json = JsonSerializer.Serialize(meta, McpJsonUtilities.DefaultOptions);
+        var json = JsonSerializer.Serialize(meta, McpApps.SerializerOptions);
         var doc = JsonDocument.Parse(json);
 
         Assert.True(doc.RootElement.TryGetProperty("resourceUri", out _));
@@ -91,8 +90,8 @@ public class McpAppsTests
             },
         };
 
-        var json = JsonSerializer.Serialize(meta, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiResourceMeta>(json, McpJsonUtilities.DefaultOptions);
+        var json = JsonSerializer.Serialize(meta, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiResourceMeta>(json, McpApps.SerializerOptions);
 
         Assert.NotNull(deserialized);
         Assert.Equal("https://app.example.com", deserialized.Domain);
@@ -114,8 +113,8 @@ public class McpAppsTests
             MimeTypes = [McpApps.ResourceMimeType],
         };
 
-        var json = JsonSerializer.Serialize(caps, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+        var json = JsonSerializer.Serialize(caps, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(json, McpApps.SerializerOptions);
 
         Assert.NotNull(deserialized);
         Assert.Equal([McpApps.ResourceMimeType], deserialized.MimeTypes);
@@ -196,13 +195,15 @@ public class McpAppsTests
 
     #endregion
 
-    #region F6: McpAppUiAttribute
+    #region F6: McpAppUiAttribute via ApplyAppUiAttributes
 
     [Fact]
-    public void McpAppUiAttribute_PopulatesBothUiObjectAndLegacyKey()
+    public void ApplyAppUiAttributes_PopulatesUiObject()
     {
         var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!;
         var tool = McpServerTool.Create(method, target: null);
+
+        McpApps.ApplyAppUiAttributes(tool);
 
         var meta = tool.ProtocolTool.Meta;
         Assert.NotNull(meta);
@@ -214,10 +215,12 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void McpAppUiAttribute_WithVisibility_IncludesVisibilityInUiObject()
+    public void ApplyAppUiAttributes_WithVisibility_IncludesVisibilityInUiObject()
     {
         var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ModelOnlyTool))!;
         var tool = McpServerTool.Create(method, target: null);
+
+        McpApps.ApplyAppUiAttributes(tool);
 
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
         Assert.NotNull(uiNode);
@@ -230,26 +233,7 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void McpAppUiAttribute_TakesPrecedenceOver_McpMetaAttribute()
-    {
-        // The tool has both [McpAppUi] and [McpMeta("ui", ...)] — AppUi should win for the "ui" key.
-        var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ToolWithBothAttributes))!;
-        var tool = McpServerTool.Create(method, target: null);
-
-        var meta = tool.ProtocolTool.Meta;
-        Assert.NotNull(meta);
-
-        // The "ui" key should be from McpAppUiAttribute, not McpMetaAttribute
-        var uiNode = meta["ui"]?.AsObject();
-        Assert.NotNull(uiNode);
-        Assert.Equal("ui://app-ui/view.html", uiNode["resourceUri"]?.GetValue<string>());
-
-        // Other McpMeta attributes should still be present
-        Assert.Equal("extra-value", meta["extraKey"]?.GetValue<string>());
-    }
-
-    [Fact]
-    public void McpAppUiAttribute_ExplicitOptionsMeta_TakesPrecedenceOver_Attribute()
+    public void ApplyAppUiAttributes_ExplicitMeta_TakesPrecedence()
     {
         // Explicit Meta["ui"] in options should override the attribute
         var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!;
@@ -260,24 +244,52 @@ public class McpAppsTests
 
         var tool = McpServerTool.Create(method, target: null, new McpServerToolCreateOptions { Meta = explicitMeta });
 
+        McpApps.ApplyAppUiAttributes(tool);
+
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
+        // Explicit Meta["ui"] wins — ApplyAppUiAttributes does not overwrite
         Assert.Equal("ui://explicit/override.html", uiNode?["resourceUri"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void ApplyAppUiAttributes_Collection_ProcessesAllTools()
+    {
+        var tools = new[]
+        {
+            McpServerTool.Create(typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!, target: null),
+            McpServerTool.Create(typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ModelOnlyTool))!, target: null),
+        };
+
+        McpApps.ApplyAppUiAttributes(tools);
+
+        Assert.NotNull(tools[0].ProtocolTool.Meta?["ui"]);
+        Assert.NotNull(tools[1].ProtocolTool.Meta?["ui"]);
+    }
+
+    [Fact]
+    public void ApplyAppUiAttributes_NoAttribute_DoesNothing()
+    {
+        var tool = McpServerTool.Create(
+            (string input) => input,
+            new McpServerToolCreateOptions { Name = "plain_tool" });
+
+        McpApps.ApplyAppUiAttributes(tool);
+
+        Assert.Null(tool.ProtocolTool.Meta);
     }
 
     #endregion
 
-    #region F7: McpServerToolCreateOptions.AppUi
+    #region F7: SetAppUi
 
     [Fact]
-    public void AppUi_PopulatesBothUiObjectAndLegacyKey()
+    public void SetAppUi_PopulatesUiObject()
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions
-            {
-                Name = "get_weather",
-                AppUi = new McpUiToolMeta { ResourceUri = "ui://weather/view.html" },
-            });
+            new McpServerToolCreateOptions { Name = "get_weather" });
+
+        McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://weather/view.html" });
 
         var meta = tool.ProtocolTool.Meta;
         Assert.NotNull(meta);
@@ -288,19 +300,17 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void AppUi_WithVisibility_IncludesVisibilityInUiObject()
+    public void SetAppUi_WithVisibility_IncludesVisibilityInUiObject()
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions
-            {
-                Name = "get_weather",
-                AppUi = new McpUiToolMeta
-                {
-                    ResourceUri = "ui://weather/view.html",
-                    Visibility = [McpUiToolVisibility.Model],
-                },
-            });
+            new McpServerToolCreateOptions { Name = "get_weather" });
+
+        McpApps.SetAppUi(tool, new McpUiToolMeta
+        {
+            ResourceUri = "ui://weather/view.html",
+            Visibility = [McpUiToolVisibility.Model],
+        });
 
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
         Assert.NotNull(uiNode);
@@ -312,36 +322,34 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void AppUi_ExplicitMeta_TakesPrecedenceOver_AppUi()
+    public void SetAppUi_DoesNotOverwrite_ExistingUiKey()
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
             new McpServerToolCreateOptions
             {
                 Name = "get_weather",
-                // Explicit Meta entry for "ui" should override AppUi
                 Meta = new JsonObject
                 {
                     ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/view.html" },
                 },
-                AppUi = new McpUiToolMeta { ResourceUri = "ui://app-ui/view.html" },
             });
 
+        McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://new/view.html" });
+
+        // Existing Meta["ui"] is preserved
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
-        // Explicit Meta["ui"] wins
         Assert.Equal("ui://explicit/view.html", uiNode?["resourceUri"]?.GetValue<string>());
     }
 
     [Fact]
-    public void AppUi_NullResourceUri_ProducesUiObjectWithoutResourceUri()
+    public void SetAppUi_NullResourceUri_ProducesUiObjectWithoutResourceUri()
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions
-            {
-                Name = "get_weather",
-                AppUi = new McpUiToolMeta { Visibility = [McpUiToolVisibility.App] },
-            });
+            new McpServerToolCreateOptions { Name = "get_weather" });
+
+        McpApps.SetAppUi(tool, new McpUiToolMeta { Visibility = [McpUiToolVisibility.App] });
 
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
         Assert.NotNull(uiNode);
@@ -349,21 +357,14 @@ public class McpAppsTests
     }
 
     [Fact]
-    public void AppUi_IsPreservedWhenOptionsAreClonedInDeriveOptions()
+    public void SetAppUi_ReturnsSameTool()
     {
-        // DeriveOptions() calls options.Clone() internally when creating via MethodInfo.
-        // If AppUi is not included in Clone(), it would be lost when creating the tool via a method.
-        var appUi = new McpUiToolMeta { ResourceUri = "ui://weather/view.html" };
-        var options = new McpServerToolCreateOptions { AppUi = appUi };
+        var tool = McpServerTool.Create(
+            (string location) => $"Weather for {location}",
+            new McpServerToolCreateOptions { Name = "get_weather" });
 
-        // Use the MethodInfo path, which calls DeriveOptions -> options.Clone()
-        var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!;
-        var tool = McpServerTool.Create(method, target: null, options);
-
-        // The attribute on the method overrides options.AppUi, but both should produce the same meta.
-        var meta = tool.ProtocolTool.Meta;
-        Assert.NotNull(meta);
-        Assert.NotNull(meta["ui"]);
+        var result = McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://weather/view.html" });
+        Assert.Same(tool, result);
     }
 
     #endregion
@@ -381,12 +382,6 @@ public class McpAppsTests
         [McpServerTool]
         [McpAppUi(ResourceUri = "ui://model-only/view.html", Visibility = [McpUiToolVisibility.Model])]
         public static string ModelOnlyTool(string location) => $"Model only for {location}";
-
-        [McpServerTool]
-        [McpAppUi(ResourceUri = "ui://app-ui/view.html")]
-        [McpMeta("ui", JsonValue = """{"resourceUri": "ui://mcpmeta/view.html"}""")]
-        [McpMeta("extraKey", "extra-value")]
-        public static string ToolWithBothAttributes(string input) => input;
     }
 
     #endregion
