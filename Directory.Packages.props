@@ -3,8 +3,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
-    <System10Version>10.0.5</System10Version>
-    <MicrosoftExtensionsVersion>10.4.1</MicrosoftExtensionsVersion>
+    <System10Version>10.0.7</System10Version>
+    <MicrosoftExtensionsVersion>10.5.0</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
@@ -62,8 +62,8 @@
 
   <!-- Testing dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Anthropic" Version="12.9.0" />
-    <PackageVersion Include="coverlet.collector" Version="8.0.1">
+    <PackageVersion Include="Anthropic" Version="12.11.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
@@ -74,14 +74,14 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.1.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="OpenTelemetry" Version="1.15.2" />
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.15.2" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.2" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.2" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
@@ -92,6 +92,6 @@
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
-    <PackageVersion Include="JsonSchema.Net" Version="9.1.3" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.2.0" />
   </ItemGroup>
 </Project>
