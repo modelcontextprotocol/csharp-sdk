@@ -45,3 +45,7 @@ items:
     uid: httpcontext
   - name: Filters
     uid: filters
+- name: Extensions
+  items:
+  - name: MCP Apps
+    uid: apps
