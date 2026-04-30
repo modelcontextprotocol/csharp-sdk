@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
+    <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>

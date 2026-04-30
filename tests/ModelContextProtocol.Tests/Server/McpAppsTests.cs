@@ -1,5 +1,7 @@
 #pragma warning disable MCPEXP003
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
@@ -365,6 +367,32 @@ public class McpAppsTests
 
         var result = McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://weather/view.html" });
         Assert.Same(tool, result);
+    }
+
+    #endregion
+
+    #region Builder Extension: WithMcpApps
+
+    [Fact]
+    public void WithMcpApps_AppliesAppUiAttributes_ViaOptions()
+    {
+        var sc = new ServiceCollection();
+        sc.AddMcpServer()
+            .WithTools([typeof(TestToolsWithAppUi)])
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.NotNull(options.ToolCollection);
+        Assert.NotEmpty(options.ToolCollection);
+
+        // Both tools should have their [McpAppUi] attributes applied
+        var toolsWithUi = options.ToolCollection.Where(t => t.ProtocolTool.Meta?["ui"] is not null).ToList();
+        Assert.Equal(2, toolsWithUi.Count);
+
+        var weatherTool = toolsWithUi.First(t => t.ProtocolTool.Meta!["ui"]!["resourceUri"]?.GetValue<string>() == "ui://weather/view.html");
+        Assert.NotNull(weatherTool);
     }
 
     #endregion
