@@ -136,23 +136,28 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
 
         var process = new Process { StartInfo = startInfo };
 
-        process.OutputDataReceived += (sender, e) =>
+        // Protect callbacks with try/catch to prevent ITestOutputHelper from
+        // throwing on a background thread if events arrive after the test completes.
+        DataReceivedEventHandler outputHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 outputBuilder.AppendLine(e.Data);
             }
         };
 
-        process.ErrorDataReceived += (sender, e) =>
+        DataReceivedEventHandler errorHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 errorBuilder.AppendLine(e.Data);
             }
         };
+
+        process.OutputDataReceived += outputHandler;
+        process.ErrorDataReceived += errorHandler;
 
         process.Start();
         process.BeginOutputReadLine();
@@ -166,12 +171,17 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
+            process.OutputDataReceived -= outputHandler;
+            process.ErrorDataReceived -= errorHandler;
             return (
                 Success: false,
                 Output: outputBuilder.ToString(),
                 Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
             );
         }
+
+        process.OutputDataReceived -= outputHandler;
+        process.ErrorDataReceived -= errorHandler;
 
         return (
             Success: process.ExitCode == 0,

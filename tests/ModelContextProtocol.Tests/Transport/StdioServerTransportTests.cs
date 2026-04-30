@@ -27,8 +27,11 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
-        // Act
-        await using var transport = new StdioServerTransport(_serverOptions);
+        // Use StreamServerTransport with Stream.Null rather than StdioServerTransport.
+        // StdioServerTransport opens Console.OpenStandardInput() which permanently
+        // blocks a thread pool thread on the test host's stdin. StdioServerTransport
+        // should only be instantiated in a dedicated child process.
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, _serverOptions.ServerInfo?.Name);
 
         // Assert
         Assert.NotNull(transport);
