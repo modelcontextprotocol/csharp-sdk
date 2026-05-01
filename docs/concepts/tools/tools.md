@@ -315,3 +315,28 @@ public static string Search(
     // Schema will include descriptions and default value for maxResults
 }
 ```
+
+### Custom HTTP headers from tool parameters
+
+When using the Streamable HTTP transport, tool parameters can be mirrored as HTTP headers so that network infrastructure (load balancers, proxies, gateways) can make routing decisions without parsing the JSON-RPC request body. Apply the <xref:ModelContextProtocol.Server.McpHeaderAttribute> to a parameter to opt it in:
+
+```csharp
+[McpServerTool, Description("Executes a SQL query in a specific region")]
+public static string ExecuteSql(
+    [McpHeader("Region"), Description("Target datacenter region")] string region,
+    [Description("The SQL query to execute")] string query)
+{
+    // Clients will send an additional HTTP header:
+    //   Mcp-Param-Region: <region value>
+}
+```
+
+When the tool's schema is generated, the annotated parameter includes an `x-mcp-header` extension property. Clients read this annotation and automatically add the corresponding `Mcp-Param-{Name}` header on outgoing `tools/call` requests. The server validates that the header value matches the value in the JSON-RPC body.
+
+Rules and constraints:
+
+- Only primitive parameter types (`string`, numeric types, `bool`) are supported.
+- The header name must contain only visible ASCII characters (0x21–0x7E) excluding colon (`:`).
+- Values containing non-ASCII characters, control characters, or leading/trailing whitespace are Base64-encoded using the `=?base64?{value}?=` wrapper.
+- Header names must be case-insensitively unique within the tool's input schema.
+- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (currently `DRAFT-2026-v1` and later).
