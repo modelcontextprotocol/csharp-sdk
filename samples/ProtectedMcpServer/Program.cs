@@ -12,8 +12,14 @@ var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
 var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
 
-// This sample is intended to be callable from a browser-based client, so we enable a
-// restrictive CORS policy here. If your server is not meant for browser access, leave CORS disabled.
+// This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
+// companion web app running on a different host (localhost:5173), while preventing requests from
+// other origins. This scenario requires enabling CORS and enabling a restrictive CORS policy.
+//
+// If your server is not meant for cross-origin browser access, leave CORS disabled.
+//
+// Only apply a lenient CORS policy if your server is intended to be callable from any browser.
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("McpBrowserClient", policy =>

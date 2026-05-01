@@ -135,7 +135,7 @@ By default, the HTTP transport uses **stateful sessions** — the server assigns
 
 #### Host name validation
 
-Use ASP.NET Core host filtering to limit which host names the server will respond to. Configure `AllowedHosts` in app configuration, such as `appsettings.Development.json` for local loopback values and environment-specific configuration for deployed hosts. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering).
+If you need to limit which host names the server will respond to, use ASP.NET Core host filtering. Configure `AllowedHosts` in app configuration, such as `appsettings.Development.json` for local loopback values and environment-specific configuration for deployed hosts. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering).
 
 ```json
 // appsettings.Development.json
@@ -144,11 +144,16 @@ Use ASP.NET Core host filtering to limit which host names the server will respon
 }
 ```
 
+For local development, we recommend keeping `AllowedHosts` limited to loopback values such as `localhost;127.0.0.1;[::1]`.
+
 #### Request origin validation
 
-Use a restrictive ASP.NET Core CORS policy so only trusted browser origins can call the MCP endpoint. This is ASP.NET Core's built-in mechanism for validating the browser `Origin` header on cross-origin requests. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
+If you need to limit which browser origins can call the MCP endpoint, use a restrictive ASP.NET Core CORS policy. This is ASP.NET Core's built-in mechanism for validating the browser `Origin` header on cross-origin requests. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). Only enable CORS if you intentionally want browser-based cross-origin access to this server.
 
-For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it.
+For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it. `Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration.
+
+
+_In this sample below, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains._
 
 ```json
 // appsettings.Development.json
@@ -170,7 +175,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(allowedOrigins)
             .WithMethods("POST")
-            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version");
+            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version")
+            .WithExposedHeaders("Mcp-Session-Id");
     });
 });
 
@@ -179,8 +185,6 @@ var app = builder.Build();
 app.UseCors();
 app.MapMcp("/mcp").RequireCors("McpBrowserClient");
 ```
-
-`Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration. For local development, we recommend keeping `AllowedHosts` limited to loopback values such as `localhost;127.0.0.1;[::1]`.
 
 #### How messages flow
 

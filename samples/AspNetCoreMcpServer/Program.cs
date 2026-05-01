@@ -54,7 +54,6 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 var app = builder.Build();
 
 app.UseCors();
-
 app.MapMcp().RequireCors("McpBrowserClient");
 
 app.Run();
