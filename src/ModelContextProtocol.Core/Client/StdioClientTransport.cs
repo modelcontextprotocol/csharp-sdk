@@ -121,9 +121,8 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             if (logger.IsEnabled(LogLevel.Trace))
             {
-                LogCreateProcessForTransportSensitive(logger, endpointName, _options.Command,
+                LogCreateProcessForTransportDetailed(logger, endpointName, _options.Command,
                     startInfo.Arguments,
-                    string.Join(", ", startInfo.Environment.Select(kvp => $"{kvp.Key}={kvp.Value}")),
                     startInfo.WorkingDirectory);
             }
             else
@@ -295,8 +294,8 @@ public sealed partial class StdioClientTransport : IClientTransport
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} starting server process. Command: '{Command}'.")]
     private static partial void LogCreateProcessForTransport(ILogger logger, string endpointName, string command);
 
-    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} starting server process. Command: '{Command}', Arguments: {Arguments}, Environment: {Environment}, Working directory: {WorkingDirectory}.")]
-    private static partial void LogCreateProcessForTransportSensitive(ILogger logger, string endpointName, string command, string? arguments, string environment, string workingDirectory);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} starting server process. Command: '{Command}', Arguments: {Arguments}, Working directory: {WorkingDirectory}.")]
+    private static partial void LogCreateProcessForTransportDetailed(ILogger logger, string endpointName, string command, string? arguments, string workingDirectory);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} failed to start server process.")]
     private static partial void LogTransportProcessStartFailed(ILogger logger, string endpointName);
