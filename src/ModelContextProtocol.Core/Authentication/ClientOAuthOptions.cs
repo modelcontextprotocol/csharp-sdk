@@ -64,6 +64,20 @@ public sealed class ClientOAuthOptions
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
+    /// Gets or sets the token endpoint authentication method selector function.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This function is used to select which token endpoint authentication method to use when multiple methods are available.
+    /// If not specified, the first available method will be selected.
+    /// </para>
+    /// <para>
+    /// The function receives a list of supported authentication methods from the authorization server metadata and should return the selected method, or null if no suitable method is found.
+    /// </para>
+    /// </remarks>
+    public Func<IReadOnlyList<string>?, string?>? TokenEndpointAuthMethodSelector { get; set; }
+
+    /// <summary>
     /// Gets or sets the authorization server selector function.
     /// </summary>
     /// <remarks>
