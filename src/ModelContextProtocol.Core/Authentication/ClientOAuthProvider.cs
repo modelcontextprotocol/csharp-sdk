@@ -341,6 +341,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
+                    LogAuthServerMetadataNonSuccessStatusCode(wellKnownEndpoint, (int)response.StatusCode);
                     continue;
                 }
 
@@ -443,6 +444,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (!httpResponse.IsSuccessStatusCode)
         {
+            LogOAuthTokenRefreshFailed((int)httpResponse.StatusCode);
             return null;
         }
 
@@ -542,6 +544,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            LogOAuthTokenExchangeFailed((int)httpResponse.StatusCode);
+        }
         await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
@@ -619,10 +625,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
         if (requireSuccess)
         {
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                LogProtectedResourceMetadataNonSuccessStatusCode(metadataUrl, (int)httpResponse.StatusCode);
+            }
             await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
         }
         else if (!httpResponse.IsSuccessStatusCode)
         {
+            LogProtectedResourceMetadataNonSuccessStatusCode(metadataUrl, (int)httpResponse.StatusCode);
             return null;
         }
 
@@ -674,6 +685,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (!httpResponse.IsSuccessStatusCode)
         {
+            LogDynamicClientRegistrationFailed((int)httpResponse.StatusCode);
             var errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             ThrowFailedToHandleUnauthorizedResponse($"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent}");
         }
@@ -1003,4 +1015,19 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Missing resource_metadata parameter from WWW-Authenticate header. Falling back to {MetadataUri}")]
     partial void LogMissingResourceMetadataParameter(Uri metadataUri);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Auth server metadata request to {Endpoint} received non-success status code {StatusCode}")]
+    partial void LogAuthServerMetadataNonSuccessStatusCode(Uri endpoint, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "OAuth token refresh received non-success status code {StatusCode}")]
+    partial void LogOAuthTokenRefreshFailed(int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "OAuth token exchange received non-success status code {StatusCode}")]
+    partial void LogOAuthTokenExchangeFailed(int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Protected resource metadata request to {MetadataUrl} received non-success status code {StatusCode}")]
+    partial void LogProtectedResourceMetadataNonSuccessStatusCode(Uri metadataUrl, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Dynamic client registration received non-success status code {StatusCode}")]
+    partial void LogDynamicClientRegistrationFailed(int statusCode);
 }

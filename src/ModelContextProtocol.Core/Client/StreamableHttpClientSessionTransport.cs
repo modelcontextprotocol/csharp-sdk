@@ -91,11 +91,22 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        var response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogHttpPostRequestFailed(Name, ex);
+            throw;
+        }
 
         // We'll let the caller decide whether to throw or fall back given an unsuccessful response.
         if (!response.IsSuccessStatusCode)
         {
+            LogHttpPostNonSuccessStatusCode(Name, (int)response.StatusCode);
+
             // Per the MCP spec, a 404 response to a request containing an Mcp-Session-Id
             // indicates the session has ended. Signal completion so McpClient.Completion resolves.
             if (response.StatusCode == HttpStatusCode.NotFound && SessionId is not null)
@@ -273,8 +284,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             {
                 response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException)
+            catch (HttpRequestException ex)
             {
+                LogHttpGetSseRequestFailed(Name, ex);
                 attempt++;
                 continue;
             }
@@ -284,12 +296,15 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 if (response.StatusCode >= HttpStatusCode.InternalServerError)
                 {
                     // Server error; retry.
+                    LogHttpGetSseNonSuccessStatusCode(Name, (int)response.StatusCode);
                     attempt++;
                     continue;
                 }
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    LogHttpGetSseNonSuccessStatusCode(Name, (int)response.StatusCode);
+
                     // Per the MCP spec, a 404 response to a request containing an Mcp-Session-Id
                     // indicates the session has ended. Signal completion so McpClient.Completion resolves.
                     if (response.StatusCode == HttpStatusCode.NotFound && SessionId is not null)
@@ -406,8 +421,25 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
         CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        // Do not validate we get a successful status code, because server support for the DELETE request is optional
-        (await _httpClient.SendAsync(deleteRequest, message: null, CancellationToken.None).ConfigureAwait(false)).Dispose();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(deleteRequest, message: null, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogHttpDeleteRequestFailed(Name, ex);
+            return;
+        }
+
+        using (response)
+        {
+            // Server support for the DELETE request is optional, so a 405 Method Not Allowed is expected.
+            if (!response.IsSuccessStatusCode)
+            {
+                LogHttpDeleteNonSuccessStatusCode(Name, (int)response.StatusCode);
+            }
+        }
     }
 
     private void LogJsonException(JsonException ex, string data)
@@ -505,4 +537,22 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         SetDisconnected(_disconnectError);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP POST request failed.")]
+    private partial void LogHttpPostRequestFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP POST received non-success status code {StatusCode}.")]
+    private partial void LogHttpPostNonSuccessStatusCode(string endpointName, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP GET SSE request failed.")]
+    private partial void LogHttpGetSseRequestFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP GET SSE received non-success status code {StatusCode}.")]
+    private partial void LogHttpGetSseNonSuccessStatusCode(string endpointName, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP DELETE request failed.")]
+    private partial void LogHttpDeleteRequestFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} HTTP DELETE received non-success status code {StatusCode}.")]
+    private partial void LogHttpDeleteNonSuccessStatusCode(string endpointName, int statusCode);
 }
