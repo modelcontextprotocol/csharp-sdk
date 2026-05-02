@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -41,6 +43,9 @@ internal sealed class StreamableHttpHandler(
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
+    private static readonly JsonTypeInfo<CallToolRequestParams> s_callToolParamsTypeInfo = GetRequiredJsonTypeInfo<CallToolRequestParams>();
+    private static readonly JsonTypeInfo<GetPromptRequestParams> s_getPromptParamsTypeInfo = GetRequiredJsonTypeInfo<GetPromptRequestParams>();
+    private static readonly JsonTypeInfo<ReadResourceRequestParams> s_readResourceParamsTypeInfo = GetRequiredJsonTypeInfo<ReadResourceRequestParams>();
 
     private static bool AllowNewSessionForNonInitializeRequests { get; } =
         AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", out var enabled) && enabled;
@@ -86,6 +91,11 @@ internal sealed class StreamableHttpHandler(
         }
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
+
+        if (await TryHandleInsufficientScopeAsync(context, session, message))
+        {
+            return;
+        }
 
         InitializeSseResponse(context);
         var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, context.RequestAborted);
@@ -461,6 +471,127 @@ internal sealed class StreamableHttpHandler(
             },
         };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
+    }
+
+    /// <summary>
+    /// Performs a pre-flight authorization check for invocation requests (tools/call, prompts/get, resources/read)
+    /// when <see cref="HttpMcpServerBuilderExtensions.AddAuthorizationFilters"/> has not been called.
+    /// If the request targets a primitive with <see cref="Microsoft.AspNetCore.Authorization.AuthorizeAttribute"/>
+    /// metadata and the caller is not authorized, writes an HTTP 403 response with a
+    /// <c>WWW-Authenticate: Bearer error="insufficient_scope"</c> header to trigger incremental scope consent (SEP-835).
+    /// </summary>
+    /// <returns><see langword="true"/> if a 403 response was written and request processing should stop; otherwise <see langword="false"/>.</returns>
+    private async ValueTask<bool> TryHandleInsufficientScopeAsync(HttpContext context, StreamableHttpSession session, JsonRpcMessage message)
+    {
+        // Only applicable when AddAuthorizationFilters has NOT been called.
+        // If it was called, the MCP filter pipeline handles authorization (hiding + MCP errors).
+        if (httpServerTransportOptions.Value.AuthorizationFiltersRegistered)
+        {
+            return false;
+        }
+
+        // Only handle invocation requests that target a specific primitive.
+        if (message is not JsonRpcRequest request)
+        {
+            return false;
+        }
+
+        var serverOptions = session.Server.ServerOptions;
+        IMcpServerPrimitive? primitive = null;
+
+        switch (request.Method)
+        {
+            case RequestMethods.ToolsCall:
+            {
+                var toolParams = request.Params is { } p ? System.Text.Json.JsonSerializer.Deserialize(p, s_callToolParamsTypeInfo) : null;
+                if (toolParams?.Name is { } toolName && serverOptions.ToolCollection is { } tools
+                    && tools.TryGetPrimitive(toolName, out var tool))
+                {
+                    primitive = tool;
+                }
+                break;
+            }
+            case RequestMethods.PromptsGet:
+            {
+                var promptParams = request.Params is { } p ? System.Text.Json.JsonSerializer.Deserialize(p, s_getPromptParamsTypeInfo) : null;
+                if (promptParams?.Name is { } promptName && serverOptions.PromptCollection is { } prompts
+                    && prompts.TryGetPrimitive(promptName, out var prompt))
+                {
+                    primitive = prompt;
+                }
+                break;
+            }
+            case RequestMethods.ResourcesRead:
+            {
+                var resourceParams = request.Params is { } p ? System.Text.Json.JsonSerializer.Deserialize(p, s_readResourceParamsTypeInfo) : null;
+                if (resourceParams?.Uri is { } resourceUri && serverOptions.ResourceCollection is { } resources)
+                {
+                    // First try an exact match, then fall back to URI template matching.
+                    if (resources.TryGetPrimitive(resourceUri, out var resource) && !resource.IsTemplated)
+                    {
+                        primitive = resource;
+                    }
+                    else
+                    {
+                        foreach (var resourceTemplate in resources)
+                        {
+                            if (resourceTemplate.IsMatch(resourceUri))
+                            {
+                                primitive = resourceTemplate;
+                                break;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            default:
+                return false;
+        }
+
+        if (!AuthorizationFilterSetup.HasAuthorizationMetadata(primitive))
+        {
+            return false;
+        }
+
+        // Evaluate the authorization policy for this primitive.
+        var policyProvider = context.RequestServices.GetService<IAuthorizationPolicyProvider>();
+        if (policyProvider is null)
+        {
+            // No authorization infrastructure configured; skip the pre-flight check.
+            return false;
+        }
+
+        var policy = await AuthorizationFilterSetup.CombineAsync(policyProvider, primitive.Metadata);
+        if (policy is null)
+        {
+            return false;
+        }
+
+        var authService = context.RequestServices.GetRequiredService<IAuthorizationService>();
+        var authResult = await authService.AuthorizeAsync(context.User ?? new ClaimsPrincipal(new ClaimsIdentity()), context, policy);
+        if (authResult.Succeeded)
+        {
+            return false;
+        }
+
+        // Authorization failed. Build a WWW-Authenticate header with error="insufficient_scope".
+        // Extract the scope from IAuthorizeData.Roles (the standard pattern for incremental scope consent).
+        var scope = primitive.Metadata
+            .OfType<IAuthorizeData>()
+            .Select(static a => a.Roles)
+            .FirstOrDefault(static r => !string.IsNullOrEmpty(r));
+
+        // Build the resource_metadata URL using the default well-known path for this endpoint.
+        var resourceMetadataUri = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}/.well-known/oauth-protected-resource{context.Request.Path}";
+
+        var wwwAuthenticate = string.IsNullOrEmpty(scope)
+            ? $"Bearer error=\"insufficient_scope\", resource_metadata=\"{resourceMetadataUri}\""
+            : $"Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{resourceMetadataUri}\"";
+
+        context.Response.Headers[HeaderNames.WWWAuthenticate] = wwwAuthenticate;
+        await WriteJsonRpcErrorAsync(context, "Forbidden: Insufficient scope.", StatusCodes.Status403Forbidden, (int)McpErrorCode.InvalidRequest);
+        return true;
     }
 
     internal static void InitializeSseResponse(HttpContext context)

@@ -64,6 +64,10 @@ public static class HttpMcpServerBuilderExtensions
         // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
 
+        // Signal to the HTTP transport that authorization filters are handling access control,
+        // so the pre-flight incremental scope consent check (SEP-835) should be skipped.
+        builder.Services.Configure<HttpServerTransportOptions>(static o => o.AuthorizationFiltersRegistered = true);
+
         return builder;
     }
 

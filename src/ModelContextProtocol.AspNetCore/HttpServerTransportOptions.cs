@@ -188,4 +188,13 @@ public class HttpServerTransportOptions
     /// Gets or sets the time provider that's used for testing the <see cref="IdleTimeout"/>.
     /// </summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// Gets a value indicating whether authorization filters have been registered via
+    /// <c>AddAuthorizationFilters</c>.
+    /// When <see langword="true"/>, the MCP filter pipeline handles authorization (hiding unauthorized primitives and returning MCP errors).
+    /// When <see langword="false"/> (the default), the HTTP transport performs a pre-flight authorization check that returns
+    /// HTTP 403 with <c>WWW-Authenticate: Bearer error="insufficient_scope"</c> for incremental scope consent (SEP-835).
+    /// </summary>
+    internal bool AuthorizationFiltersRegistered { get; set; }
 }
