@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -60,6 +61,47 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task CreateAsync_StdErrCallback_DoesNotCaptureCallerAsyncLocal()
+    {
+        var asyncLocal = new AsyncLocal<string>();
+        asyncLocal.Value = "caller-context";
+
+        string? capturedValue = "not-set";
+        var received = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new()
+            {
+                Command = "cmd",
+                Arguments = ["/c", "echo test >&2 & exit /b 1"],
+                StandardErrorLines = _ =>
+                {
+                    capturedValue = asyncLocal.Value;
+                    received.TrySetResult(true);
+                }
+            }, LoggerFactory) :
+            new(new()
+            {
+                Command = "sh",
+                Arguments = ["-c", "echo test >&2; exit 1"],
+                StandardErrorLines = _ =>
+                {
+                    capturedValue = asyncLocal.Value;
+                    received.TrySetResult(true);
+                }
+            }, LoggerFactory);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        // Wait for the stderr callback to fire.
+        await received.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // The callback should NOT see the caller's AsyncLocal value because
+        // ExecutionContext flow is suppressed for the stderr reader thread.
+        Assert.Null(capturedValue);
+    }
+
+    [Fact(Skip= "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task CreateAsync_StdErrCallbackThrows_DoesNotCrashProcess()
     {
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
