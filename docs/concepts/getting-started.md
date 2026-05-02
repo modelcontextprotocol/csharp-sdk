@@ -113,7 +113,7 @@ For production servers, configure the exact public host names for the deployment
 
 CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). 
 
-For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#request-origin-validation).
+For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#browser-cross-origin-access).
 
 ### Building an MCP client
 
