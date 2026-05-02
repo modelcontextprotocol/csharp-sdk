@@ -537,6 +537,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ["required"] = new JsonArray { (JsonNode)"result" }
                 };
 
+                // After wrapping, any internal $ref pointers that used absolute JSON Pointer
+                // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
+                // has moved under "#/properties/result". Rewrite them to account for the new location.
+                RewriteRefPointers(schemaNode["properties"]!["result"]);
+
                 structuredOutputRequiresWrapping = true;
             }
 
@@ -544,6 +549,52 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return outputSchema;
+    }
+
+    /// <summary>
+    /// Recursively rewrites all <c>$ref</c> JSON Pointer values in the given node
+    /// to account for the schema having been wrapped under <c>properties.result</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>System.Text.Json</c>'s <see cref="System.Text.Json.Schema.JsonSchemaExporter"/> uses absolute
+    /// JSON Pointer paths (e.g., <c>#/items/properties/foo</c>) to deduplicate types that appear at
+    /// multiple locations in the schema. When the original schema is moved under
+    /// <c>#/properties/result</c> by the wrapping logic above, these pointers become unresolvable.
+    /// This method prepends <c>/properties/result</c> to every <c>$ref</c> that starts with <c>#/</c>,
+    /// and rewrites bare <c>#</c> (root self-references from recursive types) to <c>#/properties/result</c>,
+    /// so the pointers remain valid after wrapping.
+    /// </remarks>
+    private static void RewriteRefPointers(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue)
+            {
+                if (refValue == "#")
+                {
+                    obj["$ref"] = "#/properties/result";
+                }
+                else if (refValue.StartsWith("#/", StringComparison.Ordinal))
+                {
+                    obj["$ref"] = "#/properties/result" + refValue.Substring(1);
+                }
+            }
+
+            // Safe to iterate without snapshot: the $ref assignment above completes before
+            // this enumerator is created, and recursive calls only mutate descendant objects.
+            foreach (var property in obj)
+            {
+                RewriteRefPointers(property.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                RewriteRefPointers(item);
+            }
+        }
     }
 
     private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
