@@ -135,7 +135,7 @@ By default, the HTTP transport uses **stateful sessions** — the server assigns
 
 #### Host name validation
 
-If you need to limit which host names the server will respond to, use ASP.NET Core host filtering. Configure `AllowedHosts` in app configuration, such as `appsettings.Development.json` for local loopback values and environment-specific configuration for deployed hosts. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering).
+For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
 
 ```json
 // appsettings.Development.json
@@ -144,11 +144,15 @@ If you need to limit which host names the server will respond to, use ASP.NET Co
 }
 ```
 
-For local development, we recommend keeping `AllowedHosts` limited to loopback values such as `localhost;127.0.0.1;[::1]`.
+For production servers, configure `AllowedHosts` to the exact public host names for the deployment. If Kestrel is behind a reverse proxy or load balancer, validate the host name at the layer that receives or forwards the client `Host` header. ASP.NET Core's Host Filtering Middleware is appropriate when Kestrel is public-facing or the `Host` header is directly forwarded; Forwarded Headers Middleware has its own `AllowedHosts` option for cases where the proxy doesn't preserve the original `Host` header. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [Configure ASP.NET Core to work with proxy servers and load balancers | Microsoft Learn](https://learn.microsoft.com/aspnet/core/host-and-deploy/proxy-load-balancer).
 
-#### Request origin validation
+If you intentionally expose the server through another host name, such as a tunnel, container host, reverse proxy, or deployed domain, add that exact host name to `AllowedHosts` instead of using `"*"`.
 
-If you need to limit which browser origins can call the MCP endpoint, use a restrictive ASP.NET Core CORS policy. This is ASP.NET Core's built-in mechanism for validating the browser `Origin` header on cross-origin requests. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). Only enable CORS if you intentionally want browser-based cross-origin access to this server.
+#### Browser cross-origin access
+
+**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
 
 For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it. `Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration.
 
@@ -174,8 +178,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("McpBrowserClient", policy =>
     {
         policy.WithOrigins(allowedOrigins)
-            .WithMethods("POST")
-            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version")
+            // Add GET for standalone/resumable SSE streams and DELETE for stateful session termination.
+            .WithMethods("POST", "GET", "DELETE")
+            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version", "Mcp-Session-Id")
             .WithExposedHeaders("Mcp-Session-Id");
     });
 });
