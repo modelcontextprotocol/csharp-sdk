@@ -155,8 +155,10 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListTasksResult))]
     [JsonSerializable(typeof(CancelMcpTaskRequestParams))]
     [JsonSerializable(typeof(CancelMcpTaskResult))]
-    [JsonSerializable(typeof(McpTasksCapability))]
-    [JsonSerializable(typeof(RequestMcpTasksCapability))]
+    [JsonSerializable(typeof(ServerMcpTasksCapability))]
+    [JsonSerializable(typeof(ClientMcpTasksCapability))]
+    [JsonSerializable(typeof(ServerRequestMcpTasksCapability))]
+    [JsonSerializable(typeof(ClientRequestMcpTasksCapability))]
     [JsonSerializable(typeof(ToolExecution))]
     [JsonSerializable(typeof(ToolTaskSupport))]
 

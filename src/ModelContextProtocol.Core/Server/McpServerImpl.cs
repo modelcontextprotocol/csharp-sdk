@@ -814,11 +814,11 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // Advertise task support in server capabilities
-        ServerCapabilities.Tasks = new McpTasksCapability
+        ServerCapabilities.Tasks = new ServerMcpTasksCapability
         {
             List = new ListMcpTasksCapability(),
             Cancel = new CancelMcpTasksCapability(),
-            Requests = new RequestMcpTasksCapability
+            Requests = new ServerRequestMcpTasksCapability
             {
                 Tools = new ToolsMcpTasksCapability
                 {

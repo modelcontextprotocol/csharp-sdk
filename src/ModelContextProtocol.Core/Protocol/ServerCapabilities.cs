@@ -77,12 +77,12 @@ public sealed class ServerCapabilities
     /// execute asynchronously, with the ability to poll for status and retrieve results later.
     /// </para>
     /// <para>
-    /// See <see cref="McpTasksCapability"/> for details on configuring which operations support tasks.
+    /// See <see cref="ServerMcpTasksCapability"/> for details on configuring which operations support tasks.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     [JsonIgnore]
-    public McpTasksCapability? Tasks
+    public ServerMcpTasksCapability? Tasks
     {
         get => TasksCore;
         set => TasksCore = value;
@@ -91,7 +91,7 @@ public sealed class ServerCapabilities
     // See ExperimentalInternalPropertyTests.cs before modifying this property.
     [JsonInclude]
     [JsonPropertyName("tasks")]
-    internal McpTasksCapability? TasksCore { get; set; }
+    internal ServerMcpTasksCapability? TasksCore { get; set; }
 
     /// <summary>
     /// Gets or sets optional MCP extensions that the server supports.
