@@ -157,6 +157,10 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
 
+    /// <summary>Gets whether the tool's underlying method returns <see cref="McpTask"/>, indicating
+    /// it manages its own task lifecycle and should not be wrapped by the SDK.</summary>
+    internal virtual bool ReturnsMcpTask => false;
+
     /// <summary>
     /// Gets the metadata for this tool instance.
     /// </summary>
