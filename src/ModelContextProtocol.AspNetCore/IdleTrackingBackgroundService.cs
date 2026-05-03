@@ -31,6 +31,17 @@ internal sealed partial class IdleTrackingBackgroundService : BackgroundService
         _logger = logger;
     }
 
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        // In stateless mode there are no sessions to track, so skip starting the periodic timer entirely.
+        if (_options.Value.Stateless)
+        {
+            return Task.CompletedTask;
+        }
+
+        return base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
