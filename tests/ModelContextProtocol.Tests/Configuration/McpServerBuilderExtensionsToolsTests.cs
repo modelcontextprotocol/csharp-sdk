@@ -482,7 +482,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
         Assert.Throws<ArgumentNullException>("tools", () => builder.WithTools((IEnumerable<McpServerTool>)null!));
-        Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools(toolTypes: (IEnumerable<Type>)null!));
         Assert.Throws<ArgumentNullException>("target", () => builder.WithTools<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
@@ -663,6 +663,57 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "method_c");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "method_d");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Returns42");
+    }
+    
+    [Fact]
+    public void Register_Static_Tools_With_Custom_Schema_Create_Options()
+    {
+        var jsonString = "{\"value\":42}";
+        var schemaCreateOptions = new AIJsonSchemaCreateOptions
+        {
+            TransformSchemaNode = (context, node) => JsonNode.Parse(jsonString)!
+        };
+        
+        ServiceCollection sc = new();
+        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "static_tool");
+        Assert.Contains("42", tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("input").GetProperty("value").ToString());
+    }
+
+    [Fact]
+    public void Register_Instance_Tools_With_Custom_Schema_Create_Options()
+    {
+        var jsonString = "{\"value\":42}";
+        var schemaCreateOptions = new AIJsonSchemaCreateOptions
+        {
+            TransformSchemaNode = (context, node) => JsonNode.Parse(jsonString)!
+        };
+        
+        ServiceCollection sc = new();
+        sc.AddMcpServer().WithTools([typeof(ToolTypeWithSchemaCreateOptions)], schemaCreateOptions);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "instance_tool");
+        Assert.Contains("42", tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("input").GetProperty("value").ToString());
+    }
+
+    [Fact]
+    public void WithToolsFromAssembly_With_Custom_Schema_Create_Options()
+    {
+        var jsonString = "{\"value\":42}";
+        var schemaCreateOptions = new AIJsonSchemaCreateOptions
+        {
+            TransformSchemaNode = (context, node) => JsonNode.Parse(jsonString)!
+        };
+
+        ServiceCollection sc = new();
+        sc.AddMcpServer().WithToolsFromAssembly(schemaCreateOptions);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "instance_tool");
+        Assert.Contains("42", tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("input").GetProperty("value").ToString());
     }
 
     [Fact]
@@ -951,6 +1002,17 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         public string? Name { get; set; }
         public int Age { get; set; }
     }
+    
+    [McpServerToolType]
+    internal class ToolTypeWithSchemaCreateOptions
+    {
+        [McpServerTool]
+        public static string StaticTool(string input) => input;
+        
+        [McpServerTool]
+        public string InstanceTool(string input) => input;
+    }
+    
 
     [JsonSerializable(typeof(bool))]
     [JsonSerializable(typeof(int))]
