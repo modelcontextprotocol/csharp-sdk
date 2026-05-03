@@ -58,6 +58,18 @@ public sealed class Program
     public bool HasRefreshedToken { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the server supports the Enterprise Managed
+    /// Authorization (SEP-990) flow, including the IdP token-exchange endpoint and the
+    /// JWT-bearer grant type at the token endpoint.
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c>, the server registers enterprise test clients and activates the
+    /// <c>/idp/token</c> endpoint (RFC 8693 token exchange) and the
+    /// <c>urn:ietf:params:oauth:grant-type:jwt-bearer</c> grant type (RFC 7523).
+    /// </remarks>
+    public bool EnterpriseSupportEnabled { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether the authorization server
     /// advertises support for client ID metadata documents in its discovery
     /// document. This is used by tests to toggle CIMD support.
@@ -156,6 +168,25 @@ public sealed class Program
 
             RequiresClientSecret = false,
             RedirectUris = ["http://localhost:1179/callback"],
+        };
+
+        // Enterprise Auth (SEP-990) clients.
+        // The IdP client is used to authenticate calls to /idp/token (token exchange).
+        // The MCP client is used to authenticate calls to /token (jwt-bearer grant).
+        // Neither needs redirect URIs because neither uses the authorization code flow.
+        _clients["enterprise-idp-client"] = new ClientInfo
+        {
+            ClientId = "enterprise-idp-client",
+            ClientSecret = "enterprise-idp-secret",
+            RequiresClientSecret = true,
+            RedirectUris = [],
+        };
+        _clients["enterprise-mcp-client"] = new ClientInfo
+        {
+            ClientId = "enterprise-mcp-client",
+            ClientSecret = "enterprise-mcp-secret",
+            RequiresClientSecret = true,
+            RedirectUris = [],
         };
 
         // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
@@ -348,10 +379,18 @@ public sealed class Program
                     type: "https://tools.ietf.org/html/rfc6749#section-5.2");
             }
 
+            // Read grant type early so we can skip resource validation for grant types that
+            // don't use the resource parameter (e.g. jwt-bearer where the resource is embedded
+            // inside the JWT assertion itself).
+            var grant_type = form["grant_type"].ToString();
+
             // Validate resource in accordance with RFC 8707.
             // When ExpectResource is false, the resource parameter must be absent (legacy mode).
+            // RFC 7523 JWT-bearer assertions carry the target resource inside the JWT itself,
+            // so we skip the form-level resource check for that grant type.
             var resource = form["resource"].ToString();
-            if (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
+            if (grant_type != "urn:ietf:params:oauth:grant-type:jwt-bearer" &&
+                (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource)))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {
@@ -360,7 +399,6 @@ public sealed class Program
                 });
             }
 
-            var grant_type = form["grant_type"].ToString();
             if (grant_type == "authorization_code")
             {
                 var code = form["code"].ToString();
@@ -437,6 +475,45 @@ public sealed class Program
                 HasRefreshedToken = true;
                 return Results.Ok(response);
             }
+            else if (grant_type == "urn:ietf:params:oauth:grant-type:jwt-bearer")
+            {
+                if (!EnterpriseSupportEnabled)
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "unsupported_grant_type",
+                        ErrorDescription = "JWT bearer grant is not enabled on this server."
+                    });
+                }
+
+                var assertion = form["assertion"].ToString();
+                if (string.IsNullOrEmpty(assertion))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_request",
+                        ErrorDescription = "assertion is required for jwt-bearer grant"
+                    });
+                }
+
+                // Extract the target resource from the JAG payload (set during /idp/token).
+                // Fall back to ValidResources[0] so the token is still usable in tests even
+                // if the resource claim is absent.
+                var jagResource = ExtractJwtClaim(assertion, "resource");
+                if (string.IsNullOrEmpty(jagResource) || !ValidResources.Contains(jagResource))
+                {
+                    jagResource = ValidResources.Length > 0 ? ValidResources[0] : null;
+                }
+
+                var resourceUri = jagResource is not null ? new Uri(jagResource) : null;
+                var scope = form["scope"].ToString();
+                var scopes = string.IsNullOrEmpty(scope)
+                    ? ["mcp:tools"]
+                    : scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri);
+                return Results.Ok(response);
+            }
             else
             {
                 return Results.BadRequest(new OAuthErrorResponse
@@ -445,6 +522,77 @@ public sealed class Program
                     ErrorDescription = "Unsupported grant type"
                 });
             }
+        });
+
+        // IdP token-exchange endpoint (RFC 8693) for Enterprise Managed Authorization (SEP-990).
+        // Exchanges an enterprise ID token (from SSO) for a JWT Authorization Grant (JAG)
+        // that can subsequently be used at the /token endpoint via the jwt-bearer grant.
+        app.MapPost("/idp/token", async (HttpContext context) =>
+        {
+            if (!EnterpriseSupportEnabled)
+            {
+                return Results.NotFound();
+            }
+
+            var form = await context.Request.ReadFormAsync();
+
+            // Authenticate the IdP client.
+            var client = AuthenticateClient(context, form);
+            if (client == null)
+            {
+                context.Response.StatusCode = 401;
+                return Results.Problem(
+                    statusCode: 401,
+                    title: "Unauthorized",
+                    detail: "Invalid client credentials",
+                    type: "https://tools.ietf.org/html/rfc6749#section-5.2");
+            }
+
+            var grantType = form["grant_type"].ToString();
+            if (grantType != "urn:ietf:params:oauth:grant-type:token-exchange")
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "unsupported_grant_type",
+                    ErrorDescription = "Only urn:ietf:params:oauth:grant-type:token-exchange is supported on this endpoint."
+                });
+            }
+
+            var subjectToken = form["subject_token"].ToString();
+            if (string.IsNullOrEmpty(subjectToken))
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "subject_token is required."
+                });
+            }
+
+            var requestedTokenType = form["requested_token_type"].ToString();
+            if (requestedTokenType != "urn:ietf:params:oauth:token-type:id-jag")
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "requested_token_type must be urn:ietf:params:oauth:token-type:id-jag."
+                });
+            }
+
+            var audience = form["audience"].ToString();
+            var resourceParam = form["resource"].ToString();
+
+            // Generate a JAG JWT signed with the server's RSA key.
+            // The JAG encodes the intended audience (MCP AS) and resource (MCP server) so
+            // the /token endpoint can later issue a correctly-scoped access token.
+            var jag = GenerateJagJwt(audience, resourceParam);
+
+            return Results.Ok(new JagTokenExchangeResponse
+            {
+                AccessToken = jag,
+                IssuedTokenType = "urn:ietf:params:oauth:token-type:id-jag",
+                TokenType = "N_A",
+                ExpiresIn = 300,
+            });
         });
 
         // Introspection endpoint
@@ -673,6 +821,70 @@ public sealed class Program
             ExpiresIn = (int)expiresIn.TotalSeconds,
             Scope = string.Join(" ", scopes)
         };
+    }
+
+    /// <summary>
+    /// Generates a JWT Authorization Grant (JAG) signed with the server's RSA key.
+    /// The JAG encodes the target audience (MCP AS URL) and the resource (MCP server URL).
+    /// </summary>
+    private string GenerateJagJwt(string audience, string resource)
+    {
+        var expiresIn = TimeSpan.FromMinutes(5);
+        var issuedAt = DateTimeOffset.UtcNow;
+        var expiresAt = issuedAt.Add(expiresIn);
+
+        var header = new Dictionary<string, string>
+        {
+            { "alg", "RS256" },
+            { "typ", "JWT" },
+            { "kid", _keyId },
+        };
+
+        var payload = new Dictionary<string, string>
+        {
+            { "iss", _url },
+            { "sub", "enterprise-user" },
+            { "aud", audience },
+            { "resource", resource },  // carried through so /token can issue the right audience
+            { "jti", Guid.NewGuid().ToString() },
+            { "iat", issuedAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            { "exp", expiresAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        };
+
+        var headerJson = System.Text.Json.JsonSerializer.Serialize(header, OAuthJsonContext.Default.DictionaryStringString);
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload, OAuthJsonContext.Default.DictionaryStringString);
+
+        var headerBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+        var payloadBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
+
+        var dataToSign = $"{headerBase64}.{payloadBase64}";
+        var signature = _rsa.SignData(Encoding.UTF8.GetBytes(dataToSign), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+        return $"{headerBase64}.{payloadBase64}.{WebEncoders.Base64UrlEncode(signature)}";
+    }
+
+    /// <summary>
+    /// Decodes a JWT payload (without signature verification) and returns the value of
+    /// <paramref name="claimName"/>, or <c>null</c> if the claim is absent or the JWT is malformed.
+    /// </summary>
+    private static string? ExtractJwtClaim(string jwt, string claimName)
+    {
+        var parts = jwt.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payloadJson = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(parts[1]));
+            var payload = System.Text.Json.JsonSerializer.Deserialize(payloadJson, OAuthJsonContext.Default.DictionaryStringString);
+            return payload?.TryGetValue(claimName, out var value) == true ? value : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
