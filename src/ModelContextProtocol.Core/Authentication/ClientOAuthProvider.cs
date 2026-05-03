@@ -41,12 +41,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
+    private readonly bool _credentialsArePreRegistered;
 
     private string? _clientId;
     private string? _clientSecret;
     private string? _tokenEndpointAuthMethod;
-    private ITokenCache _tokenCache;
+    private readonly InvalidatableTokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private Uri? _boundAuthServerIssuer;
+    private bool _isCimdClientId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -74,6 +77,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         _clientId = options.ClientId;
         _clientSecret = options.ClientSecret;
+        _credentialsArePreRegistered = options.ClientId is not null;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
@@ -89,7 +93,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
-        _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
+        _tokenCache = new InvalidatableTokenCache(options.TokenCache ?? new InMemoryTokenCache());
     }
 
     /// <summary>
@@ -272,6 +276,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, protectedResourceMetadata.Resource, cancellationToken).ConfigureAwait(false);
 
+        // Check for authorization server change per MCP SEP-2352 and update the bound issuer.
+        // This must happen before attempting token refresh to prevent stale tokens/credentials from being reused.
+        var currentIssuer = authServerMetadata.Issuer ?? selectedAuthServer;
+        HandleAuthorizationServerChange(currentIssuer);
+
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
@@ -287,6 +296,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             if (accessToken is not null)
             {
                 // A non-null result indicates the refresh succeeded and the new tokens have been stored.
+                _boundAuthServerIssuer = currentIssuer;
                 return accessToken;
             }
         }
@@ -308,8 +318,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
         _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
 
-        // Store auth server metadata for future refresh operations
+        // Store auth server metadata and bound issuer for future refresh operations
         _authServerMetadata = authServerMetadata;
+        _boundAuthServerIssuer = currentIssuer;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -324,6 +335,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         _clientId = metadataUri.AbsoluteUri;
+        _isCimdClientId = true;
 
         // See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-3
         static bool IsValidClientMetadataDocumentUri(Uri uri)
@@ -973,6 +985,58 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException("Client ID is not available. This may indicate an issue with dynamic client registration.");
 
+    /// <summary>
+    /// Detects if the authorization server has changed and handles the change according to the credential type.
+    /// Per MCP SEP-2352: clients MUST maintain separate state per AS and MUST NOT reuse credentials across ASes.
+    /// </summary>
+    private void HandleAuthorizationServerChange(Uri currentIssuer)
+    {
+        if (_boundAuthServerIssuer is null || UrisAreEquivalent(_boundAuthServerIssuer, currentIssuer))
+        {
+            // First time binding, or same AS - no change to handle.
+            return;
+        }
+
+        // The authorization server has changed.
+        if (_credentialsArePreRegistered)
+        {
+            // Pre-registered credentials are AS-specific. Per SEP-2352, clients SHOULD surface an error
+            // rather than silently attempting to use mismatched credentials.
+            throw new McpException(
+                $"The authorization server has changed from '{_boundAuthServerIssuer}' to '{currentIssuer}'. " +
+                "Pre-registered credentials are bound to a specific authorization server and cannot be reused with a different one.");
+        }
+
+        // Invalidate cached tokens from the previous AS to prevent reuse.
+        _tokenCache.Invalidate();
+
+        // Clear stale AS metadata and token endpoint auth method so they are refreshed for the new AS.
+        _authServerMetadata = null;
+        _tokenEndpointAuthMethod = null;
+
+        if (_isCimdClientId)
+        {
+            // CIMD-based client IDs are portable (self-hosted HTTPS URLs resolved by the AS on demand).
+            // Per SEP-2352: "No re-registration is needed when the authorization server changes."
+            // Keep the client ID but clear tokens (already done above).
+            LogAuthorizationServerChangedCimd(_boundAuthServerIssuer, currentIssuer);
+        }
+        else
+        {
+            // DCR-obtained credentials are AS-specific. Clear them so re-registration occurs with the new AS.
+            _clientId = null;
+            _clientSecret = null;
+            _isCimdClientId = false;
+            LogAuthorizationServerChangedDcr(_boundAuthServerIssuer, currentIssuer);
+        }
+    }
+
+    private static bool UrisAreEquivalent(Uri a, Uri b) =>
+        Uri.Compare(a, b,
+            UriComponents.Scheme | UriComponents.Host | UriComponents.Port | UriComponents.Path,
+            UriFormat.SafeUnescaped,
+            StringComparison.OrdinalIgnoreCase) == 0;
+
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
         throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}");
@@ -1003,4 +1067,41 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Missing resource_metadata parameter from WWW-Authenticate header. Falling back to {MetadataUri}")]
     partial void LogMissingResourceMetadataParameter(Uri metadataUri);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server changed from '{OldIssuer}' to '{NewIssuer}'. The CIMD-based client ID is portable and will be reused, but cached tokens have been invalidated.")]
+    partial void LogAuthorizationServerChangedCimd(Uri oldIssuer, Uri newIssuer);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server changed from '{OldIssuer}' to '{NewIssuer}'. DCR credentials have been cleared and will be re-registered with the new authorization server.")]
+    partial void LogAuthorizationServerChangedDcr(Uri oldIssuer, Uri newIssuer);
+
+    /// <summary>
+    /// Wraps an <see cref="ITokenCache"/> and allows the cached tokens to be invalidated
+    /// without changing the public interface. When invalidated, <see cref="GetTokensAsync"/>
+    /// returns <see langword="null"/> until new tokens are stored via <see cref="StoreTokensAsync"/>.
+    /// </summary>
+    private sealed class InvalidatableTokenCache(ITokenCache inner) : ITokenCache
+    {
+        private bool _isInvalidated;
+
+        /// <summary>Marks the cached tokens as stale so they will not be returned by <see cref="GetTokensAsync"/>.</summary>
+        public void Invalidate() => _isInvalidated = true;
+
+        /// <inheritdoc/>
+        public async ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken)
+        {
+            if (_isInvalidated)
+            {
+                return null;
+            }
+
+            return await inner.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc/>
+        public async ValueTask StoreTokensAsync(TokenContainer tokens, CancellationToken cancellationToken)
+        {
+            _isInvalidated = false;
+            await inner.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
+        }
+    }
 }
