@@ -1261,4 +1261,108 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task AuthorizationFlow_AppendsOfflineAccess_WhenServerAdvertisesIt()
+    {
+        TestOAuthServer.IncludeOfflineAccessInMetadata = true;
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.Contains("offline_access", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_DoesNotAppendOfflineAccess_WhenServerDoesNotAdvertiseIt()
+    {
+        // IncludeOfflineAccessInMetadata defaults to false, so the AS will not advertise offline_access.
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.DoesNotContain("offline_access", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_DoesNotDuplicateOfflineAccess_WhenAlreadyPresent()
+    {
+        TestOAuthServer.IncludeOfflineAccessInMetadata = true;
+
+        // Configure the PRM to already include offline_access in its scopes.
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "offline_access"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        var scopeTokens = requestedScope!.Split(' ');
+        Assert.Single(scopeTokens, t => t == "offline_access");
+    }
 }
