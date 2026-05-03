@@ -56,6 +56,12 @@ internal sealed class ClientRegistrationRequest
     public string? Scope { get; init; }
 
     /// <summary>
+    /// Gets or sets the application type.
+    /// </summary>
+    [JsonPropertyName("application_type")]
+    public string? ApplicationType { get; init; }
+
+    /// <summary>
     /// Gets or sets the contacts for the client.
     /// </summary>
     [JsonPropertyName("contacts")]

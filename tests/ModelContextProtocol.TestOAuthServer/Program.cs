@@ -82,6 +82,11 @@ public sealed class Program
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
     /// <summary>
+    /// Gets the application type from the most recent dynamic client registration request received by the server.
+    /// </summary>
+    public string? LastRegistrationApplicationType { get; private set; }
+
+    /// <summary>
     /// Entry point for the application.
     /// </summary>
     /// <param name="args">Command line arguments.</param>
@@ -500,6 +505,8 @@ public sealed class Program
                     ErrorDescription = "Invalid registration request"
                 });
             }
+
+            LastRegistrationApplicationType = registrationRequest.ApplicationType;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)
