@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Forecast</title>
+  <style>
+    :root {
+      --bg: #1e1e1e; --surface: #252526; --surface2: #2d2d30;
+      --border: #3c3c3c; --text: #cccccc; --muted: #858585;
+      --accent: #0078d4; --success: #4ec9b0; --warning: #ddb76f; --danger: #f14c4c;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --mono: 'SF Mono', Consolas, monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #ffffff; --surface: #f8f8f8; --surface2: #f0f0f0; --border: #e0e0e0; --text: #1e1e1e; --muted: #666666; }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font: 12px/1.5 var(--font); background: var(--bg); color: var(--text); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .header { display: flex; align-items: center; gap: 10px; }
+    .title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .controls { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; padding: 10px; background: var(--surface); border-radius: 6px; }
+    .control-group { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 200px; }
+    .control-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    select { padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font: inherit; width: 100%; }
+    select:focus { outline: none; border-color: var(--accent); }
+    button { padding: 6px 14px; font: 11px var(--font); border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: white; align-self: flex-end; }
+    .btn-primary:hover { background: #1c8ae6; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .forecast-container { flex: 1; overflow: auto; }
+    .forecast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+    .period-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .period-card.night { opacity: 0.8; }
+    .period-name { font-size: 11px; font-weight: 600; color: var(--accent); }
+    .period-temp { font-size: 22px; font-weight: 700; font-family: var(--mono); }
+    .period-temp.warm { color: var(--warning); }
+    .period-temp.cool { color: var(--accent); }
+    .period-temp.cold { color: #7cb3f1; }
+    .period-temp.hot { color: var(--danger); }
+    .period-wind { font-size: 10px; color: var(--muted); }
+    .period-forecast { font-size: 11px; line-height: 1.4; }
+    .period-short { font-size: 11px; font-weight: 500; }
+    .status-bar { font-size: 10px; color: var(--muted); padding-top: 4px; }
+    .status-bar.error { color: var(--danger); }
+    .status-bar.success { color: var(--success); }
+    .empty { padding: 40px; text-align: center; color: var(--muted); }
+    .empty-icon { font-size: 32px; margin-bottom: 8px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .location-info { font-size: 11px; color: var(--muted); margin-left: auto; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="title">🌤️ Weather Forecast</span>
+    <span class="location-info" id="locationInfo"></span>
+  </div>
+  <div class="controls">
+    <div class="control-group">
+      <span class="control-label">City</span>
+      <select id="citySelect">
+        <option value="">Select a city...</option>
+      </select>
+    </div>
+    <button class="btn-primary" id="fetchBtn" onclick="fetchForecast()" disabled>Get Forecast</button>
+  </div>
+  <div class="forecast-container" id="forecastContainer">
+    <div class="empty"><div class="empty-icon">🌎</div>Select a city to view the weather forecast</div>
+  </div>
+  <div class="status-bar" id="statusBar">Ready</div>
+
+  <script>
+    let cities = [];
+
+    const citySelect = document.getElementById('citySelect');
+    citySelect.addEventListener('change', () => {
+      document.getElementById('fetchBtn').disabled = citySelect.value === '';
+    });
+
+    let nextRequestId = 1;
+    const pendingRequests = new Map();
+    function sendRequest(method, params) {
+      const id = nextRequestId++;
+      return new Promise((resolve, reject) => {
+        pendingRequests.set(id, { resolve, reject });
+        window.parent.postMessage({ jsonrpc: '2.0', id, method, params: params || {} }, '*');
+      });
+    }
+    function sendNotification(method, params) {
+      window.parent.postMessage({ jsonrpc: '2.0', method, params: params || {} }, '*');
+    }
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || msg.jsonrpc !== '2.0') return;
+      if (msg.id !== undefined && pendingRequests.has(msg.id)) {
+        const { resolve, reject } = pendingRequests.get(msg.id);
+        pendingRequests.delete(msg.id);
+        msg.error ? reject(new Error(msg.error.message || JSON.stringify(msg.error))) : resolve(msg.result);
+        return;
+      }
+      if (msg.method === 'ui/notifications/tool-input') {
+        handleToolInput(msg.params);
+      }
+      if (msg.method === 'ui/notifications/tool-result') {
+        handleToolResult(msg.params);
+      }
+    });
+
+    function populateCities(enumValues) {
+      cities = enumValues.slice().sort();
+      citySelect.innerHTML = '<option value="">Select a city...</option>';
+      cities.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        citySelect.appendChild(opt);
+      });
+    }
+
+    function handleToolInput(params) {
+      const args = params.arguments || {};
+      if (args.cityState) {
+        citySelect.value = args.cityState;
+        document.getElementById('fetchBtn').disabled = false;
+        document.getElementById('locationInfo').textContent = args.cityState;
+        fetchForecast();
+      }
+    }
+
+    function handleToolResult(params) {
+      const sc = params.structuredContent;
+      if (sc && sc.periods) {
+        if (sc.cityState) {
+          document.getElementById('locationInfo').textContent = sc.cityState;
+        }
+        renderForecast(sc.periods);
+        setStatus(`Forecast loaded — ${sc.periods.length} periods`, 'success');
+      } else if (sc && sc.cityState) {
+        document.getElementById('locationInfo').textContent = sc.cityState;
+      }
+    }
+
+    async function fetchForecast() {
+      const city = citySelect.value;
+      if (!city) return;
+      const btn = document.getElementById('fetchBtn');
+      btn.disabled = true;
+      setStatus('Fetching forecast...');
+      document.getElementById('locationInfo').textContent = city;
+      document.getElementById('forecastContainer').innerHTML = '<div class="empty"><div class="spinner"></div><br>Loading forecast...</div>';
+
+      try {
+        const result = await sendRequest('tools/call', {
+          name: 'weather_forecast',
+          arguments: { cityState: city }
+        });
+        const sc = result?.structuredContent || null;
+        if (sc && sc.periods) {
+          renderForecast(sc.periods);
+          setStatus(`Forecast for ${city} — ${sc.periods.length} periods`, 'success');
+        } else if (result?.content?.length > 0) {
+          const text = result.content.map(c => c.text || '').join('\n');
+          document.getElementById('forecastContainer').innerHTML = `<pre style="white-space:pre-wrap;color:var(--text);font-size:11px;">${escapeHtml(text)}</pre>`;
+          setStatus('Forecast loaded (text only)', 'success');
+        }
+      } catch (e) {
+        setStatus('Error: ' + e.message, 'error');
+        document.getElementById('forecastContainer').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${escapeHtml(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderForecast(periods) {
+      const container = document.getElementById('forecastContainer');
+      container.innerHTML = '<div class="forecast-grid">' + periods.map(p => {
+        const tempClass = p.temperature >= 90 ? 'hot' : p.temperature >= 70 ? 'warm' : p.temperature >= 50 ? 'cool' : 'cold';
+        const nightClass = p.isDaytime === false ? ' night' : '';
+        const icon = p.isDaytime === false ? '🌙' : getWeatherIcon(p.shortForecast || '');
+        return `<div class="period-card${nightClass}">
+          <div class="period-name">${icon} ${escapeHtml(p.name)}</div>
+          <div class="period-temp ${tempClass}">${p.temperature}°${p.temperatureUnit || 'F'}</div>
+          <div class="period-short">${escapeHtml(p.shortForecast || '')}</div>
+          <div class="period-wind">💨 ${escapeHtml(p.windSpeed || '')} ${escapeHtml(p.windDirection || '')}</div>
+          <div class="period-forecast">${escapeHtml(p.detailedForecast || '')}</div>
+        </div>`;
+      }).join('') + '</div>';
+    }
+
+    function getWeatherIcon(forecast) {
+      const f = forecast.toLowerCase();
+      if (f.includes('thunder') || f.includes('storm')) return '⛈️';
+      if (f.includes('rain') || f.includes('shower')) return '🌧️';
+      if (f.includes('snow') || f.includes('blizzard')) return '❄️';
+      if (f.includes('cloud') || f.includes('overcast')) return '☁️';
+      if (f.includes('partly') || f.includes('mostly sunny')) return '⛅';
+      if (f.includes('fog') || f.includes('mist')) return '🌫️';
+      if (f.includes('wind')) return '💨';
+      if (f.includes('sunny') || f.includes('clear')) return '☀️';
+      return '🌤️';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('statusBar');
+      el.textContent = msg;
+      el.className = 'status-bar' + (type ? ` ${type}` : '');
+    }
+
+    async function initialize() {
+      try {
+        setStatus('Connecting...');
+        const result = await sendRequest('ui/initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'weather-forecast', version: '1.0.0' } });
+        sendNotification('ui/notifications/initialized', {});
+
+        // Try to extract enum values from tool inputSchema via hostContext
+        let enumValues = null;
+        const schema = result?.hostContext?.toolInfo?.tool?.inputSchema;
+        if (schema) {
+          enumValues = schema.properties?.cityState?.enum;
+        }
+
+        // Fallback: read city list from a dedicated resource
+        if (!enumValues) {
+          sendNotification('notifications/message', {
+            level: 'warning',
+            data: 'hostContext.toolInfo.tool.inputSchema is missing from ui/initialize response — falling back to resources/read for city list'
+          });
+          try {
+            const res = await sendRequest('resources/read', { uri: 'data://weather-app/us-cities' });
+            const text = res?.contents?.[0]?.text;
+            if (text) {
+              enumValues = JSON.parse(text);
+            }
+          } catch (e) { /* ignore */ }
+        }
+
+        if (enumValues && Array.isArray(enumValues)) {
+          populateCities(enumValues);
+          setStatus(`Ready — ${enumValues.length} cities available`);
+        } else {
+          setStatus('Ready (could not load city list)');
+        }
+      } catch (e) { setStatus('Standalone mode: ' + e.message); }
+    }
+
+    initialize();
+  </script>
+</body>
+</html>
