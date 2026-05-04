@@ -24,7 +24,7 @@ jobs:
           pattern: testresults-*
 
       - name: Combine coverage reports
-        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.5
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.9
         with:
           reports: "**/*.cobertura.xml"
           targetdir: "${{ github.workspace }}/report"
