@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>ModelContextProtocol.Extensions.Apps</PackageId>
+    <Description>MCP Apps extension for the .NET Model Context Protocol (MCP) SDK</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Suppress the experimental MCP Apps warning -->
+    <NoWarn>$(NoWarn);MCPEXP003</NoWarn>
+    <!-- New package with no published baseline yet -->
+    <EnablePackageValidation>false</EnablePackageValidation>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+  </ItemGroup>
+
+  <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs the ExperimentalAttribute polyfill. -->
+  <ItemGroup>
+    <Compile Remove="..\Common\Polyfills\**\*.cs" />
+    <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\ExperimentalAttribute.cs"
+             Link="Polyfills\ExperimentalAttribute.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\PACKAGE.md" Pack="true" PackagePath="\README.md" />
+  </ItemGroup>
+
+</Project>

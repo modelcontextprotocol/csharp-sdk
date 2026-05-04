@@ -159,7 +159,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Auto-detect async methods and mark with taskSupport = "optional" unless explicitly configured.
         // This enables implicit task support for async tools: clients can choose to invoke them
         // synchronously (wait for completion) or as a task (receive taskId, poll for result).
-        if (function.UnderlyingMethod is not null && 
+        if (function.UnderlyingMethod is not null &&
             IsAsyncMethod(function.UnderlyingMethod) &&
             tool.Execution?.TaskSupport is null)
         {
