@@ -9,9 +9,16 @@ public enum McpErrorCode
     /// Indicates that the requested resource could not be found.
     /// </summary>
     /// <remarks>
-    /// This error should be used when a resource URI does not match any available resource on the server.
-    /// It allows clients to distinguish between missing resources and other types of errors.
+    /// <para>
+    /// Deprecated per SEP-2164 (MCP spec 2026-06-30). Use <see cref="InvalidParams"/> (-32602) instead,
+    /// which is the standard JSON-RPC code for unknown or unresolvable resource URIs.
+    /// </para>
+    /// <para>
+    /// This value (-32002) is retained for backward compatibility with pre-2026-06-30 clients and servers,
+    /// but new code should use <see cref="InvalidParams"/>.
+    /// </para>
     /// </remarks>
+    [Obsolete("ResourceNotFound (-32002) is deprecated per SEP-2164. Use McpErrorCode.InvalidParams (-32602) instead.")]
     ResourceNotFound = -32002,
 
     /// <summary>
@@ -65,6 +72,7 @@ public enum McpErrorCode
     /// <list type="bullet">
     /// <item><description><b>Tools</b>: Unknown tool name or invalid protocol-level tool arguments.</description></item>
     /// <item><description><b>Prompts</b>: Unknown prompt name or missing required protocol-level arguments.</description></item>
+    /// <item><description><b>Resources</b>: Unknown or unresolvable resource URI.</description></item>
     /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
     /// <item><description><b>Logging</b>: Invalid log level.</description></item>
     /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
