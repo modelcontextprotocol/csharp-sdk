@@ -134,6 +134,82 @@ public static class NodeHelpers
     }
 
     /// <summary>
+    /// Gets the installed conformance package version by running 'conformance --version'.
+    /// Returns null if the version cannot be determined.
+    /// </summary>
+    public static Version? GetConformanceVersion()
+    {
+        if (!IsNodeInstalled())
+        {
+            return null;
+        }
+
+        try
+        {
+            EnsureNpmDependenciesInstalled();
+            var repoRoot = FindRepoRoot();
+            var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
+
+            ProcessStartInfo startInfo;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = $"{binPath}.cmd",
+                    Arguments = "--version",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+            }
+            else
+            {
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = binPath,
+                    Arguments = "--version",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+            }
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return null;
+            }
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit(10_000);
+
+            if (process.ExitCode == 0 && Version.TryParse(output, out var version))
+            {
+                return version;
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Checks if the installed conformance package version is at least the specified minimum.
+    /// </summary>
+    public static bool IsConformanceVersionAtLeast(string minimumVersion)
+    {
+        var installed = GetConformanceVersion();
+        return installed != null
+            && Version.TryParse(minimumVersion, out var min)
+            && installed >= min;
+    }
+
+    /// <summary>
     /// Checks if Node.js is installed and available on the system.
     /// </summary>
     public static bool IsNodeInstalled()
