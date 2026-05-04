@@ -53,7 +53,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.ReadResourceAsync(uri, null, TestContext.Current.CancellationToken));
 
-        Assert.Equal(McpErrorCode.ResourceNotFound, ex.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
 
         // Literal template braces in URI should not match (template literal is not a valid URI)
         var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
-        Assert.Equal(McpErrorCode.ResourceNotFound, mcpEx.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, mcpEx.ErrorCode);
         Assert.Equal("Request failed (remote): Unknown resource URI: 'test://params{?a1,a2,a3}'", mcpEx.Message);
     }
 
