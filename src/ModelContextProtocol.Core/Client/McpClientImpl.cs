@@ -661,6 +661,11 @@ internal sealed partial class McpClientImpl : McpClient
         _toolCache[tool.Name] = tool;
     }
 
+    internal override void OnToolRejected(Tool tool, string reason)
+    {
+        LogToolRejected(tool.Name, reason);
+    }
+
     /// <inheritdoc/>
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
         => _sessionHandler.RegisterNotificationHandler(method, handler);
@@ -707,5 +712,8 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]
+    private partial void LogToolRejected(string toolName, string reason);
 
 }

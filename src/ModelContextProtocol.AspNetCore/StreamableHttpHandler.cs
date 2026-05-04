@@ -561,8 +561,7 @@ internal sealed class StreamableHttpHandler(
     {
         // Only validate for protocol versions that support standard headers.
         var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        if (string.IsNullOrEmpty(protocolVersion) ||
-            string.Compare(protocolVersion, McpHttpHeaders.MinVersionForStandardHeaders, StringComparison.Ordinal) < 0)
+        if (!McpHttpHeaders.SupportsStandardHeaders(protocolVersion))
         {
             errorMessage = null;
             return true;
@@ -724,9 +723,13 @@ internal sealed class StreamableHttpHandler(
             }
 
             var actualHeaderValue = context.Request.Headers[fullHeaderName].ToString();
-            if (string.IsNullOrEmpty(actualHeaderValue))
+
+            // Validate the raw header value for invalid characters per SEP.
+            // Servers MUST reject headers containing characters outside the valid HTTP header value range.
+            if (!IsValidHeaderValue(actualHeaderValue))
             {
-                continue;
+                errorMessage = $"Header mismatch: {fullHeaderName} header contains invalid characters.";
+                return false;
             }
 
             var decodedActual = Client.McpHeaderEncoder.DecodeValue(actualHeaderValue);
@@ -768,6 +771,26 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
+    /// <summary>
+    /// Validates that a header value contains only characters allowed in HTTP header field values
+    /// per RFC 9110: visible ASCII (0x21-0x7E), space (0x20), and horizontal tab (0x09).
+    /// </summary>
+    private static bool IsValidHeaderValue(string value)
+    {
+        foreach (char c in value)
+        {
+            if (c < 0x20 || c > 0x7E)
+            {
+                if (c != '\t')
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private static string? ConvertJsonNodeToHeaderValue(System.Text.Json.Nodes.JsonNode node)
     {
         if (node is not System.Text.Json.Nodes.JsonValue jsonValue)
@@ -778,7 +801,7 @@ internal sealed class StreamableHttpHandler(
         object? value = jsonValue.GetValueKind() switch
         {
             System.Text.Json.JsonValueKind.String => jsonValue.GetValue<string>(),
-            System.Text.Json.JsonValueKind.Number => jsonValue.GetValue<double>(),
+            System.Text.Json.JsonValueKind.Number => jsonValue.ToJsonString(),
             System.Text.Json.JsonValueKind.True => true,
             System.Text.Json.JsonValueKind.False => false,
             _ => null

@@ -61,4 +61,18 @@ public static class McpHttpHeaders
     /// definition for the current request, enabling the transport to add custom parameter headers.
     /// </summary>
     internal const string ToolContextKey = "Mcp.Tool";
+
+    /// <summary>
+    /// Protocol versions that require standard MCP request headers (Mcp-Method, Mcp-Name).
+    /// </summary>
+    private static readonly HashSet<string> s_versionsWithStandardHeaders = new(StringComparer.Ordinal)
+    {
+        MinVersionForStandardHeaders,
+    };
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the given protocol version requires standard MCP request headers.
+    /// </summary>
+    public static bool SupportsStandardHeaders(string? protocolVersion)
+        => !string.IsNullOrEmpty(protocolVersion) && s_versionsWithStandardHeaders.Contains(protocolVersion!);
 }

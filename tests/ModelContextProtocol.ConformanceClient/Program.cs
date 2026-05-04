@@ -193,6 +193,23 @@ try
                 success &= !(result.IsError == true);
             }
 
+            // List and get prompts to test Mcp-Method and Mcp-Name headers
+            var prompts = await mcpClient.ListPromptsAsync();
+            Console.WriteLine($"Available prompts: {string.Join(", ", prompts.Select(p => p.Name))}");
+
+            foreach (var prompt in prompts)
+            {
+                Console.WriteLine($"Getting prompt: {prompt.Name}");
+                try
+                {
+                    await mcpClient.GetPromptAsync(prompt.Name);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Prompt get error (expected for test): {ex.Message}");
+                }
+            }
+
             // List and read resources to test Mcp-Name with params.uri
             var resources = await mcpClient.ListResourcesAsync();
             Console.WriteLine($"Available resources: {string.Join(", ", resources.Select(r => r.Uri))}");
@@ -213,13 +230,37 @@ try
         }
         case "http-custom-headers":
         {
-            // Parse conformance context for tool call arguments
-            Dictionary<string, object?> toolCallArgs = new();
+            // List tools to discover x-mcp-header annotations (populates tool cache)
+            var tools = await mcpClient.ListToolsAsync();
+            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+            // Parse conformance context for tool calls
             if (!string.IsNullOrEmpty(conformanceContext))
             {
                 using var contextDoc = JsonDocument.Parse(conformanceContext);
-                if (contextDoc.RootElement.TryGetProperty("toolCall", out var toolCallEl))
+
+                // Support both "toolCalls" (array) and legacy "toolCall" (single object)
+                var toolCallElements = new List<JsonElement>();
+                if (contextDoc.RootElement.TryGetProperty("toolCalls", out var toolCallsArray) &&
+                    toolCallsArray.ValueKind == JsonValueKind.Array)
                 {
+                    foreach (var item in toolCallsArray.EnumerateArray())
+                    {
+                        toolCallElements.Add(item);
+                    }
+                }
+                else if (contextDoc.RootElement.TryGetProperty("toolCall", out var toolCallEl))
+                {
+                    toolCallElements.Add(toolCallEl);
+                }
+
+                foreach (var toolCallEl in toolCallElements)
+                {
+                    var toolName = toolCallEl.TryGetProperty("name", out var nameEl)
+                        ? nameEl.GetString() ?? "test_custom_headers"
+                        : "test_custom_headers";
+
+                    Dictionary<string, object?> toolCallArgs = new();
                     if (toolCallEl.TryGetProperty("arguments", out var argsEl))
                     {
                         foreach (var prop in argsEl.EnumerateObject())
@@ -236,18 +277,12 @@ try
                             toolCallArgs[prop.Name] = value;
                         }
                     }
+
+                    Console.WriteLine($"Calling tool: {toolName} with {toolCallArgs.Count} arguments");
+                    var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: toolCallArgs);
+                    success &= !(result.IsError == true);
                 }
             }
-
-            // List tools to discover x-mcp-header annotations (populates tool cache)
-            var tools = await mcpClient.ListToolsAsync();
-            Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
-
-            // Call the tool with the provided arguments — headers should be sent automatically
-            var toolName = "test_custom_headers";
-            Console.WriteLine($"Calling tool: {toolName} with {toolCallArgs.Count} arguments");
-            var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: toolCallArgs);
-            success &= !(result.IsError == true);
             break;
         }
         case "http-invalid-tool-headers":

@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// Encoding rules:
 /// <list type="bullet">
-/// <item><description>Plain ASCII values (0x20-0x7E, tab 0x09): sent as-is</description></item>
+/// <item><description>Plain ASCII values (0x20-0x7E): sent as-is</description></item>
 /// <item><description>Values with leading/trailing whitespace: Base64 encoded with <c>=?base64?{value}?=</c> wrapper</description></item>
 /// <item><description>Non-ASCII characters: Base64 encoded</description></item>
 /// <item><description>Control characters: Base64 encoded</description></item>
@@ -129,13 +129,11 @@ public static class McpHeaderEncoder
 
         foreach (char c in value)
         {
-            // Valid HTTP header field value characters: visible ASCII (0x21-0x7E), space (0x20), tab (0x09)
+            // Valid HTTP header field value characters per SEP: visible ASCII (0x21-0x7E) and space (0x20).
+            // All control characters (0x00-0x1F, 0x7F), including tab, must be Base64-encoded.
             if (c < 0x20 || c > 0x7E)
             {
-                if (c != '\t')
-                {
-                    return true;
-                }
+                return true;
             }
         }
 

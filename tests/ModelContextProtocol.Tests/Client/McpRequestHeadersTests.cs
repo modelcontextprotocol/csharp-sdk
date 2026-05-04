@@ -20,4 +20,16 @@ public class McpRequestHeadersTests
     {
         Assert.Equal(-32001, (int)McpErrorCode.HeaderMismatch);
     }
+
+    [Theory]
+    [InlineData("DRAFT-2026-v1", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2024-11-05", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    public void SupportsStandardHeaders_ReturnsExpected(string? version, bool expected)
+    {
+        Assert.Equal(expected, McpHttpHeaders.SupportsStandardHeaders(version));
+    }
 }

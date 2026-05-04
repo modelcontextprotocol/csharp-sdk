@@ -139,6 +139,7 @@ public class McpHeaderEncoderTests
     [InlineData(" padded ")]
     [InlineData("line1\nline2")]
     [InlineData("\tindented")]
+    [InlineData("a\tb")]
     public void RoundTrip_EncodeDecode_PreservesValue(string original)
     {
         var encoded = McpHeaderEncoder.EncodeValue(original);
@@ -146,5 +147,17 @@ public class McpHeaderEncoderTests
 
         var decoded = McpHeaderEncoder.DecodeValue(encoded);
         Assert.Equal(original, decoded);
+    }
+
+    [Fact]
+    public void EncodeValue_EmbeddedTab_Base64Encodes()
+    {
+        var result = McpHeaderEncoder.EncodeValue("col1\tcol2");
+        Assert.StartsWith("=?base64?", result);
+        Assert.EndsWith("?=", result);
+
+        // Verify round-trip
+        var decoded = McpHeaderEncoder.DecodeValue(result);
+        Assert.Equal("col1\tcol2", decoded);
     }
 }
