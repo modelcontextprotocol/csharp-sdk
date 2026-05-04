@@ -41,6 +41,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         "2025-03-26",
         "2025-06-18",
         LatestProtocolVersion,
+        "DRAFT-2026-v1",
     ];
 
     /// <summary>
@@ -159,7 +160,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// completes its channel with a <see cref="ClientTransportClosedException"/>, the wrapped
     /// <see cref="ClientCompletionDetails"/> is unwrapped. Otherwise, a default instance is returned.
     /// </summary>
-    internal Task<ClientCompletionDetails> CompletionTask => 
+    internal Task<ClientCompletionDetails> CompletionTask =>
         field ??= GetCompletionDetailsAsync(_transport.MessageReader.Completion);
 
     /// <summary>

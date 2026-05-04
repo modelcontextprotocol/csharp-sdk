@@ -184,6 +184,15 @@ public abstract partial class McpClient : McpSession
             tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
+                // Validate x-mcp-header annotations per SEP-2243.
+                // Clients MUST exclude tools with invalid annotations and SHOULD log a warning.
+                if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+                {
+                    OnToolRejected(tool, rejectionReason!);
+                    continue;
+                }
+
+                OnToolDiscovered(tool);
                 tools.Add(new(this, tool, options?.JsonSerializerOptions));
             }
 
@@ -192,6 +201,26 @@ public abstract partial class McpClient : McpSession
         while (requestParams.Cursor is not null);
 
         return tools;
+    }
+
+    /// <summary>
+    /// Called when a tool definition is discovered from a <c>tools/list</c> response.
+    /// </summary>
+    /// <remarks>
+    /// Override this method to cache or process tool definitions for use in
+    /// subsequent <c>tools/call</c> requests (e.g., for adding custom HTTP headers).
+    /// </remarks>
+    internal virtual void OnToolDiscovered(Tool tool)
+    {
+    }
+
+    /// <summary>
+    /// Called when a tool definition is rejected due to invalid <c>x-mcp-header</c> annotations.
+    /// </summary>
+    /// <param name="tool">The tool that was rejected.</param>
+    /// <param name="reason">The reason the tool was rejected.</param>
+    internal virtual void OnToolRejected(Tool tool, string reason)
+    {
     }
 
     /// <summary>

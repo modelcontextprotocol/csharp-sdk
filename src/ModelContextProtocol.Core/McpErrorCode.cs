@@ -6,6 +6,26 @@ namespace ModelContextProtocol;
 public enum McpErrorCode
 {
     /// <summary>
+    /// Indicates that HTTP headers do not match the corresponding values in the request body,
+    /// or that required headers are missing or malformed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This error is returned when a Streamable HTTP request fails header validation. Validation failures include:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>A required standard header (<c>Mcp-Method</c>, <c>Mcp-Name</c>) is missing.</description></item>
+    /// <item><description>A header value does not match the corresponding request body value.</description></item>
+    /// <item><description>A Base64-encoded header value cannot be decoded.</description></item>
+    /// <item><description>A header value contains invalid characters.</description></item>
+    /// </list>
+    /// <para>
+    /// This error code is in the JSON-RPC implementation-defined server error range (<c>-32000</c> to <c>-32099</c>).
+    /// </para>
+    /// </remarks>
+    HeaderMismatch = -32001,
+
+    /// <summary>
     /// Indicates that the requested resource could not be found.
     /// </summary>
     /// <remarks>

@@ -1,6 +1,9 @@
 # Cake tools
 /[Tt]ools/
 
+# Language server cache
+*.lscache
+
 # Build output
 [Bb]uildArtifacts/
 # Build results
