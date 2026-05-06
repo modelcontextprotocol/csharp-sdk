@@ -7,6 +7,7 @@ using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using System.Runtime.InteropServices;
 
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddHttpClientInstrumentation()
@@ -39,6 +40,8 @@ var mcpClient = await McpClient.CreateAsync(
         Command = "npx",
         Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
         Name = "Everything",
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = MinimalEnvironment(),
     }),
     clientOptions: new()
     {
@@ -82,4 +85,18 @@ while (true)
     Console.WriteLine();
 
     messages.AddMessages(updates);
+}
+
+// Returns a minimal set of environment variables needed by Node.js/npm tooling.
+// Omitting variables the server doesn't need prevents unintentional leakage of
+// credentials or other sensitive values present in the parent process.
+static Dictionary<string, string?> MinimalEnvironment()
+{
+    string[] names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? ["PATH", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"]
+        : ["PATH", "HOME", "TMPDIR"];
+    return names
+        .Select(n => (n, v: Environment.GetEnvironmentVariable(n)))
+        .Where(t => t.v is not null)
+        .ToDictionary(t => t.n, t => (string?)t.v);
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -31,6 +32,8 @@ else
         Name = "Demo Server",
         Command = command,
         Arguments = arguments,
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = MinimalEnvironment(),
     });
 }
 await using var mcpClient = await McpClient.CreateAsync(clientTransport!);
@@ -121,4 +124,18 @@ static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = n
 {
     Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
     return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
+}
+
+// Returns a minimal set of environment variables needed by dotnet/node/python tooling.
+// Omitting variables the server doesn't need prevents unintentional leakage of
+// credentials or other sensitive values present in the parent process.
+static Dictionary<string, string?> MinimalEnvironment()
+{
+    string[] names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? ["PATH", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "DOTNET_ROOT", "NUGET_PACKAGES"]
+        : ["PATH", "HOME", "TMPDIR", "DOTNET_ROOT", "NUGET_PACKAGES"];
+    return names
+        .Select(n => (n, v: Environment.GetEnvironmentVariable(n)))
+        .Where(t => t.v is not null)
+        .ToDictionary(t => t.n, t => (string?)t.v);
 }
