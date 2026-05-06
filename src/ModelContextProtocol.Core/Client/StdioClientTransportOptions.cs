@@ -149,11 +149,12 @@ public sealed class StdioClientTransportOptions
     /// </para>
     /// <para>
     /// <strong>Compatibility consideration:</strong> Disabling inheritance can cause the child process to fail to start or
-    /// behave unexpectedly if it relies on variables provided by the operating system or the user's shell environment. Common
-    /// examples include <c>PATH</c> (required to locate executables), <c>HOME</c> (required by many tools on Unix),
-    /// <c>DOTNET_ROOT</c>, <c>LD_LIBRARY_PATH</c>, <c>JAVA_HOME</c>, and proxy settings (<c>HTTP_PROXY</c>,
-    /// <c>HTTPS_PROXY</c>, <c>NO_PROXY</c>). When disabling inheritance, ensure that all variables required by the server
-    /// process are explicitly provided via <see cref="EnvironmentVariables"/>.
+    /// behave unexpectedly if it relies on variables provided by the operating system or the user's shell environment.
+    /// <see cref="GetDefaultEnvironmentVariables"/> covers the most common requirements — <c>PATH</c>, <c>HOME</c>, and
+    /// standard system directories — and is a safe starting point for most servers. For servers that also need variables
+    /// outside that set (such as <c>DOTNET_ROOT</c>, <c>LD_LIBRARY_PATH</c>, <c>JAVA_HOME</c>, or proxy settings like
+    /// <c>HTTP_PROXY</c>, <c>HTTPS_PROXY</c>, and <c>NO_PROXY</c>), add them explicitly via <see cref="EnvironmentVariables"/>
+    /// after calling <see cref="GetDefaultEnvironmentVariables"/>.
     /// </para>
     /// </remarks>
     public bool InheritEnvironmentVariables { get; set; } = true;

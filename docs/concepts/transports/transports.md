@@ -75,7 +75,7 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
 > [!WARNING]
 > **Security risk (inheriting):** Variables such as `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, and similar credentials present in the parent process automatically flow into the child process unless inheritance is disabled. This can unintentionally expose sensitive values to third-party or untrusted MCP servers.
 >
-> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. Common requirements include `PATH` (to locate executables), `HOME` (used by many tools on Unix), `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, and proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). When disabling inheritance, ensure all variables required by the server are explicitly supplied via `EnvironmentVariables`.
+> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. `GetDefaultEnvironmentVariables()` covers the most common requirements — `PATH`, `HOME`, and standard system directories — so for most servers it is a safe starting point. For servers that need additional variables not in the default set (such as `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, or proxy settings like `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`), add them on top as shown in the example above.
 
 #### stdio server
 
