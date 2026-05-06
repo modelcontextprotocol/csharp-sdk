@@ -39,10 +39,34 @@ Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 | `Command` | The executable to launch (required) |
 | `Arguments` | Command-line arguments for the process |
 | `WorkingDirectory` | Working directory for the server process |
-| `EnvironmentVariables` | Environment variables (merged with current; `null` values remove variables) |
+| `EnvironmentVariables` | Environment variables (merged with current when inheriting; `null` values remove variables) |
+| `InheritEnvironmentVariables` | Whether the server process inherits the current process's environment variables (default: `true`) |
 | `ShutdownTimeout` | Graceful shutdown timeout (default: 5 seconds) |
 | `StandardErrorLines` | Callback for stderr output from the server process |
 | `Name` | Optional transport identifier for logging |
+
+#### Environment variable inheritance
+
+By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that may be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
+
+```csharp
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = new Dictionary<string, string?>
+    {
+        // Provide only the variables the server actually needs.
+        ["PATH"] = Environment.GetEnvironmentVariable("PATH"),
+        ["MY_SERVER_API_KEY"] = apiKey,
+    }
+});
+```
+
+> [!WARNING]
+> **Security risk (inheriting):** Variables such as `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, and similar credentials present in the parent process automatically flow into the child process unless inheritance is disabled. This can unintentionally expose sensitive values to third-party or untrusted MCP servers.
+>
+> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. Common requirements include `PATH` (to locate executables), `HOME` (used by many tools on Unix), `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, and proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). When disabling inheritance, ensure all variables required by the server are explicitly supplied via `EnvironmentVariables`.
 
 #### stdio server
 

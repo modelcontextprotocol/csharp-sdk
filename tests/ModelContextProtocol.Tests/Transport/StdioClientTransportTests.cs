@@ -150,6 +150,151 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Equal(cliArgumentValue ?? "", content.Text);
     }
 
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_DefaultTrue_ChildSeesParentEnvVars()
+    {
+        string varName = $"MCP_TEST_{Guid.NewGuid():N}";
+        string varValue = Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(varName, varValue);
+        try
+        {
+            var tcs = new TaskCompletionSource<string>();
+            StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                new(new()
+                {
+                    Command = "cmd",
+                    Arguments = ["/c", $"echo %{varName}% >&2 & exit /b 1"],
+                    StandardErrorLines = line => tcs.TrySetResult(line)
+                }, LoggerFactory) :
+                new(new()
+                {
+                    Command = "sh",
+                    Arguments = ["-c", $"echo \"${{{varName}}}\" >&2; exit 1"],
+                    StandardErrorLines = line => tcs.TrySetResult(line)
+                }, LoggerFactory);
+
+            await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+            using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+            string capturedLine = await tcs.Task.WaitAsync(cts.Token);
+
+            Assert.Contains(varValue, capturedLine);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(varName, null);
+        }
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_False_ChildDoesNotSeeParentEnvVars()
+    {
+        string varName = $"MCP_TEST_{Guid.NewGuid():N}";
+        Environment.SetEnvironmentVariable(varName, "SHOULD_NOT_APPEAR");
+        try
+        {
+            var tcs = new TaskCompletionSource<string>();
+            StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                new(new()
+                {
+                    Command = "cmd",
+                    Arguments = ["/c", $"if defined {varName} (echo FOUND >&2) else (echo NOT_FOUND >&2) & exit /b 1"],
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
+                    StandardErrorLines = line => tcs.TrySetResult(line)
+                }, LoggerFactory) :
+                new(new()
+                {
+                    Command = "sh",
+                    Arguments = ["-c", $"if [ -n \"${{{varName}}}\" ]; then echo FOUND >&2; else echo NOT_FOUND >&2; fi; exit 1"],
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
+                    StandardErrorLines = line => tcs.TrySetResult(line)
+                }, LoggerFactory);
+
+            await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+            using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+            string capturedLine = await tcs.Task.WaitAsync(cts.Token);
+
+            Assert.Equal("NOT_FOUND", capturedLine.Trim());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(varName, null);
+        }
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_False_WithExplicitVars_ChildSeesOnlyExplicitVars()
+    {
+        string inheritedVarName = $"MCP_TEST_INHERITED_{Guid.NewGuid():N}";
+        string explicitVarName = $"MCP_TEST_EXPLICIT_{Guid.NewGuid():N}";
+        string explicitVarValue = Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(inheritedVarName, "SHOULD_NOT_APPEAR");
+        try
+        {
+            var capturedLines = new List<string>();
+            var lineCount = 0;
+            var tcs = new TaskCompletionSource<bool>();
+            void CaptureLines(string line)
+            {
+                lock (capturedLines)
+                {
+                    capturedLines.Add(line.Trim());
+                    if (Interlocked.Increment(ref lineCount) >= 2)
+                    {
+                        tcs.TrySetResult(true);
+                    }
+                }
+            }
+
+            StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                new(new()
+                {
+                    Command = "cmd",
+                    Arguments = ["/c",
+                        $"if defined {inheritedVarName} (echo INHERITED_FOUND >&2) else (echo INHERITED_NOT_FOUND >&2) " +
+                        $"& if defined {explicitVarName} (echo EXPLICIT_FOUND >&2) else (echo EXPLICIT_NOT_FOUND >&2) " +
+                        $"& exit /b 1"],
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = new Dictionary<string, string?>
+                    {
+                        ["PATH"] = Environment.GetEnvironmentVariable("PATH"),
+                        [explicitVarName] = explicitVarValue
+                    },
+                    StandardErrorLines = CaptureLines
+                }, LoggerFactory) :
+                new(new()
+                {
+                    Command = "sh",
+                    Arguments = ["-c",
+                        $"if [ -n \"${{{inheritedVarName}}}\" ]; then echo INHERITED_FOUND >&2; else echo INHERITED_NOT_FOUND >&2; fi; " +
+                        $"if [ -n \"${{{explicitVarName}}}\" ]; then echo EXPLICIT_FOUND >&2; else echo EXPLICIT_NOT_FOUND >&2; fi; exit 1"],
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = new Dictionary<string, string?>
+                    {
+                        ["PATH"] = Environment.GetEnvironmentVariable("PATH"),
+                        [explicitVarName] = explicitVarValue
+                    },
+                    StandardErrorLines = CaptureLines
+                }, LoggerFactory);
+
+            await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+            using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+            await tcs.Task.WaitAsync(cts.Token);
+
+            string allOutput = string.Join(Environment.NewLine, capturedLines);
+            Assert.Contains("INHERITED_NOT_FOUND", allOutput);
+            Assert.Contains("EXPLICIT_FOUND", allOutput);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(inheritedVarName, null);
+        }
+    }
+
     [Fact]
     public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
     {
