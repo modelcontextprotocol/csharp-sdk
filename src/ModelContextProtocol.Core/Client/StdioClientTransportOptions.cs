@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace ModelContextProtocol.Client;
 
 /// <summary>
@@ -5,6 +7,87 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 public sealed class StdioClientTransportOptions
 {
+    // Platform-appropriate allowlists, aligned with the TypeScript and Python MCP SDK defaults.
+    // TypeScript adds PROGRAMFILES; Python adds PATHEXT. Both are included here.
+    private static readonly string[] s_defaultWindowsVars =
+    [
+        "APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH", "PATHEXT",
+        "PROCESSOR_ARCHITECTURE", "PROGRAMFILES", "SYSTEMDRIVE", "SYSTEMROOT",
+        "TEMP", "USERNAME", "USERPROFILE",
+    ];
+
+    private static readonly string[] s_defaultUnixVars =
+    [
+        "HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER",
+    ];
+
+    /// <summary>
+    /// Returns a curated set of environment variables from the current process that are safe to forward to a child
+    /// MCP server process.
+    /// </summary>
+    /// <returns>
+    /// A new <see cref="Dictionary{TKey, TValue}"/> populated with the subset of the current process's environment
+    /// variables that most child processes need to start correctly — for example <c>PATH</c>, <c>HOME</c>, and
+    /// standard system directories. Values that appear to be shell function definitions (those starting with
+    /// <c>()</c>) are excluded for security reasons.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. On Windows it
+    /// includes: <c>APPDATA</c>, <c>HOMEDRIVE</c>, <c>HOMEPATH</c>, <c>LOCALAPPDATA</c>, <c>PATH</c>,
+    /// <c>PATHEXT</c>, <c>PROCESSOR_ARCHITECTURE</c>, <c>PROGRAMFILES</c>, <c>SYSTEMDRIVE</c>,
+    /// <c>SYSTEMROOT</c>, <c>TEMP</c>, <c>USERNAME</c>, and <c>USERPROFILE</c>. On Unix/macOS it includes:
+    /// <c>HOME</c>, <c>LOGNAME</c>, <c>PATH</c>, <c>SHELL</c>, <c>TERM</c>, and <c>USER</c>.
+    /// </para>
+    /// <para>
+    /// This method is designed to be used together with <see cref="InheritEnvironmentVariables"/> set to
+    /// <see langword="false"/>. Pass the returned dictionary as <see cref="EnvironmentVariables"/>, optionally
+    /// adding any server-specific variables the server requires:
+    /// <code>
+    /// var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+    /// env["MY_SERVER_API_KEY"] = apiKey;
+    ///
+    /// var transport = new StdioClientTransport(new StdioClientTransportOptions
+    /// {
+    ///     Command = "my-mcp-server",
+    ///     InheritEnvironmentVariables = false,
+    ///     EnvironmentVariables = env,
+    /// });
+    /// </code>
+    /// </para>
+    /// <para>
+    /// If the server requires additional variables not in the default set (such as <c>DOTNET_ROOT</c>,
+    /// <c>JAVA_HOME</c>, or proxy settings), add them explicitly after calling this method.
+    /// </para>
+    /// </remarks>
+    public static Dictionary<string, string?> GetDefaultEnvironmentVariables()
+    {
+        var names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? s_defaultWindowsVars
+            : s_defaultUnixVars;
+
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var name in names)
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            if (value is null)
+            {
+                continue;
+            }
+
+            if (value.StartsWith("()", StringComparison.Ordinal))
+            {
+                // Skip shell function definitions — they are a security risk.
+                continue;
+            }
+
+            result[name] = value;
+        }
+
+        return result;
+    }
+
+
     /// <summary>
     /// Gets or sets the command to execute to start the server process.
     /// </summary>

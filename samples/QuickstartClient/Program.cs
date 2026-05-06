@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -33,7 +32,7 @@ else
         Command = command,
         Arguments = arguments,
         InheritEnvironmentVariables = false,
-        EnvironmentVariables = MinimalEnvironment(),
+        EnvironmentVariables = MinimalDotNetEnvironment(),
     });
 }
 await using var mcpClient = await McpClient.CreateAsync(clientTransport!);
@@ -126,16 +125,20 @@ static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = n
     return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
 }
 
-// Returns a minimal set of environment variables needed by dotnet/node/python tooling.
+// Returns the safe default environment variables plus extras needed by 'dotnet run'.
 // Omitting variables the server doesn't need prevents unintentional leakage of
 // credentials or other sensitive values present in the parent process.
-static Dictionary<string, string?> MinimalEnvironment()
+static Dictionary<string, string?> MinimalDotNetEnvironment()
 {
-    string[] names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-        ? ["PATH", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "DOTNET_ROOT", "NUGET_PACKAGES"]
-        : ["PATH", "HOME", "TMPDIR", "DOTNET_ROOT", "NUGET_PACKAGES"];
-    return names
-        .Select(n => (n, v: Environment.GetEnvironmentVariable(n)))
-        .Where(t => t.v is not null)
-        .ToDictionary(t => t.n, t => (string?)t.v);
+    var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+    // 'dotnet run' also needs DOTNET_ROOT and NUGET_PACKAGES to find the .NET runtime and package cache.
+    foreach (var key in (string[])["DOTNET_ROOT", "NUGET_PACKAGES"])
+    {
+        var value = Environment.GetEnvironmentVariable(key);
+        if (value is not null)
+        {
+            env[key] = value;
+        }
+    }
+    return env;
 }

@@ -54,12 +54,21 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Command = "my-mcp-server",
     InheritEnvironmentVariables = false,
-    EnvironmentVariables = new Dictionary<string, string?>
-    {
-        // Provide only the variables the server actually needs.
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH"),
-        ["MY_SERVER_API_KEY"] = apiKey,
-    }
+    EnvironmentVariables = StdioClientTransportOptions.GetDefaultEnvironmentVariables(),
+});
+```
+
+`GetDefaultEnvironmentVariables()` returns a curated set of environment variables (such as `PATH`, `HOME`, and standard system directories) that most child processes need to start correctly, without leaking credentials or other sensitive values from the parent process. The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. You can add server-specific variables on top:
+
+```csharp
+var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+env["MY_SERVER_API_KEY"] = apiKey;
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = env,
 });
 ```
 
