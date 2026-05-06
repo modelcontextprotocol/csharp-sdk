@@ -66,7 +66,10 @@ public sealed class StdioClientTransportOptions
             ? s_defaultWindowsVars
             : s_defaultUnixVars;
 
-        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var result = new Dictionary<string, string?>(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal);
         foreach (var name in names)
         {
             var value = Environment.GetEnvironmentVariable(name);
