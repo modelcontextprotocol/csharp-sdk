@@ -153,19 +153,19 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task InheritEnvironmentVariables_DefaultTrue_ChildSeesParentEnvVars()
     {
-        // PATH is always set in a real process environment. Verify the child sees it
-        // under the default (inherit) behavior without mutating the parent process.
+        // Check the same variable the False test checks for absence (HOME on Unix, USERNAME on Windows)
+        // so the two tests form a direct symmetric pair: one asserts it IS set, the other asserts it is NOT.
         var tcs = new TaskCompletionSource<string>();
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/c", "if defined PATH (echo PATH_IS_SET >&2) else (echo PATH_NOT_SET >&2) & exit /b 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory) :
-            new(new() { Command = "sh", Arguments = ["-c", "if [ -n \"$PATH\" ]; then echo PATH_IS_SET >&2; else echo PATH_NOT_SET >&2; fi; exit 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", "if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) & exit /b 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", "if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; exit 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory);
 
         await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         string capturedLine = await tcs.Task.WaitAsync(cts.Token);
 
-        Assert.Equal("PATH_IS_SET", capturedLine.Trim());
+        Assert.Equal(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_IS_SET" : "HOME_IS_SET", capturedLine.Trim());
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
