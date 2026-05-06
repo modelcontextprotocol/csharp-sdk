@@ -153,22 +153,12 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task InheritEnvironmentVariables_DefaultTrue_ChildSeesParentEnvVars()
     {
-        // PATH is always set in a real process environment. Use it as a reliable
-        // indicator that env vars were inherited without modifying the parent process.
+        // PATH is always set in a real process environment. Verify the child sees it
+        // under the default (inherit) behavior without mutating the parent process.
         var tcs = new TaskCompletionSource<string>();
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new()
-            {
-                Command = "cmd",
-                Arguments = ["/c", "if defined PATH (echo PATH_IS_SET >&2) else (echo PATH_NOT_SET >&2) & exit /b 1"],
-                StandardErrorLines = line => tcs.TrySetResult(line)
-            }, LoggerFactory) :
-            new(new()
-            {
-                Command = "sh",
-                Arguments = ["-c", "if [ -n \"$PATH\" ]; then echo PATH_IS_SET >&2; else echo PATH_NOT_SET >&2; fi; exit 1"],
-                StandardErrorLines = line => tcs.TrySetResult(line)
-            }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", "if defined PATH (echo PATH_IS_SET >&2) else (echo PATH_NOT_SET >&2) & exit /b 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", "if [ -n \"$PATH\" ]; then echo PATH_IS_SET >&2; else echo PATH_NOT_SET >&2; fi; exit 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory);
 
         await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
@@ -181,24 +171,24 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task InheritEnvironmentVariables_False_ChildDoesNotSeeParentEnvVars()
     {
-        // Use absolute shell paths so the child can be launched even with an empty environment.
-        // Verify that PATH (always set in the parent) is absent in the child when inheritance is disabled.
+        // Pass PATH so cmd/sh can be located. Verify that HOME (Unix) / USERNAME (Windows),
+        // which are always set in the parent, are absent because they were not explicitly provided.
         var tcs = new TaskCompletionSource<string>();
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
             new(new()
             {
-                Command = Path.Combine(
-                    Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows",
-                    "System32", "cmd.exe"),
-                Arguments = ["/c", "if defined PATH (echo PATH_IS_SET >&2) else (echo PATH_NOT_SET >&2) & exit /b 1"],
+                Command = "cmd",
+                Arguments = ["/c", "if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) & exit /b 1"],
                 InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
                 StandardErrorLines = line => tcs.TrySetResult(line)
             }, LoggerFactory) :
             new(new()
             {
-                Command = "/bin/sh",
-                Arguments = ["-c", "if [ -n \"$PATH\" ]; then echo PATH_IS_SET >&2; else echo PATH_NOT_SET >&2; fi; exit 1"],
+                Command = "sh",
+                Arguments = ["-c", "if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; exit 1"],
                 InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
                 StandardErrorLines = line => tcs.TrySetResult(line)
             }, LoggerFactory);
 
@@ -207,15 +197,15 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
         string capturedLine = await tcs.Task.WaitAsync(cts.Token);
 
-        Assert.Equal("PATH_NOT_SET", capturedLine.Trim());
+        // HOME / USERNAME were in the parent but not passed — should be absent in the child.
+        Assert.Equal(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_NOT_SET" : "HOME_NOT_SET", capturedLine.Trim());
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task InheritEnvironmentVariables_False_WithExplicitVars_ChildSeesOnlyExplicitVars()
     {
-        // Use absolute shell paths so the child can be launched even with an empty environment.
-        // Verify that: (1) PATH (always in parent) is absent because it was not explicitly provided,
-        //              (2) an explicitly provided variable IS visible in the child.
+        // Pass PATH + one explicit var. Verify HOME (Unix) / USERNAME (Windows) is absent,
+        // and the explicitly provided variable is visible.
         const string explicitVarName = "MCP_STDIO_TEST_EXPLICIT_VAR";
         const string explicitVarValue = "explicit_test_value";
 
@@ -228,34 +218,30 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             {
                 capturedLines.Add(line.Trim());
                 if (Interlocked.Increment(ref lineCount) >= 2)
-                {
                     tcs.TrySetResult(true);
-                }
             }
         }
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
             new(new()
             {
-                Command = Path.Combine(
-                    Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows",
-                    "System32", "cmd.exe"),
+                Command = "cmd",
                 Arguments = ["/c",
-                    $"if defined PATH (echo PATH_IS_SET >&2) else (echo PATH_NOT_SET >&2) " +
+                    $"if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) " +
                     $"& if defined {explicitVarName} (echo EXPLICIT_IS_SET >&2) else (echo EXPLICIT_NOT_SET >&2) " +
                     $"& exit /b 1"],
                 InheritEnvironmentVariables = false,
-                EnvironmentVariables = new Dictionary<string, string?> { [explicitVarName] = explicitVarValue },
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH"), [explicitVarName] = explicitVarValue },
                 StandardErrorLines = CaptureLines
             }, LoggerFactory) :
             new(new()
             {
-                Command = "/bin/sh",
+                Command = "sh",
                 Arguments = ["-c",
-                    $"if [ -n \"$PATH\" ]; then echo PATH_IS_SET >&2; else echo PATH_NOT_SET >&2; fi; " +
+                    $"if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; " +
                     $"if [ -n \"${explicitVarName}\" ]; then echo EXPLICIT_IS_SET >&2; else echo EXPLICIT_NOT_SET >&2; fi; exit 1"],
                 InheritEnvironmentVariables = false,
-                EnvironmentVariables = new Dictionary<string, string?> { [explicitVarName] = explicitVarValue },
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH"), [explicitVarName] = explicitVarValue },
                 StandardErrorLines = CaptureLines
             }, LoggerFactory);
 
@@ -265,7 +251,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         await tcs.Task.WaitAsync(cts.Token);
 
         string allOutput = string.Join(Environment.NewLine, capturedLines);
-        Assert.Contains("PATH_NOT_SET", allOutput);
+        Assert.Contains(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_NOT_SET" : "HOME_NOT_SET", allOutput);
         Assert.Contains("EXPLICIT_IS_SET", allOutput);
     }
 
