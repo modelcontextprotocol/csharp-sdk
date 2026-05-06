@@ -421,20 +421,21 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task StructuredContentTool_ReturnsJsonElement()
+    public async Task StructuredContentTool_PrefersContentBlocksForModel()
     {
+        // SEP-2200 ("Clarify tool result content visibility"): when both Content and
+        // StructuredContent are populated and there is no protocol-level information
+        // to preserve (no IsError, no Meta), the AIFunction adapter must forward
+        // Content (the model-oriented field) to the model — not the full CallToolResult
+        // with both fields, which would duplicate information for the LLM.
         await using McpClient client = await CreateMcpClientForServer();
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var tool = tools.Single(t => t.Name == "structured_content_tool");
 
         var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var jsonElement = Assert.IsType<JsonElement>(result);
-        Assert.True(jsonElement.TryGetProperty("structuredContent", out var structuredContent));
-        Assert.True(structuredContent.TryGetProperty("key", out var key));
-        Assert.Equal("value", key.GetString());
-        Assert.True(jsonElement.TryGetProperty("content", out var content));
-        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+        var textContent = Assert.IsType<TextContent>(result);
+        Assert.Equal("Regular content", textContent.Text);
     }
 
     [Fact]
