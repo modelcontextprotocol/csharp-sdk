@@ -39,10 +39,43 @@ Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 | `Command` | The executable to launch (required) |
 | `Arguments` | Command-line arguments for the process |
 | `WorkingDirectory` | Working directory for the server process |
-| `EnvironmentVariables` | Environment variables (merged with current; `null` values remove variables) |
+| `EnvironmentVariables` | Environment variables (merged with current when inheriting; `null` values remove variables) |
+| `InheritEnvironmentVariables` | Whether the server process inherits the current process's environment variables (default: `true`) |
 | `ShutdownTimeout` | Graceful shutdown timeout (default: 5 seconds) |
 | `StandardErrorLines` | Callback for stderr output from the server process |
 | `Name` | Optional transport identifier for logging |
+
+#### Environment variable inheritance
+
+By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that may be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
+
+```csharp
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = StdioClientTransportOptions.GetDefaultEnvironmentVariables(),
+});
+```
+
+`GetDefaultEnvironmentVariables()` returns a curated set of environment variables (such as `PATH`, `HOME`, and standard system directories) that most child processes need to start correctly, without leaking credentials or other sensitive values from the parent process. The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. You can add server-specific variables on top:
+
+```csharp
+var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+env["MY_SERVER_API_KEY"] = apiKey;
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = env,
+});
+```
+
+> [!WARNING]
+> **Security risk (inheriting):** Variables such as `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, and similar credentials present in the parent process automatically flow into the child process unless inheritance is disabled. This can unintentionally expose sensitive values to third-party or untrusted MCP servers.
+>
+> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. `GetDefaultEnvironmentVariables()` covers the most common requirements — `PATH`, `HOME`, and standard system directories — so for most servers it is a safe starting point. For servers that need additional variables not in the default set (such as `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, or proxy settings like `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`), add them on top as shown in the example above.
 
 #### stdio server
 

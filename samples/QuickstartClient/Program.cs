@@ -31,6 +31,8 @@ else
         Name = "Demo Server",
         Command = command,
         Arguments = arguments,
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = MinimalDotNetEnvironment(),
     });
 }
 await using var mcpClient = await McpClient.CreateAsync(clientTransport!);
@@ -121,4 +123,22 @@ static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = n
 {
     Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
     return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
+}
+
+// Returns the safe default environment variables plus extras needed by 'dotnet run'.
+// Omitting variables the server doesn't need prevents unintentional leakage of
+// credentials or other sensitive values present in the parent process.
+static Dictionary<string, string?> MinimalDotNetEnvironment()
+{
+    var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+    // 'dotnet run' also needs DOTNET_ROOT and NUGET_PACKAGES to find the .NET runtime and package cache.
+    foreach (var key in (string[])["DOTNET_ROOT", "NUGET_PACKAGES"])
+    {
+        var value = Environment.GetEnvironmentVariable(key);
+        if (value is not null)
+        {
+            env[key] = value;
+        }
+    }
+    return env;
 }

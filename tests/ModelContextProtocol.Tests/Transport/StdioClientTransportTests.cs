@@ -150,6 +150,111 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Equal(cliArgumentValue ?? "", content.Text);
     }
 
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_DefaultTrue_ChildSeesParentEnvVars()
+    {
+        // Check the same variable the False test checks for absence (HOME on Unix, USERNAME on Windows)
+        // so the two tests form a direct symmetric pair: one asserts it IS set, the other asserts it is NOT.
+        var tcs = new TaskCompletionSource<string>();
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new() { Command = "cmd", Arguments = ["/c", "if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) & exit /b 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", "if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; exit 1"], StandardErrorLines = line => tcs.TrySetResult(line) }, LoggerFactory);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+        string capturedLine = await tcs.Task.WaitAsync(cts.Token);
+
+        Assert.Equal(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_IS_SET" : "HOME_IS_SET", capturedLine.Trim());
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_False_ChildDoesNotSeeParentEnvVars()
+    {
+        // Pass PATH so cmd/sh can be located. Verify that HOME (Unix) / USERNAME (Windows),
+        // which are always set in the parent, are absent because they were not explicitly provided.
+        var tcs = new TaskCompletionSource<string>();
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new()
+            {
+                Command = "cmd",
+                Arguments = ["/c", "if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) & exit /b 1"],
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
+                StandardErrorLines = line => tcs.TrySetResult(line)
+            }, LoggerFactory) :
+            new(new()
+            {
+                Command = "sh",
+                Arguments = ["-c", "if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; exit 1"],
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH") },
+                StandardErrorLines = line => tcs.TrySetResult(line)
+            }, LoggerFactory);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+        string capturedLine = await tcs.Task.WaitAsync(cts.Token);
+
+        // HOME / USERNAME were in the parent but not passed — should be absent in the child.
+        Assert.Equal(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_NOT_SET" : "HOME_NOT_SET", capturedLine.Trim());
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task InheritEnvironmentVariables_False_WithExplicitVars_ChildSeesOnlyExplicitVars()
+    {
+        // Pass PATH + one explicit var. Verify HOME (Unix) / USERNAME (Windows) is absent,
+        // and the explicitly provided variable is visible.
+        const string explicitVarName = "MCP_STDIO_TEST_EXPLICIT_VAR";
+        const string explicitVarValue = "explicit_test_value";
+
+        var capturedLines = new List<string>();
+        var lineCount = 0;
+        var tcs = new TaskCompletionSource<bool>();
+        void CaptureLines(string line)
+        {
+            lock (capturedLines)
+            {
+                capturedLines.Add(line.Trim());
+                if (Interlocked.Increment(ref lineCount) >= 2)
+                    tcs.TrySetResult(true);
+            }
+        }
+
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new()
+            {
+                Command = "cmd",
+                Arguments = ["/c",
+                    $"if defined USERNAME (echo USERNAME_IS_SET >&2) else (echo USERNAME_NOT_SET >&2) " +
+                    $"& if defined {explicitVarName} (echo EXPLICIT_IS_SET >&2) else (echo EXPLICIT_NOT_SET >&2) " +
+                    $"& exit /b 1"],
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH"), [explicitVarName] = explicitVarValue },
+                StandardErrorLines = CaptureLines
+            }, LoggerFactory) :
+            new(new()
+            {
+                Command = "sh",
+                Arguments = ["-c",
+                    $"if [ -n \"$HOME\" ]; then echo HOME_IS_SET >&2; else echo HOME_NOT_SET >&2; fi; " +
+                    $"if [ -n \"${explicitVarName}\" ]; then echo EXPLICIT_IS_SET >&2; else echo EXPLICIT_NOT_SET >&2; fi; exit 1"],
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = Environment.GetEnvironmentVariable("PATH"), [explicitVarName] = explicitVarValue },
+                StandardErrorLines = CaptureLines
+            }, LoggerFactory);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        using var cts = new CancellationTokenSource(TestConstants.DefaultTimeout);
+        await tcs.Task.WaitAsync(cts.Token);
+
+        string allOutput = string.Join(Environment.NewLine, capturedLines);
+        Assert.Contains(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_NOT_SET" : "HOME_NOT_SET", allOutput);
+        Assert.Contains("EXPLICIT_IS_SET", allOutput);
+    }
+
     [Fact]
     public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
     {
