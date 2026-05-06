@@ -133,8 +133,13 @@ public sealed class McpClientTool : AIFunction
         // back to the AI service as a multi-modal tool response). However, when there is additional information
         // carried by the CallToolResult outside of its ContentBlocks, just returning AIContent from those ContentBlocks
         // would lose that information. So, we only do the translation if there is no additional information to preserve.
+        //
+        // Per SEP-2200 ("Clarify tool result content visibility"), Content is the model-oriented field and
+        // StructuredContent is the machine-oriented field. When both are populated, clients SHOULD prefer
+        // Content for model context and SHOULD NOT forward StructuredContent verbatim to the model. The gate
+        // therefore deliberately does NOT include `result.StructuredContent is null` — the presence of
+        // StructuredContent alongside Content is exactly the SEP-2200 recommended shape.
         if (result.IsError is not true &&
-            result.StructuredContent is null &&
             result.Meta is not { Count: > 0 })
         {
             switch (result.Content.Count)

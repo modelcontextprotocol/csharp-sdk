@@ -859,6 +859,20 @@ public abstract partial class McpClient : McpSession
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// The returned <see cref="CallToolResult"/> may carry both <see cref="CallToolResult.Content"/>
+    /// (model-oriented) and <see cref="CallToolResult.StructuredContent"/> (machine-oriented JSON).
+    /// Per SEP-2200, callers forwarding the result to a language model SHOULD prefer
+    /// <see cref="CallToolResult.Content"/>, falling back to <see cref="CallToolResult.StructuredContent"/>
+    /// only when <see cref="CallToolResult.Content"/> is empty, and SHOULD NOT pass both fields
+    /// verbatim to the model.
+    /// </para>
+    /// <para>
+    /// Callers consuming the result programmatically (UI rendering, downstream tools, orchestration
+    /// logic) should use <see cref="CallToolResult.StructuredContent"/> when present.
+    /// </para>
+    /// </remarks>
     public ValueTask<CallToolResult> CallToolAsync(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,

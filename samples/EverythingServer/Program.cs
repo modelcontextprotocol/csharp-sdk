@@ -132,6 +132,7 @@ builder.Services
     .WithTools<PrintEnvTool>()
     .WithTools<SampleLlmTool>()
     .WithTools<TinyImageTool>()
+    .WithTools<WeatherStructuredTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
     .WithResources<SimpleResourceType>()

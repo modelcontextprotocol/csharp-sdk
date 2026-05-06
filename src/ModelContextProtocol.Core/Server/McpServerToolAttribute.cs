@@ -260,8 +260,23 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
+    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </para>
+    /// <para>
+    /// When the tool method returns an arbitrary type (not <see cref="CallToolResult"/>), the SDK
+    /// serializes the return value into both <see cref="CallToolResult.Content"/> (as a single text block
+    /// containing the JSON) and <see cref="CallToolResult.StructuredContent"/>. Per SEP-2200 this is
+    /// acceptable but may be suboptimal — model-facing prose is normally a better fit for
+    /// <see cref="CallToolResult.Content"/> than a JSON dump.
+    /// </para>
+    /// <para>
+    /// To return distinct model-friendly text and machine-friendly JSON, declare the tool's return type as
+    /// <see cref="CallToolResult"/>, set <see cref="OutputSchemaType"/> to the type the structured payload
+    /// should validate against, and populate <see cref="CallToolResult.Content"/> and
+    /// <see cref="CallToolResult.StructuredContent"/> separately on the returned value.
+    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
 
@@ -279,6 +294,12 @@ public sealed class McpServerToolAttribute : Attribute
     /// (to control properties like <see cref="Result.Meta"/>, <see cref="CallToolResult.IsError"/>,
     /// or <see cref="CallToolResult.StructuredContent"/>) but still needs to advertise a meaningful output
     /// schema to clients.
+    /// </para>
+    /// <para>
+    /// This is the recommended way to follow SEP-2200's guidance of supplying a model-friendly
+    /// <see cref="CallToolResult.Content"/> alongside a strict, schema-validated
+    /// <see cref="CallToolResult.StructuredContent"/>: return a <see cref="CallToolResult"/> with both
+    /// fields set explicitly and use <see cref="OutputSchemaType"/> to advertise the JSON schema.
     /// </para>
     /// <para>
     /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
