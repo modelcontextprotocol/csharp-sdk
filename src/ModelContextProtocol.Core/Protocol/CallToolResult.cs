@@ -32,14 +32,47 @@ namespace ModelContextProtocol.Protocol;
 public sealed class CallToolResult : Result
 {
     /// <summary>
-    /// Gets or sets the response content from the tool call.
+    /// Gets or sets the model-oriented response content from the tool call.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Per the MCP specification (see SEP-2200, "Clarify tool result content visibility"),
+    /// <see cref="Content"/> is the representation intended for consumption by language models.
+    /// It may be a concise, prose-friendly summary rather than a verbatim dump of
+    /// <see cref="StructuredContent"/>.
+    /// </para>
+    /// <para>
+    /// Clients SHOULD prefer <see cref="Content"/> when forwarding a tool result to a model, falling
+    /// back to <see cref="StructuredContent"/> only when <see cref="Content"/> is empty. Clients SHOULD NOT
+    /// forward both <see cref="Content"/> and <see cref="StructuredContent"/> verbatim to the model — doing so
+    /// duplicates information and wastes tokens.
+    /// </para>
+    /// <para>
+    /// When both fields are populated, they SHOULD be semantically equivalent.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("content")]
     public IList<ContentBlock> Content { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets an optional JSON object representing the structured result of the tool call.
+    /// Gets or sets an optional JSON object representing the machine-oriented structured result of the tool call.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Per the MCP specification (see SEP-2200, "Clarify tool result content visibility"),
+    /// <see cref="StructuredContent"/> is the strict JSON representation intended for programmatic consumers
+    /// (UI code, downstream tools, orchestrators) — not for direct submission to a language model.
+    /// </para>
+    /// <para>
+    /// When <see cref="StructuredContent"/> is present and a tool advertises an <see cref="Tool.OutputSchema"/>,
+    /// the value SHOULD validate against that schema.
+    /// </para>
+    /// <para>
+    /// <see cref="Content"/> and <see cref="StructuredContent"/> SHOULD be semantically equivalent when both
+    /// are populated, but <see cref="Content"/> MAY be a summary or prose form of the same data rather than a
+    /// verbatim JSON dump.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("structuredContent")]
     public JsonElement? StructuredContent { get; set; }
 
