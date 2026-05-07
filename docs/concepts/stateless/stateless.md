@@ -279,7 +279,7 @@ This is entirely automatic — you don't need to manage the session ID yourself.
 
 The server can terminate a session at any time — due to idle timeout, max session count exceeded, explicit shutdown, or any server-side policy. When this happens, subsequent requests with that session ID receive HTTP `404`. The client detects this and:
 
-1. Wraps the failure in a `TransportClosedException` with <xref:ModelContextProtocol.Client.HttpClientCompletionDetails> containing the HTTP status code
+1. Wraps the failure in a <xref:ModelContextProtocol.Client.ClientTransportClosedException> with <xref:ModelContextProtocol.Client.HttpClientCompletionDetails> containing the HTTP status code
 2. Cancels all in-flight operations
 3. Completes the <xref:ModelContextProtocol.Client.McpClient.Completion> task
 
