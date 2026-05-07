@@ -85,4 +85,3 @@ while (true)
 
     messages.AddMessages(updates);
 }
-

@@ -256,6 +256,83 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [Fact]
+    public void GetDefaultEnvironmentVariables_ReturnsFreshDictionaryEachCall()
+    {
+        var first = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        var second = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        Assert.NotSame(first, second);
+    }
+
+    [Fact]
+    public void GetDefaultEnvironmentVariables_ReturnsCorrectComparer()
+    {
+        var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            Assert.Equal(StringComparer.OrdinalIgnoreCase, result.Comparer);
+        }
+        else
+        {
+            Assert.Equal(StringComparer.Ordinal, result.Comparer);
+        }
+    }
+
+    [Fact]
+    public void GetDefaultEnvironmentVariables_ContainsOnlyAllowlistedKeys()
+    {
+        HashSet<string> allowedKeys = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? new(StringComparer.OrdinalIgnoreCase)
+            {
+                "APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH", "PATHEXT",
+                "PROCESSOR_ARCHITECTURE", "PROGRAMFILES", "SYSTEMDRIVE", "SYSTEMROOT",
+                "TEMP", "USERNAME", "USERPROFILE",
+            }
+            : new(StringComparer.Ordinal)
+            {
+                "HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER",
+            };
+
+        var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        foreach (var key in result.Keys)
+        {
+            Assert.Contains(key, allowedKeys);
+        }
+    }
+
+    [Fact]
+    public void GetDefaultEnvironmentVariables_ExcludesShellFunctionValues()
+    {
+        // Verify the postcondition: no returned values start with "()" (shell function markers).
+        var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        foreach (var (key, value) in result)
+        {
+            Assert.False(value?.StartsWith("()") ?? false,
+                $"Value for '{key}' starts with '()' and should have been filtered as a shell function.");
+        }
+    }
+
+    [Fact]
+    public void GetDefaultEnvironmentVariables_PathIsPresent_WhenSetInEnvironment()
+    {
+        // PATH is always set in a real process environment; verify it is included.
+        var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        if (Environment.GetEnvironmentVariable("PATH") is not null)
+        {
+            Assert.True(result.ContainsKey("PATH"), "PATH should be present when it exists in the parent environment.");
+        }
+    }
+
+    [Fact]
+    public void GetDefaultEnvironmentVariables_DoesNotIncludeNonAllowlistedKeys()
+    {
+        // Keys that are definitely not on the allowlist must never appear.
+        var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        Assert.False(result.ContainsKey("AWS_SECRET_ACCESS_KEY"));
+        Assert.False(result.ContainsKey("GITHUB_TOKEN"));
+        Assert.False(result.ContainsKey("OPENAI_API_KEY"));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
     {
         using var serverInput = new MemoryStream();

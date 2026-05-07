@@ -32,7 +32,7 @@ else
         Command = command,
         Arguments = arguments,
         InheritEnvironmentVariables = false,
-        EnvironmentVariables = MinimalDotNetEnvironment(),
+        EnvironmentVariables = GetMinimalDotNetEnvironment(),
     });
 }
 await using var mcpClient = await McpClient.CreateAsync(clientTransport!);
@@ -128,7 +128,7 @@ static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = n
 // Returns the safe default environment variables plus extras needed by 'dotnet run'.
 // Omitting variables the server doesn't need prevents unintentional leakage of
 // credentials or other sensitive values present in the parent process.
-static Dictionary<string, string?> MinimalDotNetEnvironment()
+static Dictionary<string, string?> GetMinimalDotNetEnvironment()
 {
     var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
     // 'dotnet run' also needs DOTNET_ROOT and NUGET_PACKAGES to find the .NET runtime and package cache.

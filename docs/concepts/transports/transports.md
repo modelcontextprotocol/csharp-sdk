@@ -58,11 +58,30 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
 });
 ```
 
-`GetDefaultEnvironmentVariables()` returns a curated set of environment variables (such as `PATH`, `HOME`, and standard system directories) that most child processes need to start correctly, without leaking credentials or other sensitive values from the parent process. The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. You can add server-specific variables on top:
+`GetDefaultEnvironmentVariables()` returns a curated set of environment variables (such as `PATH`, `HOME`, and standard system directories) that most child processes need to start correctly, without leaking credentials or other sensitive values from the parent process. The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. On Windows it also includes `PATHEXT`, which is required for the OS to recognize `.cmd` and `.bat` files as executable. You can add server-specific variables on top:
 
 ```csharp
 var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
 env["MY_SERVER_API_KEY"] = apiKey;
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = env,
+});
+```
+
+If you need to selectively forward a specific set of variables from the parent environment rather than using the curated allowlist, build the dictionary manually:
+
+```csharp
+var env = new Dictionary<string, string?>();
+foreach (var name in new[] { "PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY" })
+{
+    var value = Environment.GetEnvironmentVariable(name);
+    if (value is not null)
+        env[name] = value;
+}
 
 var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
