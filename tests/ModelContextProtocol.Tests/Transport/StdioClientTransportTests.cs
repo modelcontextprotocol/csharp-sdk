@@ -304,10 +304,10 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     {
         // Verify the postcondition: no returned values start with "()" (shell function markers).
         var result = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-        foreach (var (key, value) in result)
+        foreach (var kvp in result)
         {
-            Assert.False(value?.StartsWith("()") ?? false,
-                $"Value for '{key}' starts with '()' and should have been filtered as a shell function.");
+            Assert.False(kvp.Value?.StartsWith("()") ?? false,
+                $"Value for '{kvp.Key}' starts with '()' and should have been filtered as a shell function.");
         }
     }
 
