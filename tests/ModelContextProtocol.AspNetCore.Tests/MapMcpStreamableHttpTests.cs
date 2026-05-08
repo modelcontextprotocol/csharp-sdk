@@ -98,6 +98,138 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
+    public async Task BrowserPreflight_AllowsConfiguredOrigin_AndRequiredHeaders()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("GET", "POST", "DELETE")
+                    .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version", "Mcp-Session-Id")
+                    .WithExposedHeaders("Mcp-Session-Id");
+            });
+        });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Options, "http://localhost:5000/");
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type,authorization,mcp-protocol-version,mcp-session-id");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("http://localhost:5173", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+
+        var allowHeaders = string.Join(",", response.Headers.GetValues("Access-Control-Allow-Headers"));
+        Assert.Contains("content-type", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("authorization", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcp-protocol-version", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcp-session-id", allowHeaders, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BrowserPreflight_DoesNotCorsApprove_DisallowedOrigin()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("POST")
+                    .WithHeaders("Content-Type", "MCP-Protocol-Version");
+            });
+        });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Options, "http://localhost:5000/");
+        // CORS matches the browser Origin exactly. "localhost" and "127.0.0.1" both
+        // resolve to loopback, but they are different origins and do not match.
+        request.Headers.Add("Origin", "http://127.0.0.1:5173");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type,mcp-protocol-version");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // ASP.NET Core's CORS middleware commonly answers the preflight with 204 even when
+        // the origin is not approved. The browser treats the request as disallowed because
+        // the Access-Control-Allow-* approval headers are omitted from the response.
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Headers"));
+    }
+
+    [Fact]
+    public async Task InitializeResponse_ExposesMcpSessionId_ForBrowserClients()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("POST")
+                    .WithHeaders("Content-Type", "MCP-Protocol-Version")
+                    .WithExposedHeaders("Mcp-Session-Id");
+            });
+        });
+
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new()
+            {
+                Name = "CorsSessionServer",
+                Version = "1.0.0",
+            };
+        }).WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"browser-client","version":"1.0.0"}}}
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.True(response.IsSuccessStatusCode);
+        Assert.Equal("http://localhost:5173", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+
+        var exposedHeaders = string.Join(",", response.Headers.GetValues("Access-Control-Expose-Headers"));
+        Assert.Contains("Mcp-Session-Id", exposedHeaders, StringComparison.OrdinalIgnoreCase);
+
+        if (!Stateless)
+        {
+            Assert.True(response.Headers.Contains("Mcp-Session-Id"));
+        }
+    }
+
+    [Fact]
     public async Task SseEndpoints_AreDisabledByDefault_InStatefulMode()
     {
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
