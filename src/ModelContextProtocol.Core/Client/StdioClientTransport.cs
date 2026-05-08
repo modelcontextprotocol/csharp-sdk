@@ -111,6 +111,11 @@ public sealed partial class StdioClientTransport : IClientTransport
 #endif
             }
 
+            if (!_options.InheritEnvironmentVariables)
+            {
+                startInfo.Environment.Clear();
+            }
+
             if (_options.EnvironmentVariables != null)
             {
                 foreach (var entry in _options.EnvironmentVariables)
