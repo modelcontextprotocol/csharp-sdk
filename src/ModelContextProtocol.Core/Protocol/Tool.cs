@@ -80,17 +80,20 @@ public sealed class Tool : IBaseMetadata
     } = McpJsonUtilities.DefaultMcpToolSchema;
 
     /// <summary>
-    /// Gets or sets a JSON Schema object defining the expected structured outputs for the tool.
+    /// Gets or sets a JSON Schema document describing the shape of the tool's structured output.
     /// </summary>
-    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
+    /// <exception cref="ArgumentException">The value is not a JSON object.</exception>
     /// <remarks>
     /// <para>
-    /// The schema must be a valid JSON Schema object with the "type" property set to "object".
-    /// This is enforced by validation in the setter which will throw an <see cref="ArgumentException"/>
-    /// if an invalid schema is provided.
+    /// Per SEP-2106 ("Allow valid JSON Schemas in <c>outputSchema</c>"), the schema may describe
+    /// any JSON value — object, array, string, number, boolean, or <see langword="null"/> — to
+    /// support tools whose structured output is not an object. The setter only validates that the
+    /// supplied value is a JSON object (a schema document); deeper keyword-level validation is
+    /// intentionally not performed.
     /// </para>
     /// <para>
-    /// The schema should describe the shape of the data as returned in <see cref="CallToolResult.StructuredContent"/>.
+    /// The schema describes the shape of the value placed in <see cref="CallToolResult.StructuredContent"/>.
+    /// Unlike <see cref="InputSchema"/>, the top-level <c>type</c> is no longer required to be <c>"object"</c>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("outputSchema")]
@@ -99,9 +102,9 @@ public sealed class Tool : IBaseMetadata
         get => field;
         set
         {
-            if (value is not null && !McpJsonUtilities.IsValidMcpToolSchema(value.Value))
+            if (value is not null && !McpJsonUtilities.IsValidJsonSchemaDocument(value.Value))
             {
-                throw new ArgumentException("The specified document is not a valid MCP tool output JSON schema.", nameof(OutputSchema));
+                throw new ArgumentException("The specified document is not a valid JSON Schema document (must be a JSON object).", nameof(OutputSchema));
             }
 
             field = value;

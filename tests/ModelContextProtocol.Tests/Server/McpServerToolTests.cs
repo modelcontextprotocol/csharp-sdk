@@ -461,6 +461,10 @@ public partial class McpServerToolTests
     [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
     public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
     {
+        // Per SEP-2106 the output schema's top-level "type" matches the natural shape of the
+        // return value (e.g. "string", "integer", "array") rather than always being "object".
+        // The strict round-trip check is AssertMatchesJsonSchema below, which proves the
+        // emitted structuredContent validates against the published schema.
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
         var mockServer = new Mock<McpServer>();
@@ -469,7 +473,6 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
         Assert.NotNull(result.StructuredContent);
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
@@ -594,9 +597,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public void OutputSchema_Options_NonObjectSchema_GetsWrapped()
+    public void OutputSchema_Options_NonObjectSchema_PassesThrough()
     {
-        // Non-object output schema should be wrapped in a "result" property envelope
+        // Per SEP-2106, outputSchema may be any valid JSON Schema document — including
+        // non-object schemas. The SDK no longer wraps non-object schemas in a
+        // {"type":"object","properties":{"result":<schema>}} envelope.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"string"}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -605,16 +610,15 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var resultProp));
-        Assert.Equal("string", resultProp.GetProperty("type").GetString());
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
     }
 
     [Fact]
-    public void OutputSchema_Options_NullableObjectSchema_BecomesObject()
+    public void OutputSchema_Options_NullableObjectSchema_PassesThrough()
     {
-        // ["object", "null"] type should be simplified to just "object"
+        // Per SEP-2106, the SDK no longer normalizes ["object","null"] type-arrays down
+        // to just "object". The schema author's intent is preserved on the wire.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -623,7 +627,24 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        var typeProperty = tool.ProtocolTool.OutputSchema.Value.GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, typeProperty.ValueKind);
+        Assert.Collection(typeProperty.EnumerateArray(),
+            t => Assert.Equal("object", t.GetString()),
+            t => Assert.Equal("null", t.GetString()));
+    }
+
+    [Fact]
+    public void OutputSchema_Create_StringReturn_NoEnvelope()
+    {
+        // End-to-end check: a tool with a string return type and UseStructuredContent
+        // produces an outputSchema describing the string directly (no "result" envelope)
+        // and emits the raw string value as structuredContent.
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { UseStructuredContent = true });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
     }
 
     [Fact]
@@ -1004,15 +1025,15 @@ public partial class McpServerToolTests
     [Fact]
     public void ReturnDescription_StructuredOutputEnabled_NotIncludedInToolDescription()
     {
-        // When UseStructuredContent is true, return description should be in the output schema, not in tool description
+        // When UseStructuredContent is true, return description should be in the output schema, not in tool description.
+        // Per SEP-2106 the schema is no longer wrapped in a {"result": <schema>} envelope, so the description
+        // sits directly on the (non-object) output schema.
         McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { UseStructuredContent = true });
 
         Assert.Equal("Tool that returns data.", tool.ProtocolTool.Description);
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        // Verify the output schema contains the description
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var result));
-        Assert.True(result.TryGetProperty("description", out var description));
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("description", out var description));
         Assert.Equal("The computed result", description.GetString());
     }
 

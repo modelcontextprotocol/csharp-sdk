@@ -13,7 +13,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
-    private readonly bool _structuredOutputRequiresWrapping;
     private readonly IReadOnlyList<object> _metadata;
 
     /// <summary>
@@ -120,7 +119,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? function.Name,
             Description = GetToolDescription(function, options),
             InputSchema = function.JsonSchema,
-            OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
+            OutputSchema = CreateOutputSchema(function, options),
             Icons = options?.Icons,
         };
 
@@ -167,7 +166,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             tool.Execution.TaskSupport = ToolTaskSupport.Optional;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? []);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -235,14 +234,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata)
     {
         ValidateToolName(tool.Name);
 
         AIFunction = function;
         ProtocolTool = tool;
 
-        _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
     }
 
@@ -485,65 +483,27 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return descriptionElement.GetString();
     }
 
-    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
+    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions)
     {
-        structuredOutputRequiresWrapping = false;
-
         if (toolCreateOptions?.UseStructuredContent is not true)
         {
             return null;
         }
 
+        // Per SEP-2106, any valid JSON Schema document is acceptable for outputSchema —
+        // arrays, primitives, compositions, and nullable types pass through unchanged.
         // Explicit OutputSchema takes precedence over AIFunction's return schema.
-        JsonElement outputSchema;
         if (toolCreateOptions.OutputSchema is { } explicitSchema)
         {
-            outputSchema = explicitSchema;
+            return explicitSchema;
         }
-        else if (function.ReturnJsonSchema is { } returnSchema)
+
+        if (function.ReturnJsonSchema is { } returnSchema)
         {
-            outputSchema = returnSchema;
-        }
-        else
-        {
-            return null;
+            return returnSchema;
         }
 
-        if (outputSchema.ValueKind is not JsonValueKind.Object ||
-            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
-            typeProperty.ValueKind is not JsonValueKind.String ||
-            typeProperty.GetString() is not "object")
-        {
-            // If the output schema is not an object, need to modify to be a valid MCP output schema.
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-
-            if (schemaNode is JsonObject objSchema &&
-                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
-            {
-                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
-                objSchema["type"] = "object";
-            }
-            else
-            {
-                // For anything else, wrap the schema in an envelope with a "result" property.
-                schemaNode = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["result"] = schemaNode
-                    },
-                    ["required"] = new JsonArray { (JsonNode)"result" }
-                };
-
-                structuredOutputRequiresWrapping = true;
-            }
-
-            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
-        }
-
-        return outputSchema;
+        return null;
     }
 
     private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
@@ -554,26 +514,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonElement? elementResult = aiFunctionResult switch
+        // Per SEP-2106, the tool's return value flows through to structuredContent unchanged.
+        // No "result" envelope wrapping — the value's natural JSON shape is what the schema describes.
+        return aiFunctionResult switch
         {
             JsonElement jsonElement => jsonElement,
             JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
             null => null,
             _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
-
-        if (_structuredOutputRequiresWrapping)
-        {
-            JsonNode? resultNode = elementResult is { } je
-                ? JsonSerializer.SerializeToNode(je, McpJsonUtilities.JsonContext.Default.JsonElement)
-                : null;
-            return JsonSerializer.SerializeToElement(new JsonObject
-            {
-                ["result"] = resultNode
-            }, McpJsonUtilities.JsonContext.Default.JsonObject);
-        }
-
-        return elementResult;
     }
 
     private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)

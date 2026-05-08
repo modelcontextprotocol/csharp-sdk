@@ -139,4 +139,51 @@ public static class ToolTests
 
         Assert.True(JsonElement.DeepEquals(document.RootElement, tool.InputSchema));
     }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("3.5e3")]
+    [InlineData("[]")]
+    [InlineData("\"a-string\"")]
+    public static void ToolOutputSchema_RejectsInvalidJsonSchemaDocuments(string invalidSchema)
+    {
+        // Per SEP-2106 / JSON Schema 2020-12 §4.3, a schema document is either a JSON object
+        // or a boolean (true/false). Other JSON values — null literals, numbers, strings,
+        // arrays — are not valid schema documents and are rejected.
+        using var document = JsonDocument.Parse(invalidSchema);
+        var tool = new Tool { Name = "test" };
+
+        Assert.Throws<ArgumentException>(() => tool.OutputSchema = document.RootElement);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"object"}""")]
+    [InlineData("""{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")]
+    [InlineData("""{"type":"array","items":{"type":"integer"}}""")]
+    [InlineData("""{"type":"string"}""")]
+    [InlineData("""{"type":"number"}""")]
+    [InlineData("""{"type":"integer","minimum":0}""")]
+    [InlineData("""{"type":"boolean"}""")]
+    [InlineData("""{"type":["object","null"],"properties":{"name":{"type":"string"}}}""")]
+    [InlineData("""{}""")]
+    [InlineData("""{"oneOf":[{"type":"string"},{"type":"integer"}]}""")]
+    [InlineData("true")]
+    [InlineData("false")]
+    public static void ToolOutputSchema_AcceptsAnyValidJsonSchemaDocument(string validSchema)
+    {
+        // Per SEP-2106, OutputSchema accepts any valid JSON Schema 2020-12 document — JSON
+        // objects (with arrays, primitives, compositions, nullable types) plus the boolean
+        // schemas `true` (matches any value) and `false` (matches nothing). The `true` form
+        // also appears organically as the auto-derived schema for an unconstrained `object`
+        // return type.
+        using var document = JsonDocument.Parse(validSchema);
+        Tool tool = new()
+        {
+            Name = "test",
+            OutputSchema = document.RootElement,
+        };
+
+        Assert.NotNull(tool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(document.RootElement, tool.OutputSchema.Value));
+    }
 }
