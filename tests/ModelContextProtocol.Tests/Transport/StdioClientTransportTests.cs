@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Client;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
@@ -11,6 +12,42 @@ namespace ModelContextProtocol.Tests.Transport;
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
+
+    [Fact]
+    public async Task ConnectAsync_DoesNotLogEnvironmentVariablesAtTrace()
+    {
+        string secretName = $"MCP_TEST_SECRET_{Guid.NewGuid():N}";
+        string secretValue = $"secret-{Guid.NewGuid():N}";
+
+        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(MockLoggerProvider);
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new()
+            {
+                Command = "cmd.exe",
+                Arguments = ["/c", "exit /b 0"],
+                EnvironmentVariables = new Dictionary<string, string?> { [secretName] = secretValue },
+            }, loggerFactory) :
+            new(new()
+            {
+                Command = "sh",
+                Arguments = ["-c", "exit 0"],
+                EnvironmentVariables = new Dictionary<string, string?> { [secretName] = secretValue },
+            }, loggerFactory);
+
+        await using var _ = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Trace &&
+            log.Message.Contains("starting server process", StringComparison.Ordinal));
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, log =>
+            log.Message.Contains(secretName, StringComparison.Ordinal) ||
+            log.Message.Contains(secretValue, StringComparison.Ordinal));
+    }
 
     [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
