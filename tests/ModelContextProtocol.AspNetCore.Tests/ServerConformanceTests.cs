@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
@@ -207,10 +208,40 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
         process.OutputDataReceived -= outputHandler;
         process.ErrorDataReceived -= errorHandler;
 
+        var stdoutText = outputBuilder.ToString();
+        var stderrText = errorBuilder.ToString();
+
+        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
+        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
+        // code even though every conformance check passed. When that happens, fall back to
+        // parsing the "Test Results:" summary in stdout to decide success.
+        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
+
         return (
-            Success: process.ExitCode == 0,
-            Output: outputBuilder.ToString(),
-            Error: errorBuilder.ToString()
+            Success: success,
+            Output: stdoutText,
+            Error: stderrText
         );
+    }
+
+    /// <summary>
+    /// Parses the conformance runner output for a "Test Results:" line such as
+    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
+    /// and none failed.
+    /// </summary>
+    private static bool ConformanceOutputIndicatesSuccess(string output)
+    {
+        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
+        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        int passed = int.Parse(match.Groups[1].Value);
+        int total = int.Parse(match.Groups[2].Value);
+        int failed = int.Parse(match.Groups[3].Value);
+
+        return passed == total && failed == 0 && total > 0;
     }
 }
