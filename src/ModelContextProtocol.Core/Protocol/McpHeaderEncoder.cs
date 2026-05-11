@@ -27,12 +27,55 @@ public static class McpHeaderEncoder
     private const string Base64Suffix = "?=";
 
     /// <summary>
+    /// Encodes a string parameter value for use in an HTTP header.
+    /// </summary>
+    /// <param name="value">The string value to encode.</param>
+    /// <returns>
+    /// The encoded header value, or <see langword="null"/> if <paramref name="value"/> is <see langword="null"/>.
+    /// </returns>
+    public static string? EncodeValue(string? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (RequiresBase64Encoding(value))
+        {
+            return EncodeAsBase64(value);
+        }
+
+        return value;
+    }
+
+    /// <summary>
+    /// Encodes a boolean parameter value for use in an HTTP header.
+    /// </summary>
+    /// <param name="value">The boolean value to encode.</param>
+    /// <returns>The encoded header value (<c>"true"</c> or <c>"false"</c>).</returns>
+    public static string EncodeValue(bool value) => value ? "true" : "false";
+
+    /// <summary>
+    /// Encodes a numeric parameter value for use in an HTTP header.
+    /// </summary>
+    /// <param name="value">The numeric value to encode.</param>
+    /// <returns>The decimal string representation of the value.</returns>
+    public static string EncodeValue(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Encodes a numeric parameter value for use in an HTTP header.
+    /// </summary>
+    /// <param name="value">The numeric value to encode.</param>
+    /// <returns>The decimal string representation of the value.</returns>
+    public static string EncodeValue(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// Encodes a parameter value for use in an HTTP header.
     /// </summary>
-    /// <param name="value">The value to encode. Can be string, number, or boolean.</param>
+    /// <param name="value">The value to encode. Supported types are string, numeric types, and boolean.</param>
     /// <returns>
-    /// The encoded header value, or <see langword="null"/> if the value cannot be encoded
-    /// (e.g., is not a supported type).
+    /// The encoded header value, or <see langword="null"/> if the value is <see langword="null"/>
+    /// or is not a supported type (string, numeric, or boolean).
     /// </returns>
     public static string? EncodeValue(object? value)
     {
@@ -41,15 +84,21 @@ public static class McpHeaderEncoder
             return null;
         }
 
+        // Route to typed overloads for known types
+        if (value is string s)
+        {
+            return EncodeValue(s);
+        }
+
+        if (value is bool b)
+        {
+            return EncodeValue(b);
+        }
+
         var stringValue = ConvertToString(value);
         if (stringValue is null)
         {
             return null;
-        }
-
-        if (RequiresBase64Encoding(stringValue))
-        {
-            return EncodeAsBase64(stringValue);
         }
 
         return stringValue;

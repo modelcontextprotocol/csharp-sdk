@@ -17,7 +17,7 @@ public static class McpHttpHeaders
     /// the client's <c>MCP-Protocol-Version</c> header indicates this version or later.
     /// Clients using older versions are not required to send these headers.
     /// </remarks>
-    public const string MinVersionForStandardHeaders = "DRAFT-2026-v1";
+    public static readonly string MinVersionForStandardHeaders = "DRAFT-2026-v1";
 
     /// <summary>The session identifier header.</summary>
     public const string SessionId = "Mcp-Session-Id";
