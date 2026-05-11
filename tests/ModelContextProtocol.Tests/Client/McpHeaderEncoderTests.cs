@@ -1,4 +1,4 @@
-using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests.Client;
 

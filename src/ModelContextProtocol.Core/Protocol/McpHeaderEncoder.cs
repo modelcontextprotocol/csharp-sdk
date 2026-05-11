@@ -1,7 +1,6 @@
 using System.Text;
-using ModelContextProtocol.Protocol;
 
-namespace ModelContextProtocol.Client;
+namespace ModelContextProtocol.Protocol;
 
 /// <summary>
 /// Encodes and decodes parameter values for use in MCP HTTP headers according to the

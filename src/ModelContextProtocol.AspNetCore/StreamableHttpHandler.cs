@@ -732,7 +732,7 @@ internal sealed class StreamableHttpHandler(
                 return false;
             }
 
-            var decodedActual = Client.McpHeaderEncoder.DecodeValue(actualHeaderValue);
+            var decodedActual = McpHeaderEncoder.DecodeValue(actualHeaderValue);
             if (decodedActual is null)
             {
                 errorMessage = $"Header mismatch: {fullHeaderName} header contains invalid Base64 encoding.";
@@ -747,7 +747,7 @@ internal sealed class StreamableHttpHandler(
                 var expectedHeaderValue = ConvertJsonNodeToHeaderValue(argNode);
                 if (expectedHeaderValue is not null)
                 {
-                    var decodedExpected = Client.McpHeaderEncoder.DecodeValue(expectedHeaderValue);
+                    var decodedExpected = McpHeaderEncoder.DecodeValue(expectedHeaderValue);
                     if (!string.Equals(decodedActual, decodedExpected, StringComparison.Ordinal))
                     {
                         errorMessage = $"Header mismatch: {fullHeaderName} header value does not match body argument '{property.Name}'.";
@@ -807,7 +807,7 @@ internal sealed class StreamableHttpHandler(
             _ => null
         };
 
-        return Client.McpHeaderEncoder.EncodeValue(value);
+        return McpHeaderEncoder.EncodeValue(value);
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
