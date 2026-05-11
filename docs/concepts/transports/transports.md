@@ -39,10 +39,62 @@ Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 | `Command` | The executable to launch (required) |
 | `Arguments` | Command-line arguments for the process |
 | `WorkingDirectory` | Working directory for the server process |
-| `EnvironmentVariables` | Environment variables (merged with current; `null` values remove variables) |
+| `EnvironmentVariables` | Environment variables (merged with current when inheriting; `null` values remove variables) |
+| `InheritEnvironmentVariables` | Whether the server process inherits the current process's environment variables (default: `true`) |
 | `ShutdownTimeout` | Graceful shutdown timeout (default: 5 seconds) |
 | `StandardErrorLines` | Callback for stderr output from the server process |
 | `Name` | Optional transport identifier for logging |
+
+#### Environment variable inheritance
+
+By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that may be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
+
+```csharp
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = StdioClientTransportOptions.GetDefaultEnvironmentVariables(),
+});
+```
+
+`GetDefaultEnvironmentVariables()` returns a curated set of environment variables (such as `PATH`, `HOME`, and standard system directories) that most child processes need to start correctly, without leaking credentials or other sensitive values from the parent process. The allowlist is aligned with the defaults used by the TypeScript and Python MCP SDKs. On Windows it also includes `PATHEXT`, which is required for the OS to recognize `.cmd` and `.bat` files as executable. You can add server-specific variables on top:
+
+```csharp
+var env = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+env["MY_SERVER_API_KEY"] = apiKey;
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = env,
+});
+```
+
+If you need to selectively forward a specific set of variables from the parent environment rather than using the curated allowlist, build the dictionary manually:
+
+```csharp
+var env = new Dictionary<string, string?>();
+foreach (var name in new[] { "PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY" })
+{
+    var value = Environment.GetEnvironmentVariable(name);
+    if (value is not null)
+        env[name] = value;
+}
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = "my-mcp-server",
+    InheritEnvironmentVariables = false,
+    EnvironmentVariables = env,
+});
+```
+
+> [!WARNING]
+> **Security risk (inheriting):** Variables such as `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, and similar credentials present in the parent process automatically flow into the child process unless inheritance is disabled. This can unintentionally expose sensitive values to third-party or untrusted MCP servers.
+>
+> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. `GetDefaultEnvironmentVariables()` covers the most common requirements — `PATH`, `HOME`, and standard system directories — so for most servers it is a safe starting point. For servers that need additional variables not in the default set (such as `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, or proxy settings like `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`), add them on top as shown in the example above.
 
 #### stdio server
 
@@ -132,6 +184,64 @@ app.Run();
 ```
 
 By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. We recommend setting `Stateless` explicitly (rather than relying on the current default) for [forward compatibility](xref:stateless#forward-and-backward-compatibility). See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
+
+#### Host name validation
+
+For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
+
+```json
+// appsettings.Development.json
+{
+  "AllowedHosts": "localhost;127.0.0.1;[::1]"
+}
+```
+
+For production servers, configure `AllowedHosts` to the exact public host names for the deployment. If Kestrel is behind a reverse proxy or load balancer, validate the host name at the layer that receives or forwards the client `Host` header. ASP.NET Core's Host Filtering Middleware is appropriate when Kestrel is public-facing or the `Host` header is directly forwarded; Forwarded Headers Middleware has its own `AllowedHosts` option for cases where the proxy doesn't preserve the original `Host` header. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [Configure ASP.NET Core to work with proxy servers and load balancers | Microsoft Learn](https://learn.microsoft.com/aspnet/core/host-and-deploy/proxy-load-balancer).
+
+If you intentionally expose the server through another host name, such as a tunnel, container host, reverse proxy, or deployed domain, add that exact host name to `AllowedHosts` instead of using `"*"`.
+
+#### Browser cross-origin access
+
+**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
+
+For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it. `Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration.
+
+
+_In this sample below, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains._
+
+```json
+// appsettings.Development.json
+{
+  "Mcp": {
+    "AllowedOrigins": [
+      "http://localhost:5173"
+    ]
+  }
+}
+```
+
+```csharp
+var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("McpBrowserClient", policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            // Add GET for standalone/resumable SSE streams and DELETE for stateful session termination.
+            .WithMethods("POST", "GET", "DELETE")
+            .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version", "Mcp-Session-Id")
+            .WithExposedHeaders("Mcp-Session-Id");
+    });
+});
+
+var app = builder.Build();
+
+app.UseCors();
+app.MapMcp("/mcp").RequireCors("McpBrowserClient");
+```
 
 #### How messages flow
 
