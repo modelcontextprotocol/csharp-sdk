@@ -748,7 +748,7 @@ internal sealed class StreamableHttpHandler(
                 if (expectedHeaderValue is not null)
                 {
                     var decodedExpected = McpHeaderEncoder.DecodeValue(expectedHeaderValue);
-                    if (!string.Equals(decodedActual, decodedExpected, StringComparison.Ordinal))
+                    if (!ValuesMatch(decodedActual, decodedExpected, property.Value))
                     {
                         errorMessage = $"Header mismatch: {fullHeaderName} header value does not match body argument '{property.Name}'.";
                         return false;
@@ -789,6 +789,41 @@ internal sealed class StreamableHttpHandler(
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Compares two decoded header values, using numeric comparison for number-typed
+    /// parameters to handle cross-SDK representation differences (e.g., "42" vs "42.0").
+    /// </summary>
+    private static bool ValuesMatch(string? actual, string? expected, System.Text.Json.JsonElement propertySchema)
+    {
+        if (string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // JSON Schema defines two numeric types: "number" (any numeric value including
+        // decimals like 3.14) and "integer" (whole numbers only like 42). Both produce
+        // JsonValueKind.Number in the JSON body and are sent as numeric strings in headers.
+        // We check for both because different SDKs may serialize them differently —
+        // e.g., a client might send header "42.0" for an "integer" body value of 42,
+        // or header "42" for a "number" body value of 42.0. Without handling both types,
+        // valid cross-SDK requests would be incorrectly rejected.
+        if (propertySchema.TryGetProperty("type", out var typeElement) &&
+            typeElement.ValueKind == System.Text.Json.JsonValueKind.String &&
+            typeElement.GetString() is "number" or "integer" &&
+            actual is not null && expected is not null &&
+            double.TryParse(actual, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var actualNum) &&
+            double.TryParse(expected, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var expectedNum))
+        {
+            // Allow a small absolute tolerance for floating point representation differences.
+            if (Math.Abs(actualNum - expectedNum) < 1e-9)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string? ConvertJsonNodeToHeaderValue(System.Text.Json.Nodes.JsonNode node)

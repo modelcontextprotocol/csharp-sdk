@@ -233,6 +233,54 @@ public class Sep2243HeaderTests(ITestOutputHelper outputHelper) : KestrelInMemor
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("42", 42)]       // "42" header vs 42 body → exact integer match
+    [InlineData("42.0", 42)]     // "42.0" header vs 42 body → numeric equivalence
+    [InlineData("42", 42.0)]     // "42" header vs 42.0 body → numeric equivalence
+    public async Task Server_AcceptsNumericEquivalentHeaderValues(string headerValue, double bodyValue)
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        var callJson = CallTool("header_test", $$$"""{"region":"test","priority":{{{bodyValue.ToString(System.Globalization.CultureInfo.InvariantCulture)}}},"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "test");
+        request.Headers.Add("Mcp-Param-Priority", headerValue);
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Server_RejectsNonNumericMismatch_ForIntegerParam()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Header says "99" but body says priority:42 — must reject even with numeric comparison
+        var callJson = CallTool("header_test", """{"region":"test","priority":42,"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "test");
+        request.Headers.Add("Mcp-Param-Priority", "99");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Server_SkipsHeaderValidation_ForNonDraftVersion()
     {
