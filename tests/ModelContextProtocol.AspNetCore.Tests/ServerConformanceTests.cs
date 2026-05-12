@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using ModelContextProtocol.Tests.Utils;
 
@@ -109,6 +110,9 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_JsonSchema202012()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario json-schema-2020-12");
 
@@ -120,6 +124,9 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_ServerSsePolling()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario server-sse-polling");
 
