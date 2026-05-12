@@ -119,7 +119,8 @@ public static class McpHeaderEncoder
             return headerValue;
         }
 
-        // Check for Base64 wrapper (case-insensitive prefix check per SEP)
+        // Check for Base64 wrapper. The spec defines the prefix as lowercase "=?base64?"
+        // but we match case-insensitively for robustness against non-conforming senders.
         if (headerValue.StartsWith(Base64Prefix, StringComparison.OrdinalIgnoreCase) &&
             headerValue.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
