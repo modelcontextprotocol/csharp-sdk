@@ -421,7 +421,19 @@ internal sealed partial class McpServerImpl : McpServer
 
         listResourcesHandler ??= (static async (_, __) => new ListResourcesResult());
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
-        readResourceHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.InvalidParams));
+        // Per SEP-2164, unresolvable resource URIs are reported as InvalidParams (-32602) on
+        // the 2026-06-30 spec and later. The legacy ResourceNotFound (-32002) is preserved for
+        // earlier protocol versions so pre-SEP-2164 clients pattern-matching on -32002 still
+        // recognise the condition. Selection is based on the version both ends agreed on during
+        // initialization; mismatched versions never reach this handler (the client fails to
+        // connect on a mismatch).
+        readResourceHandler ??= (static async (request, _) =>
+        {
+            var errorCode = McpSessionHandler.UseSep2164ResourceErrors(request.Server.NegotiatedProtocolVersion)
+                ? McpErrorCode.InvalidParams
+                : McpErrorCode.ResourceNotFound;
+            throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", errorCode);
+        });
         subscribeHandler ??= (static async (_, __) => new EmptyResult());
         unsubscribeHandler ??= (static async (_, __) => new EmptyResult());
         var listChanged = resourcesCapability?.ListChanged;
