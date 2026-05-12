@@ -582,7 +582,7 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        var mcpMethodInHeader = context.Request.Headers[McpHttpHeaders.Method].ToString();
+        var mcpMethodInHeader = context.Request.Headers[McpHttpHeaders.Method].ToString().Trim();
         var mcpMethodInBody = message switch
         {
             JsonRpcRequest request => request.Method,
@@ -610,7 +610,7 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        var mcpNameInHeader = context.Request.Headers[McpHttpHeaders.Name].ToString();
+        var mcpNameInHeader = context.Request.Headers[McpHttpHeaders.Name].ToString().Trim();
 
         // Extract the params and name value from the body based on the method, if present.
         var bodyParams = message switch
@@ -722,7 +722,7 @@ internal sealed class StreamableHttpHandler(
                 continue;
             }
 
-            var actualHeaderValue = context.Request.Headers[fullHeaderName].ToString();
+            var actualHeaderValue = context.Request.Headers[fullHeaderName].ToString().Trim();
 
             // Validate the raw header value for invalid characters per SEP.
             // Servers MUST reject headers containing characters outside the valid HTTP header value range.

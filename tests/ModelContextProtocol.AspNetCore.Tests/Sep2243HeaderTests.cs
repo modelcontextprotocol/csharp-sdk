@@ -89,6 +89,53 @@ public class Sep2243HeaderTests(ITestOutputHelper outputHelper) : KestrelInMemor
     #region Server-side validation tests
 
     [Fact]
+    public async Task Server_AcceptsWhitespaceAroundMcpNameHeaderValue()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Per SEP-2243: servers MUST accept extra whitespace around header values
+        // and compare the trimmed value to the request body.
+        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.TryAddWithoutValidation("Mcp-Method", "tools/call");
+        request.Headers.TryAddWithoutValidation("Mcp-Name", "  header_test  ");
+        request.Headers.Add("Mcp-Param-Region", "us-west1");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Server_AcceptsWhitespaceAroundMcpMethodHeaderValue()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Per SEP-2243: servers MUST accept extra whitespace around header values
+        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.TryAddWithoutValidation("Mcp-Method", "  tools/call  ");
+        request.Headers.TryAddWithoutValidation("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "us-west1");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Server_ValidatesEmptyStringHeaderValue_AgainstBodyValue()
     {
         await StartAsync();
