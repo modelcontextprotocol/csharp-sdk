@@ -19,7 +19,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// - Empty string header validation
 /// - Invalid header character rejection
 /// </summary>
-public class Sep2243HeaderTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
 
@@ -29,7 +29,7 @@ public class Sep2243HeaderTests(ITestOutputHelper outputHelper) : KestrelInMemor
         {
             options.ServerInfo = new Implementation
             {
-                Name = nameof(Sep2243HeaderTests),
+                Name = nameof(HttpHeaderConformanceTests),
                 Version = "1.0",
             };
         }).WithTools(Tools).WithHttpTransport();
