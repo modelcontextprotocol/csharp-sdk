@@ -597,7 +597,7 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        // From here on, only validate tools/read, tools/call, and prompts/get requests
+        // From here on, only validate resources/read, tools/call, and prompts/get requests
         if (mcpMethodInBody is not (RequestMethods.ToolsCall or RequestMethods.ResourcesRead or RequestMethods.PromptsGet))
         {
             errorMessage = null;
