@@ -176,6 +176,8 @@ public abstract partial class McpClient : McpSession
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        ToolCacheClearing?.Invoke();
+
         List<McpClientTool>? tools = null;
         ListToolsRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
@@ -212,6 +214,11 @@ public abstract partial class McpClient : McpSession
     /// Invoked when a tool definition is rejected due to invalid <c>x-mcp-header</c> annotations.
     /// </summary>
     internal Action<Tool, string>? ToolRejected;
+
+    /// <summary>
+    /// Invoked before enumerating tools to clear any previously cached tool definitions.
+    /// </summary>
+    internal Action? ToolCacheClearing;
 
     /// <summary>
     /// Retrieves a list of available tools from the server.

@@ -72,6 +72,7 @@ internal sealed partial class McpClientImpl : McpClient
 
         ToolDiscovered = tool => _toolCache[tool.Name] = tool;
         ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
+        ToolCacheClearing = () => _toolCache.Clear();
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
