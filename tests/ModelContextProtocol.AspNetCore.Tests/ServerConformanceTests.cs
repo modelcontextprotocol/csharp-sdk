@@ -139,7 +139,6 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunConformanceTest_HttpHeaderValidation()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.IsConformanceVersionAtLeast("0.1.16"), "Conformance package >= 0.1.16 not available.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-header-validation");
 
@@ -151,7 +150,6 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunConformanceTest_HttpCustomHeaderServerValidation()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.IsConformanceVersionAtLeast("0.1.16"), "Conformance package >= 0.1.16 not available.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-custom-header-server-validation");
 

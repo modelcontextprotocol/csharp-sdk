@@ -17,9 +17,6 @@ public class ClientConformanceTests
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
 
-    // SEP-2243 scenarios require conformance package >= 0.1.16
-    public static bool HasSep2243Scenarios => NodeHelpers.IsConformanceVersionAtLeast("0.1.16");
-
     public ClientConformanceTests(ITestOutputHelper output)
     {
         _output = output;
@@ -64,8 +61,8 @@ public class ClientConformanceTests
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
-    // HTTP Standardization (SEP-2243) — requires conformance package >= 0.1.16
-    [Theory(Skip = "Conformance package >= 0.1.16 not available.", SkipUnless = nameof(HasSep2243Scenarios))]
+    // HTTP Standardization (SEP-2243)
+    [Theory(Skip = "Node.js is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNodeInstalled))]
     [InlineData("http-standard-headers")]
     [InlineData("http-custom-headers")]
     [InlineData("http-invalid-tool-headers")]
