@@ -69,6 +69,9 @@ internal sealed partial class McpClientImpl : McpClient
             incomingMessageFilter: null,
             outgoingMessageFilter: null,
             _logger);
+
+        ToolDiscovered = tool => _toolCache[tool.Name] = tool;
+        ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -655,16 +658,6 @@ internal sealed partial class McpClientImpl : McpClient
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         => _sessionHandler.SendMessageAsync(message, cancellationToken);
-
-    internal override void OnToolDiscovered(Tool tool)
-    {
-        _toolCache[tool.Name] = tool;
-    }
-
-    internal override void OnToolRejected(Tool tool, string reason)
-    {
-        LogToolRejected(tool.Name, reason);
-    }
 
     /// <inheritdoc/>
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
