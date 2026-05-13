@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -140,6 +142,49 @@ public static class McpHeaderEncoder
         }
 
         return headerValue;
+    }
+
+    /// <summary>
+    /// Converts a <see cref="JsonElement"/> value to an encoded header value string.
+    /// </summary>
+    /// <param name="element">The JSON element to convert.</param>
+    /// <returns>The encoded header value, or <see langword="null"/> if the element is not a supported primitive type.</returns>
+    public static string? ConvertToHeaderValue(JsonElement element)
+    {
+        object? value = element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetRawText(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
+
+        return EncodeValue(value);
+    }
+
+    /// <summary>
+    /// Converts a <see cref="JsonNode"/> value to an encoded header value string.
+    /// </summary>
+    /// <param name="node">The JSON node to convert.</param>
+    /// <returns>The encoded header value, or <see langword="null"/> if the node is not a <see cref="JsonValue"/> or is not a supported primitive type.</returns>
+    public static string? ConvertToHeaderValue(JsonNode node)
+    {
+        if (node is not JsonValue jsonValue)
+        {
+            return null;
+        }
+
+        object? value = jsonValue.GetValueKind() switch
+        {
+            JsonValueKind.String => jsonValue.GetValue<string>(),
+            JsonValueKind.Number => jsonValue.ToJsonString(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
+
+        return EncodeValue(value);
     }
 
     private static string? ConvertToString(object value)

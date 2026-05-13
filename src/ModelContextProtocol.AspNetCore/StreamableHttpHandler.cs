@@ -746,7 +746,7 @@ internal sealed class StreamableHttpHandler(
                 argsObj.TryGetPropertyValue(property.Name, out var argNode) &&
                 argNode is not null)
             {
-                var expectedHeaderValue = ConvertJsonNodeToHeaderValue(argNode);
+                var expectedHeaderValue = McpHeaderEncoder.ConvertToHeaderValue(argNode);
                 if (expectedHeaderValue is not null)
                 {
                     var decodedExpected = McpHeaderEncoder.DecodeValue(expectedHeaderValue);
@@ -818,25 +818,6 @@ internal sealed class StreamableHttpHandler(
         }
 
         return false;
-    }
-
-    private static string? ConvertJsonNodeToHeaderValue(System.Text.Json.Nodes.JsonNode node)
-    {
-        if (node is not System.Text.Json.Nodes.JsonValue jsonValue)
-        {
-            return null;
-        }
-
-        object? value = jsonValue.GetValueKind() switch
-        {
-            System.Text.Json.JsonValueKind.String => jsonValue.GetValue<string>(),
-            System.Text.Json.JsonValueKind.Number => jsonValue.ToJsonString(),
-            System.Text.Json.JsonValueKind.True => true,
-            System.Text.Json.JsonValueKind.False => false,
-            _ => null
-        };
-
-        return McpHeaderEncoder.EncodeValue(value);
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)

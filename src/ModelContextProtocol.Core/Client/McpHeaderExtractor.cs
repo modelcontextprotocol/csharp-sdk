@@ -62,26 +62,12 @@ internal static class McpHeaderExtractor
                 continue;
             }
 
-            var headerValue = ConvertJsonElementToHeaderValue(argValue);
+            var headerValue = McpHeaderEncoder.ConvertToHeaderValue(argValue);
             if (headerValue is not null)
             {
                 headers.Add($"{McpHttpHeaders.ParamPrefix}{headerName}", headerValue);
             }
         }
-    }
-
-    private static string? ConvertJsonElementToHeaderValue(JsonElement element)
-    {
-        object? value = element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.GetRawText(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            _ => null
-        };
-
-        return McpHeaderEncoder.EncodeValue(value);
     }
 
     /// <summary>
