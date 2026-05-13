@@ -8,6 +8,7 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization.Metadata;
@@ -82,7 +83,7 @@ internal sealed class StreamableHttpHandler(
 
         if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out errorMessage))
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage!, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
             return;
         }
 
@@ -557,7 +558,7 @@ internal sealed class StreamableHttpHandler(
     /// <param name="toolCollection">The tool collection to look up tool schemas for parameter header validation.</param>
     /// <param name="errorMessage">Set to the error message if validation fails; null otherwise.</param>
     /// <returns>True if validation passes; false otherwise.</returns>
-    internal static bool ValidateMcpHeaders(HttpContext context, JsonRpcMessage message, McpServerPrimitiveCollection<McpServerTool>? toolCollection, out string? errorMessage)
+    internal static bool ValidateMcpHeaders(HttpContext context, JsonRpcMessage message, McpServerPrimitiveCollection<McpServerTool>? toolCollection, [NotNullWhen(false)] out string? errorMessage)
     {
         // Only validate for protocol versions that support standard headers.
         var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
@@ -653,7 +654,7 @@ internal sealed class StreamableHttpHandler(
         HttpContext context,
         JsonRpcMessage message,
         McpServerPrimitiveCollection<McpServerTool>? toolCollection,
-        out string? errorMessage)
+        [NotNullWhen(false)] out string? errorMessage)
     {
         // Custom param headers are only relevant for tools/call requests
         if (message is not JsonRpcRequest { Method: RequestMethods.ToolsCall, Params: { } bodyParams })
