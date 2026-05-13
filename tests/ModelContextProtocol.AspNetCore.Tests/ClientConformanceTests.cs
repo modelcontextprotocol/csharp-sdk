@@ -16,6 +16,7 @@ public class ClientConformanceTests
 
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
+    public static bool HasSep2243Scenarios => NodeHelpers.HasSep2243Scenarios();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
@@ -62,7 +63,7 @@ public class ClientConformanceTests
     }
 
     // HTTP Standardization (SEP-2243)
-    [Theory(Skip = "Node.js is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNodeInstalled))]
+    [Theory(Skip = "SEP-2243 conformance scenarios not yet available.", SkipUnless = nameof(HasSep2243Scenarios))]
     [InlineData("http-standard-headers")]
     [InlineData("http-custom-headers")]
     [InlineData("http-invalid-tool-headers")]

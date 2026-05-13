@@ -167,6 +167,44 @@ public static class NodeHelpers
         }
     }
 
+    /// <summary>
+    /// Checks whether the SEP-2243 conformance scenarios are available by reading
+    /// the conformance package version from the repo's package.json.
+    /// The http-standard-headers, http-custom-headers, http-invalid-tool-headers,
+    /// http-header-validation, and http-custom-header-server-validation scenarios
+    /// require a conformance package version that includes SEP-2243 support.
+    /// </summary>
+    public static bool HasSep2243Scenarios()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var packageJsonPath = Path.Combine(repoRoot, "package.json");
+            if (!File.Exists(packageJsonPath))
+            {
+                return false;
+            }
+
+            var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (json.RootElement.TryGetProperty("dependencies", out var deps) &&
+                deps.TryGetProperty("@modelcontextprotocol/conformance", out var versionElement))
+            {
+                var versionStr = versionElement.GetString();
+                if (versionStr is not null && Version.TryParse(versionStr, out var version))
+                {
+                    // SEP-2243 scenarios are expected in conformance package >= 0.2.0
+                    return version >= new Version(0, 2, 0);
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
