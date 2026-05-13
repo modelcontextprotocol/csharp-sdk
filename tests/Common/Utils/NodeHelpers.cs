@@ -49,9 +49,12 @@ public static class NodeHelpers
 
             var repoRoot = FindRepoRoot();
             var nodeModulesPath = Path.Combine(repoRoot, "node_modules");
+            var lockFilePath = Path.Combine(repoRoot, "package-lock.json");
 
-            // Use 'npm ci' if node_modules doesn't exist, otherwise assume it's up to date.
-            if (!Directory.Exists(nodeModulesPath))
+            // Run 'npm ci' if node_modules doesn't exist or is outdated
+            // (package-lock.json is newer than node_modules).
+            if (!Directory.Exists(nodeModulesPath) ||
+                File.GetLastWriteTimeUtc(lockFilePath) > Directory.GetLastWriteTimeUtc(nodeModulesPath))
             {
                 var startInfo = NpmStartInfo("ci", repoRoot);
                 using var process = Process.Start(startInfo)
