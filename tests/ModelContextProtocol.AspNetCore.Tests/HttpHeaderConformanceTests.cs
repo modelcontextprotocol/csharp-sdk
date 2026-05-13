@@ -302,6 +302,48 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8EncodedHeaderValue()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Create a separate HttpClient that sends raw UTF-8 bytes in Mcp-* headers
+        // instead of properly base64-encoding non-ASCII values.
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = SocketsHttpHandler.ConnectCallback,
+            RequestHeaderEncodingSelector = (headerName, _) =>
+                headerName.StartsWith("Mcp-", StringComparison.OrdinalIgnoreCase)
+                    ? Encoding.UTF8
+                    : null
+        };
+
+        using var utf8Client = new HttpClient(handler);
+        ConfigureHttpClient(utf8Client);
+        utf8Client.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        utf8Client.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        // Send a tools/call with raw UTF-8 non-ASCII in the Mcp-Name header.
+        // Kestrel reads header bytes as Latin-1, so the UTF-8 bytes for "café☕"
+        // will be garbled and won't match the body value, causing rejection.
+        var callJson = CallTool("café☕", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.TryAddWithoutValidation("Mcp-Method", "tools/call");
+        // Raw UTF-8 non-ASCII value in Mcp-Name — server must reject this
+        request.Headers.TryAddWithoutValidation("Mcp-Name", "café☕");
+        request.Headers.TryAddWithoutValidation("Mcp-Param-Region", "us-west1");
+        request.Headers.TryAddWithoutValidation("Mcp-Param-Priority", "42");
+        request.Headers.TryAddWithoutValidation("Mcp-Param-Verbose", "false");
+        request.Headers.TryAddWithoutValidation("Mcp-Param-EmptyVal", "");
+
+        using var response = await utf8Client.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     #endregion
 
     #region Client-side encoding tests (unit tests for McpHeaderEncoder)
