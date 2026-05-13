@@ -805,13 +805,25 @@ internal sealed class StreamableHttpHandler(
         // valid cross-SDK requests would be incorrectly rejected.
         if (propertySchema.TryGetProperty("type", out var typeElement) &&
             typeElement.ValueKind == System.Text.Json.JsonValueKind.String &&
-            typeElement.GetString() is "number" or "integer" &&
-            actual is not null && expected is not null &&
-            double.TryParse(actual, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var actualNum) &&
-            double.TryParse(expected, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var expectedNum))
+            actual is not null && expected is not null)
         {
-            // Allow a small absolute tolerance for floating point representation differences.
-            if (Math.Abs(actualNum - expectedNum) < 1e-9)
+            var schemaType = typeElement.GetString();
+
+            // For "integer" type, prefer exact long comparison to preserve full precision
+            // for values beyond double's ~15-17 significant digit limit.
+            if (schemaType == "integer" &&
+                long.TryParse(actual, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var actualLong) &&
+                long.TryParse(expected, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var expectedLong))
+            {
+                return actualLong == expectedLong;
+            }
+
+            // For "number" type, or "integer" values in decimal format (e.g., cross-SDK "42.0" vs "42"),
+            // use double comparison with tolerance.
+            if (schemaType is "number" or "integer" &&
+                double.TryParse(actual, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var actualNum) &&
+                double.TryParse(expected, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var expectedNum) &&
+                Math.Abs(actualNum - expectedNum) < 1e-9)
             {
                 return true;
             }
