@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Buffers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Hosting;
@@ -772,25 +773,17 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
+    // Valid HTTP header field-value characters per RFC 9110: horizontal tab (0x09),
+    // space (0x20), and visible ASCII (0x21-0x7E).
+    private static readonly SearchValues<char> s_validHeaderValueChars =
+        SearchValues.Create("\t !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~");
+
     /// <summary>
     /// Validates that a header value contains only characters allowed in HTTP header field values
     /// per RFC 9110: visible ASCII (0x21-0x7E), space (0x20), and horizontal tab (0x09).
     /// </summary>
-    private static bool IsValidHeaderValue(string value)
-    {
-        foreach (char c in value)
-        {
-            if (c < 0x20 || c > 0x7E)
-            {
-                if (c != '\t')
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
+    private static bool IsValidHeaderValue(string value) =>
+        value.AsSpan().IndexOfAnyExcept(s_validHeaderValueChars) < 0;
 
     /// <summary>
     /// Compares two decoded header values, using numeric comparison for number-typed
