@@ -1,9 +1,10 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
+using System.Resources;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -159,7 +160,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Auto-detect async methods and mark with taskSupport = "optional" unless explicitly configured.
         // This enables implicit task support for async tools: clients can choose to invoke them
         // synchronously (wait for completion) or as a task (receive taskId, poll for result).
-        if (function.UnderlyingMethod is not null && 
+        if (function.UnderlyingMethod is not null &&
             IsAsyncMethod(function.UnderlyingMethod) &&
             tool.Execution?.TaskSupport is null)
         {
@@ -218,6 +219,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.Execution ??= new ToolExecution();
                 newOptions.Execution.TaskSupport ??= taskSupport;
             }
+
+            // External description source (issue #1516): when DescriptionResourceType + DescriptionResourceName
+            // are set on the attribute, resolve the description by reflecting against the resource type.
+            // This takes precedence over [Description] so that callers can intentionally override compiled values.
+            if (toolAttr.DescriptionResourceType is Type descriptionResourceType &&
+                !string.IsNullOrEmpty(toolAttr.DescriptionResourceName))
+            {
+                if (TryResolveExternalDescription(descriptionResourceType, toolAttr.DescriptionResourceName!, out string? externalDescription))
+                {
+                    newOptions.Description ??= externalDescription;
+                }
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -229,6 +242,61 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         newOptions.Metadata ??= CreateMetadata(method);
 
         return newOptions;
+    }
+
+    /// <summary>
+    /// Resolves an external description value from a "resource"-like type, modeled after
+    /// <c>System.ComponentModel.DataAnnotations.DisplayAttribute</c>'s resource lookup.
+    /// </summary>
+    /// <remarks>
+    /// Probes (in order):
+    /// 1) public static property named <paramref name="resourceName"/> returning string,
+    /// 2) public static field named <paramref name="resourceName"/> of type string,
+    /// 3) public static parameterless method named <paramref name="resourceName"/> returning string,
+    /// 4) public static <see cref="ResourceManager"/> property named "ResourceManager" used as a key/value store.
+    /// </remarks>
+    private static bool TryResolveExternalDescription(Type resourceType, string resourceName, out string? value)
+    {
+        value = null;
+
+        const BindingFlags PublicStatic = BindingFlags.Public | BindingFlags.Static;
+
+        // 1) Static string property.
+        PropertyInfo? prop = resourceType.GetProperty(resourceName, PublicStatic);
+        if (prop is not null && prop.PropertyType == typeof(string) && prop.GetGetMethod(nonPublic: false) is not null)
+        {
+            value = (string?)prop.GetValue(null);
+            return true;
+        }
+
+        // 2) Static string field.
+        FieldInfo? field = resourceType.GetField(resourceName, PublicStatic);
+        if (field is not null && field.FieldType == typeof(string))
+        {
+            value = (string?)field.GetValue(null);
+            return true;
+        }
+
+        // 3) Static parameterless string method.
+        MethodInfo? method = resourceType.GetMethod(resourceName, PublicStatic, binder: null, types: Type.EmptyTypes, modifiers: null);
+        if (method is not null && method.ReturnType == typeof(string))
+        {
+            value = (string?)method.Invoke(null, parameters: null);
+            return true;
+        }
+
+        // 4) Static ResourceManager named "ResourceManager".
+        PropertyInfo? rmProp = resourceType.GetProperty("ResourceManager", PublicStatic);
+        if (rmProp is not null && typeof(ResourceManager).IsAssignableFrom(rmProp.PropertyType))
+        {
+            if (rmProp.GetValue(null) is ResourceManager rm)
+            {
+                value = rm.GetString(resourceName);
+                return value is not null;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this tool.</summary>
