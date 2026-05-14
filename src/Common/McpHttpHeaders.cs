@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// Per RFC 9110, HTTP header names are case-insensitive. Clients and servers must
 /// use case-insensitive comparisons when processing these headers.
 /// </remarks>
-public static class McpHttpHeaders
+internal static class McpHttpHeaders
 {
     /// <summary>
     /// The minimum protocol version that requires standard MCP request headers.
@@ -57,7 +57,7 @@ public static class McpHttpHeaders
     public const string ParamPrefix = "Mcp-Param-";
 
     /// <summary>
-    /// Key used in <see cref="JsonRpcMessageContext.Items"/> to store the <see cref="Tool"/>
+    /// Key used in <see cref="JsonRpcMessageContext.Items"/> to store the tool
     /// definition for the current request, enabling the transport to add custom parameter headers.
     /// </summary>
     internal const string ToolContextKey = "Mcp.Tool";
