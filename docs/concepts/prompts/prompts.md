@@ -11,7 +11,7 @@ MCP [prompts] allow servers to expose reusable prompt templates to clients. Prom
 
 [prompts]: https://modelcontextprotocol.io/specification/2025-11-25/server/prompts
 
-This article covers implementing prompts on the server, consuming them from the client, rich content types, and change notifications.
+This document covers implementing prompts on the server, consuming them from the client, rich content types, and change notifications.
 
 ### Defining prompts on the server
 
@@ -23,7 +23,7 @@ Prompts can be defined in several ways:
 - Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
 - Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this article. Prompts can return <xref:Microsoft.Extensions.AI.ChatMessage> instances for simple text/image content, or <xref:ModelContextProtocol.Protocol.PromptMessage> instances when protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> are needed.
+The attribute-based approach is the most common and is shown throughout this document. Prompts can return <xref:Microsoft.Extensions.AI.ChatMessage> instances for simple text/image content, or <xref:ModelContextProtocol.Protocol.PromptMessage> instances when protocol-specific content types like <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> are needed.
 
 #### Simple prompts
 
@@ -41,7 +41,7 @@ public class MyPrompts
 
 #### Prompts with arguments
 
-Prompts can accept parameters to customize the generated messages. Use `[Description]` attributes to article each parameter. In addition to prompt arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
+Prompts can accept parameters to customize the generated messages. Use `[Description]` attributes to document each parameter. In addition to prompt arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
 
 ```csharp
 [McpServerPromptType]

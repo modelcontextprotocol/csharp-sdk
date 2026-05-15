@@ -11,7 +11,7 @@ MCP [resources] allow servers to expose data and content to clients. Resources r
 
 [resources]: https://modelcontextprotocol.io/specification/2025-11-25/server/resources
 
-This article covers implementing resources on the server, consuming them from the client, resource templates, subscriptions, and change notifications.
+This document covers implementing resources on the server, consuming them from the client, resource templates, subscriptions, and change notifications.
 
 ### Defining resources on the server
 
@@ -23,7 +23,7 @@ You can define resources in several ways:
 - Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
 - Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this article.
+The attribute-based approach is the most common and is shown throughout this document.
 
 #### Direct resources
 

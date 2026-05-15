@@ -1,6 +1,6 @@
 # List of diagnostics produced by MCP C# SDK
 
-This article provides information about each of the diagnostics produced by the MCP C# SDK analyzers and source generators.
+This document provides information about each of the diagnostics produced by the MCP C# SDK analyzers and source generators.
 
 ## Analyzer diagnostics
 

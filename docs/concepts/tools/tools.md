@@ -11,7 +11,7 @@ MCP [tools] allow servers to expose callable functions to clients. Tools are the
 
 [tools]: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
-This article covers tool content types, change notifications, and schema generation.
+This document covers tool content types, change notifications, and schema generation.
 
 ### Defining tools on the server
 
@@ -23,7 +23,7 @@ You can define tools in several ways:
 - Implementing a custom <xref:ModelContextProtocol.Server.McpRequestHandler`2> via <xref:ModelContextProtocol.Server.McpServerHandlers>.
 - Implementing a low-level <xref:ModelContextProtocol.Server.McpRequestFilter`2>.
 
-The attribute-based approach is the most common and is shown throughout this article. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes. In addition to tool arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
+The attribute-based approach is the most common and is shown throughout this document. Parameters are automatically deserialized from JSON and documented using `[Description]` attributes. In addition to tool arguments, methods can accept special parameter types that are resolved automatically: <xref:ModelContextProtocol.Server.McpServer>, `IProgress<ProgressNotificationValue>`, <xref:System.Security.Claims.ClaimsPrincipal>, and any service registered through dependency injection.
 
 ```csharp
 [McpServerToolType]

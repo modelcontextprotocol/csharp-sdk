@@ -11,7 +11,7 @@ MCP servers can expose log messages to clients through the [Logging utility].
 
 [Logging utility]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging
 
-This article describes how to implement logging in MCP servers and how clients can consume log messages.
+This document describes how to implement logging in MCP servers and how clients can consume log messages.
 
 ### Logging levels
 
