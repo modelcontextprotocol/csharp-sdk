@@ -35,10 +35,6 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
-    <!-- Link InMemoryMcpTaskStore.cs for testing with TimeProvider support -->
-    <Compile Include="..\..\src\ModelContextProtocol.Core\Server\InMemoryMcpTaskStore.cs" Link="Server\InMemoryMcpTaskStore.cs" />
-    <!-- Include dependencies for the linked InMemoryMcpTaskStore.cs -->
-    <Compile Include="..\..\src\Common\Experimentals.cs" Link="Experimentals.cs" />
   </ItemGroup>
 
   <ItemGroup>

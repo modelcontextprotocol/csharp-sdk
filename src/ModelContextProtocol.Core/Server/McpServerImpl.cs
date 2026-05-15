@@ -26,7 +26,6 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
-    private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
 
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
@@ -68,12 +67,6 @@ internal sealed partial class McpServerImpl : McpServer
         _servicesScopePerRequest = options.ScopeRequests;
         _logger = loggerFactory?.CreateLogger<McpServer>() ?? NullLogger<McpServer>.Instance;
 
-        // Only allocate the cancellation token provider if a task store is configured
-        if (options.TaskStore is not null)
-        {
-            _taskCancellationTokenProvider = new McpTaskCancellationTokenProvider();
-        }
-
         _clientInfo = options.KnownClientInfo;
         _clientCapabilities = options.KnownClientCapabilities;
         UpdateEndpointNameWithClientInfo();
@@ -87,7 +80,6 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureTools(options);
         ConfigurePrompts(options);
         ConfigureResources(options);
-        ConfigureTasks(options);
         ConfigureLogging(options);
         ConfigureCompletion(options);
         ConfigureExperimentalAndExtensions(options);
@@ -210,7 +202,6 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
-        _taskCancellationTokenProvider?.Dispose();
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
     }
@@ -700,43 +691,14 @@ internal sealed partial class McpServerImpl : McpServer
             };
 
             var originalCallToolHandler = callToolHandler;
-            var taskStore = options.TaskStore;
-            var sendNotifications = options.SendTaskStatusNotifications;
-            callToolHandler = async (request, cancellationToken) =>
+            callToolHandler = (request, cancellationToken) =>
             {
                 if (request.MatchedPrimitive is McpServerTool tool)
                 {
-                    var taskSupport = tool.ProtocolTool.Execution?.TaskSupport ?? ToolTaskSupport.Forbidden;
-
-                    // Check if this is a task-augmented request
-                    if (request.Params?.Task is { } taskMetadata)
-                    {
-                        // Validate tool-level task support
-                        if (taskSupport is ToolTaskSupport.Forbidden)
-                        {
-                            throw new McpProtocolException(
-                                $"Tool '{tool.ProtocolTool.Name}' does not support task-augmented execution.",
-                                McpErrorCode.InvalidParams);
-                        }
-
-                        // Task augmentation requested - return CreateTaskResult
-                        return await ExecuteToolAsTaskAsync(tool, request, taskMetadata, taskStore, sendNotifications, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    // Validate that required task support is satisfied
-                    if (taskSupport is ToolTaskSupport.Required)
-                    {
-                        throw new McpProtocolException(
-                            $"Tool '{tool.ProtocolTool.Name}' requires task-augmented execution. " +
-                            "Include a 'task' parameter with the request.",
-                            McpErrorCode.InvalidParams);
-                    }
-
-                    // Normal synchronous execution
-                    return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+                    return tool.InvokeAsync(request, cancellationToken);
                 }
 
-                return await originalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+                return originalCallToolHandler(request, cancellationToken);
             };
 
             listChanged = true;
@@ -756,14 +718,7 @@ internal sealed partial class McpServerImpl : McpServer
                 try
                 {
                     var result = await handler(request, cancellationToken).ConfigureAwait(false);
-
-                    // Don't log here for task-augmented calls; logging happens asynchronously
-                    // in ExecuteToolAsTaskAsync when the tool actually completes.
-                    if (result.Task is null)
-                    {
-                        ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
-                    }
-
+                    ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
                     return result;
                 }
                 catch (Exception e)
@@ -801,138 +756,6 @@ internal sealed partial class McpServerImpl : McpServer
             callToolHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult);
-    }
-
-    private void ConfigureTasks(McpServerOptions options)
-    {
-        var taskStore = options.TaskStore;
-
-        // If no task store is configured, tasks are not supported
-        if (taskStore is null)
-        {
-            return;
-        }
-
-        // Advertise task support in server capabilities
-        ServerCapabilities.Tasks = new McpTasksCapability
-        {
-            List = new ListMcpTasksCapability(),
-            Cancel = new CancelMcpTasksCapability(),
-            Requests = new RequestMcpTasksCapability
-            {
-                Tools = new ToolsMcpTasksCapability
-                {
-                    Call = new CallToolMcpTasksCapability()
-                }
-            }
-        };
-
-        // tasks/get handler - Retrieve task status
-        McpRequestHandler<GetTaskRequestParams, McpTask> getTaskHandler = async (request, cancellationToken) =>
-        {
-            if (request.Params?.TaskId is not { } taskId)
-            {
-                throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-            }
-
-            var task = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-            if (task is null)
-            {
-                throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-            }
-
-            return task;
-        };
-
-        // tasks/result handler - Retrieve task result (blocking until terminal status)
-        McpRequestHandler<GetTaskPayloadRequestParams, JsonElement> getTaskResultHandler = (request, cancellationToken) =>
-        {
-            return new ValueTask<JsonElement>(GetTaskResultAsync(request, cancellationToken));
-
-            async Task<JsonElement> GetTaskResultAsync(RequestContext<GetTaskPayloadRequestParams> request, CancellationToken cancellationToken)
-            {
-                if (request.Params?.TaskId is not { } taskId)
-                {
-                    throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-                }
-
-                // Poll until task reaches terminal status
-                while (true)
-                {
-                    McpTask? task = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-                    if (task is null)
-                    {
-                        throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-                    }
-
-                    // If terminal, break and retrieve result
-                    if (task.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
-                    {
-                        break;
-                    }
-
-                    // Poll according to task's pollInterval (default 1 second)
-                    var pollInterval = task.PollInterval ?? TimeSpan.FromSeconds(1);
-                    await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
-                }
-
-                // Retrieve the stored result - already stored as JsonElement
-                return await taskStore.GetTaskResultAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-            }
-        };
-
-        // tasks/list handler - List tasks with pagination
-        McpRequestHandler<ListTasksRequestParams, ListTasksResult> listTasksHandler = async (request, cancellationToken) =>
-        {
-            var cursor = request.Params?.Cursor;
-            return await taskStore.ListTasksAsync(cursor, SessionId, cancellationToken).ConfigureAwait(false);
-        };
-
-        // tasks/cancel handler - Cancel a task
-        McpRequestHandler<CancelMcpTaskRequestParams, McpTask> cancelTaskHandler = async (request, cancellationToken) =>
-        {
-            if (request.Params?.TaskId is not { } taskId)
-            {
-                throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-            }
-
-            // Signal cancellation if task is still running
-            _taskCancellationTokenProvider!.Cancel(taskId);
-
-            // Delegate to task store - it handles idempotent cancellation
-            var task = await taskStore.CancelTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-            if (task is null)
-            {
-                throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-            }
-
-            return task;
-        };
-
-        // Register handlers
-        SetHandler(
-            RequestMethods.TasksGet,
-            getTaskHandler,
-            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.McpTask);
-
-        SetHandler(
-            RequestMethods.TasksResult,
-            getTaskResultHandler,
-            McpJsonUtilities.JsonContext.Default.GetTaskPayloadRequestParams,
-            McpJsonUtilities.JsonContext.Default.JsonElement);
-
-        SetHandler(
-            RequestMethods.TasksList,
-            listTasksHandler,
-            McpJsonUtilities.JsonContext.Default.ListTasksRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListTasksResult);
-
-        SetHandler(
-            RequestMethods.TasksCancel,
-            cancelTaskHandler,
-            McpJsonUtilities.JsonContext.Default.CancelMcpTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.McpTask);
     }
 
     private void ConfigureLogging(McpServerOptions options)
@@ -1117,160 +940,4 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
     private partial void ReadResourceCompleted(string resourceUri);
-
-    /// <summary>
-    /// Executes a tool call as a task and returns a CallToolTaskResult immediately.
-    /// </summary>
-    private async ValueTask<CallToolResult> ExecuteToolAsTaskAsync(
-        McpServerTool tool,
-        RequestContext<CallToolRequestParams> request,
-        McpTaskMetadata taskMetadata,
-        IMcpTaskStore? taskStore,
-        bool sendNotifications,
-        CancellationToken cancellationToken)
-    {
-        if (taskStore is null)
-        {
-            throw new McpProtocolException(
-                "Task-augmented requests are not supported. No task store configured.",
-                McpErrorCode.InvalidRequest);
-        }
-
-        // Create the task in the task store
-        var mcpTask = await taskStore.CreateTaskAsync(
-            taskMetadata,
-            request.JsonRpcRequest.Id,
-            request.JsonRpcRequest,
-            SessionId,
-            cancellationToken).ConfigureAwait(false);
-
-        // Register the task for TTL-based cancellation
-        var taskCancellationToken = _taskCancellationTokenProvider!.RequestToken(mcpTask.TaskId, mcpTask.TimeToLive);
-
-        // Execute the tool asynchronously in the background
-        _ = Task.Run(async () =>
-        {
-            // When per-request service scoping is enabled, InvokeHandlerAsync creates a new
-            // IServiceScope and disposes it once the handler returns. Since ExecuteToolAsTaskAsync
-            // returns immediately (before the tool runs), the scope is disposed before the tool
-            // gets a chance to resolve any DI services. Create a fresh scope here, tied to this
-            // background task's lifetime, so the tool's DI resolution uses a live provider.
-            var taskScope = _servicesScopePerRequest
-                ? Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope()
-                : null;
-            if (taskScope is not null)
-            {
-                request.Services = taskScope.Value.ServiceProvider;
-            }
-
-            // Set up the task execution context for automatic input_required status tracking
-            TaskExecutionContext.Current = new TaskExecutionContext
-            {
-                TaskId = mcpTask.TaskId,
-                SessionId = SessionId,
-                TaskStore = taskStore,
-                SendNotifications = sendNotifications,
-                NotifyTaskStatusFunc = NotifyTaskStatusAsync
-            };
-
-            try
-            {
-                // Update task status to working
-                var workingTask = await taskStore.UpdateTaskStatusAsync(
-                    mcpTask.TaskId,
-                    McpTaskStatus.Working,
-                    null, // statusMessage
-                    SessionId,
-                    CancellationToken.None).ConfigureAwait(false);
-
-                // Send notification if enabled
-                if (sendNotifications)
-                {
-                    _ = NotifyTaskStatusAsync(workingTask, CancellationToken.None);
-                }
-
-                // Invoke the tool with task-specific cancellation token
-                var result = await tool.InvokeAsync(request, taskCancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
-
-                // Determine final status based on whether there was an error
-                var finalStatus = result.IsError is true ? McpTaskStatus.Failed : McpTaskStatus.Completed;
-
-                // Store the result (serialize to JsonElement)
-                var resultElement = JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
-                var finalTask = await taskStore.StoreTaskResultAsync(
-                    mcpTask.TaskId,
-                    finalStatus,
-                    resultElement,
-                    SessionId,
-                    CancellationToken.None).ConfigureAwait(false);
-
-                // Send final notification if enabled
-                if (sendNotifications)
-                {
-                    _ = NotifyTaskStatusAsync(finalTask, CancellationToken.None);
-                }
-            }
-            catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
-            {
-                // Task was cancelled via TTL expiration or explicit cancellation.
-                // For TTL expiration, the task is deleted so no status update needed.
-                // For explicit cancellation, the cancel handler already updates the status.
-            }
-            catch (Exception ex)
-            {
-                // Log the error
-                ToolCallError(request.Params?.Name ?? string.Empty, ex);
-
-                // Store error result
-                var errorResult = new CallToolResult
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock { Text = $"Task execution failed: {ex.Message}" }],
-                };
-
-                try
-                {
-                    var errorResultElement = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.JsonContext.Default.CallToolResult);
-                    var failedTask = await taskStore.StoreTaskResultAsync(
-                        mcpTask.TaskId,
-                        McpTaskStatus.Failed,
-                        errorResultElement,
-                        SessionId,
-                        CancellationToken.None).ConfigureAwait(false);
-
-                    // Send failure notification if enabled
-                    if (sendNotifications)
-                    {
-                        _ = NotifyTaskStatusAsync(failedTask, CancellationToken.None);
-                    }
-                }
-                catch
-                {
-                    // If we can't store the error result, there's not much we can do
-                    // The task will remain in "working" status, which will eventually be cleaned up
-                }
-            }
-            finally
-            {
-                // Clean up task execution context
-                TaskExecutionContext.Current = null;
-
-                // Clean up task cancellation tracking
-                _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
-
-                // Dispose the per-task service scope (if one was created)
-                if (taskScope is not null)
-                {
-                    await taskScope.Value.DisposeAsync().ConfigureAwait(false);
-                }
-            }
-        }, CancellationToken.None);
-
-        // Return the task result immediately
-        return new CallToolResult
-        {
-            Task = mcpTask
-        };
-    }
 }

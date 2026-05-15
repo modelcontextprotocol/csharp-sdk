@@ -26,8 +26,8 @@ Add the diagnostic ID to `<NoWarn>` in your project file:
 Use `#pragma warning disable` around specific call sites:
 
 ```csharp
-#pragma warning disable MCPEXP001 // The Tasks feature is experimental per the MCP specification and is subject to change.
-tool.Execution = new ToolExecution { ... };
+#pragma warning disable MCPEXP001 // The Extensions feature is part of a future MCP specification version that has not yet been ratified and is subject to change.
+capabilities.Extensions = new Dictionary<string, object> { ... };
 #pragma warning restore MCPEXP001
 ```
 
@@ -67,4 +67,3 @@ By placing the SDK's resolver first, MCP types are serialized using the SDK's co
 
 - [Versioning](versioning.md)
 - [List of diagnostics](list-of-diagnostics.md#experimental-apis)
-- [Tasks](concepts/tasks/tasks.md) (an experimental feature)
