@@ -26,6 +26,7 @@
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
     <Compile Include="..\Common\EncodingUtilities.cs" Link="EncodingUtilities.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
     <Compile Include="..\Common\HttpResponseMessageExtensions.cs" Link="HttpResponseMessageExtensions.cs" />
     <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
   </ItemGroup>

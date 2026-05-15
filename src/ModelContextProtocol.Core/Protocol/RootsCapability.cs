@@ -13,9 +13,9 @@ namespace ModelContextProtocol.Protocol;
 /// root URIs that serve as entry points for resource navigation.
 /// </para>
 /// <para>
-/// The roots capability establishes a mechanism for servers to discover and access the hierarchical
-/// structure of resources provided by a client. Root URIs represent top-level entry points from which
-/// servers can navigate to access specific resources.
+/// The roots capability establishes a mechanism for servers to discover the directories and files
+/// the client considers relevant. Root URIs represent top-level entry points that inform the server
+/// about the working context, providing informational guidance rather than enforcing access control.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.

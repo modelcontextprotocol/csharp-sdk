@@ -70,14 +70,14 @@ When you implement custom list handlers on the server, to support pagination, ex
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithListResourcesHandler(async (ctx, ct) =>
     {
         const int pageSize = 10;
         int startIndex = 0;
 
-        // Parse cursor to determine starting position.
-        if (ctx.Params?.Cursor is { } cursor)
+        // Parse cursor to determine starting position
+        if (ctx.Params.Cursor is { } cursor)
         {
             startIndex = int.Parse(cursor);
         }

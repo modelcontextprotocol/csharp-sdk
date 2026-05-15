@@ -317,7 +317,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
     {
         var logger = context.Services?.GetService<ILogger<Program>>();
 
-        logger?.LogInformation($"Processing request from {context.Params?.ProgressToken}");
+        logger?.LogInformation($"Processing request from {context.Params.ProgressToken}");
         var result = await next(context, cancellationToken);
         logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools");
         return result;
@@ -339,7 +339,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
         catch (Exception ex)
         {
             var logger = context.Services?.GetService<ILogger<Program>>();
-            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Params?.ProgressToken);
+            logger?.LogError(ex, "Error while processing CallTool request for {ProgressToken}", context.Params.ProgressToken);
 
             return new CallToolResult
             {
@@ -401,8 +401,8 @@ To enable authorization support, call `AddAuthorizationFilters()` when configuri
 
 ```csharp
 services.AddMcpServer()
-    .WithHttpTransport()
-    .AddAuthorizationFilters() // Enable authorization filter support.
+    .WithHttpTransport(o => o.Stateless = true)
+    .AddAuthorizationFilters() // Enable authorization filter support
     .WithTools<WeatherTools>();
 ```
 
@@ -501,7 +501,7 @@ This allows you to implement logging, metrics, or other cross-cutting concerns t
 
 ```csharp
 services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithRequestFilters(requestFilters =>
     {
         requestFilters.AddListToolsFilter(next => async (context, cancellationToken) =>
@@ -544,8 +544,11 @@ builder.Services.AddAuthentication("Bearer")
 builder.Services.AddAuthorization();
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
-    .AddAuthorizationFilters() // Required for authorization support.
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
+    .AddAuthorizationFilters() // Required for authorization support
     .WithTools<WeatherTools>()
     .WithRequestFilters(requestFilters =>
     {

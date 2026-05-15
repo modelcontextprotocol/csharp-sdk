@@ -63,7 +63,7 @@ Register prompt types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithPrompts<MyPrompts>()
     .WithPrompts<CodePrompts>();
 ```
@@ -197,7 +197,7 @@ foreach (var message in result.Messages)
 
 ### Prompt list change notifications
 
-Servers can dynamically add, remove, or modify prompts at runtime and notify connected clients.
+Servers can dynamically add, remove, or modify prompts at runtime and notify connected clients. These are unsolicited notifications, so they require [stateful mode or stdio](xref:stateless) — [stateless](xref:stateless#stateless-mode-recommended) servers cannot send unsolicited notifications.
 
 #### Sending notifications from the server
 

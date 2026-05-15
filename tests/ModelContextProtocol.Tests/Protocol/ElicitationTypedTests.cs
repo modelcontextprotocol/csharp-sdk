@@ -19,7 +19,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         {
             Assert.NotNull(request.Params);
 
-            if (request.Params!.Name == "TestElicitationTyped")
+            if (request.Params.Name == "TestElicitationTyped")
             {
                 var result = await request.Server.ElicitAsync<SampleForm>(
                     message: "Please provide more information.",
@@ -34,7 +34,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal(SampleRole.Admin, result.Content!.Role);
                 Assert.Equal(99.5, result.Content!.Score);
             }
-            else if (request.Params!.Name == "TestElicitationCamelForm")
+            else if (request.Params.Name == "TestElicitationCamelForm")
             {
                 var result = await request.Server.ElicitAsync<CamelForm>(
                     message: "Please provide more information.",
@@ -47,7 +47,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal(90210, result.Content!.ZipCode);
                 Assert.False(result.Content!.IsAdmin);
             }
-            else if (request.Params!.Name == "TestElicitationNullablePropertyForm")
+            else if (request.Params.Name == "TestElicitationNullablePropertyForm")
             {
                 var result = await request.Server.ElicitAsync<NullablePropertyForm>(
                     message: "Please provide more information.",
@@ -60,7 +60,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Content = [new TextContentBlock { Text = "unexpected" }],
                 };
             }
-            else if (request.Params!.Name == "TestElicitationUnsupportedType")
+            else if (request.Params.Name == "TestElicitationUnsupportedType")
             {
                 await request.Server.ElicitAsync<UnsupportedForm>(
                     message: "Please provide more information.",
@@ -73,7 +73,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Content = [new TextContentBlock { Text = "unexpected" }],
                 };
             }
-            else if (request.Params!.Name == "TestElicitationNonObjectGenericType")
+            else if (request.Params.Name == "TestElicitationNonObjectGenericType")
             {
                 // This should throw because T is not an object type with properties (string primitive)
                 await request.Server.ElicitAsync<string>(
@@ -86,7 +86,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Content = [new TextContentBlock { Text = "unexpected" }],
                 };
             }
-            else if (request.Params!.Name == "TestElicitationWithDefaults")
+            else if (request.Params.Name == "TestElicitationWithDefaults")
             {
                 var result = await request.Server.ElicitAsync<FormWithDefaults>(
                     message: "Please provide information.",
@@ -101,7 +101,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             }
             else
             {
-                Assert.Fail($"Unexpected tool name: {request.Params!.Name}");
+                Assert.Fail($"Unexpected tool name: {request.Params.Name}");
             }
 
             return new CallToolResult

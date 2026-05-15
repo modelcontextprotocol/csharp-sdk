@@ -87,6 +87,17 @@ public class DiagnosticTests
         using var listToolsJson = JsonDocument.Parse(clientToServerLog.First(s => s.Contains("\"method\":\"tools/list\"")));
         var metaJson = listToolsJson.RootElement.GetProperty("params").GetProperty("_meta").GetRawText();
         Assert.Equal($$"""{"traceparent":"00-{{clientListToolsCall.TraceId}}-{{clientListToolsCall.SpanId}}-01"}""", metaJson);
+
+        // Validate that mcp.session.id is set on both client and server activities and that
+        // all client activities share one session ID while all server activities share another.
+        var clientSessionId = Assert.Single(clientToolCall.Tags, t => t.Key == "mcp.session.id").Value;
+        var serverSessionId = Assert.Single(serverToolCall.Tags, t => t.Key == "mcp.session.id").Value;
+        Assert.NotNull(clientSessionId);
+        Assert.NotNull(serverSessionId);
+        Assert.NotEqual(clientSessionId, serverSessionId);
+
+        Assert.Equal(clientSessionId, clientListToolsCall.Tags.Single(t => t.Key == "mcp.session.id").Value);
+        Assert.Equal(serverSessionId, serverListToolsCall.Tags.Single(t => t.Key == "mcp.session.id").Value);
     }
 
     [Fact]

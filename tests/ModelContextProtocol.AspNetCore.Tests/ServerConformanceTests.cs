@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
@@ -109,6 +111,9 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_JsonSchema202012()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario json-schema-2020-12");
 
@@ -120,8 +125,35 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_ServerSsePolling()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario server-sse-polling");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunConformanceTest_HttpHeaderValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.HasSep2243Scenarios(), "SEP-2243 conformance scenarios not yet available.");
+
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-header-validation");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunConformanceTest_HttpCustomHeaderServerValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.HasSep2243Scenarios(), "SEP-2243 conformance scenarios not yet available.");
+
+        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-custom-header-server-validation");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -136,23 +168,28 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
 
         var process = new Process { StartInfo = startInfo };
 
-        process.OutputDataReceived += (sender, e) =>
+        // Protect callbacks with try/catch to prevent ITestOutputHelper from
+        // throwing on a background thread if events arrive after the test completes.
+        DataReceivedEventHandler outputHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 outputBuilder.AppendLine(e.Data);
             }
         };
 
-        process.ErrorDataReceived += (sender, e) =>
+        DataReceivedEventHandler errorHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                output.WriteLine(e.Data);
+                try { output.WriteLine(e.Data); } catch { }
                 errorBuilder.AppendLine(e.Data);
             }
         };
+
+        process.OutputDataReceived += outputHandler;
+        process.ErrorDataReceived += errorHandler;
 
         process.Start();
         process.BeginOutputReadLine();
@@ -166,6 +203,8 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
+            process.OutputDataReceived -= outputHandler;
+            process.ErrorDataReceived -= errorHandler;
             return (
                 Success: false,
                 Output: outputBuilder.ToString(),
@@ -173,10 +212,43 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             );
         }
 
+        process.OutputDataReceived -= outputHandler;
+        process.ErrorDataReceived -= errorHandler;
+
+        var stdoutText = outputBuilder.ToString();
+        var stderrText = errorBuilder.ToString();
+
+        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
+        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
+        // code even though every conformance check passed. When that happens, fall back to
+        // parsing the "Test Results:" summary in stdout to decide success.
+        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
+
         return (
-            Success: process.ExitCode == 0,
-            Output: outputBuilder.ToString(),
-            Error: errorBuilder.ToString()
+            Success: success,
+            Output: stdoutText,
+            Error: stderrText
         );
+    }
+
+    /// <summary>
+    /// Parses the conformance runner output for a "Test Results:" line such as
+    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
+    /// and none failed.
+    /// </summary>
+    private static bool ConformanceOutputIndicatesSuccess(string output)
+    {
+        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
+        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        int passed = int.Parse(match.Groups[1].Value);
+        int total = int.Parse(match.Groups[2].Value);
+        int failed = int.Parse(match.Groups[3].Value);
+
+        return passed == total && failed == 0 && total > 0;
     }
 }

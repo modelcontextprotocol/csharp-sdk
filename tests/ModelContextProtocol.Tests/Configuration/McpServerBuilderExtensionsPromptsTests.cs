@@ -26,7 +26,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         mcpServerBuilder
                 .WithListPromptsHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -68,7 +68,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     })
         .WithGetPromptHandler(async (request, cancellationToken) =>
         {
-            switch (request.Params?.Name)
+            switch (request.Params.Name)
             {
                 case "FirstCustomPrompt":
                 case "SecondCustomPrompt":
@@ -79,7 +79,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     };
 
                 default:
-                    throw new McpProtocolException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException($"Unknown prompt '{request.Params.Name}'", McpErrorCode.InvalidParams);
             }
         })
         .WithPrompts<SimplePrompts>();
@@ -314,17 +314,14 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPrompts(target);
 
         McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
-        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }, new GetPromptRequestParams
         {
-            Params = new GetPromptRequestParams
+            Name = "returns_string",
+            Arguments = new Dictionary<string, JsonElement>
             {
-                Name = "returns_string",
-                Arguments = new Dictionary<string, JsonElement>
-                {
-                    ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
-                }
+                ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
             }
-        }, TestContext.Current.CancellationToken);
+        }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString("hello"), (result.Messages[0].Content as TextContentBlock)?.Text);
     }

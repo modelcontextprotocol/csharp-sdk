@@ -276,6 +276,72 @@ public class McpServerTaskAugmentedValidationTests : LoggedTest
     }
 
     [Fact]
+    public async Task CallToolAsTask_WithRequiredTaskSupport_CanResolveScopedServicesFromDI()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1430:
+        // ExecuteToolAsTaskAsync fires Task.Run and returns immediately, so the request-scoped
+        // IServiceProvider owned by InvokeHandlerAsync is disposed before the background task
+        // calls tool.InvokeAsync. The fix creates a fresh scope inside the Task.Run body so the
+        // tool can resolve DI services without hitting ObjectDisposedException.
+        var taskStore = new InMemoryMcpTaskStore();
+        string? capturedValue = null;
+
+        await using var fixture = new ServerClientFixture(LoggerFactory, configureServer: (services, builder) =>
+        {
+            services.AddSingleton<IMcpTaskStore>(taskStore);
+            services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+
+            // Register a scoped service; resolving it through a disposed scope was the bug.
+            services.AddScoped<ITaskToolDiService, TaskToolDiService>();
+
+            // Register the tool via the factory pattern so that Services = sp is threaded
+            // through, enabling DI parameter binding at tool-creation time.
+            builder.Services.AddSingleton<McpServerTool>(sp => McpServerTool.Create(
+                async (ITaskToolDiService svc, CancellationToken ct) =>
+                {
+                    await Task.Delay(10, ct);
+                    capturedValue = svc.GetValue();
+                    return capturedValue;
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "di-required-task-tool",
+                    Services = sp,
+                    Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Required }
+                }));
+        });
+
+        await using var client = await fixture.CreateClientAsync(TestContext.Current.CancellationToken);
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "di-required-task-tool",
+                Task = new McpTaskMetadata()
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.Task);
+        string taskId = result.Task.TaskId;
+
+        // Poll until the background task reaches a terminal state.
+        McpTask taskStatus;
+        int attempts = 0;
+        do
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+            taskStatus = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+            attempts++;
+        }
+        while (taskStatus.Status == McpTaskStatus.Working && attempts < 50);
+
+        // Without the fix, the background task would fail with ObjectDisposedException when
+        // resolving ITaskToolDiService, causing the task to reach McpTaskStatus.Failed.
+        Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
+        Assert.Equal("hello-from-di", capturedValue);
+    }
+
+    [Fact]
     public async Task CallToolAsTaskAsync_WithProgress_CreatesTaskSuccessfully()
     {
         // Arrange - Server with task store and a tool that reports progress
@@ -856,6 +922,16 @@ public class McpServerTaskAugmentedValidationTests : LoggedTest
     }
 
     #endregion
+
+    private interface ITaskToolDiService
+    {
+        string GetValue();
+    }
+
+    private sealed class TaskToolDiService : ITaskToolDiService
+    {
+        public string GetValue() => "hello-from-di";
+    }
 
     /// <summary>
     /// Helper fixture for creating server-client pairs with custom configuration.

@@ -98,6 +98,18 @@ internal sealed partial class McpServerImpl : McpServer
             _notificationHandlers.RegisterRange(notificationHandlers);
         }
 
+        // In stateless mode, the server cannot send unsolicited notifications,
+        // so listChanged should not be advertised.
+        if (transport is StreamableHttpServerTransport { Stateless: true })
+        {
+            if (ServerCapabilities.Tools is not null)
+                ServerCapabilities.Tools.ListChanged = null;
+            if (ServerCapabilities.Prompts is not null)
+                ServerCapabilities.Prompts.ListChanged = null;
+            if (ServerCapabilities.Resources is not null)
+                ServerCapabilities.Resources.ListChanged = null;
+        }
+
         // Now that everything has been configured, subscribe to any necessary notifications.
         if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
         {
@@ -954,7 +966,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, jsonRpcRequest, cancellationToken);
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
@@ -966,17 +978,17 @@ internal sealed partial class McpServerImpl : McpServer
 
     private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
         McpRequestHandler<TParams, TResult> handler,
-        TParams? args,
+        TParams args,
         JsonRpcRequest jsonRpcRequest,
         CancellationToken cancellationToken = default)
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, jsonRpcRequest, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
+            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest, args), cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             McpRequestHandler<TParams, TResult> handler,
-            TParams? args,
+            TParams args,
             JsonRpcRequest jsonRpcRequest,
             CancellationToken cancellationToken)
         {
@@ -984,10 +996,9 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest)
+                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest, args)
                     {
                         Services = scope?.ServiceProvider ?? Services,
-                        Params = args
                     },
                     cancellationToken).ConfigureAwait(false);
             }
@@ -1139,6 +1150,19 @@ internal sealed partial class McpServerImpl : McpServer
         // Execute the tool asynchronously in the background
         _ = Task.Run(async () =>
         {
+            // When per-request service scoping is enabled, InvokeHandlerAsync creates a new
+            // IServiceScope and disposes it once the handler returns. Since ExecuteToolAsTaskAsync
+            // returns immediately (before the tool runs), the scope is disposed before the tool
+            // gets a chance to resolve any DI services. Create a fresh scope here, tied to this
+            // background task's lifetime, so the tool's DI resolution uses a live provider.
+            var taskScope = _servicesScopePerRequest
+                ? Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope()
+                : null;
+            if (taskScope is not null)
+            {
+                request.Services = taskScope.Value.ServiceProvider;
+            }
+
             // Set up the task execution context for automatic input_required status tracking
             TaskExecutionContext.Current = new TaskExecutionContext
             {
@@ -1234,6 +1258,12 @@ internal sealed partial class McpServerImpl : McpServer
 
                 // Clean up task cancellation tracking
                 _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
+
+                // Dispose the per-task service scope (if one was created)
+                if (taskScope is not null)
+                {
+                    await taskScope.Value.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }, CancellationToken.None);
 

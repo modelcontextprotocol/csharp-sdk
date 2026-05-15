@@ -16,6 +16,7 @@ public class ClientConformanceTests
 
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
+    public static bool HasSep2243Scenarios => NodeHelpers.HasSep2243Scenarios();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
@@ -61,6 +62,21 @@ public class ClientConformanceTests
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    // HTTP Standardization (SEP-2243)
+    [Theory(Skip = "SEP-2243 conformance scenarios not yet available.", SkipUnless = nameof(HasSep2243Scenarios))]
+    [InlineData("http-standard-headers")]
+    [InlineData("http-custom-headers")]
+    [InlineData("http-invalid-tool-headers")]
+    public async Task RunConformanceTest_Sep2243(string scenario)
+    {
+        // Run the conformance test suite
+        var result = await RunClientConformanceScenario(scenario);
+
+        // Report the results
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunClientConformanceScenario(string scenario)
     {
         // Construct an absolute path to the conformance client executable
@@ -82,23 +98,28 @@ public class ClientConformanceTests
 
         var process = new Process { StartInfo = startInfo };
 
-        process.OutputDataReceived += (sender, e) =>
+        // Protect callbacks with try/catch to prevent ITestOutputHelper from
+        // throwing on a background thread if events arrive after the test completes.
+        DataReceivedEventHandler outputHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                try { _output.WriteLine(e.Data); } catch { }
                 outputBuilder.AppendLine(e.Data);
             }
         };
 
-        process.ErrorDataReceived += (sender, e) =>
+        DataReceivedEventHandler errorHandler = (sender, e) =>
         {
             if (e.Data != null)
             {
-                _output.WriteLine(e.Data);
+                try { _output.WriteLine(e.Data); } catch { }
                 errorBuilder.AppendLine(e.Data);
             }
         };
+
+        process.OutputDataReceived += outputHandler;
+        process.ErrorDataReceived += errorHandler;
 
         process.Start();
         process.BeginOutputReadLine();
@@ -112,12 +133,17 @@ public class ClientConformanceTests
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
+            process.OutputDataReceived -= outputHandler;
+            process.ErrorDataReceived -= errorHandler;
             return (
                 Success: false,
                 Output: outputBuilder.ToString(),
                 Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
             );
         }
+
+        process.OutputDataReceived -= outputHandler;
+        process.ErrorDataReceived -= errorHandler;
 
         var output = outputBuilder.ToString();
         var error = errorBuilder.ToString();

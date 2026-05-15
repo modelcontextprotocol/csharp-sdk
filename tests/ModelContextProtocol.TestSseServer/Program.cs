@@ -280,7 +280,7 @@ public class Program
 
             ReadResourceHandler = async (request, cancellationToken) =>
             {
-                if (request.Params?.Uri is null)
+                if (request.Params.Uri is null)
                 {
                     throw new McpProtocolException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                 }
@@ -459,7 +459,7 @@ public class Program
         }
 
         builder.Services.AddMcpServer(ConfigureOptions)
-            .WithHttpTransport();
+            .WithHttpTransport(options => options.EnableLegacySse = true);
 
         var app = builder.Build();
 

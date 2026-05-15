@@ -25,4 +25,12 @@ internal static class Obsoletions
 
     // MCP9002 was used for the AddXxxFilter extension methods on IMcpServerBuilder that were superseded by
     // WithMessageFilters() and WithRequestFilters(). The APIs were removed; do not reuse this diagnostic ID.
+
+    public const string RequestContextParamsConstructor_DiagnosticId = "MCP9003";
+    public const string RequestContextParamsConstructor_Message = "Use the constructor overload that accepts a parameters argument.";
+    public const string RequestContextParamsConstructor_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcp9003";
+
+    public const string EnableLegacySse_DiagnosticId = "MCP9004";
+    public const string EnableLegacySse_Message = "Legacy SSE transport has no built-in request backpressure and should only be used with completely trusted clients in isolated processes. Use Streamable HTTP instead.";
+    public const string EnableLegacySse_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

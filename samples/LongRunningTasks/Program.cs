@@ -26,7 +26,7 @@ builder.Services.AddMcpServer(options =>
         Version = "1.0.0"
     };
 })
-.WithHttpTransport()
+.WithHttpTransport(o => o.Stateless = true)
 .WithTools<TaskTools>();
 
 var app = builder.Build();

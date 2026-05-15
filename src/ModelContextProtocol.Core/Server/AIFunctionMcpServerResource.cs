@@ -386,14 +386,14 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             TextContent tc => new()
             {
-                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
+                Contents = [new TextResourceContents { Uri = request.Params.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
             },
 
             DataContent dc => new()
             {
                 Contents = [new BlobResourceContents 
                 { 
-                    Uri = request.Params!.Uri, 
+                    Uri = request.Params.Uri, 
                     MimeType = dc.MediaType, 
                     Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
                 }],
@@ -401,7 +401,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             string text => new()
             {
-                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
+                Contents = [new TextResourceContents { Uri = request.Params.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
             },
 
             IEnumerable<ResourceContents> contents => new()
@@ -416,14 +416,14 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     {
                         TextContent tc => new TextResourceContents
                         {
-                            Uri = request.Params!.Uri,
+                            Uri = request.Params.Uri,
                             MimeType = ProtocolResourceTemplate.MimeType,
                             Text = tc.Text
                         },
 
                         DataContent dc => new BlobResourceContents
                         {
-                            Uri = request.Params!.Uri,
+                            Uri = request.Params.Uri,
                             MimeType = dc.MediaType,
                             Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
                         },
@@ -436,7 +436,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             {
                 Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents
                 {
-                    Uri = request.Params!.Uri,
+                    Uri = request.Params.Uri,
                     MimeType = ProtocolResourceTemplate.MimeType,
                     Text = text
                 }).ToList(),

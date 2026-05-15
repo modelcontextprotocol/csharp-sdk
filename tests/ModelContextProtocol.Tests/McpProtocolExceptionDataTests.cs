@@ -28,7 +28,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
     {
         mcpServerBuilder.WithCallToolHandler((request, cancellationToken) =>
         {
-            var toolName = request.Params?.Name;
+            var toolName = request.Params.Name;
             
             switch (toolName)
             {
