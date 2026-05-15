@@ -35,6 +35,7 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
+    <Compile Include="..\..\src\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
   </ItemGroup>
 
   <ItemGroup>
