@@ -23,6 +23,7 @@
   <ItemGroup>
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
   </ItemGroup>
 
   <ItemGroup>
