@@ -64,6 +64,30 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         return string.Compare(protocolVersion, MinResumabilityProtocolVersion, StringComparison.Ordinal) >= 0;
     }
 
+    /// <summary>
+    /// Checks whether the negotiated protocol version permits emitting non-object output
+    /// schemas and their structured content in their natural shape (per SEP-2106).
+    /// </summary>
+    /// <param name="protocolVersion">The negotiated protocol version, or <c>null</c> if
+    /// negotiation has not completed.</param>
+    /// <returns><c>true</c> if the version is <c>"2026-06-30"</c> or later (including the
+    /// in-flight <c>"DRAFT-2026-06-v1"</c>, since <c>'D' &gt; '2'</c> ordinally); <c>false</c>
+    /// otherwise. A <c>false</c> return signals that the wire emission boundary must apply
+    /// the <c>{"result": &lt;value&gt;}</c> envelope expected by clients on protocol versions
+    /// that pre-date SEP-2106's widening of <c>outputSchema</c> to any JSON Schema 2020-12
+    /// document.</returns>
+    internal static bool SupportsNaturalOutputSchemas(string? protocolVersion)
+    {
+        const string MinNaturalOutputSchemasProtocolVersion = "2026-06-30";
+
+        if (protocolVersion is null)
+        {
+            return false;
+        }
+
+        return string.Compare(protocolVersion, MinNaturalOutputSchemasProtocolVersion, StringComparison.Ordinal) >= 0;
+    }
+
     private readonly bool _isServer;
     private readonly string _transportKind;
     private readonly ITransport _transport;

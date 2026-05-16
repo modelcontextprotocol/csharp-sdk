@@ -465,10 +465,14 @@ public partial class McpServerToolTests
         // return value (e.g. "string", "integer", "array") rather than always being "object".
         // The strict round-trip check is AssertMatchesJsonSchema below, which proves the
         // emitted structuredContent validates against the published schema.
+        //
+        // Pinned to a SEP-2106 negotiated version because the assertion compares the natural
+        // in-memory schema against the emitted value. Under a legacy negotiated version the
+        // emitted value would be re-wrapped in {"result": <value>} for backward compatibility
+        // and would no longer validate against the natural schema.
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
-        var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
+        var request = CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion);
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
@@ -645,6 +649,159 @@ public partial class McpServerToolTests
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
         Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
         Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
+    }
+
+    // SEP-2106 backward-compat: for clients negotiating a pre-2026-06-30 protocol version,
+    // non-object structured content is wrapped in the legacy {"result": <value>} envelope.
+    // Clients on the SEP-2106 protocol ("2026-06-30" and later, including the draft) see the
+    // natural value shape. In-memory storage stays natural in both modes — only the wire
+    // emission flips.
+    private const string LegacyProtocolVersion = "2025-11-25";
+    private const string DraftSep2106ProtocolVersion = "DRAFT-2026-06-v1";
+    private const string Sep2106ProtocolVersion = "2026-06-30";
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_StringReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal("hello", inner.GetString());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.String, result.StructuredContent.Value.ValueKind);
+            Assert.Equal("hello", result.StructuredContent.Value.GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_IntegerReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => 42, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(42, inner.GetInt32());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Number, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(42, result.StructuredContent.Value.GetInt32());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_ArrayReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => new[] { "a", "b" }, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(JsonValueKind.Array, inner.ValueKind);
+            Assert.Equal(2, inner.GetArrayLength());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Array, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(2, result.StructuredContent.Value.GetArrayLength());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(DraftSep2106ProtocolVersion)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_ObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // Object-typed return: the stored schema is type:"object" — already the form
+        // expected by clients on protocol versions older than 2026-06-30, so no envelope
+        // is applied at any protocol version. Wire shape must be identical across versions.
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+        Assert.Equal(27, result.StructuredContent.Value.GetProperty("age").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(DraftSep2106ProtocolVersion)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_NullableObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // type:["object","null"] — for clients on protocol versions older than 2026-06-30,
+        // the SCHEMA is normalized to plain type:"object" (verified in
+        // Sep2106ListToolsBackCompatTests), but the value side is never envelope-wrapped at
+        // any protocol version. So the emitted structured content stays a plain object
+        // across versions.
+        JsonElement outputSchema = JsonDocument.Parse(
+            """{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            OutputSchema = outputSchema,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+    }
+
+    private static RequestContext<CallToolRequestParams> CreateRequestContextWithProtocolVersion(string? protocolVersion)
+    {
+        var mockServer = new Mock<McpServer>();
+        mockServer.SetupGet(s => s.NegotiatedProtocolVersion).Returns(protocolVersion);
+        return new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
     }
 
     [Fact]
