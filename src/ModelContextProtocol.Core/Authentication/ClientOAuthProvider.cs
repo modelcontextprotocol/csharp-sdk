@@ -718,12 +718,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             return protectedResourceMetadata.WwwAuthenticateScope;
         }
-        else if (protectedResourceMetadata.ScopesSupported.Count > 0)
+
+        if (!string.IsNullOrEmpty(_configuredScopes))
+        {
+            return _configuredScopes;
+        }
+
+        if (protectedResourceMetadata.ScopesSupported.Count > 0)
         {
             return string.Join(" ", protectedResourceMetadata.ScopesSupported);
         }
 
-        return _configuredScopes;
+        return null;
     }
 
     /// <summary>

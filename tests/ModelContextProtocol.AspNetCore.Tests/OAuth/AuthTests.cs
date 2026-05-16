@@ -413,6 +413,42 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task AuthorizationFlow_UsesConfiguredScopesBeforeProtectedResourceMetadata()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                Scopes = ["custom:read", "custom:write"],
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("custom:read custom:write", requestedScope);
+    }
+
+    [Fact]
     public async Task AuthorizationFlow_UsesScopeFromChallengeHeader()
     {
         var challengeScopes = "challenge:read challenge:write";
@@ -853,7 +889,7 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that automatically derived resource URIs don't have trailing slashes
         // and that the client doesn't add them during authentication
-        
+
         // Don't explicitly set Resource - let it be derived from the request
         await using var app = await StartMcpServerAsync();
 
@@ -993,10 +1029,10 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that explicitly configured trailing slashes are preserved
         const string resourceWithTrailingSlash = "http://localhost:5000/";
-        
+
         // Configure ValidResources to accept the trailing slash version for this test
         TestOAuthServer.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
-        
+
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
