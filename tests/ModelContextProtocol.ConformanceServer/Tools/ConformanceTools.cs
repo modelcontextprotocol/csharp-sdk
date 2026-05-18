@@ -442,4 +442,13 @@ public class ConformanceTools
         // and the client must reconnect to get the result.
         return "Reconnection test completed successfully";
     }
+
+    [McpServerTool(Name = "test_header_tool")]
+    [Description("A tool with x-mcp-header annotations for conformance testing")]
+    public static string TestHeaderTool(
+        [McpHeader("Region"), Description("The deployment region")] string region,
+        [Description("The query to execute")] string query)
+    {
+        return $"Executed in region {region}: {query}";
+    }
 }
