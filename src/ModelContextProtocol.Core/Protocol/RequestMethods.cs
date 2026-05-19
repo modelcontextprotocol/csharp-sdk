@@ -121,4 +121,31 @@ public static class RequestMethods
     /// and information, establishing the protocol version and available features for the session.
     /// </remarks>
     public const string Initialize = "initialize";
+
+    /// <summary>
+    /// The name of the request method sent from the client to poll for task completion.
+    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Clients poll for task status by sending this request with the task ID.
+    /// </remarks>
+    public const string TasksGet = "tasks/get";
+
+    /// <summary>
+    /// The name of the request method sent from the client to provide input responses to a task.
+    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Used when a task has <c>input_required</c> status and the client needs to fulfill outstanding requests.
+    /// </remarks>
+    public const string TasksUpdate = "tasks/update";
+
+    /// <summary>
+    /// The name of the request method sent from the client to signal intent to cancel a task.
+    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Cancellation is cooperative — the server decides whether and when to honor it.
+    /// </remarks>
+    public const string TasksCancel = "tasks/cancel";
 }

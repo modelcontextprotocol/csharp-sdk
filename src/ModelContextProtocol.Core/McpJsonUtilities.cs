@@ -108,6 +108,12 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(RootsListChangedNotificationParams))]
     [JsonSerializable(typeof(ToolListChangedNotificationParams))]
+    [JsonSerializable(typeof(TaskStatusNotificationParams))]
+    [JsonSerializable(typeof(WorkingTaskNotificationParams))]
+    [JsonSerializable(typeof(CompletedTaskNotificationParams))]
+    [JsonSerializable(typeof(FailedTaskNotificationParams))]
+    [JsonSerializable(typeof(CancelledTaskNotificationParams))]
+    [JsonSerializable(typeof(InputRequiredTaskNotificationParams))]
 
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
@@ -141,6 +147,18 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+    [JsonSerializable(typeof(GetTaskRequestParams))]
+    [JsonSerializable(typeof(GetTaskResult))]
+    [JsonSerializable(typeof(WorkingTaskResult))]
+    [JsonSerializable(typeof(CompletedTaskResult))]
+    [JsonSerializable(typeof(FailedTaskResult))]
+    [JsonSerializable(typeof(CancelledTaskResult))]
+    [JsonSerializable(typeof(InputRequiredTaskResult))]
+    [JsonSerializable(typeof(UpdateTaskRequestParams))]
+    [JsonSerializable(typeof(UpdateTaskResult))]
+    [JsonSerializable(typeof(CancelTaskRequestParams))]
+    [JsonSerializable(typeof(CancelTaskResult))]
+    [JsonSerializable(typeof(CreateTaskResult))]
 
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]

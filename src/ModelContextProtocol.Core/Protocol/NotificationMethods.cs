@@ -141,4 +141,14 @@ public static class NotificationMethods
     /// </para>
     /// </remarks>
     public const string CancelledNotification = "notifications/cancelled";
+
+    /// <summary>
+    /// The name of the notification sent by the server to push task status updates to subscribed clients.
+    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Each notification carries a complete task state for the current status, identical to what
+    /// <c>tasks/get</c> would have returned at that moment.
+    /// </remarks>
+    public const string TaskStatusNotification = "notifications/tasks";
 }
