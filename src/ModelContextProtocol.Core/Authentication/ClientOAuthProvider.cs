@@ -492,6 +492,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         var scope = GetScopeParameter(protectedResourceMetadata);
+        scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
         if (!string.IsNullOrEmpty(scope))
         {
             queryParamsDictionary["scope"] = scope!;
@@ -724,6 +725,37 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         return _configuredScopes;
+    }
+
+    /// <summary>
+    /// Augments the scope parameter with <c>offline_access</c> if the authorization server advertises it in
+    /// <c>scopes_supported</c> and it is not already present. This signals to OIDC-flavored authorization servers
+    /// that the client desires a refresh token, per SEP-2207.
+    /// </summary>
+    private static string? AugmentScopeWithOfflineAccess(string? scope, AuthorizationServerMetadata authServerMetadata)
+    {
+        const string OfflineAccess = "offline_access";
+
+        if (authServerMetadata.ScopesSupported?.Contains(OfflineAccess) is not true)
+        {
+            return scope;
+        }
+
+        if (scope is null)
+        {
+            return OfflineAccess;
+        }
+
+        // Check if offline_access is already in the scope string (space-separated tokens).
+        foreach (var token in scope.Split(' '))
+        {
+            if (token == OfflineAccess)
+            {
+                return scope;
+            }
+        }
+
+        return scope + " " + OfflineAccess;
     }
 
     /// <summary>
