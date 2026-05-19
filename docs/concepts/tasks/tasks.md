@@ -137,6 +137,58 @@ Task support levels:
 - `Optional` (default for async methods): Tool can be called with or without task augmentation
 - `Required`: Tool must be called with task augmentation
 
+### Deferred Task Creation with MRTR
+
+<!-- mlc-disable-next-line -->
+> [!WARNING]
+> Deferred task creation depends on both the [Tasks](xref:tasks) and [MRTR](xref:mrtr) experimental features.
+
+By default, when a client sends task metadata with a `tools/call` request, the SDK creates a task immediately and runs the tool in the background. **Deferred task creation** delays the task creation, letting the tool perform ephemeral [MRTR](xref:mrtr) exchanges first — for example, to confirm an action with the user or gather required parameters — before committing to a background task.
+
+To opt in, set `DeferTaskCreation = true` on the tool:
+
+```csharp
+McpServerTool.Create(
+    async (string vmName, McpServer server, CancellationToken ct) =>
+    {
+        // Ephemeral MRTR — uses incomplete result / retry cycle.
+        var confirmation = await server.ElicitAsync(new ElicitRequestParams
+        {
+            Message = $"Provision VM '{vmName}'? This will incur costs.",
+            RequestedSchema = new()
+        }, ct);
+
+        if (confirmation.Action != "confirm")
+        {
+            return "Cancelled by user.";
+        }
+
+        // Transition to a background task.
+        await server.CreateTaskAsync(ct);
+
+        // Background work — runs as a task, client polls for status.
+        await Task.Delay(TimeSpan.FromMinutes(5), ct);
+        return $"VM '{vmName}' provisioned successfully.";
+    },
+    new McpServerToolCreateOptions
+    {
+        Name = "provision-vm",
+        Description = "Provisions a VM with user confirmation",
+        DeferTaskCreation = true,
+        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional },
+    })
+```
+
+After <xref:ModelContextProtocol.Server.McpServer.CreateTaskAsync*> returns:
+
+- The MRTR phase ends. The client receives a `CreateTaskResult` with the `taskId`.
+- Any subsequent `ElicitAsync` or `SampleAsync` calls in the handler use the task's `input_required` / `tasks/input_response` workflow instead of MRTR.
+- The handler's cancellation token is re-linked to the task's lifecycle (TTL expiration, explicit `tasks/cancel`).
+
+If the tool returns without calling `CreateTaskAsync`, a normal (non-task) result is sent to the client — no task is created.
+
+For more details on the MRTR mechanism and the transition flow, see [Transitioning from MRTR to Tasks](xref:mrtr#transitioning-from-mrtr-to-tasks).
+
 ### Explicit Task Creation with `IMcpTaskStore`
 
 For more control over task lifecycle, tools can directly interact with <xref:ModelContextProtocol.IMcpTaskStore> and return an `McpTask`. This approach allows you to:

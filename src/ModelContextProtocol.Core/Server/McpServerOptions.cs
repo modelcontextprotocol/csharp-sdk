@@ -238,4 +238,23 @@ public sealed class McpServerOptions
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public bool SendTaskStatusNotifications { get; set; }
+
+    /// <summary>
+    /// Gets or sets an experimental protocol version that enables draft protocol features such as
+    /// Multi Round-Trip Requests (MRTR).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this version is accepted from clients during protocol version negotiation, and MRTR
+    /// is activated when the negotiated version matches. If a client does not request this version,
+    /// the server negotiates to the latest stable version and uses standard server-to-client JSON-RPC
+    /// requests for sampling and elicitation.
+    /// </para>
+    /// <para>
+    /// This property is intended for proof-of-concept and testing of draft MCP specification features
+    /// that have not yet been ratified.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
+    public string? ExperimentalProtocolVersion { get; set; }
 }

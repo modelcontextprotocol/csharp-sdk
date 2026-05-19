@@ -144,6 +144,13 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
 
+    // MCP MRTR (Multi Round-Trip Requests)
+    [JsonSerializable(typeof(IncompleteResult))]
+    [JsonSerializable(typeof(InputRequest))]
+    [JsonSerializable(typeof(InputResponse))]
+    [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
+    [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
+
     // MCP Task Request Params / Results
     [JsonSerializable(typeof(McpTask))]
     [JsonSerializable(typeof(McpTaskStatus))]
