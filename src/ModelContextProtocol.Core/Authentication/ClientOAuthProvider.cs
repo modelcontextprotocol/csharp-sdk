@@ -47,6 +47,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -714,16 +715,38 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
+        // Determine the scopes for the current operation from the challenge or metadata.
+        string? currentOperationScopes;
         if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
         {
-            return protectedResourceMetadata.WwwAuthenticateScope;
+            currentOperationScopes = protectedResourceMetadata.WwwAuthenticateScope;
         }
         else if (protectedResourceMetadata.ScopesSupported.Count > 0)
         {
-            return string.Join(" ", protectedResourceMetadata.ScopesSupported);
+            currentOperationScopes = string.Join(" ", protectedResourceMetadata.ScopesSupported);
+        }
+        else
+        {
+            currentOperationScopes = _configuredScopes;
         }
 
-        return _configuredScopes;
+        if (string.IsNullOrEmpty(currentOperationScopes))
+        {
+            // If we have previously requested scopes but nothing new, return the accumulated set.
+            return _previouslyRequestedScopes.Count > 0
+                ? string.Join(" ", _previouslyRequestedScopes)
+                : null;
+        }
+
+        // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
+        // to avoid losing permissions needed for other operations during step-up authorization.
+        var newScopes = currentOperationScopes!.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var scope in newScopes)
+        {
+            _previouslyRequestedScopes.Add(scope);
+        }
+
+        return string.Join(" ", _previouslyRequestedScopes);
     }
 
     /// <summary>

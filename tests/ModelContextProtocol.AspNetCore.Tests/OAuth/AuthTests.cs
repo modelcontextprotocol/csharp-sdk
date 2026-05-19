@@ -473,9 +473,13 @@ public class AuthTests : OAuthTestBase
                 McpServerTool.Create([McpServerTool(Name = "admin-tool")]
                 (ClaimsPrincipal user) =>
                 {
-                    // Tool now just checks if user has the required scopes
-                    // If they don't, it shouldn't get here due to middleware
-                    Assert.True(user.HasClaim("scope", adminScopes), "User should have admin scopes when tool executes");
+                    // Verify the user's scope claim contains all required admin scopes.
+                    // With scope accumulation (SEP-2350), the token scope will be the union
+                    // of previously granted and newly challenged scopes.
+                    var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                    var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+                    Assert.Contains("admin:read", scopeSet);
+                    Assert.Contains("admin:write", scopeSet);
                     return "Admin tool executed.";
                 }),
             ]);
@@ -510,9 +514,11 @@ public class AuthTests : OAuthTestBase
 
                         if (toolCallParams?.Name == "admin-tool")
                         {
-                            // Check if user has required scopes
+                            // Check if user has required scopes (scope claim contains all admin scopes)
                             var user = context.User;
-                            if (!user.HasClaim("scope", adminScopes))
+                            var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                            var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+                            if (!scopeSet.Contains("admin:read") || !scopeSet.Contains("admin:write"))
                             {
                                 // User lacks required scopes, return 403 before MapMcp processes the request
                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -554,7 +560,126 @@ public class AuthTests : OAuthTestBase
         var adminResult = await client.CallToolAsync("admin-tool", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("Admin tool executed.", adminResult.Content[0].ToString());
 
-        Assert.Equal(adminScopes, requestedScope);
+        // SEP-2350: Verify that the step-up authorization request includes the union
+        // of previously requested scopes (mcp:tools) and newly challenged scopes (admin:read admin:write).
+        var requestedScopeSet = new HashSet<string>(requestedScope!.Split(' '));
+        Assert.Contains("mcp:tools", requestedScopeSet);
+        Assert.Contains("admin:read", requestedScopeSet);
+        Assert.Contains("admin:write", requestedScopeSet);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_AccumulatesScopesAcrossMultipleStepUps()
+    {
+        // SEP-2350: Verify scope accumulation across multiple step-up authorization challenges.
+        // First call requires "files:read", second call requires "files:write".
+        // The second authorization request should include both "mcp:tools files:read files:write".
+
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "read-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Read tool executed.";
+                }),
+                McpServerTool.Create([McpServerTool(Name = "write-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Write tool executed.";
+                }),
+            ]);
+
+        List<string?> requestedScopes = [];
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        var user = context.User;
+                        var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                        var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+
+                        if (toolCallParams?.Name == "read-tool" && !scopeSet.Contains("files:read"))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:read\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+
+                        if (toolCallParams?.Name == "write-tool" && !scopeSet.Contains("files:write"))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:write\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScopes.Add(query["scope"].ToString());
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Initial auth gets "mcp:tools" from protected resource metadata
+        Assert.Single(requestedScopes);
+        Assert.Equal("mcp:tools", requestedScopes[0]);
+
+        // First step-up: read-tool requires "files:read"
+        var readResult = await client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("Read tool executed.", readResult.Content[0].ToString());
+        Assert.Equal(2, requestedScopes.Count);
+        var secondScopeSet = new HashSet<string>(requestedScopes[1]!.Split(' '));
+        Assert.Contains("mcp:tools", secondScopeSet);
+        Assert.Contains("files:read", secondScopeSet);
+
+        // Second step-up: write-tool requires "files:write"
+        var writeResult = await client.CallToolAsync("write-tool", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("Write tool executed.", writeResult.Content[0].ToString());
+        Assert.Equal(3, requestedScopes.Count);
+        var thirdScopeSet = new HashSet<string>(requestedScopes[2]!.Split(' '));
+        Assert.Contains("mcp:tools", thirdScopeSet);
+        Assert.Contains("files:read", thirdScopeSet);
+        Assert.Contains("files:write", thirdScopeSet);
     }
 
     [Fact]
