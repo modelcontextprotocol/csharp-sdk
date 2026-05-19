@@ -240,8 +240,37 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         return jsonRpcResponse;
     }
 
-    private Task<HttpResponseMessage> PostJsonRpcAsync(string json) =>
-        HttpClient.PostAsync("", JsonContent(json), TestContext.Current.CancellationToken);
+    private Task<HttpResponseMessage> PostJsonRpcAsync(string json)
+    {
+        var content = JsonContent(json);
+
+        // DRAFT-2026-v1 requires Mcp-Method and (for tools/call) Mcp-Name headers per SEP-2243.
+        // Parse the body to derive them and attach to this request only.
+        var bodyNode = JsonNode.Parse(json);
+        if (bodyNode is JsonObject obj)
+        {
+            if (obj["method"]?.GetValue<string>() is { } method)
+            {
+                content.Headers.Add("Mcp-Method", method);
+
+                if (obj["params"] is JsonObject paramsObj)
+                {
+                    string? mcpName = method switch
+                    {
+                        "tools/call" or "prompts/get" => paramsObj["name"]?.GetValue<string>(),
+                        "resources/read" => paramsObj["uri"]?.GetValue<string>(),
+                        _ => null,
+                    };
+                    if (mcpName is not null)
+                    {
+                        content.Headers.Add("Mcp-Name", mcpName);
+                    }
+                }
+            }
+        }
+
+        return HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
+    }
 
     private long _lastRequestId = 1;
 

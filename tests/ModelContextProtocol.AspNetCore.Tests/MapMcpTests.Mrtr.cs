@@ -10,27 +10,15 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public abstract partial class MapMcpTests
 {
-    private ServerMessageTracker ConfigureExperimentalServer(params Delegate[] tools)
+    private ServerMessageTracker ConfigureServer(params Delegate[] tools)
     {
         var messageTracker = new ServerMessageTracker();
         Builder.Services.AddMcpServer(options =>
         {
-            options.ServerInfo = new Implementation { Name = "ExperimentalServer", Version = "1" };
-            // Don't pin a protocol version here — let it be negotiated based on what the client
-            // requests. DRAFT-2026-v1 is in SupportedProtocolVersions, so an opt-in client gets it.
-            messageTracker.AddFilters(options.Filters.Message);
-        })
-        .WithHttpTransport(ConfigureStateless)
-        .WithTools(tools.Select(t => McpServerTool.Create(t)));
-        return messageTracker;
-    }
-
-    private ServerMessageTracker ConfigureDefaultServer(params Delegate[] tools)
-    {
-        var messageTracker = new ServerMessageTracker();
-        Builder.Services.AddMcpServer(options =>
-        {
-            options.ServerInfo = new Implementation { Name = "DefaultServer", Version = "1" };
+            options.ServerInfo = new Implementation { Name = "MrtrTestServer", Version = "1" };
+            // Do not pin a protocol version — let it be negotiated based on what the client requests.
+            // DRAFT-2026-v1 is in SupportedProtocolVersions, so an opt-in client gets it; others get
+            // the latest non-draft.
             messageTracker.AddFilters(options.Filters.Message);
         })
         .WithHttpTransport(ConfigureStateless)
@@ -164,75 +152,34 @@ public abstract partial class MapMcpTests
     }
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalServer, bool experimentalClient)
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalClient)
     {
-        // Configure server — experimental or default based on parameter.
-        var messageTracker = experimentalServer
-            ? ConfigureExperimentalServer(MrtrMixed)
-            : ConfigureDefaultServer(MrtrMixed);
+        // The server always supports DRAFT-2026-v1 (it's in SupportedProtocolVersions). The
+        // client opts in by pinning ProtocolVersion = "DRAFT-2026-v1"; otherwise it negotiates
+        // the latest non-draft version and the server falls back to the exception path with
+        // legacy JSON-RPC resolution.
+        var messageTracker = ConfigureServer(MrtrMixed);
 
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
 
-        if (experimentalServer)
+        // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3.
+        // In stateless mode, those calls succeed only when the request is still open on the same
+        // SSE stream — which it is — so the tool runs end-to-end as long as the input requests
+        // themselves can be resolved (MRTR client) or replayed via legacy JSON-RPC (stateful + legacy).
+        if (Stateless && !experimentalClient)
         {
-            // Success cases: both exception and await APIs complete.
-            // Skip stateless — await API requires handler suspension (stateful only).
-            Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
-
+            // Stateless + legacy client: InputRequiredException cannot be resolved (no MRTR wire
+            // and no persistent server instance for the backcompat retry loop). The server returns
+            // a JSON-RPC error.
             await using var client = await ConnectAsync(configureClient: configureClient);
-
-            if (experimentalClient)
-            {
-                // Both experimental — MRTR end-to-end.
-                Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
-            }
-            else
-            {
-                // Backcompat — server experimental, client default. Legacy JSON-RPC.
-                Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
-            }
-
-            var result = await client.CallToolAsync("mrtr-mixed",
-                cancellationToken: TestContext.Current.CancellationToken);
-
-            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-            Assert.True(result.IsError is not true);
-            var parts = text.Split('|');
-            Assert.Equal(3, parts.Length);
-
-            // confirmation from round 2 elicitation
-            Assert.Equal("accept", parts[0]);
-            // greeting from await SampleAsync — our test handler returns "LLM:{prompt}"
-            Assert.StartsWith("LLM:", parts[1]);
-            // signoff from await ElicitAsync
-            Assert.Equal("accept", parts[2]);
-
-            if (experimentalClient)
-            {
-                messageTracker.AssertMrtrUsed();
-            }
-            else
-            {
-                messageTracker.AssertMrtrNotUsed();
-            }
-        }
-        else if (Stateless)
-        {
-            // Stateless + non-experimental: InputRequiredException cannot be resolved
-            // (no MRTR and no stateful backcompat). The server returns an error.
-            await using var client = await ConnectAsync(configureClient: configureClient);
-
             var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
                 client.CallToolAsync("mrtr-mixed",
                     cancellationToken: TestContext.Current.CancellationToken).AsTask());
@@ -240,25 +187,41 @@ public abstract partial class MapMcpTests
             Assert.Equal(McpErrorCode.InternalError, ex.ErrorCode);
             Assert.Contains("stateless", ex.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("MRTR", ex.Message);
+            return;
+        }
+
+        if (Stateless && experimentalClient)
+        {
+            // Stateless + MRTR client: the await-style portion (server.SampleAsync on round 3)
+            // requires handler suspension across requests, which only works in stateful mode.
+            // Skip this combination — the await API is documented as stateful-only.
+            Assert.SkipWhen(true, "Await-style API requires handler suspension (stateful only).");
+            return;
+        }
+
+        // Stateful path — both client modes complete all 3 rounds.
+        await using var statefulClient = await ConnectAsync(configureClient: configureClient);
+
+        Assert.Equal(experimentalClient ? "DRAFT-2026-v1" : "2025-11-25",
+            statefulClient.NegotiatedProtocolVersion);
+
+        var result = await statefulClient.CallToolAsync("mrtr-mixed",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.True(result.IsError is not true);
+        var parts = text.Split('|');
+        Assert.Equal(3, parts.Length);
+        Assert.Equal("accept", parts[0]);
+        Assert.StartsWith("LLM:", parts[1]);
+        Assert.Equal("accept", parts[2]);
+
+        if (experimentalClient)
+        {
+            messageTracker.AssertMrtrUsed();
         }
         else
         {
-            // Stateful + non-experimental: backcompat resolves InputRequiredException
-            // via legacy JSON-RPC requests. The tool completes all 3 rounds.
-            await using var client = await ConnectAsync(configureClient: configureClient);
-
-            var result = await client.CallToolAsync("mrtr-mixed",
-                cancellationToken: TestContext.Current.CancellationToken);
-
-            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-            Assert.True(result.IsError is not true);
-            var parts = text.Split('|');
-            Assert.Equal(3, parts.Length);
-
-            Assert.Equal("accept", parts[0]);
-            Assert.StartsWith("LLM:", parts[1]);
-            Assert.Equal("accept", parts[2]);
-
             messageTracker.AssertMrtrNotUsed();
         }
     }
@@ -295,34 +258,28 @@ public abstract partial class MapMcpTests
     }
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task Mrtr_ParallelAwaits(bool experimentalServer, bool experimentalClient)
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mrtr_ParallelAwaits(bool experimentalClient)
     {
         // Parallel awaits work with regular JSON-RPC but fail with MRTR because
         // MrtrContext only supports one exchange at a time (TrySetResult gate).
         Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
 
-        var messageTracker = experimentalServer
-            ? ConfigureExperimentalServer(MrtrParallelAwait)
-            : ConfigureDefaultServer(MrtrParallelAwait);
+        var messageTracker = ConfigureServer(MrtrParallelAwait);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
 
-        if (experimentalServer && experimentalClient)
+        if (experimentalClient)
         {
-            // Both experimental — MRTR active. Parallel awaits hit the MrtrContext
-            // concurrency gate and the second call throws InvalidOperationException,
-            // which the tool catches and returns as text.
+            // MRTR active. Parallel awaits hit the MrtrContext concurrency gate and the second
+            // call throws InvalidOperationException, which the tool catches and returns as text.
             Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
             var result = await client.CallToolAsync("mrtr-parallel-await",
@@ -370,7 +327,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_LowLevel_Roots_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureExperimentalServer(
+        var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-roots")] (RequestContext<CallToolRequestParams> context) =>
             {
                 if (context.Params!.InputResponses is { } responses &&
@@ -446,7 +403,7 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_MultiRoundTrip_Completes(bool experimentalClient)
     {
-        var messageTracker = ConfigureExperimentalServer(MrtrMulti);
+        var messageTracker = ConfigureServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -492,7 +449,7 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_IsMrtrSupported(bool experimentalClient)
     {
-        ConfigureExperimentalServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
+        ConfigureServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -555,7 +512,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_ConcurrentThreeInputs_ResolvedSimultaneously()
     {
-        var messageTracker = ConfigureExperimentalServer(MrtrConcurrentThree);
+        var messageTracker = ConfigureServer(MrtrConcurrentThree);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -607,7 +564,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_Experimental_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
-        var messageTracker = ConfigureExperimentalServer(
+        var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-loadshed")] (RequestContext<CallToolRequestParams> context) =>
             {
                 if (context.Params!.RequestState is { } state)
@@ -637,7 +594,7 @@ public abstract partial class MapMcpTests
     public async Task Mrtr_Backcompat_Roots_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureExperimentalServer(
+        var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-roots-backcompat")] (RequestContext<CallToolRequestParams> context) =>
             {
                 if (context.Params!.InputResponses is { } responses &&
@@ -673,7 +630,7 @@ public abstract partial class MapMcpTests
     public async Task Mrtr_Backcompat_MultipleInputRequests_ResolvedViaLegacyJsonRpc()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        var messageTracker = ConfigureExperimentalServer(
+        var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-multi-input")] (RequestContext<CallToolRequestParams> context) =>
             {
                 if (context.Params!.InputResponses is { } responses &&
@@ -726,7 +683,7 @@ public abstract partial class MapMcpTests
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
         int elicitCallCount = 0;
 
-        ConfigureExperimentalServer(
+        ConfigureServer(
             [McpServerTool(Name = "mrtr-always-incomplete")] (RequestContext<CallToolRequestParams> context) =>
             {
                 // Always throw — never complete
@@ -769,7 +726,7 @@ public abstract partial class MapMcpTests
     public async Task Mrtr_Backcompat_EmptyInputRequests_FailsWithError()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
-        ConfigureExperimentalServer(
+        ConfigureServer(
             [McpServerTool(Name = "mrtr-empty-inputs")] (RequestContext<CallToolRequestParams> context) =>
             {
                 throw new InputRequiredException(
@@ -795,7 +752,7 @@ public abstract partial class MapMcpTests
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
 
-        ConfigureExperimentalServer(MrtrElicit);
+        ConfigureServer(MrtrElicit);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
