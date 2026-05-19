@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -22,6 +23,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly McpSessionHandler _sessionHandler;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
+    private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -67,6 +69,10 @@ internal sealed partial class McpClientImpl : McpClient
             incomingMessageFilter: null,
             outgoingMessageFilter: null,
             _logger);
+
+        ToolDiscovered = tool => _toolCache[tool.Name] = tool;
+        ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
+        ToolCacheClearing = () => _toolCache.Clear();
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -633,7 +639,22 @@ internal sealed partial class McpClientImpl : McpClient
 
     /// <inheritdoc/>
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
-        => _sessionHandler.SendRequestAsync(request, cancellationToken);
+    {
+        // For tools/call requests, attach the cached tool definition to the message context
+        // so the transport can add custom Mcp-Param-* headers based on x-mcp-header schema annotations.
+        if (request.Method == RequestMethods.ToolsCall &&
+            request.Params is System.Text.Json.Nodes.JsonObject paramsObj &&
+            paramsObj.TryGetPropertyValue("name", out var nameNode) &&
+            nameNode?.GetValue<string>() is { } toolName &&
+            _toolCache.TryGetValue(toolName, out var tool))
+        {
+            request.Context ??= new();
+            request.Context.Items ??= new Dictionary<string, object?>();
+            request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+        }
+
+        return _sessionHandler.SendRequestAsync(request, cancellationToken);
+    }
 
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -685,5 +706,8 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]
+    private partial void LogToolRejected(string toolName, string reason);
 
 }
