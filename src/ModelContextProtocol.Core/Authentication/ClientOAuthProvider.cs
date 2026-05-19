@@ -33,11 +33,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly Uri? _clientMetadataDocumentUri;
 
-    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrResponseDelegate and _dcrApplicationType are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
     private readonly Uri? _dcrClientUri;
     private readonly string? _dcrInitialAccessToken;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
+    private readonly string? _dcrApplicationType;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -89,6 +90,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
+        _dcrApplicationType = options.DynamicClientRegistration?.ApplicationType;
+#pragma warning restore MCPEXP001
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
@@ -654,6 +658,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = GetScopeParameter(protectedResourceMetadata),
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
+            ApplicationType = _dcrApplicationType ?? (IsLocalhostRedirectUri(_redirectUri) ? "native" : "web"),
+#pragma warning restore MCPEXP001
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -711,6 +718,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
+
+    private static bool IsLocalhostRedirectUri(Uri redirectUri)
+        => redirectUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || (System.Net.IPAddress.TryParse(redirectUri.Host, out var ipAddress) && System.Net.IPAddress.IsLoopback(ipAddress));
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {

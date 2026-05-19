@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
@@ -46,4 +48,21 @@ public sealed class DynamicClientRegistrationOptions
     /// </para>
     /// </remarks>
     public Func<DynamicClientRegistrationResponse, CancellationToken, Task>? ResponseDelegate { get; set; }
+
+    /// <summary>
+    /// Gets or sets the application type to use during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Valid values are "native" and "web". If not specified, the application type will be
+    /// automatically determined based on the redirect URI: "native" for localhost/127.0.0.1
+    /// redirect URIs, "web" for all others.
+    /// </para>
+    /// <para>
+    /// Per the MCP specification, native applications (desktop, mobile, CLI, localhost web apps)
+    /// should use "native", and web applications (remote browser-based) should use "web".
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.DcrApplicationType_DiagnosticId, UrlFormat = Experimentals.DcrApplicationType_Url)]
+    public string? ApplicationType { get; set; }
 }

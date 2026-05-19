@@ -1261,4 +1261,84 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task DynamicClientRegistration_SendsNativeApplicationType_ForLocalhostRedirectUri()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("native", TestOAuthServer.LastRegistrationApplicationType);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_SendsWebApplicationType_ForNonLocalhostRedirectUri()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("https://myapp.example.com/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("web", TestOAuthServer.LastRegistrationApplicationType);
+    }
+
+    [Fact]
+#pragma warning disable MCPEXP001 // application_type in DCR is experimental per SEP-837
+    public async Task DynamicClientRegistration_UsesExplicitApplicationType_WhenConfigured()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                // localhost redirect URI would normally auto-detect as "native",
+                // but the explicit setting should override it.
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client",
+                    ApplicationType = "web",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+#pragma warning restore MCPEXP001
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("web", TestOAuthServer.LastRegistrationApplicationType);
+    }
 }
