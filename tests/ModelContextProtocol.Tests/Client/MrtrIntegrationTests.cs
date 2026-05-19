@@ -31,7 +31,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
         services.Configure<McpServerOptions>(options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -79,9 +79,9 @@ public class MrtrIntegrationTests : ClientServerTestBase
             McpServerTool.Create(
                 (McpServer server) =>
                 {
-                    // Low-level MRTR: throw IncompleteResultException directly instead of using ElicitAsync.
+                    // Low-level MRTR: throw InputRequiredException directly instead of using ElicitAsync.
                     // This should NOT be logged at Error level — it's normal MRTR control flow.
-                    throw new IncompleteResultException(new IncompleteResult
+                    throw new InputRequiredException(new InputRequiredResult
                     {
                         InputRequests = new Dictionary<string, InputRequest>
                         {
@@ -96,7 +96,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 new McpServerToolCreateOptions
                 {
                     Name = "incomplete-result-tool",
-                    Description = "A tool that throws IncompleteResultException for low-level MRTR"
+                    Description = "A tool that throws InputRequiredException for low-level MRTR"
                 }),
             McpServerTool.Create(
                 async (McpServer server, RequestContext<CallToolRequestParams> context, CancellationToken ct) =>
@@ -104,7 +104,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                     var requestState = context.Params!.RequestState;
                     var inputResponses = context.Params!.InputResponses;
 
-                    // Final round: we have the requestState from the IncompleteResultException
+                    // Final round: we have the requestState from the InputRequiredException
                     if (requestState == "got-name" && inputResponses is not null
                         && inputResponses.TryGetValue("age", out var ageResponse))
                     {
@@ -123,8 +123,8 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
                     var name = nameResult.Content?.FirstOrDefault().Value;
 
-                    // Second round: switch to low-level IncompleteResultException (handler dies)
-                    throw new IncompleteResultException(
+                    // Second round: switch to low-level InputRequiredException (handler dies)
+                    throw new InputRequiredException(
                         inputRequests: new Dictionary<string, InputRequest>
                         {
                             ["age"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -138,7 +138,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 new McpServerToolCreateOptions
                 {
                     Name = "elicit-then-incomplete-result-tool",
-                    Description = "A tool that uses high-level ElicitAsync then throws IncompleteResultException"
+                    Description = "A tool that uses high-level ElicitAsync then throws InputRequiredException"
                 }),
             McpServerTool.Create(
                 async (McpServer server) =>
@@ -177,7 +177,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
     {
         // Simplest MRTR success: experimental server + experimental client, one elicitation round.
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult
             {
@@ -209,9 +209,9 @@ public class MrtrIntegrationTests : ClientServerTestBase
         // call sees the TCS already completed and throws InvalidOperationException.
         // That exception is caught by the tool error handler and returned as IsError.
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
 
-        // The first concurrent call (ElicitAsync) produces an IncompleteResult.
+        // The first concurrent call (ElicitAsync) produces an InputRequiredResult.
         // The client resolves it via this handler, which unblocks the first task.
         // Then Task.WhenAll surfaces the InvalidOperationException from the second task.
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
@@ -242,14 +242,14 @@ public class MrtrIntegrationTests : ClientServerTestBase
     public async Task CallToolAsync_ElicitThenIncompleteResultException_WorksEndToEnd()
     {
         // Verify that a handler can mix high-level MRTR (ElicitAsync) with low-level MRTR
-        // (IncompleteResultException) in a single logical flow. The handler:
-        // 1. Calls ElicitAsync (high-level: handler suspends, IncompleteResult returned)
-        // 2. Gets the response, then throws IncompleteResultException (low-level: handler dies)
+        // (InputRequiredException) in a single logical flow. The handler:
+        // 1. Calls ElicitAsync (high-level: handler suspends, InputRequiredResult returned)
+        // 2. Gets the response, then throws InputRequiredException (low-level: handler dies)
         // 3. On the next retry, a fresh handler invocation processes requestState + inputResponses
         StartServer();
         int elicitationCallCount = 0;
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             elicitationCallCount++;
@@ -265,7 +265,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 });
             }
 
-            // Second elicitation from the IncompleteResultException path
+            // Second elicitation from the InputRequiredException path
             return new ValueTask<ElicitResult>(new ElicitResult
             {
                 Action = "accept",
@@ -287,13 +287,13 @@ public class MrtrIntegrationTests : ClientServerTestBase
         Assert.Equal("age=30", Assert.IsType<TextContentBlock>(content).Text);
         Assert.NotEqual(true, result.IsError);
 
-        // Two elicitations: one from ElicitAsync, one from IncompleteResultException's inputRequests
+        // Two elicitations: one from ElicitAsync, one from InputRequiredException's inputRequests
         Assert.Equal(2, elicitationCallCount);
 
-        // Verify no error-level logs for IncompleteResultException
+        // Verify no error-level logs for InputRequiredException
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
-            m.Exception is IncompleteResultException);
+            m.Exception is InputRequiredException);
         _messageTracker.AssertMrtrUsed();
     }
 
@@ -308,7 +308,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         // input resolution failures back to the server.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             throw new InvalidOperationException("Client-side elicitation failure");
@@ -343,7 +343,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         // SendMessageAsync should throw InvalidOperationException if the message is a
         // JsonRpcRequest, regardless of MRTR state. Use SendRequestAsync for requests.
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -363,12 +363,12 @@ public class MrtrIntegrationTests : ClientServerTestBase
     {
         // This test simulates a non-compliant server that negotiates MRTR
         // but sends legacy elicitation/create JSON-RPC requests instead of
-        // using IncompleteResult. The client should handle it but log a warning.
+        // using InputRequiredResult. The client should handle it but log a warning.
         StartServer(); // Required for base class DisposeAsync cleanup
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
@@ -459,14 +459,14 @@ public class MrtrIntegrationTests : ClientServerTestBase
     [Fact]
     public async Task IncompleteResultOnNonMrtrSession_LogsWarning()
     {
-        // This test simulates a non-compliant server that sends an IncompleteResult
+        // This test simulates a non-compliant server that sends an InputRequiredResult
         // to a client that did NOT negotiate MRTR. The client should still process it
         // (resilience), but log a warning about the unexpected protocol behavior.
         StartServer(); // Required for base class DisposeAsync cleanup
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        // Client does NOT set ExperimentalProtocolVersion — standard protocol only
+        // Client does NOT set DRAFT-2026-v1 — standard protocol only
         var clientOptions = new McpClientOptions();
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult
@@ -530,10 +530,10 @@ public class MrtrIntegrationTests : ClientServerTestBase
             Assert.NotNull(callRequest);
             Assert.Equal("tools/call", callRequest.Method);
 
-            // Non-compliant server sends IncompleteResult on standard protocol session!
-            var incompleteResult = new JsonObject
+            // Non-compliant server sends InputRequiredResult on standard protocol session!
+            var InputRequiredResult = new JsonObject
             {
-                ["result_type"] = "incomplete",
+                ["resultType"] = "input_required",
                 ["inputRequests"] = new JsonObject
                 {
                     ["confirm_1"] = JsonSerializer.SerializeToNode(
@@ -549,7 +549,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             var incompleteResponse = new JsonRpcResponse
             {
                 Id = callRequest.Id,
-                Result = incompleteResult,
+                Result = InputRequiredResult,
             };
             await WriteJsonRpcAsync(serverWriter, incompleteResponse);
 
@@ -578,7 +578,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             await WriteJsonRpcAsync(serverWriter, normalResult);
         }, cancellationToken);
 
-        // Client calls the tool — the non-compliant server will send IncompleteResult
+        // Client calls the tool — the non-compliant server will send InputRequiredResult
         var response = await client.SendRequestAsync(
             new JsonRpcRequest
             {
@@ -598,10 +598,10 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var content = Assert.Single(result.Content);
         Assert.Equal("completed-without-mrtr", Assert.IsType<TextContentBlock>(content).Text);
 
-        // Verify the warning was logged about IncompleteResult on non-MRTR session
+        // Verify the warning was logged about InputRequiredResult on non-MRTR session
         Assert.Contains(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Warning &&
-            m.Message.Contains("IncompleteResult") &&
+            m.Message.Contains("InputRequiredResult") &&
             m.Message.Contains("did not negotiate MRTR"));
 
         // Clean up

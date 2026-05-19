@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 /// <see cref="McpServer.SampleAsync(ModelContextProtocol.Protocol.CreateMessageRequestParams, System.Threading.CancellationToken)"/>,
 /// the handler sets the exchange TCS and suspends on a response TCS. The pipeline detects the exchange
 /// via <see cref="InitialExchangeTask"/> or the task returned by <see cref="ResetForNextExchange"/>,
-/// sends an <see cref="IncompleteResult"/>, and later completes the response TCS when the retry arrives.
+/// sends an <see cref="InputRequiredResult"/>, and later completes the response TCS when the retry arrives.
 /// </summary>
 internal sealed class MrtrContext
 {

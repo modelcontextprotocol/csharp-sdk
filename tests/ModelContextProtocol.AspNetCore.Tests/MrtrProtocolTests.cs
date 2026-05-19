@@ -16,7 +16,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// <summary>
 /// Protocol-level tests for Multi Round-Trip Requests (MRTR).
 /// These tests send raw JSON-RPC requests via HTTP and verify protocol-level behavior
-/// including IncompleteResult structure, retry with inputResponses, and error handling.
+/// including InputRequiredResult structure, retry with inputResponses, and error handling.
 /// </summary>
 public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
@@ -31,7 +31,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                 Name = nameof(MrtrProtocolTests),
                 Version = "1",
             };
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
         }).WithTools([
             McpServerTool.Create(
                 async (string message, McpServer server, CancellationToken ct) =>
@@ -83,7 +83,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
 
         var response = await PostJsonRpcAsync(CallTool("throwing-tool"));
 
-        // Should be a JSON-RPC error, not an IncompleteResult
+        // Should be a JSON-RPC error, not an InputRequiredResult
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
@@ -116,7 +116,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
 
         // Invalid requestState should result in a fresh tool invocation
-        // (the tool will return IncompleteResult since it calls ElicitAsync)
+        // (the tool will return InputRequiredResult since it calls ElicitAsync)
         // or an error, depending on the implementation.
         // In our implementation, unrecognized requestState triggers a new invocation.
         Assert.True(
@@ -134,9 +134,9 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         var response = await PostJsonRpcAsync(CallTool("elicit-tool", """{"message":"Please confirm"}"""));
         var rpcResponse = await AssertSingleSseResponseAsync(response);
 
-        // Verify we got an IncompleteResult (handler is now suspended, continuation stored).
+        // Verify we got an InputRequiredResult (handler is now suspended, continuation stored).
         var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
-        Assert.Equal("incomplete", resultObj["result_type"]?.GetValue<string>());
+        Assert.Equal("input_required", resultObj["resultType"]?.GetValue<string>());
         var requestState = resultObj["requestState"]!.GetValue<string>();
         Assert.False(string.IsNullOrEmpty(requestState));
 

@@ -9,7 +9,7 @@ public static class MrtrSerializationTests
     [Fact]
     public static void IncompleteResult_SerializationRoundTrip_PreservesAllProperties()
     {
-        var original = new IncompleteResult
+        var original = new InputRequiredResult
         {
             InputRequests = new Dictionary<string, InputRequest>
             {
@@ -28,10 +28,10 @@ public static class MrtrSerializationTests
         };
 
         string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<IncompleteResult>(json, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<InputRequiredResult>(json, McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(deserialized);
-        Assert.Equal("incomplete", deserialized.ResultType);
+        Assert.Equal("input_required", deserialized.ResultType);
         Assert.Equal("correlation-123", deserialized.RequestState);
         Assert.NotNull(deserialized.InputRequests);
         Assert.Equal(2, deserialized.InputRequests.Count);
@@ -42,14 +42,14 @@ public static class MrtrSerializationTests
     [Fact]
     public static void IncompleteResult_HasResultTypeIncomplete()
     {
-        var result = new IncompleteResult();
-        Assert.Equal("incomplete", result.ResultType);
+        var result = new InputRequiredResult();
+        Assert.Equal("input_required", result.ResultType);
     }
 
     [Fact]
     public static void IncompleteResult_ResultType_AppearsInJson()
     {
-        var result = new IncompleteResult
+        var result = new InputRequiredResult
         {
             RequestState = "abc",
         };
@@ -58,7 +58,7 @@ public static class MrtrSerializationTests
         var node = JsonNode.Parse(json);
 
         Assert.NotNull(node);
-        Assert.Equal("incomplete", (string?)node["result_type"]);
+        Assert.Equal("input_required", (string?)node["resultType"]);
         Assert.Equal("abc", (string?)node["requestState"]);
     }
 
@@ -274,7 +274,7 @@ public static class MrtrSerializationTests
         var node = JsonNode.Parse(json);
 
         // result_type should not appear for normal results
-        Assert.Null(node?["result_type"]);
+        Assert.Null(node?["resultType"]);
     }
 
     [Fact]

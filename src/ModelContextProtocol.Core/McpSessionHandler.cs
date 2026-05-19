@@ -32,12 +32,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>
-    /// The experimental protocol version that enables MRTR (Multi Round-Trip Requests).
-    /// This version is not in <see cref="SupportedProtocolVersions"/> and is only accepted
-    /// when <see cref="McpServerOptions.ExperimentalProtocolVersion"/> or
-    /// <see cref="McpClientOptions.ExperimentalProtocolVersion"/> is set to this value.
+    /// The draft protocol version that enables MRTR (Multi Round-Trip Requests) per SEP-2322.
+    /// Clients and servers opt in by setting <see cref="McpClientOptions.ProtocolVersion"/>
+    /// or <see cref="McpServerOptions.ProtocolVersion"/> to this value.
     /// </summary>
-    internal const string ExperimentalProtocolVersion = "2026-06-XX";
+    internal const string DraftProtocolVersion = "DRAFT-2026-v1";
 
     /// <summary>
     /// All protocol versions supported by this implementation.
@@ -49,7 +48,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         "2025-03-26",
         "2025-06-18",
         LatestProtocolVersion,
-        "DRAFT-2026-v1",
+        DraftProtocolVersion,
     ];
 
     /// <summary>

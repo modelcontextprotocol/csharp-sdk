@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// An <see cref="InputRequest"/> wraps a server-to-client request such as
 /// <see cref="RequestMethods.SamplingCreateMessage"/>, <see cref="RequestMethods.ElicitationCreate"/>,
-/// or <see cref="RequestMethods.RootsList"/>. It is included in an <see cref="IncompleteResult"/>
+/// or <see cref="RequestMethods.RootsList"/>. It is included in an <see cref="InputRequiredResult"/>
 /// when the server needs additional input before it can complete a client-initiated request.
 /// </para>
 /// <para>

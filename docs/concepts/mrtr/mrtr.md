@@ -26,10 +26,10 @@ MRTR is useful when:
 ## How MRTR works
 
 1. The client calls a tool on the server via `tools/call`.
-2. The server tool determines it needs client input and returns an `IncompleteResult` containing `inputRequests` and/or `requestState`.
+2. The server tool determines it needs client input and returns an `InputRequiredResult` containing `inputRequests` and/or `requestState`.
 3. The client resolves each input request (e.g., prompts the user for elicitation, calls an LLM for sampling).
 4. The client retries the original `tools/call` with `inputResponses` (keyed to the input requests) and `requestState` echoed back.
-5. The server processes the responses and either returns a final result or another `IncompleteResult` for additional rounds.
+5. The server processes the responses and either returns a final result or another `InputRequiredResult` for additional rounds.
 
 ## Opting in
 
@@ -130,7 +130,7 @@ public static string MyTool(
 
 ### Returning an incomplete result
 
-Throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> to return an incomplete result to the client. The exception carries an <xref:ModelContextProtocol.Protocol.IncompleteResult> containing `inputRequests` and/or `requestState`:
+Throw <xref:ModelContextProtocol.Protocol.InputRequiredException> to return an incomplete result to the client. The exception carries an <xref:ModelContextProtocol.Protocol.InputRequiredResult> containing `inputRequests` and/or `requestState`:
 
 ```csharp
 [McpServerTool, Description("Stateless tool managing its own MRTR flow")]
@@ -155,7 +155,7 @@ public static string StatelessTool(
     }
 
     // First call — request user input
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["user_answer"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -217,7 +217,7 @@ public static string DeferredTool(
 
     // Defer work to a later retry
     var initialState = new MyState { Step = 1 };
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         requestState: Convert.ToBase64String(
             JsonSerializer.SerializeToUtf8Bytes(initialState)));
 }
@@ -227,7 +227,7 @@ The client automatically retries `requestState`-only incomplete results, echoing
 
 ### Multiple round trips
 
-A tool can perform multiple rounds of interaction by throwing `IncompleteResultException` multiple times across retries:
+A tool can perform multiple rounds of interaction by throwing `InputRequiredException` multiple times across retries:
 
 ```csharp
 [McpServerTool, Description("Multi-step wizard")]
@@ -250,7 +250,7 @@ public static string WizardTool(
         var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
 
         // Second round — ask for age
-        throw new IncompleteResultException(
+        throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
                 ["age"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -277,7 +277,7 @@ public static string WizardTool(
     }
 
     // First round — ask for name
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["name"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -332,7 +332,7 @@ When a server has MRTR enabled but the connected client does not:
 
 ### Backward compatibility for MRTR-native tools
 
-Tools written with the low-level MRTR pattern (`IncompleteResultException`) work automatically with clients that don't support MRTR. When a tool throws `IncompleteResultException` and the client hasn't negotiated MRTR, the SDK resolves each `InputRequest` by sending the corresponding standard JSON-RPC call (elicitation, sampling, or roots) to the client, then retries the handler with the resolved responses.
+Tools written with the low-level MRTR pattern (`InputRequiredException`) work automatically with clients that don't support MRTR. When a tool throws `InputRequiredException` and the client hasn't negotiated MRTR, the SDK resolves each `InputRequest` by sending the corresponding standard JSON-RPC call (elicitation, sampling, or roots) to the client, then retries the handler with the resolved responses.
 
 This means you can write a single tool implementation using the MRTR-native pattern and it will work with any client:
 
@@ -350,7 +350,7 @@ public static string GetWeather(
     }
 
     // First call: request the user's preferred units
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["units"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -363,8 +363,8 @@ public static string GetWeather(
 }
 ```
 
-- **With an MRTR client**: The `IncompleteResult` is sent over the wire. The client resolves the elicitation and retries with `inputResponses`.
-- **Without MRTR**: The SDK sends a standard `elicitation/create` JSON-RPC request to the client, collects the response, and retries the handler internally. The client never sees the `IncompleteResult`.
+- **With an MRTR client**: The `InputRequiredResult` is sent over the wire. The client resolves the elicitation and retries with `inputResponses`.
+- **Without MRTR**: The SDK sends a standard `elicitation/create` JSON-RPC request to the client, collects the response, and retries the handler internally. The client never sees the `InputRequiredResult`.
 
 > [!NOTE]
 > The backcompat retry loop resolves up to 10 rounds. Tools that need more rounds should use the high-level API (`ElicitAsync`) instead.

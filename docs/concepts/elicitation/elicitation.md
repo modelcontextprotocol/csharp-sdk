@@ -198,7 +198,7 @@ var result = await server.ElicitAsync(new ElicitRequestParams
 
 #### Low-level API
 
-For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with an elicitation input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.InputRequiredException> with an elicitation input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
 
 ```csharp
 [McpServerTool, Description("Tool that elicits via low-level MRTR")]
@@ -221,7 +221,7 @@ public static string ElicitWithMrtr(
     }
 
     // First call — request user input
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams

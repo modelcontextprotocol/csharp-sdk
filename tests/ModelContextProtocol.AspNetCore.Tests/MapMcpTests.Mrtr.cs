@@ -16,7 +16,7 @@ public abstract partial class MapMcpTests
         Builder.Services.AddMcpServer(options =>
         {
             options.ServerInfo = new Implementation { Name = "ExperimentalServer", Version = "1" };
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             messageTracker.AddFilters(options.Filters.Message);
         })
         .WithHttpTransport(ConfigureStateless)
@@ -41,7 +41,7 @@ public abstract partial class MapMcpTests
         ConnectAsync(configureClient: options =>
         {
             ConfigureMrtrHandlers(options);
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
         });
 
     private Task<McpClient> ConnectDefaultAsync() =>
@@ -90,7 +90,7 @@ public abstract partial class MapMcpTests
 
     // =====================================================================
     // MRTR tests: experimental (native), backcompat (legacy JSON-RPC), and edge cases.
-    // Each test creates its own server with ExperimentalProtocolVersion enabled.
+    // Each test creates its own server with DRAFT-2026-v1 enabled.
     // =====================================================================
 
     [McpServerTool(Name = "mrtr-mixed")]
@@ -131,7 +131,7 @@ public abstract partial class MapMcpTests
             var root = responses["roots"].RootsResult?.Roots?.FirstOrDefault()?.Name ?? "";
 
             // Exception API: single elicitation with requestState
-            throw new IncompleteResultException(
+            throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest>
                 {
                     ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -144,7 +144,7 @@ public abstract partial class MapMcpTests
         }
 
         // Round 1: Exception API with 3 PARALLEL input requests
-        throw new IncompleteResultException(
+        throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
                 ["name"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -180,7 +180,7 @@ public abstract partial class MapMcpTests
 
         // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
 
         if (experimentalServer)
@@ -228,7 +228,7 @@ public abstract partial class MapMcpTests
         }
         else if (Stateless)
         {
-            // Stateless + non-experimental: IncompleteResultException cannot be resolved
+            // Stateless + non-experimental: InputRequiredException cannot be resolved
             // (no MRTR and no stateful backcompat). The server returns an error.
             await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -242,7 +242,7 @@ public abstract partial class MapMcpTests
         }
         else
         {
-            // Stateful + non-experimental: backcompat resolves IncompleteResultException
+            // Stateful + non-experimental: backcompat resolves InputRequiredException
             // via legacy JSON-RPC requests. The tool completes all 3 rounds.
             await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -313,7 +313,7 @@ public abstract partial class MapMcpTests
 
         // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -354,7 +354,7 @@ public abstract partial class MapMcpTests
             return $"elicit-ok:{response.ElicitationResult?.Action}";
         }
 
-        throw new IncompleteResultException(
+        throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
                 ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -379,7 +379,7 @@ public abstract partial class MapMcpTests
                     return $"roots-ok:{string.Join(",", roots?.Select(r => r.Uri) ?? [])}";
                 }
 
-                throw new IncompleteResultException(
+                throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>
                     {
                         ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
@@ -416,7 +416,7 @@ public abstract partial class MapMcpTests
         if (requestState == "round-1" && inputResponses is not null)
         {
             var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
-            throw new IncompleteResultException(
+            throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest>
                 {
                     ["greeting"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -428,7 +428,7 @@ public abstract partial class MapMcpTests
                 requestState: "round-2");
         }
 
-        throw new IncompleteResultException(
+        throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
                 ["name"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -452,13 +452,13 @@ public abstract partial class MapMcpTests
 
         // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
 
         if (!experimentalClient && Stateless)
         {
-            // Stateless without MRTR: IncompleteResultException can't be resolved
+            // Stateless without MRTR: InputRequiredException can't be resolved
             // (no MRTR negotiated and no stateful backcompat path).
             var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
                 client.CallToolAsync("mrtr-multi",
@@ -498,7 +498,7 @@ public abstract partial class MapMcpTests
 
         // Configure client — experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ExperimentalProtocolVersion = "2026-06-XX"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
         Assert.Equal(experimentalClient ? "2026-06-XX" : "2025-11-25", client.NegotiatedProtocolVersion);
@@ -529,7 +529,7 @@ public abstract partial class MapMcpTests
             return $"all-ok:elicit={elicitAction},sample={sampleText},roots={rootUris}";
         }
 
-        throw new IncompleteResultException(
+        throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
                 ["elicit"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -565,7 +565,7 @@ public abstract partial class MapMcpTests
 
         await using var client = await ConnectAsync(configureClient: options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             options.Handlers.ElicitationHandler = async (request, ct) =>
             {
                 elicitCalled.TrySetResult();
@@ -614,8 +614,8 @@ public abstract partial class MapMcpTests
                     return $"resumed:{state}";
                 }
 
-                // requestState-only IncompleteResultException (no inputRequests)
-                throw new IncompleteResultException(requestState: "deferred-work");
+                // requestState-only InputRequiredException (no inputRequests)
+                throw new InputRequiredException(requestState: "deferred-work");
             });
         await using var app = Builder.Build();
         app.MapMcp();
@@ -646,7 +646,7 @@ public abstract partial class MapMcpTests
                     return $"roots-ok:{roots?.FirstOrDefault()?.Name}";
                 }
 
-                throw new IncompleteResultException(
+                throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>
                     {
                         ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
@@ -684,7 +684,7 @@ public abstract partial class MapMcpTests
                     return $"both:{action}:{text}";
                 }
 
-                throw new IncompleteResultException(
+                throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>
                     {
                         ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -729,7 +729,7 @@ public abstract partial class MapMcpTests
             [McpServerTool(Name = "mrtr-always-incomplete")] (RequestContext<CallToolRequestParams> context) =>
             {
                 // Always throw — never complete
-                throw new IncompleteResultException(
+                throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>
                     {
                         ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
@@ -771,7 +771,7 @@ public abstract partial class MapMcpTests
         ConfigureExperimentalServer(
             [McpServerTool(Name = "mrtr-empty-inputs")] (RequestContext<CallToolRequestParams> context) =>
             {
-                throw new IncompleteResultException(
+                throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>(),
                     requestState: "empty");
             });

@@ -650,7 +650,7 @@ internal sealed partial class McpClientImpl : McpClient
             try
             {
                 // Send initialize request
-                string requestProtocol = _options.ProtocolVersion ?? _options.ExperimentalProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
+                string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
                 var initializeResponse = await SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
@@ -678,8 +678,7 @@ internal sealed partial class McpClientImpl : McpClient
                 // Validate protocol version
                 bool isResponseProtocolValid =
                     _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion) ||
-                    (_options.ExperimentalProtocolVersion is not null && _options.ExperimentalProtocolVersion == initializeResponse.ProtocolVersion);
+                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
                 if (!isResponseProtocolValid)
                 {
                     LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
@@ -832,17 +831,17 @@ internal sealed partial class McpClientImpl : McpClient
         {
             JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
 
-            // Check if the result is an IncompleteResult by looking at result_type.
+            // Check if the result is an InputRequiredResult by looking at result_type.
             if (response.Result is JsonObject resultObj &&
-                resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
-                resultTypeNode?.GetValue<string>() is "incomplete")
+                resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+                resultTypeNode?.GetValue<string>() is "input_required")
             {
-                WarnIfIncompleteResultOnNonMrtrSession(request.Method);
+                WarnIfInputRequiredResultOnNonMrtrSession(request.Method);
 
-                var incompleteResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.IncompleteResult)
-                    ?? throw new JsonException("Failed to deserialize IncompleteResult.");
+                var InputRequiredResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.InputRequiredResult)
+                    ?? throw new JsonException("Failed to deserialize InputRequiredResult.");
 
-                if (incompleteResult.InputRequests is { Count: > 0 } inputRequests)
+                if (InputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
                 {
                     IDictionary<string, InputResponse> inputResponses =
                         await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
@@ -853,25 +852,25 @@ internal sealed partial class McpClientImpl : McpClient
                     paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
                         inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
 
-                    if (incompleteResult.RequestState is { } requestState)
+                    if (InputRequiredResult.RequestState is { } requestState)
                     {
                         paramsObj["requestState"] = requestState;
                     }
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
                 }
-                else if (incompleteResult.RequestState is not null)
+                else if (InputRequiredResult.RequestState is not null)
                 {
                     // No input requests but has requestState (e.g., load shedding) — just retry with state.
                     var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-                    paramsObj["requestState"] = incompleteResult.RequestState;
+                    paramsObj["requestState"] = InputRequiredResult.RequestState;
                     paramsObj.Remove("inputResponses");
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
                 }
                 else
                 {
-                    throw new McpException("Server returned an IncompleteResult without inputRequests or requestState.");
+                    throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
                 }
 
                 continue; // retry with the updated request
@@ -880,7 +879,7 @@ internal sealed partial class McpClientImpl : McpClient
             return response;
         }
 
-        throw new McpException($"Server returned IncompleteResult more than {maxRetries} times.");
+        throw new McpException($"Server returned InputRequiredResult more than {maxRetries} times.");
     }
 
     /// <inheritdoc/>
@@ -919,28 +918,26 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
-        if (_options.ExperimentalProtocolVersion is not null &&
-            _negotiatedProtocolVersion == _options.ExperimentalProtocolVersion)
+        if (_negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion)
         {
             LogLegacyRequestOnMrtrSession(_endpointName, method);
         }
     }
 
-    /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an IncompleteResult.</summary>
-    private void WarnIfIncompleteResultOnNonMrtrSession(string method)
+    /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an InputRequiredResult.</summary>
+    private void WarnIfInputRequiredResultOnNonMrtrSession(string method)
     {
-        if (_options.ExperimentalProtocolVersion is null ||
-            _negotiatedProtocolVersion != _options.ExperimentalProtocolVersion)
+        if (_negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion)
         {
-            LogIncompleteResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
+            LogInputRequiredResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use IncompleteResult instead of sending direct requests.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use InputRequiredResult instead of sending direct requests.")]
     private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received IncompleteResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
-    private partial void LogIncompleteResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received InputRequiredResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
+    private partial void LogInputRequiredResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
     private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);

@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class MrtrSessionLimitTests : ClientServerTestBase
 {
     /// <summary>
-    /// Tracks the number of pending MRTR flows per session. Incremented when an IncompleteResult
+    /// Tracks the number of pending MRTR flows per session. Incremented when an InputRequiredResult
     /// is sent (outgoing filter), decremented when a retry with requestState arrives (incoming filter).
     /// </summary>
     private readonly ConcurrentDictionary<string, int> _pendingFlowsPerSession = new();
@@ -31,7 +31,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
 
     /// <summary>
     /// Maximum allowed concurrent MRTR flows per session. If exceeded, the outgoing filter
-    /// replaces the IncompleteResult with an error response.
+    /// replaces the InputRequiredResult with an error response.
     /// </summary>
     private int _maxFlowsPerSession = int.MaxValue;
 
@@ -49,24 +49,24 @@ public class MrtrSessionLimitTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             _messageTracker.AddFilters(options.Filters.Message);
 
-            // Outgoing filter: detect IncompleteResult responses and track per session.
+            // Outgoing filter: detect InputRequiredResult responses and track per session.
             options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcResponse response &&
                     response.Result is JsonObject resultObj &&
-                    resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
-                    resultTypeNode?.GetValue<string>() is "incomplete")
+                    resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+                    resultTypeNode?.GetValue<string>() is "input_required")
                 {
                     var sessionId = context.Server.SessionId ?? "unknown";
                     var newCount = _pendingFlowsPerSession.AddOrUpdate(sessionId, 1, (_, c) => c + 1);
                     _observations.Add((sessionId, newCount));
 
-                    // Enforce per-session limit: if exceeded, replace the IncompleteResult
+                    // Enforce per-session limit: if exceeded, replace the InputRequiredResult
                     // with a JSON-RPC error. This prevents the client from receiving the
-                    // IncompleteResult and starting another retry cycle.
+                    // InputRequiredResult and starting another retry cycle.
                     if (newCount > _maxFlowsPerSession)
                     {
                         // Undo the increment since we're blocking this flow.
@@ -128,10 +128,10 @@ public class MrtrSessionLimitTests : ClientServerTestBase
     [Fact]
     public async Task OutgoingFilter_TracksIncompleteResultsPerSession()
     {
-        // Verify that an outgoing message filter can observe IncompleteResult responses
+        // Verify that an outgoing message filter can observe InputRequiredResult responses
         // and track the pending MRTR flow count per session using context.Server.SessionId.
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -144,7 +144,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
 
         Assert.Equal("accept", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
 
-        // Verify the filter observed exactly one IncompleteResult and tracked it.
+        // Verify the filter observed exactly one InputRequiredResult and tracked it.
         Assert.Single(_observations);
         var (sessionId, pendingCount) = _observations.First();
         Assert.NotNull(sessionId);
@@ -160,18 +160,18 @@ public class MrtrSessionLimitTests : ClientServerTestBase
     public async Task OutgoingFilter_CanEnforcePerSessionMrtrLimit()
     {
         // Verify that an outgoing message filter can enforce a per-session MRTR flow limit
-        // by replacing the IncompleteResult with a JSON-RPC error when the limit is exceeded.
+        // by replacing the InputRequiredResult with a JSON-RPC error when the limit is exceeded.
         // Set the limit to 0 so the very first MRTR flow is blocked.
         _maxFlowsPerSession = 0;
 
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // The tool call should fail because the outgoing filter blocks the IncompleteResult.
+        // The tool call should fail because the outgoing filter blocks the InputRequiredResult.
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.CallToolAsync("elicit-tool",
                 new Dictionary<string, object?> { ["message"] = "confirm?" },

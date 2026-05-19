@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// The input response does not carry its own type discriminator in JSON. The type is determined by
-/// the corresponding <see cref="InputRequest.Method"/> key in the <see cref="IncompleteResult.InputRequests"/> map.
+/// the corresponding <see cref="InputRequest.Method"/> key in the <see cref="InputRequiredResult.InputRequests"/> map.
 /// </para>
 /// </remarks>
 [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]

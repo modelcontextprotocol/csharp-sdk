@@ -149,7 +149,7 @@ var result = await server.SampleAsync(
 
 #### Low-level API
 
-For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with a sampling input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.InputRequiredException> with a sampling input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
 
 ```csharp
 [McpServerTool, Description("Tool that samples via low-level MRTR")]
@@ -171,7 +171,7 @@ public static string SampleWithMrtr(
     }
 
     // First call — request LLM completion from the client
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["llm_call"] = InputRequest.ForSampling(new CreateMessageRequestParams

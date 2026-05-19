@@ -27,12 +27,12 @@ public abstract class RequestParams
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets the responses to server-initiated input requests from a previous <see cref="IncompleteResult"/>.
+    /// Gets or sets the responses to server-initiated input requests from a previous <see cref="InputRequiredResult"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This property is populated when retrying a request after receiving an <see cref="IncompleteResult"/>.
-    /// Each key corresponds to a key from the <see cref="IncompleteResult.InputRequests"/> map, and
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>.
+    /// Each key corresponds to a key from the <see cref="InputRequiredResult.InputRequests"/> map, and
     /// the value is the client's response to that input request.
     /// </para>
     /// </remarks>
@@ -50,12 +50,12 @@ public abstract class RequestParams
     internal IDictionary<string, InputResponse>? InputResponsesCore { get; set; }
 
     /// <summary>
-    /// Gets or sets opaque request state echoed back from a previous <see cref="IncompleteResult"/>.
+    /// Gets or sets opaque request state echoed back from a previous <see cref="InputRequiredResult"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This property is populated when retrying a request after receiving an <see cref="IncompleteResult"/>
-    /// that included a <see cref="IncompleteResult.RequestState"/> value. The client must echo back the
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>
+    /// that included a <see cref="InputRequiredResult.RequestState"/> value. The client must echo back the
     /// exact value without modification.
     /// </para>
     /// </remarks>

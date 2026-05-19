@@ -28,11 +28,11 @@ public abstract class Result
     /// <remarks>
     /// <para>
     /// When absent or set to <c>"complete"</c>, the result is a normal completed response.
-    /// When set to <c>"incomplete"</c>, the result is an <see cref="IncompleteResult"/> indicating
+    /// When set to <c>"input_required"</c>, the result is an <see cref="InputRequiredResult"/> indicating
     /// that additional input is needed before the request can be completed.
     /// </para>
     /// </remarks>
     /// <value>Defaults to <see langword="null"/>, which is equivalent to <c>"complete"</c>.</value>
-    [JsonPropertyName("result_type")]
+    [JsonPropertyName("resultType")]
     public string? ResultType { get; set; }
 }

@@ -31,7 +31,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
         services.Configure<McpServerOptions>(options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -161,9 +161,9 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             McpServerTool.Create(
                 (McpServer server) =>
                 {
-                    // Low-level MRTR: throw IncompleteResultException directly instead of using ElicitAsync.
+                    // Low-level MRTR: throw InputRequiredException directly instead of using ElicitAsync.
                     // This should NOT be logged at Error level — it's normal MRTR control flow.
-                    throw new IncompleteResultException(new IncompleteResult
+                    throw new InputRequiredException(new InputRequiredResult
                     {
                         InputRequests = new Dictionary<string, InputRequest>
                         {
@@ -178,7 +178,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
                 new McpServerToolCreateOptions
                 {
                     Name = "incomplete-result-tool",
-                    Description = "A tool that throws IncompleteResultException for low-level MRTR"
+                    Description = "A tool that throws InputRequiredException for low-level MRTR"
                 })
         ]);
     }
@@ -191,7 +191,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             // Cancel the token during the callback. The retry loop will throw
@@ -219,7 +219,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         var elicitHandlerCalled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = async (request, ct) =>
         {
             // Signal that the MRTR round trip reached the client, then block indefinitely.
@@ -263,7 +263,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // (c) the cancellation registration in AwaitMrtrHandlerAsync bridges to handlerCts.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -296,12 +296,12 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
     {
         // Verify that a stale cancellation notification for the original (now-completed)
         // request ID does not interfere with an active MRTR handler. The original request's
-        // entry was removed from _handlingRequests when it returned IncompleteResult, so
+        // entry was removed from _handlingRequests when it returned InputRequiredResult, so
         // the notification should be a no-op.
         StartServer();
 
         int elicitationCount = 0;
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             Interlocked.Increment(ref elicitationCount);
@@ -345,7 +345,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         bool handlerCompleted = false;
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -387,7 +387,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // (after resuming from ElicitAsync), the error is logged at Error level.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -413,17 +413,17 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
     [Fact]
     public async Task IncompleteResultException_IsNotLoggedAtErrorLevel()
     {
-        // IncompleteResultException is normal MRTR control flow (low-level API),
+        // InputRequiredException is normal MRTR control flow (low-level API),
         // not an error. It should not be logged via ToolCallError at Error level.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // The tool always throws IncompleteResultException (low-level MRTR path),
+        // The tool always throws InputRequiredException (low-level MRTR path),
         // so the client will retry until hitting the max retry limit.
         await Assert.ThrowsAsync<McpException>(() => client.CallToolAsync(
             "incomplete-result-tool",
@@ -431,7 +431,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
-            m.Exception is IncompleteResultException);
+            m.Exception is InputRequiredException);
 
         _messageTracker.AssertMrtrUsed();
     }

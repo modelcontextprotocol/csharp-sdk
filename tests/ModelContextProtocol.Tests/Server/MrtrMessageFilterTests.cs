@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Tests that message filters correctly observe MRTR protocol behavior — verifying that
-/// IncompleteResult responses are visible to outgoing filters, and that no legacy
+/// InputRequiredResult responses are visible to outgoing filters, and that no legacy
 /// elicitation/sampling requests are sent when MRTR is active.
 /// </summary>
 public class MrtrMessageFilterTests : ClientServerTestBase
@@ -26,7 +26,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -71,9 +71,9 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     public async Task MrtrActive_NoOldStyleElicitationRequests_SentOverWire()
     {
         // When both sides are on the experimental protocol, the server should use MRTR
-        // (IncompleteResult) instead of sending old-style elicitation/create JSON-RPC requests.
+        // (InputRequiredResult) instead of sending old-style elicitation/create JSON-RPC requests.
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
@@ -95,7 +95,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     public async Task MrtrActive_NoOldStyleSamplingRequests_SentOverWire()
     {
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
             var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
@@ -121,15 +121,15 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     [Fact]
     public async Task OutgoingFilter_SeesIncompleteResultResponse()
     {
-        // Verify that transport middleware can observe the raw IncompleteResult
+        // Verify that transport middleware can observe the raw InputRequiredResult
         // in outgoing JSON-RPC responses (validates MRTR transport visibility).
         var sawIncompleteResult = false;
 
         StartServer();
-        var clientOptions = new McpClientOptions { ExperimentalProtocolVersion = "2026-06-XX" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
-            // If we reach this handler, it means the client received an IncompleteResult
+            // If we reach this handler, it means the client received an InputRequiredResult
             // from the server, resolved the elicitation, and is retrying.
             sawIncompleteResult = true;
             return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
@@ -142,8 +142,8 @@ public class MrtrMessageFilterTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         // The elicitation handler was called, confirming MRTR round-trip occurred
-        // (IncompleteResult was sent by server and processed by client).
-        Assert.True(sawIncompleteResult, "Expected MRTR round-trip with IncompleteResult");
+        // (InputRequiredResult was sent by server and processed by client).
+        Assert.True(sawIncompleteResult, "Expected MRTR round-trip with InputRequiredResult");
         _messageTracker.AssertMrtrUsed();
     }
 }

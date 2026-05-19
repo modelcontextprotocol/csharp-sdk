@@ -268,11 +268,9 @@ internal sealed partial class McpServerImpl : McpServer
                 // Negotiate a protocol version. If the server options provide one, use that.
                 // Otherwise, try to use whatever the client requested as long as it's supported.
                 // If it's not supported, fall back to the latest supported version.
-                // Also accept the experimental protocol version when the server has it configured.
                 string? protocolVersion = options.ProtocolVersion;
                 protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion &&
-                    (McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ||
-                     (options.ExperimentalProtocolVersion is not null && clientProtocolVersion == options.ExperimentalProtocolVersion)) ?
+                    McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
                     clientProtocolVersion :
                     McpSessionHandler.LatestProtocolVersion;
 
@@ -845,14 +843,14 @@ internal sealed partial class McpServerImpl : McpServer
                     // is signaled — tool handler cancellation is an expected lifecycle event
                     // (client request cancellation, session shutdown, MRTR teardown), not a
                     // tool error.
-                    // Skip logging for IncompleteResultException — it's normal MRTR control flow,
-                    // not an error (the low-level API uses it to signal an IncompleteResult).
-                    if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not IncompleteResultException)
+                    // Skip logging for InputRequiredException — it's normal MRTR control flow,
+                    // not an error (the low-level API uses it to signal an InputRequiredResult).
+                    if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
                     {
                         ToolCallError(request.Params?.Name ?? string.Empty, e);
                     }
 
-                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is IncompleteResultException)
+                    if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
                     {
                         throw;
                     }
@@ -1199,18 +1197,28 @@ internal sealed partial class McpServerImpl : McpServer
         };
 
     /// <summary>
-    /// Checks whether the negotiated protocol version enables MRTR.
+    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (DRAFT-2026-v1).
     /// </summary>
     internal bool ClientSupportsMrtr() =>
-        _negotiatedProtocolVersion is not null &&
-        _negotiatedProtocolVersion == ServerOptions.ExperimentalProtocolVersion;
+        _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
 
     /// <summary>
-    /// Checks whether the low-level MRTR API (<see cref="IncompleteResultException"/>) is available
+    /// Returns <see langword="true"/> when the session has negotiated a pre-DRAFT-2026-v1 protocol
+    /// version on a stateful transport (i.e., a transport that supports Mcp-Session-Id). These sessions
+    /// keep the implicit MRTR behavior where a handler can call <c>ElicitAsync</c>/<c>SampleAsync</c>
+    /// and the SDK suspends/resumes the handler across an <see cref="InputRequiredResult"/> round trip.
+    /// </summary>
+    internal bool IsLegacyStatefulSession() =>
+        _negotiatedProtocolVersion is not null &&
+        _negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion &&
+        _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+
+    /// <summary>
+    /// Checks whether the low-level MRTR API (<see cref="InputRequiredException"/>) is available
     /// for the current request. Returns <see langword="true"/> in all cases except stateless mode
     /// with a client that hasn't negotiated MRTR — that's the one configuration where nobody can
     /// drive the retry loop (the server can't send JSON-RPC requests to the client, and the client
-    /// doesn't know about <c>IncompleteResult</c>).
+    /// doesn't know about <c>InputRequiredResult</c>).
     /// </summary>
     internal bool IsLowLevelMrtrAvailable() =>
         ClientSupportsMrtr() ||
@@ -1218,12 +1226,12 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync,
-    /// an IncompleteResult is returned early and the handler is suspended until the retry arrives.
+    /// an InputRequiredResult is returned early and the handler is suspended until the retry arrives.
     /// </summary>
     private void ConfigureMrtr()
     {
         // Wrap all methods that may trigger MRTR (server calling ElicitAsync/SampleAsync/RequestRootsAsync
-        // during handler execution). These methods may produce IncompleteResult if the handler needs input.
+        // during handler execution). These methods may produce InputRequiredResult if the handler needs input.
         WrapHandlerWithMrtr(RequestMethods.ToolsCall);
         WrapHandlerWithMrtr(RequestMethods.PromptsGet);
         WrapHandlerWithMrtr(RequestMethods.ResourcesRead);
@@ -1231,7 +1239,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Replaces an existing request handler entry with an MRTR-aware wrapper that supports
-    /// handler suspension and IncompleteResult responses.
+    /// handler suspension and InputRequiredResult responses.
     /// </summary>
     private void WrapHandlerWithMrtr(string method)
     {
@@ -1301,11 +1309,12 @@ internal sealed partial class McpServerImpl : McpServer
                 // high-level handlers that call ElicitAsync/SampleAsync.
             }
 
-            // Not a retry, or a retry without a continuation - check if the client supports MRTR
-            // and the server is stateful (the high-level await path requires storing continuations).
-            if (!ClientSupportsMrtr() || _sessionTransport is StreamableHttpServerTransport { Stateless: true })
+            // Implicit MRTR (handler suspension across ElicitAsync/SampleAsync) is reserved for
+            // legacy stateful sessions only. DRAFT-2026-v1 sessions always go through the exception
+            // path (the client drives the retry loop). Stateless sessions also use the exception path.
+            if (!IsLegacyStatefulSession())
             {
-                return await InvokeWithIncompleteResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
+                return await InvokeWithInputRequiredResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
 
             // Start a new MRTR-aware handler invocation.
@@ -1348,13 +1357,13 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Invokes a handler and catches <see cref="IncompleteResultException"/> to convert it to an
-    /// <see cref="IncompleteResult"/> JSON response. When MRTR is negotiated or the server is stateless,
+    /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an
+    /// <see cref="InputRequiredResult"/> JSON response. When MRTR is negotiated or the server is stateless,
     /// the result is serialized directly. Otherwise, input requests are resolved via standard JSON-RPC
     /// calls (elicitation, sampling, roots) and the handler is retried with the responses — allowing
     /// MRTR-native tools to work transparently with clients that don't support MRTR.
     /// </summary>
-    private async Task<JsonNode?> InvokeWithIncompleteResultHandlingAsync(
+    private async Task<JsonNode?> InvokeWithInputRequiredResultHandlingAsync(
         Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
         JsonRpcRequest request,
         CancellationToken cancellationToken)
@@ -1367,18 +1376,18 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 return await handler(request, cancellationToken).ConfigureAwait(false);
             }
-            catch (IncompleteResultException ex)
+            catch (InputRequiredException ex)
             {
                 // If the client natively supports MRTR, serialize and return directly —
                 // the client will drive the retry loop.
                 if (ClientSupportsMrtr())
                 {
-                    return SerializeIncompleteResult(ex.IncompleteResult);
+                    return SerializeInputRequiredResult(ex.Result);
                 }
 
                 // In stateless mode without MRTR, the server can't resolve input requests via
                 // JSON-RPC (no persistent session for server-to-client requests), and the client
-                // won't recognize the IncompleteResult. This is the one unsupported configuration.
+                // won't recognize the InputRequiredResult. This is the one unsupported configuration.
                 if (_sessionTransport is StreamableHttpServerTransport { Stateless: true })
                 {
                     throw new McpException(
@@ -1387,7 +1396,7 @@ internal sealed partial class McpServerImpl : McpServer
                 }
 
                 // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.
-                if (ex.IncompleteResult.InputRequests is not { Count: > 0 } inputRequests)
+                if (ex.Result.InputRequests is not { Count: > 0 } inputRequests)
                 {
                     throw new McpException(
                         "A tool handler returned an incomplete result without input requests, and the client does not support MRTR.", ex);
@@ -1411,7 +1420,7 @@ internal sealed partial class McpServerImpl : McpServer
                 paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
                     (IDictionary<string, InputResponse>)inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
 
-                if (ex.IncompleteResult.RequestState is { } requestState)
+                if (ex.Result.RequestState is { } requestState)
                 {
                     paramsObj["requestState"] = requestState;
                 }
@@ -1461,8 +1470,8 @@ internal sealed partial class McpServerImpl : McpServer
     /// <summary>
     /// Awaits the outcome of an MRTR-enabled handler invocation.
     /// If the handler completes, returns its result. If an exchange arrives (handler needs input),
-    /// builds and returns an IncompleteResult and stores the continuation for future retries.
-    /// If the handler throws <see cref="IncompleteResultException"/>, the result is returned directly
+    /// builds and returns an InputRequiredResult and stores the continuation for future retries.
+    /// If the handler throws <see cref="InputRequiredException"/>, the result is returned directly
     /// without storing a continuation (low-level MRTR path).
     /// When deferred task creation is enabled, also races against the task creation signal.
     /// </summary>
@@ -1494,8 +1503,8 @@ internal sealed partial class McpServerImpl : McpServer
 
         if (completedTask == handlerTask)
         {
-            // Handler completed - return its result, propagate its exception, or handle IncompleteResultException.
-            return await AwaitHandlerWithIncompleteResultHandlingAsync(handlerTask).ConfigureAwait(false);
+            // Handler completed - return its result, propagate its exception, or handle InputRequiredException.
+            return await AwaitHandlerWithInputRequiredResultHandlingAsync(handlerTask).ConfigureAwait(false);
         }
 
         if (deferredTask is not null && completedTask == deferredTask.SignalTask)
@@ -1508,7 +1517,7 @@ internal sealed partial class McpServerImpl : McpServer
         var exchange = await exchangeTask.ConfigureAwait(false);
 
         var correlationId = Guid.NewGuid().ToString("N");
-        var incompleteResult = new IncompleteResult
+        var InputRequiredResult = new InputRequiredResult
         {
             InputRequests = new Dictionary<string, InputRequest> { [exchange.Key] = exchange.InputRequest },
             RequestState = correlationId,
@@ -1518,7 +1527,7 @@ internal sealed partial class McpServerImpl : McpServer
         continuation.PendingExchange = exchange;
         _mrtrContinuations[correlationId] = continuation;
 
-        return SerializeIncompleteResult(incompleteResult);
+        return SerializeInputRequiredResult(InputRequiredResult);
     }
 
     /// <summary>
@@ -1536,9 +1545,9 @@ internal sealed partial class McpServerImpl : McpServer
         {
             // Handler cancelled — expected lifecycle event (disposal, client cancel, session shutdown).
         }
-        catch (IncompleteResultException)
+        catch (InputRequiredException)
         {
-            // Low-level MRTR: handler explicitly signaling an IncompleteResult. Not an error.
+            // Low-level MRTR: handler explicitly signaling an InputRequiredResult. Not an error.
         }
         catch (Exception ex)
         {
@@ -1554,23 +1563,23 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Awaits a handler task, catching <see cref="IncompleteResultException"/> to convert it to an
-    /// <see cref="IncompleteResult"/> JSON response without storing a continuation.
+    /// Awaits a handler task, catching <see cref="InputRequiredException"/> to convert it to an
+    /// <see cref="InputRequiredResult"/> JSON response without storing a continuation.
     /// </summary>
-    private static async Task<JsonNode?> AwaitHandlerWithIncompleteResultHandlingAsync(Task<JsonNode?> handlerTask)
+    private static async Task<JsonNode?> AwaitHandlerWithInputRequiredResultHandlingAsync(Task<JsonNode?> handlerTask)
     {
         try
         {
             return await handlerTask.ConfigureAwait(false);
         }
-        catch (IncompleteResultException ex)
+        catch (InputRequiredException ex)
         {
-            return SerializeIncompleteResult(ex.IncompleteResult);
+            return SerializeInputRequiredResult(ex.Result);
         }
     }
 
-    private static JsonNode? SerializeIncompleteResult(IncompleteResult incompleteResult) =>
-        JsonSerializer.SerializeToNode(incompleteResult, McpJsonUtilities.JsonContext.Default.IncompleteResult);
+    private static JsonNode? SerializeInputRequiredResult(InputRequiredResult InputRequiredResult) =>
+        JsonSerializer.SerializeToNode(InputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
 
     /// <summary>
     /// Handles the transition from ephemeral MRTR to task-based execution when the handler

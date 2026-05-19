@@ -70,14 +70,14 @@ public abstract partial class McpServer : McpSession
     /// <remarks>
     /// <para>
     /// When this property returns <see langword="true"/>, tool handlers can throw
-    /// <see cref="Protocol.IncompleteResultException"/> to return an <see cref="Protocol.IncompleteResult"/>
-    /// with <see cref="Protocol.IncompleteResult.InputRequests"/> and/or
-    /// <see cref="Protocol.IncompleteResult.RequestState"/> to the client.
+    /// <see cref="Protocol.InputRequiredException"/> to return an <see cref="Protocol.InputRequiredResult"/>
+    /// with <see cref="Protocol.InputRequiredResult.InputRequests"/> and/or
+    /// <see cref="Protocol.InputRequiredResult.RequestState"/> to the client.
     /// </para>
     /// <para>
     /// When this property returns <see langword="false"/>, tool handlers should provide a fallback
     /// experience (for example, returning a text message explaining that the client does not support
-    /// the required feature) instead of throwing <see cref="Protocol.IncompleteResultException"/>.
+    /// the required feature) instead of throwing <see cref="Protocol.InputRequiredException"/>.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
@@ -95,7 +95,7 @@ public abstract partial class McpServer : McpSession
     /// <para>
     /// Before calling this method, <see cref="ElicitAsync(ElicitRequestParams, CancellationToken)"/>
     /// and <see cref="SampleAsync(CreateMessageRequestParams, CancellationToken)"/> use the ephemeral
-    /// MRTR mechanism (returning <see cref="IncompleteResult"/> to the client). After calling this method,
+    /// MRTR mechanism (returning <see cref="InputRequiredResult"/> to the client). After calling this method,
     /// the task is created and subsequent calls use the persistent workflow (task status
     /// <see cref="McpTaskStatus.InputRequired"/> with <c>tasks/result</c> and <c>tasks/input_response</c>).
     /// </para>

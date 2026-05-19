@@ -7,7 +7,7 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for the low-level MRTR server API — IsMrtrSupported, IncompleteResultException,
+/// Tests for the low-level MRTR server API — IsMrtrSupported, InputRequiredException,
 /// and client auto-retry of incomplete results.
 /// </summary>
 public class MrtrLowLevelApiTests : ClientServerTestBase
@@ -23,7 +23,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -31,12 +31,12 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
             McpServerTool.Create(
                 static string (McpServer server) =>
                 {
-                    throw new IncompleteResultException(requestState: "should-not-work");
+                    throw new InputRequiredException(requestState: "should-not-work");
                 },
                 new McpServerToolCreateOptions
                 {
                     Name = "always-incomplete",
-                    Description = "Tool that always throws IncompleteResultException"
+                    Description = "Tool that always throws InputRequiredException"
                 }),
         ]);
     }
@@ -45,12 +45,12 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
     public async Task LowLevel_IncompleteResultException_WithoutExperimental_ReturnsError()
     {
         StartServer();
-        // Client does NOT set ExperimentalProtocolVersion
+        // Client does NOT set DRAFT-2026-v1
         var clientOptions = new McpClientOptions();
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // The always-incomplete tool throws IncompleteResultException with only requestState
+        // The always-incomplete tool throws InputRequiredException with only requestState
         // and no inputRequests. Without MRTR negotiated, the backcompat layer can't resolve
         // the request (no inputRequests to dispatch), so it wraps it in an error.
         var exception = await Assert.ThrowsAsync<McpProtocolException>(() =>

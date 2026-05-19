@@ -29,7 +29,7 @@ internal sealed class ServerMessageTracker
     /// </summary>
     public void AddFilters(McpMessageFilters messageFilters)
     {
-        // Track outgoing legacy JSON-RPC requests and IncompleteResult responses.
+        // Track outgoing legacy JSON-RPC requests and InputRequiredResult responses.
         messageFilters.OutgoingFilters.Add(next => async (context, cancellationToken) =>
         {
             if (context.JsonRpcMessage is JsonRpcRequest request && LegacyMrtrMethods.Contains(request.Method))
@@ -38,8 +38,8 @@ internal sealed class ServerMessageTracker
             }
             else if (context.JsonRpcMessage is JsonRpcResponse response &&
                      response.Result is JsonObject resultObj &&
-                     resultObj.TryGetPropertyValue("result_type", out var resultTypeNode) &&
-                     resultTypeNode?.GetValue<string>() == "incomplete")
+                     resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+                     resultTypeNode?.GetValue<string>() == "input_required")
             {
                 Interlocked.Increment(ref _incompleteResultCount);
             }
@@ -62,19 +62,19 @@ internal sealed class ServerMessageTracker
     }
 
     /// <summary>
-    /// Asserts that MRTR was used: at least one IncompleteResult response was sent
+    /// Asserts that MRTR was used: at least one InputRequiredResult response was sent
     /// and no legacy JSON-RPC requests (elicitation/create, sampling/createMessage, roots/list) were sent.
     /// </summary>
     public void AssertMrtrUsed()
     {
         Assert.True(_incompleteResultCount > 0,
-            "Expected at least one IncompleteResult response (MRTR mode), but none were detected.");
+            "Expected at least one InputRequiredResult response (MRTR mode), but none were detected.");
         Assert.Empty(_legacyRequestMethods);
     }
 
     /// <summary>
     /// Asserts that legacy mode was used: at least one legacy JSON-RPC request was sent
-    /// and no MRTR retries or IncompleteResult responses were detected.
+    /// and no MRTR retries or InputRequiredResult responses were detected.
     /// </summary>
     public void AssertMrtrNotUsed()
     {

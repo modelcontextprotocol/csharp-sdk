@@ -26,7 +26,7 @@ public class MrtrTaskIntegrationTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.TaskStore = taskStore;
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
         });
 
         mcpServerBuilder.WithTools([
@@ -78,7 +78,7 @@ public class MrtrTaskIntegrationTests : ClientServerTestBase
 
         var clientOptions = new McpClientOptions
         {
-            ExperimentalProtocolVersion = "2026-06-XX",
+            ProtocolVersion = "DRAFT-2026-v1",
             TaskStore = taskStore,
             Handlers = new McpClientHandlers
             {
@@ -143,7 +143,7 @@ public class MrtrTaskIntegrationTests : ClientServerTestBase
         StartServer();
         var clientOptions = new McpClientOptions
         {
-            ExperimentalProtocolVersion = "2026-06-XX",
+            ProtocolVersion = "DRAFT-2026-v1",
             Handlers = new McpClientHandlers
             {
                 ElicitationHandler = (request, ct) =>
@@ -175,7 +175,7 @@ public class MrtrTaskIntegrationTests : ClientServerTestBase
 
         var clientOptions = new McpClientOptions
         {
-            ExperimentalProtocolVersion = "2026-06-XX",
+            ProtocolVersion = "DRAFT-2026-v1",
             TaskStore = taskStore,
             Handlers = new McpClientHandlers
             {
@@ -236,7 +236,7 @@ public class MrtrTaskIntegrationTests : ClientServerTestBase
 
         var clientOptions = new McpClientOptions
         {
-            ExperimentalProtocolVersion = "2026-06-XX",
+            ProtocolVersion = "DRAFT-2026-v1",
             TaskStore = taskStore,
             Handlers = new McpClientHandlers
             {

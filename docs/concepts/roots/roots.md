@@ -123,7 +123,7 @@ foreach (var root in result.Roots)
 
 #### Low-level API
 
-For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.IncompleteResultException> with a roots input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.InputRequiredException> with a roots input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
 
 ```csharp
 [McpServerTool, Description("Tool that requests roots via low-level MRTR")]
@@ -144,7 +144,7 @@ public static string ListRootsWithMrtr(
     }
 
     // First call — request the client's root list
-    throw new IncompleteResultException(
+    throw new InputRequiredException(
         inputRequests: new Dictionary<string, InputRequest>
         {
             ["get_roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())

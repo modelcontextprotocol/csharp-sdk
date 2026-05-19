@@ -3,23 +3,23 @@ using System.Diagnostics.CodeAnalysis;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// The exception that is thrown by a server handler to return an <see cref="Protocol.IncompleteResult"/>
+/// The exception that is thrown by a server handler to return an <see cref="Protocol.InputRequiredResult"/>
 /// to the client, signaling that additional input is needed before the request can be completed.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This exception is part of the low-level Multi Round-Trip Requests (MRTR) API. Tool handlers
-/// throw this exception to directly control the incomplete result payload, including
-/// <see cref="Protocol.IncompleteResult.InputRequests"/> and <see cref="Protocol.IncompleteResult.RequestState"/>.
+/// throw this exception to directly control the input-required result payload, including
+/// <see cref="Protocol.InputRequiredResult.InputRequests"/> and <see cref="Protocol.InputRequiredResult.RequestState"/>.
 /// </para>
 /// <para>
 /// For stateless servers, this enables multi-round-trip flows without requiring the handler to stay
-/// alive between round trips. The server encodes its state in <see cref="Protocol.IncompleteResult.RequestState"/>
+/// alive between round trips. The server encodes its state in <see cref="Protocol.InputRequiredResult.RequestState"/>
 /// and receives it back on retry via <see cref="RequestParams.RequestState"/>.
 /// </para>
 /// <para>
 /// To return a <c>requestState</c>-only response (e.g., for load shedding), omit
-/// <see cref="Protocol.IncompleteResult.InputRequests"/> and set only <see cref="Protocol.IncompleteResult.RequestState"/>.
+/// <see cref="Protocol.InputRequiredResult.InputRequests"/> and set only <see cref="Protocol.InputRequiredResult.RequestState"/>.
 /// The client will retry the request with the state echoed back.
 /// </para>
 /// <para>
@@ -45,7 +45,7 @@ namespace ModelContextProtocol.Protocol;
 ///         return "This tool requires MRTR support.";
 ///     }
 ///
-///     throw new IncompleteResultException(
+///     throw new InputRequiredException(
 ///         inputRequests: new Dictionary&lt;string, InputRequest&gt;
 ///         {
 ///             ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams { ... })
@@ -55,22 +55,22 @@ namespace ModelContextProtocol.Protocol;
 /// </code>
 /// </example>
 [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
-public class IncompleteResultException : Exception
+public class InputRequiredException : Exception
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="IncompleteResultException"/> class
-    /// with the specified <see cref="Protocol.IncompleteResult"/>.
+    /// Initializes a new instance of the <see cref="InputRequiredException"/> class
+    /// with the specified <see cref="Protocol.InputRequiredResult"/>.
     /// </summary>
-    /// <param name="incompleteResult">The incomplete result to return to the client.</param>
-    public IncompleteResultException(IncompleteResult incompleteResult)
-        : base("The server returned an incomplete result requiring additional client input.")
+    /// <param name="result">The input-required result to return to the client.</param>
+    public InputRequiredException(InputRequiredResult result)
+        : base("The server returned an input-required result requiring additional client input.")
     {
-        Throw.IfNull(incompleteResult);
-        IncompleteResult = incompleteResult;
+        Throw.IfNull(result);
+        Result = result;
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="IncompleteResultException"/> class
+    /// Initializes a new instance of the <see cref="InputRequiredException"/> class
     /// with the specified input requests and/or request state.
     /// </summary>
     /// <param name="inputRequests">
@@ -85,17 +85,17 @@ public class IncompleteResultException : Exception
     /// Both <paramref name="inputRequests"/> and <paramref name="requestState"/> are <see langword="null"/>.
     /// At least one must be provided.
     /// </exception>
-    public IncompleteResultException(
+    public InputRequiredException(
         IDictionary<string, InputRequest>? inputRequests = null,
         string? requestState = null)
-        : base("The server returned an incomplete result requiring additional client input.")
+        : base("The server returned an input-required result requiring additional client input.")
     {
         if (inputRequests is null && requestState is null)
         {
             throw new ArgumentException("At least one of inputRequests or requestState must be provided.");
         }
 
-        IncompleteResult = new IncompleteResult
+        Result = new InputRequiredResult
         {
             InputRequests = inputRequests,
             RequestState = requestState,
@@ -103,7 +103,7 @@ public class IncompleteResultException : Exception
     }
 
     /// <summary>
-    /// Gets the incomplete result to return to the client.
+    /// Gets the input-required result to return to the client.
     /// </summary>
-    public IncompleteResult IncompleteResult { get; }
+    public InputRequiredResult Result { get; }
 }

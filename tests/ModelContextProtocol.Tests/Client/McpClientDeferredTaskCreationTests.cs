@@ -29,7 +29,7 @@ public class McpClientDeferredTaskCreationTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.TaskStore = _taskStore;
-            options.ExperimentalProtocolVersion = "2026-06-XX";
+            options.ProtocolVersion = "DRAFT-2026-v1";
         });
 
         mcpServerBuilder.WithTools<DeferredTaskToolType>()
@@ -171,7 +171,7 @@ public class McpClientDeferredTaskCreationTests : ClientServerTestBase
     {
         return new McpClientOptions
         {
-            ExperimentalProtocolVersion = "2026-06-XX",
+            ProtocolVersion = "DRAFT-2026-v1",
             TaskStore = _taskStore,
             Handlers = handlers ?? CreateElicitationHandlers()
         };

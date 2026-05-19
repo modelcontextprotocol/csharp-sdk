@@ -4,12 +4,12 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// Represents an incomplete result sent by the server to indicate that additional input is needed
+/// Represents an input-required result sent by the server to indicate that additional input is needed
 /// before the request can be completed.
 /// </summary>
 /// <remarks>
 /// <para>
-/// An <see cref="IncompleteResult"/> is returned in response to a client-initiated request (such as
+/// An <see cref="InputRequiredResult"/> is returned in response to a client-initiated request (such as
 /// <see cref="RequestMethods.ToolsCall"/> or <see cref="RequestMethods.PromptsGet"/>) when the server
 /// needs the client to fulfill one or more server-initiated requests before it can produce a final result.
 /// </para>
@@ -21,14 +21,14 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// </remarks>
 [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
-public sealed class IncompleteResult : Result
+public sealed class InputRequiredResult : Result
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="IncompleteResult"/> class.
+    /// Initializes a new instance of the <see cref="InputRequiredResult"/> class.
     /// </summary>
-    public IncompleteResult()
+    public InputRequiredResult()
     {
-        ResultType = "incomplete";
+        ResultType = "input_required";
     }
 
     /// <summary>
