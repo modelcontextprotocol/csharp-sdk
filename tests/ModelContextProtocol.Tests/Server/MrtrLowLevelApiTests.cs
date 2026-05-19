@@ -42,21 +42,20 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LowLevel_IncompleteResultException_WithoutExperimental_ReturnsError()
+    public async Task LowLevel_InputRequiredException_WithoutInputRequests_ExhaustsRetries()
     {
         StartServer();
-        // Client does NOT set DRAFT-2026-v1
         var clientOptions = new McpClientOptions();
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
         // The always-incomplete tool throws InputRequiredException with only requestState
-        // and no inputRequests. Without MRTR negotiated, the backcompat layer can't resolve
-        // the request (no inputRequests to dispatch), so it wraps it in an error.
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(() =>
+        // and no inputRequests. The client has nothing to dispatch, so it keeps retrying
+        // with the same requestState until the retry budget is exhausted.
+        var exception = await Assert.ThrowsAsync<McpException>(() =>
             client.CallToolAsync("always-incomplete",
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
-        Assert.Contains("without input requests", exception.Message);
+        Assert.Contains("more than", exception.Message);
     }
 }

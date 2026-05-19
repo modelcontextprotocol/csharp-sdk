@@ -264,7 +264,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
     private async Task InitializeWithMrtrAsync()
     {
         var initJson = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-06-XX","capabilities":{"sampling":{},"elicitation":{},"roots":{}},"clientInfo":{"name":"MrtrTestClient","version":"1.0.0"}}}
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{"sampling":{},"elicitation":{},"roots":{}},"clientInfo":{"name":"MrtrTestClient","version":"1.0.0"}}}
             """;
 
         using var response = await PostJsonRpcAsync(initJson);
@@ -273,7 +273,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
 
         // Verify the server negotiated to the experimental version
         var protocolVersion = rpcResponse.Result["protocolVersion"]?.GetValue<string>();
-        Assert.Equal("2026-06-XX", protocolVersion);
+        Assert.Equal("DRAFT-2026-v1", protocolVersion);
 
         var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
@@ -281,7 +281,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
 
         // Set the MCP-Protocol-Version header for subsequent requests
         HttpClient.DefaultRequestHeaders.Remove("MCP-Protocol-Version");
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2026-06-XX");
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
 
         // Reset request ID counter since initialize used ID 1
         _lastRequestId = 1;

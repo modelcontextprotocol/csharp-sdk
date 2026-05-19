@@ -189,7 +189,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             });
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("elicitation-tool",
             new Dictionary<string, object?> { ["message"] = "What is your name?" },
@@ -315,7 +315,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
         // The client handler throws during input resolution, so the exception
         // escapes ResolveInputRequestAsync and surfaces directly to the caller.
@@ -405,7 +405,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             Id = initRequest.Id,
             Result = JsonSerializer.SerializeToNode(new InitializeResult
             {
-                ProtocolVersion = "2026-06-XX",
+                ProtocolVersion = "DRAFT-2026-v1",
                 Capabilities = new ServerCapabilities(),
                 ServerInfo = new Implementation { Name = "MockMrtrServer", Version = "1.0" }
             }, McpJsonUtilities.DefaultOptions),
@@ -418,7 +418,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         // Client is now connected with MRTR negotiated
         await using var client = await clientTask;
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
         // Now simulate the non-compliant server sending a legacy elicitation/create request
         var legacyRequest = new JsonRpcRequest

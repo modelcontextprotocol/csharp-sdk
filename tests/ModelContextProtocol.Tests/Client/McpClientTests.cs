@@ -592,7 +592,7 @@ public class McpClientTests : ClientServerTestBase
     {
         Server.ServerOptions.ProtocolVersion = "DRAFT-2026-v1";
         await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "DRAFT-2026-v1" });
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
     }
 
     [Fact]

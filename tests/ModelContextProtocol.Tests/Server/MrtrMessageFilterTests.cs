@@ -80,7 +80,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("elicit-tool",
             new Dictionary<string, object?> { ["message"] = "test" },
@@ -107,7 +107,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("2026-06-XX", client.NegotiatedProtocolVersion);
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("sample-tool",
             new Dictionary<string, object?> { ["prompt"] = "test" },

@@ -1203,14 +1203,14 @@ internal sealed partial class McpServerImpl : McpServer
         _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
 
     /// <summary>
-    /// Returns <see langword="true"/> when the session has negotiated a pre-DRAFT-2026-v1 protocol
-    /// version on a stateful transport (i.e., a transport that supports Mcp-Session-Id). These sessions
-    /// keep the implicit MRTR behavior where a handler can call <c>ElicitAsync</c>/<c>SampleAsync</c>
-    /// and the SDK suspends/resumes the handler across an <see cref="InputRequiredResult"/> round trip.
+    /// Returns <see langword="true"/> when the session is stateful (i.e., the same server instance
+    /// will handle subsequent requests). The implicit MRTR path — where a handler can call
+    /// <c>ElicitAsync</c>/<c>SampleAsync</c> and the SDK suspends/resumes the handler across an
+    /// <see cref="InputRequiredResult"/> round trip — requires the continuation map to outlive the
+    /// initial response, so it is only available on stateful sessions. Stateless transports always
+    /// go through the exception-based path.
     /// </summary>
-    internal bool IsLegacyStatefulSession() =>
-        _negotiatedProtocolVersion is not null &&
-        _negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion &&
+    internal bool IsStatefulSession() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
 
     /// <summary>
@@ -1309,10 +1309,13 @@ internal sealed partial class McpServerImpl : McpServer
                 // high-level handlers that call ElicitAsync/SampleAsync.
             }
 
-            // Implicit MRTR (handler suspension across ElicitAsync/SampleAsync) is reserved for
-            // legacy stateful sessions only. DRAFT-2026-v1 sessions always go through the exception
-            // path (the client drives the retry loop). Stateless sessions also use the exception path.
-            if (!IsLegacyStatefulSession())
+            // Implicit MRTR (handler suspension across ElicitAsync/SampleAsync) emits
+            // InputRequiredResult on the wire, which only DRAFT-2026-v1 clients understand,
+            // and requires the same server instance to handle the retry (stateful session).
+            // For all other cases — legacy clients, stateless sessions — fall through to the
+            // exception-based path, which transparently resolves InputRequiredException via
+            // legacy JSON-RPC requests when the client doesn't speak MRTR.
+            if (!ClientSupportsMrtr() || !IsStatefulSession())
             {
                 return await InvokeWithInputRequiredResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
