@@ -47,7 +47,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
-    private HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
+    private readonly object _scopeAccumulatorLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -732,21 +733,27 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (string.IsNullOrEmpty(currentOperationScopes))
         {
-            // If we have previously requested scopes but nothing new, return the accumulated set.
-            return _previouslyRequestedScopes.Count > 0
-                ? string.Join(" ", _previouslyRequestedScopes)
-                : null;
+            lock (_scopeAccumulatorLock)
+            {
+                // If we have previously requested scopes but nothing new, return the accumulated set.
+                return _previouslyRequestedScopes.Count > 0
+                    ? string.Join(" ", _previouslyRequestedScopes)
+                    : null;
+            }
         }
 
         // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
         // to avoid losing permissions needed for other operations during step-up authorization.
         var newScopes = currentOperationScopes!.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var scope in newScopes)
+        lock (_scopeAccumulatorLock)
         {
-            _previouslyRequestedScopes.Add(scope);
-        }
+            foreach (var scope in newScopes)
+            {
+                _previouslyRequestedScopes.Add(scope);
+            }
 
-        return string.Join(" ", _previouslyRequestedScopes);
+            return string.Join(" ", _previouslyRequestedScopes);
+        }
     }
 
     /// <summary>
