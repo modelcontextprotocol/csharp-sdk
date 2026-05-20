@@ -104,6 +104,9 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
-    public abstract void RegisterTools(IEnumerable<Tool> tools);
+    public virtual void RegisterTools(IEnumerable<Tool> tools)
+    {
+        Throw.IfNull(tools);
+    }
 
 }
