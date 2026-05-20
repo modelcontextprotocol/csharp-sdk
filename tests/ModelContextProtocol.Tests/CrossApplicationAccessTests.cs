@@ -4,12 +4,12 @@ using ModelContextProtocol.Authentication;
 
 namespace ModelContextProtocol.Tests;
 
-public sealed class EnterpriseAuthTests : IDisposable
+public sealed class CrossApplicationAccessTests : IDisposable
 {
     private readonly MockHttpMessageHandler _mockHandler;
     private readonly HttpClient _httpClient;
 
-    public EnterpriseAuthTests()
+    public CrossApplicationAccessTests()
     {
         _mockHandler = new MockHttpMessageHandler();
         _httpClient = new HttpClient(_mockHandler);
@@ -30,7 +30,7 @@ public sealed class EnterpriseAuthTests : IDisposable
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.OK, new JsonObject
         {
             ["access_token"] = expectedJag,
-            ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+            ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
             ["token_type"] = "N_A",
             ["expires_in"] = 300,
         });
@@ -45,7 +45,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var jag = await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        var jag = await CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedJag, jag);
     }
@@ -60,7 +60,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             return JsonResponse(HttpStatusCode.OK, new JsonObject
             {
                 ["access_token"] = "test-jag",
-                ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+                ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
                 ["token_type"] = "N_A",
             });
         };
@@ -77,14 +77,14 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        await CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.NotNull(capturedBody);
         var formParams = ParseFormData(capturedBody!);
-        Assert.Equal(EnterpriseAuth.GrantTypeTokenExchange, formParams["grant_type"]);
-        Assert.Equal(EnterpriseAuth.TokenTypeIdJag, formParams["requested_token_type"]);
+        Assert.Equal(CrossApplicationAccess.GrantTypeTokenExchange, formParams["grant_type"]);
+        Assert.Equal(CrossApplicationAccess.TokenTypeIdJag, formParams["requested_token_type"]);
         Assert.Equal("my-id-token", formParams["subject_token"]);
-        Assert.Equal(EnterpriseAuth.TokenTypeIdToken, formParams["subject_token_type"]);
+        Assert.Equal(CrossApplicationAccess.TokenTypeIdToken, formParams["subject_token_type"]);
         Assert.Equal("https://auth.mcp-server.example.com", formParams["audience"]);
         Assert.Equal("https://mcp-server.example.com", formParams["resource"]);
         Assert.Equal("my-client-id", formParams["client_id"]);
@@ -102,7 +102,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             return JsonResponse(HttpStatusCode.OK, new JsonObject
             {
                 ["access_token"] = "test-jag",
-                ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+                ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
                 ["token_type"] = "N_A",
             });
         };
@@ -117,7 +117,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        await CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
 
         var formParams = ParseFormData(capturedBody!);
         Assert.False(formParams.ContainsKey("client_secret"));
@@ -125,7 +125,7 @@ public sealed class EnterpriseAuthTests : IDisposable
     }
 
     [Fact]
-    public async Task RequestJwtAuthorizationGrantAsync_ServerError_ThrowsEnterpriseAuthException()
+    public async Task RequestJwtAuthorizationGrantAsync_ServerError_ThrowsCrossApplicationAccessException()
     {
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.BadRequest, new JsonObject
         {
@@ -143,8 +143,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Equal("invalid_request", ex.ErrorCode);
         Assert.Equal("Missing required parameter: subject_token", ex.ErrorDescription);
         Assert.Contains("400", ex.Message);
@@ -170,10 +170,10 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains("issued_token_type", ex.Message);
-        Assert.Contains(EnterpriseAuth.TokenTypeIdJag, ex.Message);
+        Assert.Contains(CrossApplicationAccess.TokenTypeIdJag, ex.Message);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public sealed class EnterpriseAuthTests : IDisposable
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.OK, new JsonObject
         {
             ["access_token"] = "test-jag",
-            ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+            ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
             ["token_type"] = "Bearer",
         });
 
@@ -196,8 +196,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains("token_type", ex.Message);
         Assert.Contains("N_A", ex.Message);
     }
@@ -208,7 +208,7 @@ public sealed class EnterpriseAuthTests : IDisposable
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.OK, new JsonObject
         {
             ["access_token"] = "test-jag",
-            ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+            ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
             ["token_type"] = "n_a",
         });
 
@@ -222,7 +222,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var jag = await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        var jag = await CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
         Assert.Equal("test-jag", jag);
     }
 
@@ -231,7 +231,7 @@ public sealed class EnterpriseAuthTests : IDisposable
     {
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.OK, new JsonObject
         {
-            ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+            ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
             ["token_type"] = "N_A",
         });
 
@@ -245,8 +245,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains("access_token", ex.Message);
     }
 
@@ -254,7 +254,7 @@ public sealed class EnterpriseAuthTests : IDisposable
     public async Task RequestJwtAuthorizationGrantAsync_NullOptions_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(null!, TestContext.Current.CancellationToken));
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -277,7 +277,7 @@ public sealed class EnterpriseAuthTests : IDisposable
         };
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => EnterpriseAuth.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+            () => CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -304,7 +304,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var tokens = await EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
+        var tokens = await CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.Equal("mcp-access-token", tokens.AccessToken);
         Assert.Equal("Bearer", tokens.TokenType);
@@ -337,11 +337,11 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        await EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
+        await CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.NotNull(capturedBody);
         var formParams = ParseFormData(capturedBody!);
-        Assert.Equal(EnterpriseAuth.GrantTypeJwtBearer, formParams["grant_type"]);
+        Assert.Equal(CrossApplicationAccess.GrantTypeJwtBearer, formParams["grant_type"]);
         Assert.Equal("my-jag-assertion", formParams["assertion"]);
         Assert.Equal("my-client-id", formParams["client_id"]);
         Assert.Equal("my-client-secret", formParams["client_secret"]);
@@ -349,7 +349,7 @@ public sealed class EnterpriseAuthTests : IDisposable
     }
 
     [Fact]
-    public async Task ExchangeJwtBearerGrantAsync_ServerError_ThrowsEnterpriseAuthException()
+    public async Task ExchangeJwtBearerGrantAsync_ServerError_ThrowsCrossApplicationAccessException()
     {
         _mockHandler.Handler = _ => JsonResponse(HttpStatusCode.Unauthorized, new JsonObject
         {
@@ -365,8 +365,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Equal("invalid_grant", ex.ErrorCode);
         Assert.Equal("The JAG assertion is expired", ex.ErrorDescription);
     }
@@ -388,8 +388,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains("token_type", ex.Message);
         Assert.Contains("bearer", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -411,7 +411,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var tokens = await EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
+        var tokens = await CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken);
         Assert.Equal("token", tokens.AccessToken);
     }
 
@@ -431,8 +431,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var ex = await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.ExchangeJwtBearerGrantAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains("access_token", ex.Message);
     }
 
@@ -440,7 +440,7 @@ public sealed class EnterpriseAuthTests : IDisposable
     public async Task ExchangeJwtBearerGrantAsync_NullOptions_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => EnterpriseAuth.ExchangeJwtBearerGrantAsync(null!, TestContext.Current.CancellationToken));
+            () => CrossApplicationAccess.ExchangeJwtBearerGrantAsync(null!, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -472,7 +472,7 @@ public sealed class EnterpriseAuthTests : IDisposable
                 return JsonResponse(HttpStatusCode.OK, new JsonObject
                 {
                     ["access_token"] = expectedJag,
-                    ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+                    ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
                     ["token_type"] = "N_A",
                 });
             }
@@ -490,7 +490,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var jag = await EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        var jag = await CrossApplicationAccess.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedJag, jag);
         Assert.True(requestCount >= 2, "Should make at least 2 requests (discovery + exchange)");
@@ -510,7 +510,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             return JsonResponse(HttpStatusCode.OK, new JsonObject
             {
                 ["access_token"] = "direct-jag",
-                ["issued_token_type"] = EnterpriseAuth.TokenTypeIdJag,
+                ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
                 ["token_type"] = "N_A",
             });
         };
@@ -525,7 +525,7 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        var jag = await EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
+        var jag = await CrossApplicationAccess.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken);
 
         Assert.Equal("direct-jag", jag);
     }
@@ -545,8 +545,8 @@ public sealed class EnterpriseAuthTests : IDisposable
             HttpClient = _httpClient,
         };
 
-        await Assert.ThrowsAsync<EnterpriseAuthException>(
-            () => EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<CrossApplicationAccessException>(
+            () => CrossApplicationAccess.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -562,15 +562,15 @@ public sealed class EnterpriseAuthTests : IDisposable
         };
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => EnterpriseAuth.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
+            () => CrossApplicationAccess.DiscoverAndRequestJwtAuthorizationGrantAsync(options, TestContext.Current.CancellationToken));
     }
 
     #endregion
 
-    #region EnterpriseAuthProvider Tests
+    #region CrossApplicationAccessProvider Tests
 
     [Fact]
-    public async Task EnterpriseAuthProvider_FullFlow_ReturnsAccessToken()
+    public async Task CrossApplicationAccessProvider_FullFlow_ReturnsAccessToken()
     {
         _mockHandler.Handler = request =>
         {
@@ -583,6 +583,16 @@ public sealed class EnterpriseAuthTests : IDisposable
                     ["issuer"] = "https://auth.mcp-server.example.com",
                     ["authorization_endpoint"] = "https://auth.mcp-server.example.com/authorize",
                     ["token_endpoint"] = "https://auth.mcp-server.example.com/token",
+                });
+            }
+
+            if (url.Contains("idp.example.com/token"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag-assertion",
+                    ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
+                    ["token_type"] = "N_A",
                 });
             }
 
@@ -599,15 +609,17 @@ public sealed class EnterpriseAuthTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         };
 
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "mcp-client-id",
-                AssertionCallback = (context, ct) =>
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (context, ct) =>
                 {
                     Assert.Equal(new Uri("https://mcp-server.example.com"), context.ResourceUrl);
                     Assert.Equal(new Uri("https://auth.mcp-server.example.com"), context.AuthorizationServerUrl);
-                    return Task.FromResult("mock-jag-assertion");
+                    return Task.FromResult("mock-id-token");
                 },
             },
             _httpClient);
@@ -623,9 +635,9 @@ public sealed class EnterpriseAuthTests : IDisposable
     }
 
     [Fact]
-    public async Task EnterpriseAuthProvider_CachesTokens()
+    public async Task CrossApplicationAccessProvider_CachesTokens()
     {
-        var tokenCallCount = 0;
+        var mcpTokenCallCount = 0;
         _mockHandler.Handler = request =>
         {
             var url = request.RequestUri!.ToString();
@@ -638,7 +650,17 @@ public sealed class EnterpriseAuthTests : IDisposable
                 });
             }
 
-            tokenCallCount++;
+            if (url.Contains("idp.example.com"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag",
+                    ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
+                    ["token_type"] = "N_A",
+                });
+            }
+
+            mcpTokenCallCount++;
             return JsonResponse(HttpStatusCode.OK, new JsonObject
             {
                 ["access_token"] = "cached-token",
@@ -647,15 +669,17 @@ public sealed class EnterpriseAuthTests : IDisposable
             });
         };
 
-        var assertionCallCount = 0;
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var idTokenCallCount = 0;
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "client-id",
-                AssertionCallback = (_, _) =>
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) =>
                 {
-                    assertionCallCount++;
-                    return Task.FromResult("mock-jag");
+                    idTokenCallCount++;
+                    return Task.FromResult("mock-id-token");
                 },
             },
             _httpClient);
@@ -671,14 +695,14 @@ public sealed class EnterpriseAuthTests : IDisposable
             new Uri("https://auth.example.com"), ct);
 
         Assert.Same(firstTokens, secondTokens);
-        Assert.Equal(1, assertionCallCount);
-        Assert.Equal(1, tokenCallCount);
+        Assert.Equal(1, idTokenCallCount);
+        Assert.Equal(1, mcpTokenCallCount);
     }
 
     [Fact]
-    public async Task EnterpriseAuthProvider_InvalidateCache_ForcesRefresh()
+    public async Task CrossApplicationAccessProvider_InvalidateCache_ForcesRefresh()
     {
-        var assertionCallCount = 0;
+        var idTokenCallCount = 0;
         _mockHandler.Handler = request =>
         {
             var url = request.RequestUri!.ToString();
@@ -691,22 +715,34 @@ public sealed class EnterpriseAuthTests : IDisposable
                 });
             }
 
+            if (url.Contains("idp.example.com"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag",
+                    ["issued_token_type"] = CrossApplicationAccess.TokenTypeIdJag,
+                    ["token_type"] = "N_A",
+                });
+            }
+
             return JsonResponse(HttpStatusCode.OK, new JsonObject
             {
-                ["access_token"] = $"token-{assertionCallCount}",
+                ["access_token"] = $"token-{idTokenCallCount}",
                 ["token_type"] = "Bearer",
                 ["expires_in"] = 3600,
             });
         };
 
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "client-id",
-                AssertionCallback = (_, _) =>
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) =>
                 {
-                    assertionCallCount++;
-                    return Task.FromResult("mock-jag");
+                    idTokenCallCount++;
+                    return Task.FromResult("mock-id-token");
                 },
             },
             _httpClient);
@@ -723,11 +759,11 @@ public sealed class EnterpriseAuthTests : IDisposable
             new Uri("https://resource.example.com"),
             new Uri("https://auth.example.com"), ct);
 
-        Assert.Equal(2, assertionCallCount);
+        Assert.Equal(2, idTokenCallCount);
     }
 
     [Fact]
-    public async Task EnterpriseAuthProvider_AssertionCallbackReturnsEmpty_ThrowsException()
+    public async Task CrossApplicationAccessProvider_IdTokenCallbackReturnsEmpty_ThrowsException()
     {
         _mockHandler.Handler = request =>
         {
@@ -744,15 +780,17 @@ public sealed class EnterpriseAuthTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         };
 
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "client-id",
-                AssertionCallback = (_, _) => Task.FromResult(string.Empty),
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult(string.Empty),
             },
             _httpClient);
 
-        await Assert.ThrowsAsync<EnterpriseAuthException>(
+        await Assert.ThrowsAsync<CrossApplicationAccessException>(
             () => provider.GetAccessTokenAsync(
                 new Uri("https://resource.example.com"),
                 new Uri("https://auth.example.com"),
@@ -760,41 +798,58 @@ public sealed class EnterpriseAuthTests : IDisposable
     }
 
     [Fact]
-    public void EnterpriseAuthProvider_NullOptions_ThrowsArgumentNullException()
+    public void CrossApplicationAccessProvider_NullOptions_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new EnterpriseAuthProvider(null!));
+        Assert.Throws<ArgumentNullException>(() => new CrossApplicationAccessProvider(null!));
     }
 
     [Fact]
-    public void EnterpriseAuthProvider_MissingClientId_ThrowsArgumentException()
+    public void CrossApplicationAccessProvider_MissingClientId_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        Assert.Throws<ArgumentException>(() => new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "",
-                AssertionCallback = (_, _) => Task.FromResult("test"),
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("test"),
             }));
     }
 
     [Fact]
-    public void EnterpriseAuthProvider_MissingAssertionCallback_ThrowsArgumentException()
+    public void CrossApplicationAccessProvider_MissingIdTokenCallback_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        Assert.Throws<ArgumentException>(() => new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "client-id",
-                AssertionCallback = null!,
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = null!,
+            }));
+    }
+
+    [Fact]
+    public void CrossApplicationAccessProvider_MissingIdpConfig_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
+            {
+                ClientId = "client-id",
+                IdpClientId = "idp-client-id",
+                // Neither IdpUrl nor IdpTokenEndpoint provided
+                IdTokenCallback = (_, _) => Task.FromResult("test"),
             }));
     }
 
     #endregion
 
-    #region EnterpriseAuthException Tests
+    #region CrossApplicationAccessException Tests
 
     [Fact]
-    public void EnterpriseAuthException_WithErrorCodeAndDescription_FormatsMessage()
+    public void CrossApplicationAccessException_WithErrorCodeAndDescription_FormatsMessage()
     {
-        var ex = new EnterpriseAuthException("Base message", "invalid_grant", "Token expired");
+        var ex = new CrossApplicationAccessException("Base message", "invalid_grant", "Token expired");
 
         Assert.Contains("Base message", ex.Message);
         Assert.Contains("invalid_grant", ex.Message);
@@ -804,17 +859,17 @@ public sealed class EnterpriseAuthTests : IDisposable
     }
 
     [Fact]
-    public void EnterpriseAuthException_WithErrorUri_StoresIt()
+    public void CrossApplicationAccessException_WithErrorUri_StoresIt()
     {
-        var ex = new EnterpriseAuthException("msg", "error", "desc", "https://docs.example.com/error");
+        var ex = new CrossApplicationAccessException("msg", "error", "desc", "https://docs.example.com/error");
 
         Assert.Equal("https://docs.example.com/error", ex.ErrorUri);
     }
 
     [Fact]
-    public void EnterpriseAuthException_WithoutErrorDetails_PlainMessage()
+    public void CrossApplicationAccessException_WithoutErrorDetails_PlainMessage()
     {
-        var ex = new EnterpriseAuthException("Simple error");
+        var ex = new CrossApplicationAccessException("Simple error");
 
         Assert.Equal("Simple error", ex.Message);
         Assert.Null(ex.ErrorCode);
@@ -829,12 +884,12 @@ public sealed class EnterpriseAuthTests : IDisposable
     [Fact]
     public void Constants_AreCorrectValues()
     {
-        Assert.Equal("urn:ietf:params:oauth:grant-type:token-exchange", EnterpriseAuth.GrantTypeTokenExchange);
-        Assert.Equal("urn:ietf:params:oauth:grant-type:jwt-bearer", EnterpriseAuth.GrantTypeJwtBearer);
-        Assert.Equal("urn:ietf:params:oauth:token-type:id_token", EnterpriseAuth.TokenTypeIdToken);
-        Assert.Equal("urn:ietf:params:oauth:token-type:saml2", EnterpriseAuth.TokenTypeSaml2);
-        Assert.Equal("urn:ietf:params:oauth:token-type:id-jag", EnterpriseAuth.TokenTypeIdJag);
-        Assert.Equal("N_A", EnterpriseAuth.TokenTypeNotApplicable);
+        Assert.Equal("urn:ietf:params:oauth:grant-type:token-exchange", CrossApplicationAccess.GrantTypeTokenExchange);
+        Assert.Equal("urn:ietf:params:oauth:grant-type:jwt-bearer", CrossApplicationAccess.GrantTypeJwtBearer);
+        Assert.Equal("urn:ietf:params:oauth:token-type:id_token", CrossApplicationAccess.TokenTypeIdToken);
+        Assert.Equal("urn:ietf:params:oauth:token-type:saml2", CrossApplicationAccess.TokenTypeSaml2);
+        Assert.Equal("urn:ietf:params:oauth:token-type:id-jag", CrossApplicationAccess.TokenTypeIdJag);
+        Assert.Equal("N_A", CrossApplicationAccess.TokenTypeNotApplicable);
     }
 
     #endregion

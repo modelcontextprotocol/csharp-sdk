@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Options for exchanging a JWT Authorization Grant for an access token via RFC 7523.
 /// </summary>
-public sealed class ExchangeJwtBearerGrantOptions
+internal sealed class ExchangeJwtBearerGrantOptions
 {
     /// <summary>
     /// Gets or sets the MCP Server's authorization server token endpoint URL.

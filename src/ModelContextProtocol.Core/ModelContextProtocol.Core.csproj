@@ -56,6 +56,15 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>ModelContextProtocol.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>ModelContextProtocol.AspNetCore.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <!-- Reference analyzers -->
   <ItemGroup>
     <ProjectReference Include="..\ModelContextProtocol.Analyzers\ModelContextProtocol.Analyzers.csproj"

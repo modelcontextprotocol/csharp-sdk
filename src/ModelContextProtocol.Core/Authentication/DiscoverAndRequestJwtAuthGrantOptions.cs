@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Authentication;
 /// Extends <see cref="RequestJwtAuthGrantOptions"/> semantics but replaces <c>TokenEndpoint</c>
 /// with <c>IdpUrl</c>/<c>IdpTokenEndpoint</c> for automatic discovery.
 /// </summary>
-public sealed class DiscoverAndRequestJwtAuthGrantOptions
+internal sealed class DiscoverAndRequestJwtAuthGrantOptions
 {
     /// <summary>
     /// Gets or sets the Identity Provider's base URL for OAuth/OIDC discovery.

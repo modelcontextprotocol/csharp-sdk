@@ -4,26 +4,13 @@ using System.Text.Json;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Provides Enterprise Managed Authorization utilities for the Identity Assertion Authorization Grant flow.
+/// Provides internal utilities for the Cross-Application Access authorization flow.
 /// </summary>
 /// <remarks>
-/// <para>
 /// Implements the Enterprise Managed Authorization flow as specified at
 /// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
-/// </para>
-/// <para>
-/// This class provides standalone functions for:
-/// </para>
-/// <list type="bullet">
-/// <item><description>RFC 8693 Token Exchange: Exchange an ID token for a JWT Authorization Grant (JAG) at an Identity Provider</description></item>
-/// <item><description>RFC 7523 JWT Bearer Grant: Exchange a JAG for an access token at an MCP Server's authorization server</description></item>
-/// </list>
-/// <para>
-/// These utilities can be used directly or through the <see cref="EnterpriseAuthProvider"/> for full integration
-/// with the MCP client's OAuth infrastructure.
-/// </para>
 /// </remarks>
-public static class EnterpriseAuth
+internal static class CrossApplicationAccess
 {
     #region Constants
 
@@ -48,7 +35,9 @@ public static class EnterpriseAuth
     public const string TokenTypeSaml2 = "urn:ietf:params:oauth:token-type:saml2";
 
     /// <summary>
-    /// Token type URN for Identity Assertion JWT Authorization Grants (SEP-990).
+    /// Token type URN for Identity Assertion JWT Authorization Grants.
+    /// As specified at
+    /// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
     /// </summary>
     public const string TokenTypeIdJag = "urn:ietf:params:oauth:token-type:id-jag";
 
@@ -60,18 +49,12 @@ public static class EnterpriseAuth
 
     #endregion
 
-    #region Layer 2: Token Exchange (RFC 8693)
+    #region Token Exchange (RFC 8693)
 
     /// <summary>
     /// Requests a JWT Authorization Grant (JAG) from an Identity Provider via RFC 8693 Token Exchange.
     /// Returns the JAG string to be used as a JWT Bearer assertion (RFC 7523) against the MCP authorization server.
     /// </summary>
-    /// <param name="options">Options for the token exchange request.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The JAG JWT string.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when required option values are missing.</exception>
-    /// <exception cref="EnterpriseAuthException">Thrown when the token exchange request fails.</exception>
     public static async Task<string> RequestJwtAuthorizationGrantAsync(
         RequestJwtAuthGrantOptions options,
         CancellationToken cancellationToken = default)
@@ -129,7 +112,7 @@ public static class EnterpriseAuth
                 // Could not parse error response
             }
 
-            throw new EnterpriseAuthException(
+            throw new CrossApplicationAccessException(
                 $"Token exchange failed with status {(int)httpResponse.StatusCode}.",
                 errorResponse?.Error,
                 errorResponse?.ErrorDescription,
@@ -140,23 +123,23 @@ public static class EnterpriseAuth
 
         if (response is null)
         {
-            throw new EnterpriseAuthException($"Failed to parse token exchange response: {responseBody}");
+            throw new CrossApplicationAccessException($"Failed to parse token exchange response: {responseBody}");
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
         {
-            throw new EnterpriseAuthException("Token exchange response missing required field: access_token");
+            throw new CrossApplicationAccessException("Token exchange response missing required field: access_token");
         }
 
         if (!string.Equals(response.IssuedTokenType, TokenTypeIdJag, StringComparison.Ordinal))
         {
-            throw new EnterpriseAuthException(
+            throw new CrossApplicationAccessException(
                 $"Token exchange response issued_token_type must be '{TokenTypeIdJag}', got '{response.IssuedTokenType}'.");
         }
 
         if (!string.Equals(response.TokenType, TokenTypeNotApplicable, StringComparison.OrdinalIgnoreCase))
         {
-            throw new EnterpriseAuthException(
+            throw new CrossApplicationAccessException(
                 $"Token exchange response token_type must be '{TokenTypeNotApplicable}' per RFC 8693 §2.2.1, got '{response.TokenType}'.");
         }
 
@@ -167,11 +150,6 @@ public static class EnterpriseAuth
     /// Discovers the IDP's token endpoint via OAuth/OIDC metadata, then requests a JWT Authorization Grant.
     /// Convenience wrapper over <see cref="RequestJwtAuthorizationGrantAsync"/>.
     /// </summary>
-    /// <param name="options">Options for discovery and token exchange. Provides <c>IdpUrl</c> instead of <c>TokenEndpoint</c>.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The JAG JWT string.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
-    /// <exception cref="EnterpriseAuthException">Thrown when IDP discovery or token exchange fails.</exception>
     public static async Task<string> DiscoverAndRequestJwtAuthorizationGrantAsync(
         DiscoverAndRequestJwtAuthGrantOptions options,
         CancellationToken cancellationToken = default)
@@ -189,7 +167,7 @@ public static class EnterpriseAuth
                 new Uri(options.IdpUrl!), httpClient, cancellationToken).ConfigureAwait(false);
 
             tokenEndpoint = idpMetadata.TokenEndpoint?.ToString()
-                ?? throw new EnterpriseAuthException($"IDP metadata discovery for {options.IdpUrl} did not return a token_endpoint.");
+                ?? throw new CrossApplicationAccessException($"IDP metadata discovery for {options.IdpUrl} did not return a token_endpoint.");
         }
 
         return await RequestJwtAuthorizationGrantAsync(new RequestJwtAuthGrantOptions
@@ -207,17 +185,12 @@ public static class EnterpriseAuth
 
     #endregion
 
-    #region Layer 2: JWT Bearer Grant (RFC 7523)
+    #region JWT Bearer Grant (RFC 7523)
 
     /// <summary>
     /// Exchanges a JWT Authorization Grant (JAG) for an access token at an MCP Server's authorization server
     /// using the JWT Bearer grant (RFC 7523).
     /// </summary>
-    /// <param name="options">Options for the JWT bearer grant request.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>A <see cref="TokenContainer"/> containing the access token.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
-    /// <exception cref="EnterpriseAuthException">Thrown when the JWT bearer grant fails.</exception>
     public static async Task<TokenContainer> ExchangeJwtBearerGrantAsync(
         ExchangeJwtBearerGrantOptions options,
         CancellationToken cancellationToken = default)
@@ -269,7 +242,7 @@ public static class EnterpriseAuth
                 // Could not parse error response
             }
 
-            throw new EnterpriseAuthException(
+            throw new CrossApplicationAccessException(
                 $"JWT bearer grant failed with status {(int)httpResponse.StatusCode}.",
                 errorResponse?.Error,
                 errorResponse?.ErrorDescription,
@@ -280,22 +253,22 @@ public static class EnterpriseAuth
 
         if (response is null)
         {
-            throw new EnterpriseAuthException($"Failed to parse JWT bearer grant response: {responseBody}");
+            throw new CrossApplicationAccessException($"Failed to parse JWT bearer grant response: {responseBody}");
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
         {
-            throw new EnterpriseAuthException("JWT bearer grant response missing required field: access_token");
+            throw new CrossApplicationAccessException("JWT bearer grant response missing required field: access_token");
         }
 
         if (string.IsNullOrEmpty(response.TokenType))
         {
-            throw new EnterpriseAuthException("JWT bearer grant response missing required field: token_type");
+            throw new CrossApplicationAccessException("JWT bearer grant response missing required field: token_type");
         }
 
         if (!string.Equals(response.TokenType, "bearer", StringComparison.OrdinalIgnoreCase))
         {
-            throw new EnterpriseAuthException(
+            throw new CrossApplicationAccessException(
                 $"JWT bearer grant response token_type must be 'bearer' per RFC 7523, got '{response.TokenType}'.");
         }
 
@@ -359,7 +332,7 @@ public static class EnterpriseAuth
             }
         }
 
-        throw new EnterpriseAuthException($"Failed to discover authorization server metadata for: {issuerUrl}");
+        throw new CrossApplicationAccessException($"Failed to discover authorization server metadata for: {issuerUrl}");
     }
 
     #endregion
@@ -387,107 +360,3 @@ public static class EnterpriseAuth
 
     #endregion
 }
-
-#region Response Types
-
-/// <summary>
-/// Represents the response from an RFC 8693 Token Exchange for the JAG flow.
-/// Contains the JWT Authorization Grant in the <see cref="AccessToken"/> field.
-/// </summary>
-internal sealed class JagTokenExchangeResponse
-{
-    /// <summary>
-    /// Gets or sets the issued JAG. Despite the name "access_token" (required by RFC 8693),
-    /// this contains a JAG JWT, not an OAuth access token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("access_token")]
-    public string AccessToken { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the type of the security token issued.
-    /// This MUST be <see cref="EnterpriseAuth.TokenTypeIdJag"/>.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("issued_token_type")]
-    public string IssuedTokenType { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the token type. This MUST be "N_A" per RFC 8693 §2.2.1.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("token_type")]
-    public string TokenType { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the scope of the issued token, if different from the request.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("scope")]
-    public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the lifetime in seconds of the issued token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("expires_in")]
-    public int? ExpiresIn { get; set; }
-}
-
-/// <summary>
-/// Represents the response from a JWT Bearer grant (RFC 7523) access token request.
-/// </summary>
-internal sealed class JwtBearerAccessTokenResponse
-{
-    /// <summary>
-    /// Gets or sets the OAuth access token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("access_token")]
-    public string AccessToken { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the token type. This should be "Bearer".
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("token_type")]
-    public string TokenType { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the lifetime in seconds of the access token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("expires_in")]
-    public int? ExpiresIn { get; set; }
-
-    /// <summary>
-    /// Gets or sets the refresh token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("refresh_token")]
-    public string? RefreshToken { get; set; }
-
-    /// <summary>
-    /// Gets or sets the scope of the access token.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("scope")]
-    public string? Scope { get; set; }
-}
-
-/// <summary>
-/// Represents an OAuth error response per RFC 6749 Section 5.2.
-/// Used for both token exchange and JWT bearer grant error responses.
-/// </summary>
-internal sealed class OAuthErrorResponse
-{
-    /// <summary>
-    /// Gets or sets the error code.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("error")]
-    public string? Error { get; set; }
-
-    /// <summary>
-    /// Gets or sets the human-readable error description.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("error_description")]
-    public string? ErrorDescription { get; set; }
-
-    /// <summary>
-    /// Gets or sets the URI identifying a human-readable web page with error information.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("error_uri")]
-    public string? ErrorUri { get; set; }
-}
-
-#endregion

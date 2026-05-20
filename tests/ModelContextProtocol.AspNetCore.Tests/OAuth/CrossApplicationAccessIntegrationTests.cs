@@ -6,31 +6,31 @@ using System.Net.Http.Headers;
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 /// <summary>
-/// Integration tests for Enterprise Managed Authorization (SEP-990) using the in-memory
+/// Integration tests for Cross-Application Access authorization using the in-memory
 /// test OAuth server as a stand-in for both the enterprise Identity Provider (IdP) and
 /// the MCP Authorization Server (AS).
 ///
 /// Flow exercised:
-///   1. <see cref="EnterpriseAuthProvider.GetAccessTokenAsync"/> discovers the MCP AS
-///      metadata and calls the assertion callback.
-///   2. The assertion callback calls <c>/idp/token</c> on the test OAuth server
-///      (RFC 8693 token exchange: ID token → JAG).
+///   1. <see cref="CrossApplicationAccessProvider.GetAccessTokenAsync"/> discovers the MCP AS
+///      metadata and calls the ID token callback.
+///   2. The provider performs RFC 8693 token exchange at <c>/idp/token</c> on the test OAuth server
+///      (ID token → JAG).
 ///   3. The provider exchanges the JAG for an access token at <c>/token</c>
 ///      (RFC 7523 JWT-bearer grant: JAG → access token).
 ///   4. The access token is passed to the MCP client transport and used to authenticate
 ///      against the protected MCP server.
 /// </summary>
-public class EnterpriseAuthIntegrationTests : OAuthTestBase
+public class CrossApplicationAccessIntegrationTests : OAuthTestBase
 {
-    public EnterpriseAuthIntegrationTests(ITestOutputHelper outputHelper)
+    public CrossApplicationAccessIntegrationTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
     }
 
     [Fact]
-    public async Task CanAuthenticate_WithEnterpriseAuthProvider()
+    public async Task CanAuthenticate_WithCrossApplicationAccessProvider()
     {
-        // Enable SEP-990 endpoints on the test OAuth server.
+        // Enable Enterprise Managed Authorization endpoints on the test OAuth server.
         TestOAuthServer.EnterpriseSupportEnabled = true;
 
         await using var app = await StartMcpServerAsync();
@@ -38,32 +38,22 @@ public class EnterpriseAuthIntegrationTests : OAuthTestBase
         // Simulate the enterprise ID token that would normally come from the SSO login step.
         const string simulatedIdToken = "test-enterprise-sso-id-token";
 
-        // Create the provider.  The assertion callback calls the IdP's token-exchange
-        // endpoint (/idp/token on the test OAuth server) to obtain a JAG, which is then
-        // exchanged automatically for an access token at the MCP AS token endpoint (/token).
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        // Create the provider with IdP config folded into options.
+        // The ID token callback just returns the SSO ID token; the provider performs
+        // RFC 8693 (ID token → JAG) and RFC 7523 (JAG → access token) internally.
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",
-                AssertionCallback = (context, ct) =>
-                    EnterpriseAuth.RequestJwtAuthorizationGrantAsync(
-                        new RequestJwtAuthGrantOptions
-                        {
-                            // /idp/token acts as the enterprise IdP token endpoint.
-                            TokenEndpoint = $"{OAuthServerUrl}/idp/token",
-                            // The JAG audience is the MCP AS, and the resource is the MCP server.
-                            Audience = context.AuthorizationServerUrl.ToString(),
-                            Resource = context.ResourceUrl.ToString(),
-                            IdToken = simulatedIdToken,
-                            ClientId = "enterprise-idp-client",
-                            ClientSecret = "enterprise-idp-secret",
-                            HttpClient = HttpClient,
-                        }, ct),
+                IdpTokenEndpoint = $"{OAuthServerUrl}/idp/token",
+                IdpClientId = "enterprise-idp-client",
+                IdpClientSecret = "enterprise-idp-secret",
+                IdTokenCallback = (_, ct) => Task.FromResult(simulatedIdToken),
             },
             httpClient: HttpClient);
 
-        // Run the full SEP-990 flow: discover AS → get JAG → exchange for access token.
+        // Run the full Cross-Application Access flow: discover AS → get JAG → exchange for access token.
         var tokens = await provider.GetAccessTokenAsync(
             resourceUrl: new Uri(McpServerUrl),
             authorizationServerUrl: new Uri(OAuthServerUrl),
@@ -96,33 +86,26 @@ public class EnterpriseAuthIntegrationTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task EnterpriseAuthProvider_ReturnsCachedToken_OnSecondCall()
+    public async Task CrossApplicationAccessProvider_ReturnsCachedToken_OnSecondCall()
     {
         TestOAuthServer.EnterpriseSupportEnabled = true;
 
         await using var _ = await StartMcpServerAsync();
 
-        var assertionCallCount = 0;
+        var idTokenCallCount = 0;
 
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var provider = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",
-                AssertionCallback = async (context, ct) =>
+                IdpTokenEndpoint = $"{OAuthServerUrl}/idp/token",
+                IdpClientId = "enterprise-idp-client",
+                IdpClientSecret = "enterprise-idp-secret",
+                IdTokenCallback = (_, ct) =>
                 {
-                    assertionCallCount++;
-                    return await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(
-                        new RequestJwtAuthGrantOptions
-                        {
-                            TokenEndpoint = $"{OAuthServerUrl}/idp/token",
-                            Audience = context.AuthorizationServerUrl.ToString(),
-                            Resource = context.ResourceUrl.ToString(),
-                            IdToken = "test-sso-token",
-                            ClientId = "enterprise-idp-client",
-                            ClientSecret = "enterprise-idp-secret",
-                            HttpClient = HttpClient,
-                        }, ct);
+                    idTokenCallCount++;
+                    return Task.FromResult("test-sso-token");
                 },
             },
             httpClient: HttpClient);
@@ -135,56 +118,49 @@ public class EnterpriseAuthIntegrationTests : OAuthTestBase
             new Uri(McpServerUrl), new Uri(OAuthServerUrl),
             TestContext.Current.CancellationToken);
 
-        // The assertion callback (and therefore the IdP round-trip) should only fire once.
-        Assert.Equal(1, assertionCallCount);
+        // The ID token callback (and therefore the IdP round-trip) should only fire once.
+        Assert.Equal(1, idTokenCallCount);
         Assert.Equal(tokens1.AccessToken, tokens2.AccessToken);
     }
 
     [Fact]
-    public async Task EnterpriseAuthProvider_FetchesFreshToken_AfterInvalidateCache()
+    public async Task CrossApplicationAccessProvider_FetchesFreshToken_AfterInvalidateCache()
     {
         TestOAuthServer.EnterpriseSupportEnabled = true;
 
         await using var _ = await StartMcpServerAsync();
 
-        var assertionCallCount = 0;
+        var idTokenCallCount2 = 0;
 
-        var provider = new EnterpriseAuthProvider(
-            new EnterpriseAuthProviderOptions
+        var provider2 = new CrossApplicationAccessProvider(
+            new CrossApplicationAccessProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",
-                AssertionCallback = async (context, ct) =>
+                IdpTokenEndpoint = $"{OAuthServerUrl}/idp/token",
+                IdpClientId = "enterprise-idp-client",
+                IdpClientSecret = "enterprise-idp-secret",
+                IdTokenCallback = (_, ct) =>
                 {
-                    assertionCallCount++;
-                    return await EnterpriseAuth.RequestJwtAuthorizationGrantAsync(
-                        new RequestJwtAuthGrantOptions
-                        {
-                            TokenEndpoint = $"{OAuthServerUrl}/idp/token",
-                            Audience = context.AuthorizationServerUrl.ToString(),
-                            Resource = context.ResourceUrl.ToString(),
-                            IdToken = "test-sso-token",
-                            ClientId = "enterprise-idp-client",
-                            ClientSecret = "enterprise-idp-secret",
-                            HttpClient = HttpClient,
-                        }, ct);
+                    idTokenCallCount2++;
+                    return Task.FromResult("test-sso-token");
                 },
             },
             httpClient: HttpClient);
 
-        var tokens1 = await provider.GetAccessTokenAsync(
+        var tokens1 = await provider2.GetAccessTokenAsync(
             new Uri(McpServerUrl), new Uri(OAuthServerUrl),
             TestContext.Current.CancellationToken);
 
         // Invalidate the cache to force a full re-exchange.
-        provider.InvalidateCache();
+        provider2.InvalidateCache();
 
-        var tokens2 = await provider.GetAccessTokenAsync(
+        var tokens2 = await provider2.GetAccessTokenAsync(
             new Uri(McpServerUrl), new Uri(OAuthServerUrl),
             TestContext.Current.CancellationToken);
 
         // The IdP should have been called twice — once for each GetAccessTokenAsync after invalidation.
-        Assert.Equal(2, assertionCallCount);
+        Assert.Equal(2, idTokenCallCount2);
         // The tokens may or may not be identical depending on timing, but the flow ran again.
         Assert.NotNull(tokens2.AccessToken);
     }

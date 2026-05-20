@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Options for requesting a JWT Authorization Grant from an Identity Provider via RFC 8693 Token Exchange.
 /// </summary>
-public sealed class RequestJwtAuthGrantOptions
+internal sealed class RequestJwtAuthGrantOptions
 {
     /// <summary>
     /// Gets or sets the IDP's token endpoint URL.
