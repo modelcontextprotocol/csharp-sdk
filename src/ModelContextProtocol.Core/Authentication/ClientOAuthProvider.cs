@@ -737,7 +737,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             {
                 // If we have previously requested scopes but nothing new, return the accumulated set.
                 return _previouslyRequestedScopes.Count > 0
-                    ? string.Join(" ", _previouslyRequestedScopes)
+                    ? string.Join(" ", _previouslyRequestedScopes.OrderBy(s => s, StringComparer.Ordinal))
                     : null;
             }
         }
@@ -752,7 +752,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 _previouslyRequestedScopes.Add(scope);
             }
 
-            return string.Join(" ", _previouslyRequestedScopes);
+            // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
+            return string.Join(" ", _previouslyRequestedScopes.OrderBy(s => s, StringComparer.Ordinal));
         }
     }
 

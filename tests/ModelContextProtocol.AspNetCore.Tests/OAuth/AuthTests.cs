@@ -409,7 +409,9 @@ public class AuthTests : OAuthTestBase
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("mcp:tools files:read", requestedScope);
+        var requestedScopeSet = new HashSet<string>(requestedScope!.Split(' '));
+        Assert.Contains("mcp:tools", requestedScopeSet);
+        Assert.Contains("files:read", requestedScopeSet);
     }
 
     [Fact]
