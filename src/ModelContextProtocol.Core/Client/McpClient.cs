@@ -70,4 +70,40 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
+
+    /// <summary>
+    /// Registers one or more tool definitions in the client's tool cache, enabling the transport
+    /// to send <c>Mcp-Param-*</c> headers for those tools without requiring a prior <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
+    /// </summary>
+    /// <param name="tools">The tool definitions to register.</param>
+    /// <remarks>
+    /// <para>
+    /// This method allows callers who already have tool schema information (e.g., from a previous session,
+    /// hardcoded configuration, or an out-of-band source) to provide it directly to the client. Once registered,
+    /// any <see cref="McpClient.CallToolAsync(string, IReadOnlyDictionary{string, object?}?, IProgress{ProgressNotificationValue}?, RequestOptions?, CancellationToken)"/>
+    /// call for a registered tool will automatically include <c>Mcp-Param-*</c> HTTP headers based on
+    /// the tool's <c>x-mcp-header</c> schema annotations, exactly as if the tool had been discovered
+    /// via <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// <para>
+    /// <b>Cache interaction behavior:</b>
+    /// <list type="bullet">
+    ///   <item>Registered tools are added to the same internal tool cache used by <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.</item>
+    ///   <item>Calling <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> after <see cref="RegisterTools"/> preserves
+    ///     manually registered tools — only server-discovered tools are cleared and repopulated.</item>
+    ///   <item>If the server returns a tool with the same name as a manually registered tool, the server's
+    ///     definition overwrites the registered one in the cache, but the tool retains its registered status
+    ///     and will survive subsequent cache clears.</item>
+    ///   <item>Tools can be registered at any time — before or after <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>,
+    ///     and across multiple calls.</item>
+    ///   <item>Re-registering a tool with the same name overwrites the previous definition in the cache (last write wins).</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Tools with invalid <c>x-mcp-header</c> annotations are rejected and not added to the cache.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    public abstract void RegisterTools(IEnumerable<Tool> tools);
+
 }

@@ -24,6 +24,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
     private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _registeredToolNames = new(StringComparer.Ordinal);
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -72,7 +73,23 @@ internal sealed partial class McpClientImpl : McpClient
 
         ToolDiscovered = tool => _toolCache[tool.Name] = tool;
         ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
-        ToolCacheClearing = () => _toolCache.Clear();
+        ToolCacheClearing = () =>
+        {
+            if (_registeredToolNames.IsEmpty)
+            {
+                _toolCache.Clear();
+                return;
+            }
+
+            // Only remove server-discovered tools; preserve manually registered tools.
+            foreach (var key in _toolCache.Keys)
+            {
+                if (!_registeredToolNames.ContainsKey(key))
+                {
+                    _toolCache.TryRemove(key, out _);
+                }
+            }
+        };
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -635,6 +652,26 @@ internal sealed partial class McpClientImpl : McpClient
         _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
 
         LogClientSessionResumed(_endpointName);
+    }
+
+    /// <inheritdoc/>
+    public override void RegisterTools(IEnumerable<Tool> tools)
+    {
+        Throw.IfNull(tools);
+
+        foreach (var tool in tools)
+        {
+            Throw.IfNull(tool);
+
+            if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+            {
+                ToolRejected?.Invoke(tool, rejectionReason!);
+                continue;
+            }
+
+            _registeredToolNames[tool.Name] = 0;
+            _toolCache[tool.Name] = tool;
+        }
     }
 
     /// <inheritdoc/>
