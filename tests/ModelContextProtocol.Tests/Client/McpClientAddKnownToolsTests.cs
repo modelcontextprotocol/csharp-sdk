@@ -175,17 +175,18 @@ public class McpClientAddKnownToolsTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task AddKnownTools_WithInvalidSchema_ToolIsRejected()
+    public async Task AddKnownTools_WithInvalidSchema_ThrowsArgumentException()
     {
         // Arrange
         await using var client = await CreateMcpClientForServer();
         var invalidTool = CreateInvalidTool("BadTool");
         var validTool = CreateTool("GoodTool", "X-Good");
 
-        // Act — register both; invalid should be rejected, valid should be accepted
-        client.AddKnownTools([invalidTool, validTool]);
+        // Act & Assert — all-or-nothing: neither tool should be added
+        var ex = Assert.Throws<ArgumentException>(() => client.AddKnownTools([invalidTool, validTool]));
+        Assert.Contains("BadTool", ex.Message);
 
-        // Assert — server tools still work normally after registering valid and invalid tools
+        // Server tools still work normally
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(tools, t => t.Name == ServerToolName);
         Assert.Contains(tools, t => t.Name == ServerToolName2);
@@ -271,5 +272,107 @@ public class McpClientAddKnownToolsTests : ClientServerTestBase
         // Assert — call succeeded (tool was found in cache, request was processed by server)
         Assert.NotNull(result);
         Assert.Contains(result.Content, c => c is TextContentBlock text && text.Text == "echo test");
+    }
+
+    [Fact]
+    public async Task RemoveKnownTools_RemovedToolNoLongerSurvivesListToolsAsync()
+    {
+        // Arrange
+        await using var client = await CreateMcpClientForServer();
+        client.AddKnownTools([CreateTool("MyTool", "X-Custom")]);
+
+        // Act — remove the known tool
+        client.RemoveKnownTools(["MyTool"]);
+
+        // Assert — server tools still repopulated, removed tool doesn't interfere
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+        Assert.Contains(tools, t => t.Name == ServerToolName2);
+    }
+
+    [Fact]
+    public async Task RemoveKnownTools_NonExistentName_IsNoOp()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        // Should not throw
+        client.RemoveKnownTools(["NonExistentTool"]);
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+    }
+
+    [Fact]
+    public async Task RemoveKnownTools_NullArgument_ThrowsArgumentNullException()
+    {
+        await using var client = await CreateMcpClientForServer();
+        Assert.Throws<ArgumentNullException>(() => client.RemoveKnownTools(null!));
+    }
+
+    [Fact]
+    public async Task RemoveKnownTools_PartialRemove_OtherToolsSurvive()
+    {
+        // Arrange
+        await using var client = await CreateMcpClientForServer();
+        client.AddKnownTools([
+            CreateTool("ToolA", "X-A"),
+            CreateTool("ToolB", "X-B"),
+        ]);
+
+        // Act — remove only ToolA
+        client.RemoveKnownTools(["ToolA"]);
+
+        // Assert — ToolB still survives cache clears, server tools repopulated
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+        Assert.Contains(tools, t => t.Name == ServerToolName2);
+    }
+
+    [Fact]
+    public async Task ClearKnownTools_RemovesAllKnownToolsFromCache()
+    {
+        // Arrange
+        await using var client = await CreateMcpClientForServer();
+        client.AddKnownTools([
+            CreateTool("ToolA", "X-A"),
+            CreateTool("ToolB", "X-B"),
+        ]);
+
+        // Act
+        client.ClearKnownTools();
+
+        // Assert — server tools still work after clearing known tools
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+        Assert.Contains(tools, t => t.Name == ServerToolName2);
+    }
+
+    [Fact]
+    public async Task ClearKnownTools_WhenEmpty_IsNoOp()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        // Should not throw when nothing is registered
+        client.ClearKnownTools();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+    }
+
+    [Fact]
+    public async Task ClearKnownTools_ThenAddKnownTools_WorksCorrectly()
+    {
+        // Arrange
+        await using var client = await CreateMcpClientForServer();
+        client.AddKnownTools([CreateTool("ToolA", "X-A")]);
+
+        // Act — clear then add new tools
+        client.ClearKnownTools();
+        client.AddKnownTools([CreateTool("ToolC", "X-C")]);
+
+        // Assert — server tools repopulated, new tool doesn't interfere
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
     }
 }

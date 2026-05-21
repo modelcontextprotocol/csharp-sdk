@@ -233,4 +233,35 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         Assert.True(headers.ContainsKey("Mcp-Param-Priority"), "Expected Mcp-Param-Priority header after ListToolsAsync");
         Assert.Equal("99", headers["Mcp-Param-Priority"]);
     }
+
+    [Fact]
+    public async Task RemoveKnownTools_ThenCallTool_NoMcpParamHeaders()
+    {
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Register then remove — headers should no longer be sent
+        client.AddKnownTools([CreateToolWithHeaders()]);
+        client.RemoveKnownTools(["my_tool"]);
+
+        var result = await client.CallToolAsync(
+            "my_tool",
+            new Dictionary<string, object?> { ["region"] = "us-east-1", ["priority"] = 1 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        // Verify no Mcp-Param-* headers were sent after removal
+        Assert.Single(_capturedHeaders);
+        var headers = _capturedHeaders.Values.First();
+        Assert.Empty(headers);
+    }
 }

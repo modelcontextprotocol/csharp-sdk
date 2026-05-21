@@ -100,13 +100,49 @@ public abstract partial class McpClient : McpSession
     /// </list>
     /// </para>
     /// <para>
-    /// Tools with invalid <c>x-mcp-header</c> annotations are rejected and not added to the cache.
+    /// Tools with invalid <c>x-mcp-header</c> annotations cause an <see cref="ArgumentException"/> to be thrown.
+    /// No tools are added to the cache if any tool in the batch fails validation (all-or-nothing).
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">One or more tools have invalid <c>x-mcp-header</c> annotations.</exception>
     public virtual void AddKnownTools(IEnumerable<Tool> tools)
     {
         Throw.IfNull(tools);
     }
 
+    /// <summary>
+    /// Removes one or more previously registered tool definitions from the client's tool cache by name.
+    /// </summary>
+    /// <param name="toolNames">The names of the tools to remove.</param>
+    /// <remarks>
+    /// <para>
+    /// This removes the specified tools from both the known-tools set and the internal tool cache.
+    /// After removal, those tools will no longer survive <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>
+    /// cache clears, and <c>Mcp-Param-*</c> headers will no longer be sent for them unless the server
+    /// re-discovers them via <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// <para>
+    /// Removing a tool name that was not previously added via <see cref="AddKnownTools"/> is a no-op.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="toolNames"/> is <see langword="null"/>.</exception>
+    public virtual void RemoveKnownTools(IEnumerable<string> toolNames)
+    {
+        Throw.IfNull(toolNames);
+    }
+
+    /// <summary>
+    /// Removes all previously registered tool definitions from the client's tool cache.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This clears all tools that were added via <see cref="AddKnownTools"/> from both the known-tools
+    /// set and the internal tool cache. Server-discovered tools that are not also known tools are not affected
+    /// and will remain in the cache until the next <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
+    /// </para>
+    /// </remarks>
+    public virtual void ClearKnownTools()
+    {
+    }
 }

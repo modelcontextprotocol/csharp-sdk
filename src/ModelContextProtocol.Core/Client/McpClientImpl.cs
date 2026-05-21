@@ -659,19 +659,57 @@ internal sealed partial class McpClientImpl : McpClient
     {
         Throw.IfNull(tools);
 
-        foreach (var tool in tools)
+        var snapshot = tools as IReadOnlyCollection<Tool> ?? [.. tools];
+
+        List<string>? rejections = null;
+        foreach (var tool in snapshot)
         {
             Throw.IfNull(tool);
 
             if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
             {
                 ToolRejected?.Invoke(tool, rejectionReason!);
-                continue;
+                (rejections ??= []).Add($"{tool.Name}: {rejectionReason}");
             }
+        }
 
+        if (rejections is { Count: > 0 })
+        {
+            throw new ArgumentException(
+                "One or more tools failed x-mcp-header validation: " + string.Join("; ", rejections),
+                nameof(tools));
+        }
+
+        foreach (var tool in snapshot)
+        {
             _registeredToolNames[tool.Name] = 0;
             _toolCache[tool.Name] = tool;
         }
+    }
+
+    /// <inheritdoc/>
+    public override void RemoveKnownTools(IEnumerable<string> toolNames)
+    {
+        Throw.IfNull(toolNames);
+
+        foreach (var name in toolNames)
+        {
+            Throw.IfNull(name);
+
+            _registeredToolNames.TryRemove(name, out _);
+            _toolCache.TryRemove(name, out _);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ClearKnownTools()
+    {
+        foreach (var name in _registeredToolNames.Keys)
+        {
+            _toolCache.TryRemove(name, out _);
+        }
+
+        _registeredToolNames.Clear();
     }
 
     /// <inheritdoc/>
