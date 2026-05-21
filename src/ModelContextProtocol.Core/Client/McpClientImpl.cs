@@ -692,10 +692,15 @@ internal sealed partial class McpClientImpl : McpClient
     {
         Throw.IfNull(toolNames);
 
-        foreach (var name in toolNames)
+        var snapshot = toolNames as IReadOnlyCollection<string> ?? [.. toolNames];
+
+        foreach (var name in snapshot)
         {
             Throw.IfNull(name);
+        }
 
+        foreach (var name in snapshot)
+        {
             _registeredToolNames.TryRemove(name, out _);
             _toolCache.TryRemove(name, out _);
         }
