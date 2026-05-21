@@ -89,7 +89,7 @@ public abstract partial class McpClient : McpSession
     /// <b>Cache interaction behavior:</b>
     /// <list type="bullet">
     ///   <item>Registered tools are added to the same internal tool cache used by <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.</item>
-    ///   <item>Calling <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> after <see cref="RegisterTools"/> preserves
+    ///   <item>Calling <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> after <see cref="AddKnownTools"/> preserves
     ///     manually registered tools — only server-discovered tools are cleared and repopulated.</item>
     ///   <item>If the server returns a tool with the same name as a manually registered tool, the server's
     ///     definition overwrites the registered one in the cache, but the tool retains its registered status
@@ -104,7 +104,7 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
-    public virtual void RegisterTools(IEnumerable<Tool> tools)
+    public virtual void AddKnownTools(IEnumerable<Tool> tools)
     {
         Throw.IfNull(tools);
     }

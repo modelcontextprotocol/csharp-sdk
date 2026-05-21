@@ -655,7 +655,7 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
-    public override void RegisterTools(IEnumerable<Tool> tools)
+    public override void AddKnownTools(IEnumerable<Tool> tools)
     {
         Throw.IfNull(tools);
 

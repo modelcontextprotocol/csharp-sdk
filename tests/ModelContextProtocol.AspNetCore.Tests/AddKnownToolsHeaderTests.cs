@@ -12,10 +12,10 @@ using System.Text.Json;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// Tests that <see cref="McpClient.RegisterTools"/> allows sending Mcp-Param-* headers
+/// Tests that <see cref="McpClient.AddKnownTools"/> allows sending Mcp-Param-* headers
 /// without a prior <see cref="McpClient.ListToolsAsync"/> call.
 /// </summary>
-public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
 
@@ -136,7 +136,7 @@ public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
     }
 
     [Fact]
-    public async Task RegisterTools_ThenCallTool_SendsMcpParamHeaders_WithoutListToolsAsync()
+    public async Task AddKnownTools_ThenCallTool_SendsMcpParamHeaders_WithoutListToolsAsync()
     {
         await StartAsync();
 
@@ -150,7 +150,7 @@ public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register the tool WITHOUT calling ListToolsAsync first — this is the core scenario from issue #1577
-        client.RegisterTools([CreateToolWithHeaders()]);
+        client.AddKnownTools([CreateToolWithHeaders()]);
 
         // Call the tool
         var result = await client.CallToolAsync(
@@ -183,7 +183,7 @@ public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Call the tool without RegisterTools or ListToolsAsync — no Mcp-Param-* headers should be sent
+        // Call the tool without AddKnownTools or ListToolsAsync — no Mcp-Param-* headers should be sent
         var result = await client.CallToolAsync(
             "my_tool",
             new Dictionary<string, object?> { ["region"] = "us-west-2", ["priority"] = 42 },
@@ -198,7 +198,7 @@ public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
     }
 
     [Fact]
-    public async Task RegisterTools_SurvivesListToolsAsync_HeadersStillSent()
+    public async Task AddKnownTools_SurvivesListToolsAsync_HeadersStillSent()
     {
         await StartAsync();
 
@@ -212,7 +212,7 @@ public class RegisterToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register the tool first
-        client.RegisterTools([CreateToolWithHeaders()]);
+        client.AddKnownTools([CreateToolWithHeaders()]);
 
         // Call ListToolsAsync — server returns empty list, but registered tool should survive
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
