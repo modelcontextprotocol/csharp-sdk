@@ -109,6 +109,7 @@ public abstract partial class McpClient : McpSession
     public virtual void AddKnownTools(IEnumerable<Tool> tools)
     {
         Throw.IfNull(tools);
+        throw new NotSupportedException($"{GetType().Name} does not support adding known tools.");
     }
 
     /// <summary>
@@ -130,6 +131,7 @@ public abstract partial class McpClient : McpSession
     public virtual void RemoveKnownTools(IEnumerable<string> toolNames)
     {
         Throw.IfNull(toolNames);
+        throw new NotSupportedException($"{GetType().Name} does not support removing known tools.");
     }
 
     /// <summary>
@@ -144,5 +146,6 @@ public abstract partial class McpClient : McpSession
     /// </remarks>
     public virtual void ClearKnownTools()
     {
+        throw new NotSupportedException($"{GetType().Name} does not support clearing known tools.");
     }
 }
