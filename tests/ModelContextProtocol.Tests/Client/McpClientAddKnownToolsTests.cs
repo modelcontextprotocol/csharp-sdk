@@ -375,4 +375,37 @@ public class McpClientAddKnownToolsTests : ClientServerTestBase
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(tools, t => t.Name == ServerToolName);
     }
+
+    [Fact]
+    public async Task AddKnownTools_PartialFailure_NothingRegistered()
+    {
+        // Arrange — [valid, invalid, valid] should register nothing (all-or-nothing)
+        await using var client = await CreateMcpClientForServer();
+        var valid1 = CreateTool("Valid1", "X-One");
+        var invalid = CreateInvalidTool("BadTool");
+        var valid2 = CreateTool("Valid2", "X-Two");
+
+        // Act & Assert — throws, no tools registered
+        Assert.Throws<ArgumentException>(() => client.AddKnownTools([valid1, invalid, valid2]));
+
+        // Server tools still work; none of the valid tools were cached
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == ServerToolName);
+        Assert.Equal(2, tools.Count);
+    }
+
+    [Fact]
+    public async Task AddKnownTools_NullElementInMiddle_NothingRegistered()
+    {
+        // Arrange — null element at index 1; elements before it should not be cached
+        await using var client = await CreateMcpClientForServer();
+        var valid = CreateTool("Valid", "X-Valid");
+
+        // Act & Assert — throws ArgumentNullException on null element, nothing cached
+        Assert.Throws<ArgumentNullException>(() => client.AddKnownTools([valid, null!, CreateTool("Other", "X-Other")]));
+
+        // Server tools still work; valid tool was NOT cached due to atomicity
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(2, tools.Count);
+    }
 }

@@ -264,4 +264,96 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         var headers = _capturedHeaders.Values.First();
         Assert.Empty(headers);
     }
+
+    private static Tool CreateToolWithSingleHeader(string toolName, string headerName)
+    {
+        var schemaJson = $$"""
+            {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "x-mcp-header": "{{headerName}}"
+                    }
+                },
+                "required": ["value"]
+            }
+            """;
+
+        return new Tool
+        {
+            Name = toolName,
+            InputSchema = JsonDocument.Parse(schemaJson).RootElement.Clone(),
+        };
+    }
+
+    [Fact]
+    public async Task AddKnownTools_ServerReturnsEmptyList_RegisteredToolStillUsedForHeaders()
+    {
+        // Staleness test: register foo → server returns [] → ListToolsAsync → call foo → headers still sent
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Register tool, then ListToolsAsync returns empty list from server
+        client.AddKnownTools([CreateToolWithHeaders()]);
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Call the registered tool — headers should still be sent (sticky registration)
+        var result = await client.CallToolAsync(
+            "my_tool",
+            new Dictionary<string, object?> { ["region"] = "ap-southeast-1", ["priority"] = 5 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        Assert.Single(_capturedHeaders);
+        var headers = _capturedHeaders.Values.First();
+        Assert.True(headers.ContainsKey("Mcp-Param-Region"), "Expected Mcp-Param-Region after server returned empty list");
+        Assert.Equal("ap-southeast-1", headers["Mcp-Param-Region"]);
+        Assert.True(headers.ContainsKey("Mcp-Param-Priority"), "Expected Mcp-Param-Priority after server returned empty list");
+        Assert.Equal("5", headers["Mcp-Param-Priority"]);
+    }
+
+    [Fact]
+    public async Task AddKnownTools_ReRegisterOverwrite_LastWriteWinsHeaders()
+    {
+        // Last-write-wins: register foo with schema A → register foo with schema B → call → headers reflect schema B
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Register with header "SchemaA", then overwrite with "SchemaB"
+        client.AddKnownTools([CreateToolWithSingleHeader("my_tool", "SchemaA")]);
+        client.AddKnownTools([CreateToolWithSingleHeader("my_tool", "SchemaB")]);
+
+        var result = await client.CallToolAsync(
+            "my_tool",
+            new Dictionary<string, object?> { ["value"] = "test" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        Assert.Single(_capturedHeaders);
+        var headers = _capturedHeaders.Values.First();
+        // SchemaA header should NOT be present
+        Assert.False(headers.ContainsKey("Mcp-Param-SchemaA"), "SchemaA header should have been overwritten");
+        // SchemaB header SHOULD be present (last write wins)
+        Assert.True(headers.ContainsKey("Mcp-Param-SchemaB"), "Expected Mcp-Param-SchemaB from overwritten registration");
+        Assert.Equal("test", headers["Mcp-Param-SchemaB"]);
+    }
 }
