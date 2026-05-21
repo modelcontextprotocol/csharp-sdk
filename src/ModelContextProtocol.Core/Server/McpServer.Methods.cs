@@ -333,6 +333,26 @@ public abstract partial class McpServer : McpSession
     }
 
     /// <summary>
+    /// Sends a task status notification to the connected client.
+    /// </summary>
+    /// <param name="notificationParams">The task status notification parameters to send.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="notificationParams"/> is <see langword="null"/>.</exception>
+    public Task SendTaskStatusNotificationAsync(
+        TaskStatusNotificationParams notificationParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(notificationParams);
+
+        return SendNotificationAsync(
+            NotificationMethods.TaskStatusNotification,
+            notificationParams,
+            McpJsonUtilities.JsonContext.Default.TaskStatusNotificationParams,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Builds a request schema for elicitation based on the public serializable properties of <paramref name="type"/>.
     /// </summary>
     /// <param name="type">The type of the schema being built.</param>

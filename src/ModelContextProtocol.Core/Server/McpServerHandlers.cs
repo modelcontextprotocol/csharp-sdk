@@ -156,6 +156,33 @@ public sealed class McpServerHandlers
     /// </remarks>
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.TasksGet"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client polls for the current state of a task.
+    /// The handler should return the appropriate <see cref="GetTaskResult"/> subtype
+    /// based on the task's current status.
+    /// </remarks>
+    public McpRequestHandler<GetTaskRequestParams, GetTaskResult>? GetTaskHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.TasksUpdate"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client provides input responses for a task
+    /// that is in the <see cref="McpTaskStatus.InputRequired"/> state.
+    /// </remarks>
+    public McpRequestHandler<UpdateTaskRequestParams, UpdateTaskResult>? UpdateTaskHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.TasksCancel"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client requests cancellation of an in-progress task.
+    /// </remarks>
+    public McpRequestHandler<CancelTaskRequestParams, CancelTaskResult>? CancelTaskHandler { get; set; }
+
     /// <summary>Gets or sets notification handlers to register with the server.</summary>
     /// <remarks>
     /// <para>

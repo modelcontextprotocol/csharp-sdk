@@ -955,18 +955,129 @@ public abstract partial class McpClient : McpSession
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
-    public ValueTask<CallToolResult> CallToolAsync(
+    /// <remarks>
+    /// This method automatically includes the <c>io.modelcontextprotocol/tasks</c> extension capability
+    /// in the request metadata. If the server returns a task handle instead of an immediate result,
+    /// this method transparently polls <c>tasks/get</c> until the task completes, fails, or is cancelled.
+    /// Use <see cref="CallToolRawAsync"/>
+    /// to receive the raw <see cref="TaskAugmentedResult{TResult}"/> without automatic polling.
+    /// </remarks>
+    public async ValueTask<CallToolResult> CallToolAsync(
         CallToolRequestParams requestParams,
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
-            RequestMethods.ToolsCall,
-            requestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult,
-            cancellationToken: cancellationToken);
+        var augmented = await CallToolRawAsync(requestParams, cancellationToken).ConfigureAwait(false);
+
+        if (!augmented.IsTask)
+        {
+            return augmented.Result!;
+        }
+
+        return await PollTaskToCompletionAsync(augmented.TaskCreated!, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Polls a task until it reaches a terminal state and returns the final <see cref="CallToolResult"/>.
+    /// </summary>
+    private async ValueTask<CallToolResult> PollTaskToCompletionAsync(
+        CreateTaskResult taskCreated,
+        CancellationToken cancellationToken)
+    {
+        string taskId = taskCreated.TaskId;
+        long pollIntervalMs = taskCreated.PollIntervalMs ?? 1000;
+
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(pollIntervalMs), cancellationToken).ConfigureAwait(false);
+
+            var taskResult = await GetTaskAsync(taskId, cancellationToken).ConfigureAwait(false);
+
+            // Update poll interval if the server changed it.
+            if (taskResult.PollIntervalMs is { } newInterval)
+            {
+                pollIntervalMs = newInterval;
+            }
+
+            switch (taskResult)
+            {
+                case CompletedTaskResult completed:
+                    return JsonSerializer.Deserialize(completed.TaskResult, McpJsonUtilities.JsonContext.Default.CallToolResult)
+                        ?? throw new JsonException("Failed to deserialize CallToolResult from completed task.");
+
+                case FailedTaskResult failed:
+                    throw new McpException($"Task '{taskId}' failed: {failed.Error}");
+
+                case CancelledTaskResult:
+                    throw new OperationCanceledException($"Task '{taskId}' was cancelled by the server.");
+
+                case InputRequiredTaskResult inputRequired:
+                    var inputResponses = await ResolveInputRequestsAsync(inputRequired.InputRequests, cancellationToken).ConfigureAwait(false);
+                    await UpdateTaskAsync(new UpdateTaskRequestParams
+                    {
+                        TaskId = taskId,
+                        InputResponses = inputResponses,
+                    }, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case WorkingTaskResult:
+                    // Continue polling.
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Invokes a tool on the server with task extension support, returning the raw response
+    /// without automatic polling. The caller is responsible for handling task lifecycle.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send. The tasks extension capability will be injected into the request metadata.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A <see cref="TaskAugmentedResult{TResult}"/> that is either an immediate result or a task handle.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="CallToolAsync(CallToolRequestParams, CancellationToken)"/>, this method does not
+    /// automatically poll for task completion. If the server returns a <see cref="CreateTaskResult"/>,
+    /// the caller must manage polling via <see cref="GetTaskAsync(string, CancellationToken)"/>.
+    /// </para>
+    /// </remarks>
+    public async ValueTask<TaskAugmentedResult<CallToolResult>> CallToolRawAsync(
+        CallToolRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        var paramsWithMeta = new CallToolRequestParams
+        {
+            Name = requestParams.Name,
+            Arguments = requestParams.Arguments,
+            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+        };
+
+        JsonRpcRequest jsonRpcRequest = new()
+        {
+            Method = RequestMethods.ToolsCall,
+            Params = JsonSerializer.SerializeToNode(paramsWithMeta, McpJsonUtilities.JsonContext.Default.CallToolRequestParams),
+        };
+
+        JsonRpcResponse response = await SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+
+        // Discriminate based on resultType field.
+        if (response.Result is JsonObject resultObj &&
+            resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+            resultTypeNode?.GetValue<string>() == "task")
+        {
+            var taskCreated = resultObj.Deserialize(McpJsonUtilities.JsonContext.Default.CreateTaskResult)
+                ?? throw new JsonException("Failed to deserialize CreateTaskResult from response.");
+            return new TaskAugmentedResult<CallToolResult>(taskCreated);
+        }
+
+        var callToolResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.CallToolResult)
+            ?? throw new JsonException("Failed to deserialize CallToolResult from response.");
+        return new TaskAugmentedResult<CallToolResult>(callToolResult);
     }
 
     /// <summary>
@@ -1021,6 +1132,106 @@ public abstract partial class McpClient : McpSession
             cancellationToken: cancellationToken).AsTask();
     }
 
+    /// <summary>
+    /// Retrieves the current state of a task from the server.
+    /// </summary>
+    /// <param name="taskId">The stable identifier of the task to retrieve.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A <see cref="GetTaskResult"/> subtype representing the current task state.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    public ValueTask<GetTaskResult> GetTaskAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(taskId);
+
+        return GetTaskAsync(new GetTaskRequestParams { TaskId = taskId }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves the current state of a task from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A <see cref="GetTaskResult"/> subtype representing the current task state.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    public ValueTask<GetTaskResult> GetTaskAsync(
+        GetTaskRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.TasksGet,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.GetTaskResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Provides input responses to a task that is in the <see cref="McpTaskStatus.InputRequired"/> state.
+    /// </summary>
+    /// <param name="requestParams">The request parameters containing the task ID and input responses.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result acknowledging the update.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    public ValueTask<UpdateTaskResult> UpdateTaskAsync(
+        UpdateTaskRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.TasksUpdate,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.UpdateTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.UpdateTaskResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests cancellation of an in-progress task on the server.
+    /// </summary>
+    /// <param name="taskId">The stable identifier of the task to cancel.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result acknowledging the cancellation request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    public ValueTask<CancelTaskResult> CancelTaskAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(taskId);
+
+        return CancelTaskAsync(new CancelTaskRequestParams { TaskId = taskId }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests cancellation of an in-progress task on the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result acknowledging the cancellation request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    public ValueTask<CancelTaskResult> CancelTaskAsync(
+        CancelTaskRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.TasksCancel,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.CancelTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.CancelTaskResult,
+            cancellationToken: cancellationToken);
+    }
+
     /// <summary>Converts a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
     private static Dictionary<string, JsonElement>? ToArgumentsDictionary(
         IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
@@ -1038,5 +1249,14 @@ public abstract partial class McpClient : McpSession
         }
 
         return result;
+    }
+
+    private static JsonObject GetMetaWithTaskCapability(JsonObject? existingMeta)
+    {
+        JsonObject meta = existingMeta is not null
+            ? (JsonObject)existingMeta.DeepClone()
+            : [];
+        meta.TryAdd(McpExtensions.Tasks, new JsonObject());
+        return meta;
     }
 }

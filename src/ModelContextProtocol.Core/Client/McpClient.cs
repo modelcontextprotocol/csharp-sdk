@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
@@ -70,4 +71,17 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
+
+    /// <summary>
+    /// Resolves input requests embedded in an <see cref="InputRequiredTaskResult"/> by dispatching
+    /// each request to the appropriate registered handler.
+    /// </summary>
+    /// <param name="inputRequests">
+    /// The input requests from the task, keyed by request identifier. Each value is a JSON object
+    /// with <c>method</c> and <c>params</c> fields representing a server-to-client request.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
+    private protected abstract ValueTask<IDictionary<string, JsonElement>> ResolveInputRequestsAsync(
+        IDictionary<string, JsonElement> inputRequests, CancellationToken cancellationToken);
 }

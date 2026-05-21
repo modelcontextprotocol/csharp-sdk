@@ -82,6 +82,7 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureResources(options);
         ConfigureLogging(options);
         ConfigureCompletion(options);
+        ConfigureTasks(options);
         ConfigureExperimentalAndExtensions(options);
 
         // Register any notification handlers that were provided.
@@ -383,6 +384,40 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         return result;
+    }
+
+    private void ConfigureTasks(McpServerOptions options)
+    {
+        var getTaskHandler = options.Handlers.GetTaskHandler;
+        var updateTaskHandler = options.Handlers.UpdateTaskHandler;
+        var cancelTaskHandler = options.Handlers.CancelTaskHandler;
+
+        if (getTaskHandler is null && updateTaskHandler is null && cancelTaskHandler is null)
+        {
+            return;
+        }
+
+        getTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
+        updateTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
+        cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
+
+        SetHandler(
+            RequestMethods.TasksGet,
+            getTaskHandler,
+            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.GetTaskResult);
+
+        SetHandler(
+            RequestMethods.TasksUpdate,
+            updateTaskHandler,
+            McpJsonUtilities.JsonContext.Default.UpdateTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.UpdateTaskResult);
+
+        SetHandler(
+            RequestMethods.TasksCancel,
+            cancelTaskHandler,
+            McpJsonUtilities.JsonContext.Default.CancelTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.CancelTaskResult);
     }
 
     private void ConfigureExperimentalAndExtensions(McpServerOptions options)

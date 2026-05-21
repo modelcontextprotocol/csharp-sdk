@@ -258,6 +258,66 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
+    private protected override async ValueTask<IDictionary<string, JsonElement>> ResolveInputRequestsAsync(
+        IDictionary<string, JsonElement> inputRequests, CancellationToken cancellationToken)
+    {
+        var responses = new Dictionary<string, JsonElement>(inputRequests.Count);
+
+        foreach (var kvp in inputRequests)
+        {
+            var response = await ResolveInputRequestAsync(kvp.Value, cancellationToken).ConfigureAwait(false);
+            responses[kvp.Key] = response;
+        }
+
+        return responses;
+    }
+
+    private async Task<JsonElement> ResolveInputRequestAsync(JsonElement requestElement, CancellationToken cancellationToken)
+    {
+        using var doc = JsonDocument.Parse(requestElement.GetRawText());
+        var root = doc.RootElement;
+
+        var method = root.GetProperty("method").GetString()
+            ?? throw new McpException("Input request is missing 'method' property.");
+
+        JsonElement paramsElement = root.TryGetProperty("params", out var p) ? p : default;
+
+        switch (method)
+        {
+            case RequestMethods.SamplingCreateMessage:
+                if (_options.Handlers.SamplingHandler is { } samplingHandler)
+                {
+                    var samplingParams = JsonSerializer.Deserialize(paramsElement, McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams)
+                        ?? throw new McpException("Failed to deserialize sampling parameters from input request.");
+                    var result = await samplingHandler(
+                        samplingParams,
+                        samplingParams.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        cancellationToken).ConfigureAwait(false);
+                    return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CreateMessageResult);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent a sampling input request, but no {nameof(McpClientHandlers.SamplingHandler)} is registered.");
+
+            case RequestMethods.ElicitationCreate:
+                if (_options.Handlers.ElicitationHandler is { } elicitationHandler)
+                {
+                    var elicitParams = JsonSerializer.Deserialize(paramsElement, McpJsonUtilities.JsonContext.Default.ElicitRequestParams)
+                        ?? throw new McpException("Failed to deserialize elicitation parameters from input request.");
+                    var result = await elicitationHandler(elicitParams, cancellationToken).ConfigureAwait(false);
+                    result = ElicitResult.WithDefaults(elicitParams, result);
+                    return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ElicitResult);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent an elicitation input request, but no {nameof(McpClientHandlers.ElicitationHandler)} is registered.");
+
+            default:
+                throw new NotSupportedException($"Unsupported input request method: '{method}'.");
+        }
+    }
+
+    /// <inheritdoc/>
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
     {
         // For tools/call requests, attach the cached tool definition to the message context
