@@ -725,12 +725,18 @@ internal sealed partial class McpClientImpl : McpClient
         if (request.Method == RequestMethods.ToolsCall &&
             request.Params is System.Text.Json.Nodes.JsonObject paramsObj &&
             paramsObj.TryGetPropertyValue("name", out var nameNode) &&
-            nameNode?.GetValue<string>() is { } toolName &&
-            _toolCache.TryGetValue(toolName, out var tool))
+            nameNode?.GetValue<string>() is { } toolName)
         {
-            request.Context ??= new();
-            request.Context.Items ??= new Dictionary<string, object?>();
-            request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            if (_toolCache.TryGetValue(toolName, out var tool))
+            {
+                request.Context ??= new();
+                request.Context.Items ??= new Dictionary<string, object?>();
+                request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            }
+            else
+            {
+                LogToolCacheMiss(toolName);
+            }
         }
 
         return _sessionHandler.SendRequestAsync(request, cancellationToken);
@@ -786,6 +792,9 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Tool '{ToolName}' not found in cache during tools/call. Mcp-Param-* headers will not be sent. Call AddKnownTools or ListToolsAsync to populate the cache.")]
+    private partial void LogToolCacheMiss(string toolName);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]
     private partial void LogToolRejected(string toolName, string reason);
