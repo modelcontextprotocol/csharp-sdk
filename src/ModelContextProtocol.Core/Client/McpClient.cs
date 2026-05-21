@@ -92,8 +92,10 @@ public abstract partial class McpClient : McpSession
     ///   <item>Calling <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> after <see cref="AddKnownTools"/> preserves
     ///     manually registered tools — only server-discovered tools are cleared and repopulated.</item>
     ///   <item>If the server returns a tool with the same name as a manually registered tool, the server's
-    ///     definition overwrites the registered one in the cache, but the tool retains its registered status
-    ///     and will survive subsequent cache clears.</item>
+    ///     definition overwrites the registered one in the cache, but the tool retains its known status
+    ///     and will survive subsequent cache clears. This registration is sticky for the lifetime of the
+    ///     <see cref="McpClient"/>; use <see cref="RemoveKnownTools"/> or <see cref="ClearKnownTools"/> to
+    ///     explicitly drop known tools that are no longer needed.</item>
     ///   <item>Tools can be registered at any time — before or after <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>,
     ///     and across multiple calls.</item>
     ///   <item>Re-registering a tool with the same name overwrites the previous definition in the cache (last write wins).</item>
