@@ -177,6 +177,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(TextResourceContents))]
 
     // Other MCP Types
+    [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
 
