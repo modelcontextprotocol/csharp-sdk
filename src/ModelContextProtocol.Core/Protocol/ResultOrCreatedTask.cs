@@ -20,26 +20,26 @@ namespace ModelContextProtocol.Protocol;
 /// specification for details.
 /// </para>
 /// </remarks>
-public class TaskAugmentedResult<TResult> where TResult : Result
+public class ResultOrCreatedTask<TResult> where TResult : Result
 {
     private readonly TResult? _result;
     private readonly CreateTaskResult? _taskCreated;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="TaskAugmentedResult{TResult}"/> with an immediate result.
+    /// Initializes a new instance of <see cref="ResultOrCreatedTask{TResult}"/> with an immediate result.
     /// </summary>
     /// <param name="result">The standard result returned by the server.</param>
-    public TaskAugmentedResult(TResult result)
+    public ResultOrCreatedTask(TResult result)
     {
         Throw.IfNull(result);
         _result = result;
     }
 
     /// <summary>
-    /// Initializes a new instance of <see cref="TaskAugmentedResult{TResult}"/> with a task handle.
+    /// Initializes a new instance of <see cref="ResultOrCreatedTask{TResult}"/> with a task handle.
     /// </summary>
     /// <param name="taskCreated">The task creation result returned by the server.</param>
-    public TaskAugmentedResult(CreateTaskResult taskCreated)
+    public ResultOrCreatedTask(CreateTaskResult taskCreated)
     {
         Throw.IfNull(taskCreated);
         _taskCreated = taskCreated;
@@ -59,4 +59,18 @@ public class TaskAugmentedResult<TResult> where TResult : Result
     /// Gets the task creation result, or <see langword="null"/> if the server returned an immediate result.
     /// </summary>
     public CreateTaskResult? TaskCreated => _taskCreated;
+
+    /// <summary>
+    /// Implicitly converts a <typeparamref name="TResult"/> to a <see cref="ResultOrCreatedTask{TResult}"/>
+    /// wrapping the immediate result.
+    /// </summary>
+    /// <param name="result">The result to wrap.</param>
+    public static implicit operator ResultOrCreatedTask<TResult>(TResult result) => new(result);
+
+    /// <summary>
+    /// Implicitly converts a <see cref="CreateTaskResult"/> to a <see cref="ResultOrCreatedTask{TResult}"/>
+    /// wrapping the task handle.
+    /// </summary>
+    /// <param name="taskCreated">The task creation result to wrap.</param>
+    public static implicit operator ResultOrCreatedTask<TResult>(CreateTaskResult taskCreated) => new(taskCreated);
 }

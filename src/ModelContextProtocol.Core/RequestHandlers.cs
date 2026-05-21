@@ -45,4 +45,36 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
             return JsonSerializer.SerializeToNode(result, responseTypeInfo);
         };
     }
+
+    /// <summary>
+    /// Registers a handler that may return either a standard result or a <see cref="CreateTaskResult"/>
+    /// for task-augmented execution.
+    /// </summary>
+    public void SetTaskAugmented<TParams, TResult>(
+        string method,
+        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<ResultOrCreatedTask<TResult>>> handler,
+        JsonTypeInfo<TParams> requestTypeInfo,
+        JsonTypeInfo<TResult> responseTypeInfo,
+        JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
+        where TResult : Result
+    {
+        Throw.IfNull(method);
+        Throw.IfNull(handler);
+        Throw.IfNull(requestTypeInfo);
+        Throw.IfNull(responseTypeInfo);
+        Throw.IfNull(taskResultTypeInfo);
+
+        this[method] = async (request, cancellationToken) =>
+        {
+            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
+            var augmented = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
+
+            if (augmented.IsTask)
+            {
+                return JsonSerializer.SerializeToNode(augmented.TaskCreated!, taskResultTypeInfo);
+            }
+
+            return JsonSerializer.SerializeToNode(augmented.Result!, responseTypeInfo);
+        };
+    }
 }

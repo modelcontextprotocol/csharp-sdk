@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
@@ -401,6 +402,10 @@ internal sealed partial class McpServerImpl : McpServer
         updateTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
         cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
 
+        // Advertise tasks extension in server capabilities.
+        ServerCapabilities.Extensions ??= new Dictionary<string, object>();
+        ServerCapabilities.Extensions[McpExtensions.Tasks] = new JsonObject();
+
         SetHandler(
             RequestMethods.TasksGet,
             getTaskHandler,
@@ -689,10 +694,11 @@ internal sealed partial class McpServerImpl : McpServer
     {
         var listToolsHandler = options.Handlers.ListToolsHandler;
         var callToolHandler = options.Handlers.CallToolHandler;
+        var callToolWithTaskHandler = options.Handlers.CallToolWithTaskHandler;
         var tools = options.ToolCollection;
         var toolsCapability = options.Capabilities?.Tools;
 
-        if (listToolsHandler is null && callToolHandler is null && tools is null &&
+        if (listToolsHandler is null && callToolHandler is null && callToolWithTaskHandler is null && tools is null &&
             toolsCapability is null)
         {
             return;
@@ -733,14 +739,16 @@ internal sealed partial class McpServerImpl : McpServer
                     return tool.InvokeAsync(request, cancellationToken);
                 }
 
-                return originalCallToolHandler(request, cancellationToken);
+                return originalCallToolHandler is not null
+                    ? originalCallToolHandler(request, cancellationToken)
+                    : throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
             };
 
             listChanged = true;
         }
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
-        callToolHandler = BuildFilterPipeline(callToolHandler, options.Filters.Request.CallToolFilters, handler =>
+        callToolHandler = BuildFilterPipeline(callToolHandler!, options.Filters.Request.CallToolFilters, handler =>
             async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
@@ -786,11 +794,25 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        SetHandler(
-            RequestMethods.ToolsCall,
-            callToolHandler,
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult);
+        // If CallToolWithTaskHandler was set directly by the user, use it (bypasses the filter pipeline).
+        // Otherwise wrap the standard pipeline result into ResultOrCreatedTask.
+        if (options.Handlers.CallToolWithTaskHandler is { } userTaskHandler)
+        {
+            SetTaskAugmentedHandler(
+                RequestMethods.ToolsCall,
+                userTaskHandler,
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult,
+                McpJsonUtilities.JsonContext.Default.CreateTaskResult);
+        }
+        else
+        {
+            SetHandler(
+                RequestMethods.ToolsCall,
+                callToolHandler,
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult);
+        }
     }
 
     private void ConfigureLogging(McpServerOptions options)
@@ -880,6 +902,20 @@ internal sealed partial class McpServerImpl : McpServer
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
             requestTypeInfo, responseTypeInfo);
+    }
+
+    private void SetTaskAugmentedHandler<TParams, TResult>(
+        string method,
+        McpRequestHandler<TParams, ResultOrCreatedTask<TResult>> handler,
+        JsonTypeInfo<TParams> requestTypeInfo,
+        JsonTypeInfo<TResult> responseTypeInfo,
+        JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
+        where TResult : Result
+    {
+        _requestHandlers.SetTaskAugmented(method,
+            (request, jsonRpcRequest, cancellationToken) =>
+                InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
+            requestTypeInfo, responseTypeInfo, taskResultTypeInfo);
     }
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(

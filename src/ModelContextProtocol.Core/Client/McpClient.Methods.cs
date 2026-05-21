@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics;
@@ -960,7 +960,7 @@ public abstract partial class McpClient : McpSession
     /// in the request metadata. If the server returns a task handle instead of an immediate result,
     /// this method transparently polls <c>tasks/get</c> until the task completes, fails, or is cancelled.
     /// Use <see cref="CallToolRawAsync"/>
-    /// to receive the raw <see cref="TaskAugmentedResult{TResult}"/> without automatic polling.
+    /// to receive the raw <see cref="ResultOrCreatedTask{TResult}"/> without automatic polling.
     /// </remarks>
     public async ValueTask<CallToolResult> CallToolAsync(
         CallToolRequestParams requestParams,
@@ -1034,7 +1034,7 @@ public abstract partial class McpClient : McpSession
     /// </summary>
     /// <param name="requestParams">The request parameters to send. The tasks extension capability will be injected into the request metadata.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A <see cref="TaskAugmentedResult{TResult}"/> that is either an immediate result or a task handle.</returns>
+    /// <returns>A <see cref="ResultOrCreatedTask{TResult}"/> that is either an immediate result or a task handle.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
@@ -1044,7 +1044,7 @@ public abstract partial class McpClient : McpSession
     /// the caller must manage polling via <see cref="GetTaskAsync(string, CancellationToken)"/>.
     /// </para>
     /// </remarks>
-    public async ValueTask<TaskAugmentedResult<CallToolResult>> CallToolRawAsync(
+    public async ValueTask<ResultOrCreatedTask<CallToolResult>> CallToolRawAsync(
         CallToolRequestParams requestParams,
         CancellationToken cancellationToken = default)
     {
@@ -1072,12 +1072,12 @@ public abstract partial class McpClient : McpSession
         {
             var taskCreated = resultObj.Deserialize(McpJsonUtilities.JsonContext.Default.CreateTaskResult)
                 ?? throw new JsonException("Failed to deserialize CreateTaskResult from response.");
-            return new TaskAugmentedResult<CallToolResult>(taskCreated);
+            return new ResultOrCreatedTask<CallToolResult>(taskCreated);
         }
 
         var callToolResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.CallToolResult)
             ?? throw new JsonException("Failed to deserialize CallToolResult from response.");
-        return new TaskAugmentedResult<CallToolResult>(callToolResult);
+        return new ResultOrCreatedTask<CallToolResult>(callToolResult);
     }
 
     /// <summary>
