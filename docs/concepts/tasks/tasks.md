@@ -13,7 +13,7 @@ uid: tasks
 
 The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
 
-[task-based execution]: https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks
+[task-based execution]: https://modelcontextprotocol.io/seps/1686-tasks
 
 ## Overview
 
@@ -601,4 +601,4 @@ While this file-based approach demonstrates the pattern, production systems shou
 - <xref:ModelContextProtocol.InMemoryMcpTaskStore>
 - <xref:ModelContextProtocol.Protocol.McpTask>
 - <xref:ModelContextProtocol.Protocol.McpTaskStatus>
-- [MCP Tasks Specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)
+- [MCP Tasks Specification](https://modelcontextprotocol.io/seps/1686-tasks)
