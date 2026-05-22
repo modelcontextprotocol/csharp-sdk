@@ -28,6 +28,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly string? _configuredScopes;
+    private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
@@ -76,6 +77,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _clientSecret = options.ClientSecret;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
+        _scopeSelector = options.ScopeSelector;
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
         _clientMetadataDocumentUri = options.ClientMetadataDocumentUri;
 
@@ -493,6 +495,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         var scope = GetScopeParameter(protectedResourceMetadata);
         scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
+        if (_scopeSelector is not null)
+        {
+            var selectedScope = _scopeSelector(scope?.Split(" "));
+            scope = selectedScope is not null ? string.Join(" ", selectedScope) : null;
+        }
         if (!string.IsNullOrEmpty(scope))
         {
             queryParamsDictionary["scope"] = scope!;

@@ -1365,4 +1365,168 @@ public class AuthTests : OAuthTestBase
         var scopeTokens = requestedScope!.Split(' ');
         Assert.Single(scopeTokens, t => t == "offline_access");
     }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_CanFilterServerProposedScopes()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_CanAddCustomScope()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = scopes => scopes?.Append("custom:scope") ?? ["custom:scope"],
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.Contains("custom:scope", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReceivesNull_WhenServerProvidesNoScopes()
+    {
+        // No ScopesSupported on PRM, no Scopes fallback on client, no offline_access on AS (default).
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = [];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        IEnumerable<string>? capturedInput = ["sentinel"];
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ScopeSelector = scopes =>
+                {
+                    capturedInput = scopes;
+                    return scopes;
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Null(capturedInput);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReturningNull_OmitsScopeParameter()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        bool? scopePresent = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = _ => null,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(scopePresent);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReturningEmpty_OmitsScopeParameter()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        bool? scopePresent = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = _ => [],
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(scopePresent);
+    }
 }
