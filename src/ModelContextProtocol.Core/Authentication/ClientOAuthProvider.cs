@@ -493,13 +493,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             queryParamsDictionary["resource"] = resourceUri;
         }
 
-        var scope = GetScopeParameter(protectedResourceMetadata);
-        scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
-        if (_scopeSelector is not null)
-        {
-            var selectedScope = _scopeSelector(scope?.Split(' '));
-            scope = selectedScope is not null ? string.Join(" ", selectedScope) : null;
-        }
+        var scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata);
         if (!string.IsNullOrEmpty(scope))
         {
             queryParamsDictionary["scope"] = scope!;
@@ -661,7 +655,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             TokenEndpointAuthMethod = "client_secret_post",
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
-            Scope = GetScopeParameter(protectedResourceMetadata),
+            Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -719,6 +713,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
+
+    private string? ComputeEffectiveScope(
+        ProtectedResourceMetadata protectedResourceMetadata,
+        AuthorizationServerMetadata authServerMetadata)
+    {
+        var scope = GetScopeParameter(protectedResourceMetadata);
+        scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
+        if (_scopeSelector is not null)
+        {
+            var selected = _scopeSelector(scope?.Split(' '));
+            scope = selected is not null ? string.Join(" ", selected) : null;
+        }
+        return scope;
+    }
 
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {

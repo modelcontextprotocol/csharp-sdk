@@ -11,8 +11,8 @@ namespace ModelContextProtocol.Authentication;
 /// <see langword="null"/> if the server provided no scope information and no fallback scopes are configured.
 /// </param>
 /// <returns>
-/// The scopes to include in the authorization request. Return <see langword="null"/> or an empty
-/// enumerable to omit the <c>scope</c> parameter entirely.
+/// The scopes to include in the authorization and Dynamic Client Registration requests. Return
+/// <see langword="null"/> or an empty enumerable to omit the <c>scope</c> parameter entirely.
 /// </returns>
 /// <remarks>
 /// <para>
@@ -29,5 +29,9 @@ namespace ModelContextProtocol.Authentication;
 /// <paramref name="scope"/> parameter already reflects this priority. The delegate runs after
 /// <c>offline_access</c> has been auto-appended, so it can also remove that scope if desired.
 /// </para>
+/// <para>
+/// The resolved scope is applied consistently to both the authorization URL and the Dynamic Client
+/// Registration (DCR) request, so the registered client scope matches what is actually requested.
+/// </para>
 /// </remarks>
-public delegate IEnumerable<string>? ScopeSelectorDelegate(IEnumerable<string>? scope);
+public delegate IEnumerable<string>? ScopeSelectorDelegate(IReadOnlyCollection<string>? scope);

@@ -1529,4 +1529,32 @@ public class AuthTests : OAuthTestBase
 
         Assert.False(scopePresent);
     }
+
+    [Fact]
+    public async Task DynamicClientRegistration_ScopeSelector_AppliesToDcrScope()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", TestOAuthServer.LastRegistrationScope);
+    }
 }

@@ -91,6 +91,9 @@ public sealed class Program
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
+    /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastRegistrationScope { get; private set; }
+
     /// <summary>
     /// Entry point for the application.
     /// </summary>
@@ -512,6 +515,8 @@ public sealed class Program
                     ErrorDescription = "Invalid registration request"
                 });
             }
+
+            LastRegistrationScope = registrationRequest.Scope;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)
