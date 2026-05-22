@@ -497,7 +497,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
         if (_scopeSelector is not null)
         {
-            var selectedScope = _scopeSelector(scope?.Split(" "));
+            var selectedScope = _scopeSelector(scope?.Split(' '));
             scope = selectedScope is not null ? string.Join(" ", selectedScope) : null;
         }
         if (!string.IsNullOrEmpty(scope))
