@@ -987,6 +987,7 @@ public abstract partial class McpClient : McpSession
     {
         string taskId = taskCreated.TaskId;
         long pollIntervalMs = taskCreated.PollIntervalMs ?? 1000;
+        HashSet<string>? resolvedRequestKeys = null;
 
         while (true)
         {
@@ -1013,12 +1014,32 @@ public abstract partial class McpClient : McpSession
                     throw new OperationCanceledException($"Task '{taskId}' was cancelled by the server.");
 
                 case InputRequiredTaskResult inputRequired:
-                    var inputResponses = await ResolveInputRequestsAsync(inputRequired.InputRequests, cancellationToken).ConfigureAwait(false);
-                    await UpdateTaskAsync(new UpdateTaskRequestParams
+                    // Dedup: only resolve input requests we haven't already responded to.
+                    var newRequests = new Dictionary<string, JsonElement>();
+                    foreach (var kvp in inputRequired.InputRequests)
                     {
-                        TaskId = taskId,
-                        InputResponses = inputResponses,
-                    }, cancellationToken).ConfigureAwait(false);
+                        if (resolvedRequestKeys is null || !resolvedRequestKeys.Contains(kvp.Key))
+                        {
+                            newRequests[kvp.Key] = kvp.Value;
+                        }
+                    }
+
+                    if (newRequests.Count > 0)
+                    {
+                        var inputResponses = await ResolveInputRequestsAsync(newRequests, cancellationToken).ConfigureAwait(false);
+                        await UpdateTaskAsync(new UpdateTaskRequestParams
+                        {
+                            TaskId = taskId,
+                            InputResponses = inputResponses,
+                        }, cancellationToken).ConfigureAwait(false);
+
+                        resolvedRequestKeys ??= new HashSet<string>(StringComparer.Ordinal);
+                        foreach (var key in inputResponses.Keys)
+                        {
+                            resolvedRequestKeys.Add(key);
+                        }
+                    }
+
                     break;
 
                 case WorkingTaskResult:

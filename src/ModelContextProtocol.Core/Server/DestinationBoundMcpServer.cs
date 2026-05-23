@@ -1,5 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -14,6 +16,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
+    internal override ConcurrentDictionary<(string TaskId, string RequestId), TaskCompletionSource<JsonElement>> TaskInputResponseWaiters => server.TaskInputResponseWaiters;
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 

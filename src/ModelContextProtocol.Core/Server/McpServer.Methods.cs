@@ -58,6 +58,16 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+
+        // If executing inside a background task, redirect sampling through the task store.
+        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        {
+            return SendRequestViaTaskAsync(taskContext, RequestMethods.SamplingCreateMessage, requestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageResult,
+                cancellationToken);
+        }
+
         ThrowIfSamplingUnsupported();
 
         return SendRequestAsync(
@@ -234,6 +244,16 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+
+        // If executing inside a background task, redirect through the task store.
+        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        {
+            return SendRequestViaTaskAsync(taskContext, RequestMethods.RootsList, requestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsResult,
+                cancellationToken);
+        }
+
         ThrowIfRootsUnsupported();
 
         return SendRequestAsync(
@@ -258,6 +278,17 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+
+        // If executing inside a background task, redirect elicitation through the task store.
+        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        {
+            var taskResult = await SendRequestViaTaskAsync(taskContext, RequestMethods.ElicitationCreate, requestParams,
+                McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+                McpJsonUtilities.JsonContext.Default.ElicitResult,
+                cancellationToken).ConfigureAwait(false);
+            return taskResult ?? new ElicitResult { Action = "cancel" };
+        }
+
         ThrowIfElicitationUnsupported(requestParams);
 
         var result = await SendRequestAsync(
@@ -498,6 +529,74 @@ public abstract partial class McpServer : McpSession
             }
 
             throw new InvalidOperationException("Client does not support roots.");
+        }
+    }
+
+    /// <summary>
+    /// Creates a scope that redirects server-initiated requests (elicitation, sampling, list roots) through
+    /// the task store as input requests for the duration of the scope. Use this when executing tool logic
+    /// in the background as a task, so that any server-to-client requests are surfaced to the client via
+    /// the task's <see cref="McpTaskStatus.InputRequired"/> state instead of direct JSON-RPC messages.
+    /// </summary>
+    /// <param name="taskId">The task ID in the store.</param>
+    /// <param name="store">The task store to write input requests to.</param>
+    /// <returns>An <see cref="IDisposable"/> that restores the previous context when disposed.</returns>
+    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
+    public IDisposable CreateMcpTaskScope(
+        string taskId,
+        IMcpTaskStore store)
+    {
+        Throw.IfNull(taskId);
+        Throw.IfNull(store);
+
+        var previous = McpTaskExecutionContext.Current.Value;
+        McpTaskExecutionContext.Current.Value = new McpTaskExecutionContext
+        {
+            TaskId = taskId,
+            Store = store,
+        };
+        return new McpTaskExecutionContext.Scope(previous);
+    }
+
+    /// <summary>
+    /// Sends a server-initiated request through the task store as an input request, then awaits the response.
+    /// </summary>
+    private async ValueTask<TResponse> SendRequestViaTaskAsync<TRequest, TResponse>(
+        McpTaskExecutionContext taskContext,
+        string method,
+        TRequest request,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo,
+        CancellationToken cancellationToken)
+    {
+        var requestId = Guid.NewGuid().ToString("N");
+        var paramsJson = JsonSerializer.SerializeToElement(request, requestTypeInfo);
+
+        // Wrap in a {method, params} envelope so the client can dispatch by method name.
+        var envelope = new JsonObject
+        {
+            ["method"] = method,
+            ["params"] = JsonNode.Parse(paramsJson.GetRawText()),
+        };
+        var requestJson = JsonSerializer.SerializeToElement(envelope, McpJsonUtilities.JsonContext.Default.JsonObject);
+
+        var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskInputResponseWaiters[(taskContext.TaskId, requestId)] = tcs;
+
+        try
+        {
+            await taskContext.Store.SetInputRequestsAsync(
+                taskContext.TaskId,
+                new Dictionary<string, JsonElement> { [requestId] = requestJson },
+                cancellationToken).ConfigureAwait(false);
+
+            var responseJson = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            return JsonSerializer.Deserialize(responseJson, responseTypeInfo)!;
+        }
+        finally
+        {
+            TaskInputResponseWaiters.TryRemove((taskContext.TaskId, requestId), out _);
         }
     }
 
