@@ -556,6 +556,7 @@ internal sealed partial class McpClientImpl : McpClient
                         ProtocolVersion = requestProtocol,
                         Capabilities = _options.Capabilities ?? new ClientCapabilities(),
                         ClientInfo = _options.ClientInfo ?? DefaultImplementation,
+                        Meta = _options.InitializeMeta,
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,

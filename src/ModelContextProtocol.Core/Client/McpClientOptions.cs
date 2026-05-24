@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -30,6 +31,21 @@ public sealed class McpClientOptions
     /// Gets or sets the client capabilities to advertise to the server.
     /// </summary>
     public ClientCapabilities? Capabilities { get; set; }
+
+    /// <summary>
+    /// Gets or sets the metadata to include in the <c>_meta</c> field of the <see cref="RequestMethods.Initialize"/> request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this value is sent as <see cref="RequestParams.Meta"/> on the <see cref="InitializeRequestParams"/> during the initialization handshake.
+    /// This allows passing implementation-specific data to the server alongside the standard <c>initialize</c> parameters,
+    /// such as authentication context a server validates before completing the handshake.
+    /// </para>
+    /// <para>
+    /// When <see langword="null"/>, no <c>_meta</c> field is sent.
+    /// </para>
+    /// </remarks>
+    public JsonObject? InitializeMeta { get; set; }
 
     /// <summary>
     /// Gets or sets the protocol version to request from the server, using a date-based versioning scheme.
