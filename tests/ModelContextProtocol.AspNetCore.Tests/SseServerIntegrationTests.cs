@@ -22,7 +22,7 @@ public class SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, 
         sseResponse.EnsureSuccessStatusCode();
 
         Assert.Equal("text/event-stream", sseResponse.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("identity", sseResponse.Content.Headers.ContentEncoding.ToString());
+        Assert.Empty(sseResponse.Content.Headers.ContentEncoding);
         Assert.NotNull(sseResponse.Headers.CacheControl);
         Assert.True(sseResponse.Headers.CacheControl.NoStore);
         Assert.True(sseResponse.Headers.CacheControl.NoCache);

@@ -478,7 +478,6 @@ internal sealed class StreamableHttpHandler(
         context.Response.Headers.CacheControl = "no-cache,no-store";
 
         // Make sure we disable all response buffering for SSE.
-        context.Response.Headers.ContentEncoding = "identity";
         context.Response.Headers["X-Accel-Buffering"] = "no";
         context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
     }
