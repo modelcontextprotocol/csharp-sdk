@@ -31,37 +31,10 @@ For more information about MCP:
 - [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
-## Enterprise Auth / Enterprise Managed Authorization
+## Cross-Application Access (Identity Assertion Authorization Grant flow)
 
-The SDK provides Cross-Application Access support for the [Identity Assertion Authorization Grant flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx),
-enabling enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider and
-access MCP servers without per-server authorization prompts.
-
-The flow consists of two token operations:
-1. **RFC 8693 Token Exchange** at the IdP: ID Token → JWT Authorization Grant (JAG)
-2. **RFC 7523 JWT Bearer Grant** at the MCP Server: JAG → Access Token
-
-### Using CrossApplicationAccessProvider
-
-```csharp
-using ModelContextProtocol.Authentication;
-
-var provider = new CrossApplicationAccessProvider(new CrossApplicationAccessProviderOptions
-{
-    ClientId = "mcp-client-id",
-    IdpTokenEndpoint = "https://company.okta.com/oauth2/token",
-    IdpClientId = "idp-client-id",
-    IdTokenCallback = async (context, ct) =>
-    {
-        // Return the OIDC ID token from your SSO session
-        return myIdToken;
-    }
-});
-
-var tokens = await provider.GetAccessTokenAsync(
-    resourceUrl: new Uri("https://mcp-server.example.com"),
-    authorizationServerUrl: new Uri("https://auth.mcp-server.example.com"));
-```
+The SDK provides support for the [Identity Assertion Authorization Grant flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx)
+via `CrossApplicationAccessProvider`. See the [Cross-Application Access](docs/concepts/transports/transports.md#cross-application-access) section in the transport docs for full usage details.
 
 ## License
 

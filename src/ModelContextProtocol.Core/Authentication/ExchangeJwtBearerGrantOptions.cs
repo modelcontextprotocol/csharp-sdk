@@ -29,9 +29,4 @@ internal sealed class ExchangeJwtBearerGrantOptions
     /// Gets or sets the scopes to request (space-separated). Optional.
     /// </summary>
     public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the HTTP client for making requests.
-    /// </summary>
-    public HttpClient? HttpClient { get; set; }
 }

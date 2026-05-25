@@ -39,9 +39,4 @@ internal sealed class RequestJwtAuthGrantOptions
     /// Gets or sets the scopes to request (space-separated). Optional.
     /// </summary>
     public string? Scope { get; set; }
-
-    /// <summary>
-    /// Gets or sets the HTTP client for making requests. If not provided, a default HttpClient will be used.
-    /// </summary>
-    public HttpClient? HttpClient { get; set; }
 }

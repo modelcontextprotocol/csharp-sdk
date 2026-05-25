@@ -31,17 +31,16 @@ namespace ModelContextProtocol.Authentication;
 /// </remarks>
 /// <example>
 /// <code>
-/// var provider = new CrossApplicationAccessProvider(new CrossApplicationAccessProviderOptions
-/// {
-///     ClientId = "mcp-client-id",
-///     IdpTokenEndpoint = "https://company.okta.com/oauth2/token",
-///     IdpClientId = "idp-client-id",
-///     IdTokenCallback = async (context, ct) =>
+/// var provider = new CrossApplicationAccessProvider(
+///     new CrossApplicationAccessProviderOptions
 ///     {
-///         // Return the ID token from your SSO session
-///         return myIdToken;
-///     }
-/// });
+///         ClientId = "mcp-client-id",
+///         IdpTokenEndpoint = "https://company.okta.com/oauth2/token",
+///         IdpClientId = "idp-client-id",
+///         IdTokenCallback = (context, ct) =>
+///             mySsoClient.GetIdTokenAsync(ct)
+///     },
+///     httpClient: myHttpClient);
 ///
 /// var tokens = await provider.GetAccessTokenAsync(
 ///     resourceUrl: new Uri("https://mcp-server.example.com"),
@@ -61,38 +60,35 @@ public sealed class CrossApplicationAccessProvider
     /// Initializes a new instance of the <see cref="CrossApplicationAccessProvider"/> class.
     /// </summary>
     /// <param name="options">Configuration for the Cross-Application Access provider.</param>
-    /// <param name="httpClient">Optional HTTP client. A default will be created if not provided.</param>
+    /// <param name="httpClient">
+    /// The HTTP client to use for token exchange requests. The caller is responsible for the lifetime of this instance.
+    /// </param>
     /// <param name="loggerFactory">Optional logger factory.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> or <paramref name="httpClient"/> is null.</exception>
     /// <exception cref="ArgumentException">Required option values are missing.</exception>
     public CrossApplicationAccessProvider(
         CrossApplicationAccessProviderOptions options,
-        HttpClient? httpClient = null,
+        HttpClient httpClient,
         ILoggerFactory? loggerFactory = null)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+        Throw.IfNull(options);
+        Throw.IfNull(httpClient);
 
-        if (string.IsNullOrEmpty(options.ClientId))
-        {
-            throw new ArgumentException("ClientId is required.", nameof(options));
-        }
-
-        if (string.IsNullOrEmpty(options.IdpClientId))
-        {
-            throw new ArgumentException("IdpClientId is required.", nameof(options));
-        }
+        Throw.IfNullOrWhiteSpace(options.ClientId);
+        Throw.IfNullOrWhiteSpace(options.IdpClientId);
 
         if (string.IsNullOrEmpty(options.IdpUrl) && string.IsNullOrEmpty(options.IdpTokenEndpoint))
         {
-            throw new ArgumentException("Either IdpUrl or IdpTokenEndpoint is required.", nameof(options));
+            throw new ArgumentException("Either IdpUrl or IdpTokenEndpoint is required.", $"{nameof(options)}.{nameof(options.IdpUrl)}");
         }
 
         if (options.IdTokenCallback is null)
         {
-            throw new ArgumentException("IdTokenCallback is required.", nameof(options));
+            throw new ArgumentNullException($"{nameof(options)}.{nameof(options.IdTokenCallback)}");
         }
 
-        _httpClient = httpClient ?? new HttpClient();
+        _options = options;
+        _httpClient = httpClient;
         _logger = (ILogger?)loggerFactory?.CreateLogger<CrossApplicationAccessProvider>() ?? NullLogger.Instance;
     }
 
@@ -154,8 +150,7 @@ public sealed class CrossApplicationAccessProvider
                 ClientId = _options.IdpClientId,
                 ClientSecret = _options.IdpClientSecret,
                 Scope = _options.IdpScope,
-                HttpClient = _httpClient,
-            }, cancellationToken).ConfigureAwait(false);
+            }, _httpClient, cancellationToken).ConfigureAwait(false);
 
         // Step 4: RFC 7523 JWT bearer grant — JAG → access token at the MCP authorization server
         _logger.LogDebug("Exchanging JAG for access token at {McpTokenEndpoint}", mcpTokenEndpoint);
@@ -167,8 +162,7 @@ public sealed class CrossApplicationAccessProvider
                 ClientId = _options.ClientId,
                 ClientSecret = _options.ClientSecret,
                 Scope = _options.Scope,
-                HttpClient = _httpClient,
-            }, cancellationToken).ConfigureAwait(false);
+            }, _httpClient, cancellationToken).ConfigureAwait(false);
 
         _cachedTokens = tokens;
         _logger.LogDebug("Cross-Application Access flow completed successfully");

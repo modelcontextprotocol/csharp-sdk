@@ -14,24 +14,16 @@ internal static class CrossApplicationAccess
 {
     #region Constants
 
-    /// <summary>
-    /// Grant type URN for RFC 8693 token exchange.
-    /// </summary>
+    /// <summary>Grant type URN for RFC 8693 token exchange.</summary>
     public const string GrantTypeTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange";
 
-    /// <summary>
-    /// Grant type URN for RFC 7523 JWT Bearer authorization grant.
-    /// </summary>
+    /// <summary>Grant type URN for RFC 7523 JWT Bearer authorization grant.</summary>
     public const string GrantTypeJwtBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
-    /// <summary>
-    /// Token type URN for OpenID Connect ID Tokens (RFC 8693).
-    /// </summary>
+    /// <summary>Token type URN for OpenID Connect ID Tokens (RFC 8693).</summary>
     public const string TokenTypeIdToken = "urn:ietf:params:oauth:token-type:id_token";
 
-    /// <summary>
-    /// Token type URN for SAML 2.0 assertions (RFC 8693).
-    /// </summary>
+    /// <summary>Token type URN for SAML 2.0 assertions (RFC 8693).</summary>
     public const string TokenTypeSaml2 = "urn:ietf:params:oauth:token-type:saml2";
 
     /// <summary>
@@ -57,16 +49,15 @@ internal static class CrossApplicationAccess
     /// </summary>
     public static async Task<string> RequestJwtAuthorizationGrantAsync(
         RequestJwtAuthGrantOptions options,
+        HttpClient httpClient,
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(options);
-        Throw.IfNullOrEmpty(options.TokenEndpoint, "TokenEndpoint is required.");
-        Throw.IfNullOrEmpty(options.Audience, "Audience is required.");
-        Throw.IfNullOrEmpty(options.Resource, "Resource is required.");
-        Throw.IfNullOrEmpty(options.IdToken, "IdToken is required.");
-        Throw.IfNullOrEmpty(options.ClientId, "ClientId is required.");
-
-        var httpClient = options.HttpClient ?? new HttpClient();
+        Throw.IfNullOrWhiteSpace(options.TokenEndpoint);
+        Throw.IfNullOrWhiteSpace(options.Audience);
+        Throw.IfNullOrWhiteSpace(options.Resource);
+        Throw.IfNullOrWhiteSpace(options.IdToken);
+        Throw.IfNullOrWhiteSpace(options.ClientId);
 
         var formData = new Dictionary<string, string>
         {
@@ -123,7 +114,9 @@ internal static class CrossApplicationAccess
 
         if (response is null)
         {
-            throw new CrossApplicationAccessException($"Failed to parse token exchange response: {responseBody}");
+            var ex = new CrossApplicationAccessException("Failed to parse token exchange response.");
+            ex.Data["ResponseBody"] = responseBody;
+            throw ex;
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
@@ -137,50 +130,13 @@ internal static class CrossApplicationAccess
                 $"Token exchange response issued_token_type must be '{TokenTypeIdJag}', got '{response.IssuedTokenType}'.");
         }
 
-        if (!string.Equals(response.TokenType, TokenTypeNotApplicable, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(response.TokenType, TokenTypeNotApplicable, StringComparison.Ordinal))
         {
             throw new CrossApplicationAccessException(
                 $"Token exchange response token_type must be '{TokenTypeNotApplicable}' per RFC 8693 §2.2.1, got '{response.TokenType}'.");
         }
 
         return response.AccessToken;
-    }
-
-    /// <summary>
-    /// Discovers the IDP's token endpoint via OAuth/OIDC metadata, then requests a JWT Authorization Grant.
-    /// Convenience wrapper over <see cref="RequestJwtAuthorizationGrantAsync"/>.
-    /// </summary>
-    public static async Task<string> DiscoverAndRequestJwtAuthorizationGrantAsync(
-        DiscoverAndRequestJwtAuthGrantOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(options);
-
-        var tokenEndpoint = options.IdpTokenEndpoint;
-
-        if (string.IsNullOrEmpty(tokenEndpoint))
-        {
-            Throw.IfNullOrEmpty(options.IdpUrl, "Either IdpUrl or IdpTokenEndpoint is required.");
-
-            var httpClient = options.HttpClient ?? new HttpClient();
-            var idpMetadata = await DiscoverAuthServerMetadataAsync(
-                new Uri(options.IdpUrl!), httpClient, cancellationToken).ConfigureAwait(false);
-
-            tokenEndpoint = idpMetadata.TokenEndpoint?.ToString()
-                ?? throw new CrossApplicationAccessException($"IDP metadata discovery for {options.IdpUrl} did not return a token_endpoint.");
-        }
-
-        return await RequestJwtAuthorizationGrantAsync(new RequestJwtAuthGrantOptions
-        {
-            TokenEndpoint = tokenEndpoint!,
-            Audience = options.Audience,
-            Resource = options.Resource,
-            IdToken = options.IdToken,
-            ClientId = options.ClientId,
-            ClientSecret = options.ClientSecret,
-            Scope = options.Scope,
-            HttpClient = options.HttpClient,
-        }, cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -193,14 +149,13 @@ internal static class CrossApplicationAccess
     /// </summary>
     public static async Task<TokenContainer> ExchangeJwtBearerGrantAsync(
         ExchangeJwtBearerGrantOptions options,
+        HttpClient httpClient,
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(options);
-        Throw.IfNullOrEmpty(options.TokenEndpoint, "TokenEndpoint is required.");
-        Throw.IfNullOrEmpty(options.Assertion, "Assertion (JAG) is required.");
-        Throw.IfNullOrEmpty(options.ClientId, "ClientId is required.");
-
-        var httpClient = options.HttpClient ?? new HttpClient();
+        Throw.IfNullOrWhiteSpace(options.TokenEndpoint);
+        Throw.IfNullOrWhiteSpace(options.Assertion);
+        Throw.IfNullOrWhiteSpace(options.ClientId);
 
         var formData = new Dictionary<string, string>
         {
@@ -253,7 +208,9 @@ internal static class CrossApplicationAccess
 
         if (response is null)
         {
-            throw new CrossApplicationAccessException($"Failed to parse JWT bearer grant response: {responseBody}");
+            var ex = new CrossApplicationAccessException("Failed to parse JWT bearer grant response.");
+            ex.Data["ResponseBody"] = responseBody;
+            throw ex;
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
@@ -333,29 +290,6 @@ internal static class CrossApplicationAccess
         }
 
         throw new CrossApplicationAccessException($"Failed to discover authorization server metadata for: {issuerUrl}");
-    }
-
-    #endregion
-
-    #region Helpers
-
-    private static class Throw
-    {
-        public static void IfNull<T>(T value, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(value))] string? name = null) where T : class
-        {
-            if (value is null)
-            {
-                throw new ArgumentNullException(name);
-            }
-        }
-
-        public static void IfNullOrEmpty(string? value, string message)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                throw new ArgumentException(message);
-            }
-        }
     }
 
     #endregion
