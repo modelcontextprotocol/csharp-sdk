@@ -733,7 +733,7 @@ internal sealed partial class McpClientImpl : McpClient
                 request.Context.Items ??= new Dictionary<string, object?>();
                 request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
             }
-            else
+            else if (_transport is StreamableHttpClientSessionTransport)
             {
                 LogToolCacheMiss(toolName);
             }
@@ -793,7 +793,7 @@ internal sealed partial class McpClientImpl : McpClient
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Tool '{ToolName}' not found in cache during tools/call. Mcp-Param-* headers will not be sent. Call AddKnownTools or ListToolsAsync to populate the cache.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' not found in cache during tools/call. Mcp-Param-* headers will not be sent. Call AddKnownTools or ListToolsAsync to populate the cache.")]
     private partial void LogToolCacheMiss(string toolName);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]

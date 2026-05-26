@@ -408,4 +408,23 @@ public class McpClientAddKnownToolsTests : ClientServerTestBase
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, tools.Count);
     }
+
+    [Fact]
+    public async Task CallToolWithoutCache_PipeTransport_DoesNotLogWarning()
+    {
+        // Arrange — pipe transport should NOT log a cache miss warning
+        await using var client = await CreateMcpClientForServer();
+
+        // Act — call a server tool without populating cache via ListToolsAsync
+        var result = await client.CallToolAsync(
+            ServerToolName,
+            new Dictionary<string, object?> { ["input"] = "test" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert — call succeeds and no cache miss warning is logged (pipe transport, not HTTP)
+        Assert.NotNull(result);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, log =>
+            log.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            log.Message.Contains("not found in cache during tools/call"));
+    }
 }

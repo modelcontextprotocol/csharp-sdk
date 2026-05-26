@@ -195,6 +195,11 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         Assert.Single(_capturedHeaders);
         var headers = _capturedHeaders.Values.First();
         Assert.Empty(headers);
+
+        // Verify that a cache miss warning IS logged for HTTP transport
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            log.Message.Contains("not found in cache during tools/call"));
     }
 
     [Fact]
