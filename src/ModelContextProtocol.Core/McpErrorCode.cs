@@ -30,20 +30,15 @@ public enum McpErrorCode
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Legacy error code for unresolvable resource URIs. Per SEP-2164 (MCP spec 2026-06-30) this is
-    /// superseded by <see cref="InvalidParams"/> (-32602), the standard JSON-RPC code that the
-    /// 2026-06-30 spec mandates for the same condition.
+    /// Legacy error code for unresolvable resource URIs. Newer protocol versions report this
+    /// condition with the standard JSON-RPC <see cref="InvalidParams"/> (-32602) instead. The SDK
+    /// selects between the two automatically based on the negotiated protocol version, so older
+    /// clients still see <see cref="ResourceNotFound"/> (-32002) and newer ones see
+    /// <see cref="InvalidParams"/>.
     /// </para>
-    /// <para>
-    /// The SDK selects between the two automatically based on the negotiated protocol version:
-    /// </para>
-    /// <list type="bullet">
-    ///   <item><description>Negotiated version &lt; <c>"2026-06-30"</c>: SDK returns <see cref="ResourceNotFound"/> (-32002).</description></item>
-    ///   <item><description>Negotiated version &gt;= <c>"2026-06-30"</c> (including the in-flight draft string <c>"DRAFT-2026-06-v1"</c>): SDK returns <see cref="InvalidParams"/> (-32602).</description></item>
-    /// </list>
     /// <para>
     /// New user code throwing <see cref="McpProtocolException"/> directly for unknown-resource conditions
-    /// should prefer <see cref="InvalidParams"/>; the SDK will still pass the value through unchanged.
+    /// should prefer <see cref="InvalidParams"/>; the SDK will pass the value through unchanged.
     /// </para>
     /// </remarks>
     ResourceNotFound = -32002,

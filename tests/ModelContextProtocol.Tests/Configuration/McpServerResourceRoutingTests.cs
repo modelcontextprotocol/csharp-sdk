@@ -26,14 +26,10 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     /// <summary>
     /// Starts the server with the specified resources, pins both the server's and the
     /// client's protocol version to <paramref name="protocolVersion"/>, and returns a
-    /// connected client.
+    /// connected client. Both ends must be pinned because <see cref="McpClient"/> strictly
+    /// compares the server's negotiated version against the client's requested version and
+    /// refuses to connect on mismatch.
     /// </summary>
-    /// <remarks>
-    /// Both ends must be pinned because <see cref="McpClient"/> strictly compares the
-    /// server's negotiated version against the client's requested version and refuses to
-    /// connect on mismatch. Used to drive the SEP-2164 error-code gate from tests without
-    /// bumping the SDK's <c>SupportedProtocolVersions</c> array.
-    /// </remarks>
     private async Task<McpClient> CreateClientWithResourcesAndServerVersionAsync(
         string protocolVersion,
         params McpServerResource[] resources)
@@ -62,9 +58,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     }
 
     /// <summary>
-    /// Asserts that the given URI does NOT match the template. Server is pinned to the
-    /// 2026-06-30 protocol version so the SEP-2164 gate produces <see cref="McpErrorCode.InvalidParams"/>
-    /// rather than the legacy <c>ResourceNotFound</c>.
+    /// Asserts that the given URI does NOT match the template.
     /// </summary>
     private async Task AssertNoMatchAsync(
         string uriTemplate,
@@ -72,32 +66,20 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         string uri)
     {
         var resource = McpServerResource.Create(options: new() { UriTemplate = uriTemplate }, method: method);
-        var client = await CreateClientWithResourcesAndServerVersionAsync("2026-06-30", resource);
+        var client = await CreateClientWithResourcesAsync(resource);
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.ReadResourceAsync(uri, null, TestContext.Current.CancellationToken));
 
-        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, ex.ErrorCode);
     }
 
-    // SEP-2164 standardizes the error code for "unknown resource URI" from the legacy
-    // -32002 (McpErrorCode.ResourceNotFound) to the standard JSON-RPC -32602
-    // (McpErrorCode.InvalidParams). Per Mike Kistler's review on PR #1558, this is
-    // version-gated to keep pre-2026-06-30 clients working: when the negotiated protocol
-    // version is < "2026-06-30", the SDK still returns the legacy code.
-    //
-    // The three inline cases below exercise:
-    //   - "2025-11-25"      — the latest pre-SEP-2164 protocol version.
-    //   - "DRAFT-2026-06-v1" — the in-flight draft string used during spec review.
-    //   - "2026-06-30"      — the anticipated final spec version.
-    //
-    // The draft string is included because lexically `'D' > '2'`, so the SDK's
-    // string-comparison-based gate (matching the precedent set by `SupportsPrimingEvent`)
-    // routes both the draft and the final version through the new code path.
+    // Unknown-resource-URI responses are version-gated: older clients keep the legacy
+    // -32002 (McpErrorCode.ResourceNotFound), and clients on the draft protocol version that
+    // moves to the standard JSON-RPC code see -32602 (McpErrorCode.InvalidParams).
     [Theory]
     [InlineData("2025-11-25", McpErrorCode.ResourceNotFound)]
-    [InlineData("DRAFT-2026-06-v1", McpErrorCode.InvalidParams)]
-    [InlineData("2026-06-30", McpErrorCode.InvalidParams)]
+    [InlineData("DRAFT-2026-v1", McpErrorCode.InvalidParams)]
     public async Task ResourceNotFound_ErrorCode_IsVersionGated(string serverProtocolVersion, McpErrorCode expectedCode)
     {
         var resource = McpServerResource.Create(
@@ -119,10 +101,8 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     [Fact]
     public async Task MultipleTemplatedResources_MatchesCorrectResource()
     {
-        // Server pinned to the SEP-2164-aware protocol version so the no-match assertion at
-        // the bottom of this test sees InvalidParams rather than the legacy ResourceNotFound.
-        var client = await CreateClientWithResourcesAndServerVersionAsync(
-            "2026-06-30",
+        // Register templates from most specific to least specific
+        var client = await CreateClientWithResourcesAsync(
             McpServerResource.Create(options: new() { UriTemplate = "test://resource/non-templated" }, method: () => "static"),
             McpServerResource.Create(options: new() { UriTemplate = "test://resource/{id}" }, method: (string id) => $"template: {id}"),
             McpServerResource.Create(options: new() { UriTemplate = "test://params{?a1,a2,a3}" }, method: (string a1, string a2, string a3) => $"params: {a1}, {a2}, {a3}"),
@@ -150,7 +130,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
 
         // Literal template braces in URI should not match (template literal is not a valid URI)
         var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
-        Assert.Equal(McpErrorCode.InvalidParams, mcpEx.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, mcpEx.ErrorCode);
         Assert.Equal("Request failed (remote): Unknown resource URI: 'test://params{?a1,a2,a3}'", mcpEx.Message);
     }
 

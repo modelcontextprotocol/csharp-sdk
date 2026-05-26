@@ -65,30 +65,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         return string.Compare(protocolVersion, MinResumabilityProtocolVersion, StringComparison.Ordinal) >= 0;
     }
 
-    /// <summary>
-    /// Checks whether the negotiated protocol version takes the SEP-2164 error code for
-    /// unresolvable resource URIs (<see cref="McpErrorCode.InvalidParams"/>, -32602) rather
-    /// than the legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002).
-    /// </summary>
-    /// <remarks>
-    /// SEP-2164 (MCP spec 2026-06-30) replaces the legacy code with the standard JSON-RPC
-    /// <see cref="McpErrorCode.InvalidParams"/>. Returns <see langword="true"/> for protocol
-    /// versions that sort lexically &gt;= <c>"2026-06-30"</c>; this also covers the in-flight
-    /// draft string <c>"DRAFT-2026-06-v1"</c> because <c>'D'</c> sorts greater than <c>'2'</c>
-    /// in ASCII.
-    /// </remarks>
-    internal static bool UseSep2164ResourceErrors(string? protocolVersion)
-    {
-        const string MinSep2164ProtocolVersion = "2026-06-30";
-
-        if (protocolVersion is null)
-        {
-            return false;
-        }
-
-        return string.Compare(protocolVersion, MinSep2164ProtocolVersion, StringComparison.Ordinal) >= 0;
-    }
-
     private readonly bool _isServer;
     private readonly string _transportKind;
     private readonly ITransport _transport;
