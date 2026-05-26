@@ -176,6 +176,8 @@ public abstract partial class McpClient : McpSession
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        ToolCacheClearing?.Invoke();
+
         List<McpClientTool>? tools = null;
         ListToolsRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
@@ -184,6 +186,15 @@ public abstract partial class McpClient : McpSession
             tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
+                // Validate x-mcp-header annotations per SEP-2243.
+                // Clients MUST exclude tools with invalid annotations and SHOULD log a warning.
+                if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+                {
+                    ToolRejected?.Invoke(tool, rejectionReason!);
+                    continue;
+                }
+
+                ToolDiscovered?.Invoke(tool);
                 tools.Add(new(this, tool, options?.JsonSerializerOptions));
             }
 
@@ -193,6 +204,21 @@ public abstract partial class McpClient : McpSession
 
         return tools;
     }
+
+    /// <summary>
+    /// Invoked when a tool definition is discovered from a <c>tools/list</c> response.
+    /// </summary>
+    internal Action<Tool>? ToolDiscovered;
+
+    /// <summary>
+    /// Invoked when a tool definition is rejected due to invalid <c>x-mcp-header</c> annotations.
+    /// </summary>
+    internal Action<Tool, string>? ToolRejected;
+
+    /// <summary>
+    /// Invoked before enumerating tools to clear any previously cached tool definitions.
+    /// </summary>
+    internal Action? ToolCacheClearing;
 
     /// <summary>
     /// Retrieves a list of available tools from the server.

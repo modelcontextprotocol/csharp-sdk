@@ -16,6 +16,7 @@ public class ClientConformanceTests
 
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
+    public static bool HasSep2243Scenarios => NodeHelpers.HasSep2243Scenarios();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
@@ -52,6 +53,21 @@ public class ClientConformanceTests
     // [InlineData("auth/client-credentials-basic")]
 
     public async Task RunConformanceTest(string scenario)
+    {
+        // Run the conformance test suite
+        var result = await RunClientConformanceScenario(scenario);
+
+        // Report the results
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    // HTTP Standardization (SEP-2243)
+    [Theory(Skip = "SEP-2243 conformance scenarios not yet available.", SkipUnless = nameof(HasSep2243Scenarios))]
+    [InlineData("http-standard-headers")]
+    [InlineData("http-custom-headers")]
+    [InlineData("http-invalid-tool-headers")]
+    public async Task RunConformanceTest_Sep2243(string scenario)
     {
         // Run the conformance test suite
         var result = await RunClientConformanceScenario(scenario);
