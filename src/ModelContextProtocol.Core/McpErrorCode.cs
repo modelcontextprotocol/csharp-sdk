@@ -29,8 +29,17 @@ public enum McpErrorCode
     /// Indicates that the requested resource could not be found.
     /// </summary>
     /// <remarks>
-    /// This error should be used when a resource URI does not match any available resource on the server.
-    /// It allows clients to distinguish between missing resources and other types of errors.
+    /// <para>
+    /// Legacy error code for unresolvable resource URIs. Newer protocol versions report this
+    /// condition with the standard JSON-RPC <see cref="InvalidParams"/> (-32602) instead. The SDK
+    /// selects between the two automatically based on the negotiated protocol version, so older
+    /// clients still see <see cref="ResourceNotFound"/> (-32002) and newer ones see
+    /// <see cref="InvalidParams"/>.
+    /// </para>
+    /// <para>
+    /// New user code throwing <see cref="McpProtocolException"/> directly for unknown-resource conditions
+    /// should prefer <see cref="InvalidParams"/>; the SDK will pass the value through unchanged.
+    /// </para>
     /// </remarks>
     ResourceNotFound = -32002,
 
@@ -85,6 +94,7 @@ public enum McpErrorCode
     /// <list type="bullet">
     /// <item><description><b>Tools</b>: Unknown tool name or invalid protocol-level tool arguments.</description></item>
     /// <item><description><b>Prompts</b>: Unknown prompt name or missing required protocol-level arguments.</description></item>
+    /// <item><description><b>Resources</b>: Unknown or unresolvable resource URI.</description></item>
     /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
     /// <item><description><b>Logging</b>: Invalid log level.</description></item>
     /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
