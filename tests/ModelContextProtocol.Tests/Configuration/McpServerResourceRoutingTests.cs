@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -20,6 +21,23 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         McpServerBuilder.WithResources(resources);
         StartServer();
         return await CreateMcpClientForServer();
+    }
+
+    /// <summary>
+    /// Starts the server with the specified resources, pins both the server's and the
+    /// client's protocol version to <paramref name="protocolVersion"/>, and returns a
+    /// connected client. Both ends must be pinned because <see cref="McpClient"/> strictly
+    /// compares the server's negotiated version against the client's requested version and
+    /// refuses to connect on mismatch.
+    /// </summary>
+    private async Task<McpClient> CreateClientWithResourcesAndServerVersionAsync(
+        string protocolVersion,
+        params McpServerResource[] resources)
+    {
+        McpServerBuilder.WithResources(resources);
+        McpServerBuilder.Services.Configure<McpServerOptions>(o => o.ProtocolVersion = protocolVersion);
+        StartServer();
+        return await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = protocolVersion });
     }
 
     /// <summary>
@@ -54,6 +72,26 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
             await client.ReadResourceAsync(uri, null, TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.ResourceNotFound, ex.ErrorCode);
+    }
+
+    // Unknown-resource-URI responses are version-gated: older clients keep the legacy
+    // -32002 (McpErrorCode.ResourceNotFound), and clients on the draft protocol version that
+    // moves to the standard JSON-RPC code see -32602 (McpErrorCode.InvalidParams).
+    [Theory]
+    [InlineData("2025-11-25", McpErrorCode.ResourceNotFound)]
+    [InlineData("DRAFT-2026-v1", McpErrorCode.InvalidParams)]
+    public async Task ResourceNotFound_ErrorCode_IsVersionGated(string serverProtocolVersion, McpErrorCode expectedCode)
+    {
+        var resource = McpServerResource.Create(
+            options: new() { UriTemplate = "test://known/{id}" },
+            method: (string id) => $"ok: {id}");
+
+        var client = await CreateClientWithResourcesAndServerVersionAsync(serverProtocolVersion, resource);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.ReadResourceAsync("test://unknown", null, TestContext.Current.CancellationToken));
+
+        Assert.Equal(expectedCode, ex.ErrorCode);
     }
 
     /// <summary>

@@ -315,3 +315,75 @@ public static string Search(
     // Schema will include descriptions and default value for maxResults
 }
 ```
+
+### Custom HTTP headers from tool parameters
+
+When using the Streamable HTTP transport, tool parameters can be mirrored as HTTP headers so that network infrastructure (load balancers, proxies, gateways) can make routing decisions without parsing the JSON-RPC request body. Apply the <xref:ModelContextProtocol.Server.McpHeaderAttribute> to a parameter to opt it in:
+
+```csharp
+[McpServerTool, Description("Executes a SQL query in a specific region")]
+public static string ExecuteSql(
+    [McpHeader("Region"), Description("Target datacenter region")] string region,
+    [Description("The SQL query to execute")] string query)
+{
+    // Clients will send an additional HTTP header:
+    //   Mcp-Param-Region: <region value>
+}
+```
+
+When the tool's schema is generated, the annotated parameter includes an `x-mcp-header` extension property. Clients read this annotation and automatically add the corresponding `Mcp-Param-{Name}` header on outgoing `tools/call` requests. The server validates that the header value matches the value in the JSON-RPC body.
+
+Rules and constraints:
+
+- Only primitive parameter types (`string`, numeric types, `bool`) are supported.
+- The header name must contain only visible ASCII characters (0x21–0x7E) excluding colon (`:`).
+- Values containing non-ASCII characters, control characters, or leading/trailing whitespace are Base64-encoded using the `=?base64?{value}?=` wrapper.
+- Header names must be case-insensitively unique within the tool's input schema.
+- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (currently `DRAFT-2026-v1` and later).
+
+### Pre-loading tool definitions on the client
+
+By default, `Mcp-Param-*` headers are sent only for tools discovered via <xref:ModelContextProtocol.Client.McpClient.ListToolsAsync*>. If a client already has tool schema information (for example, from a previous session, hardcoded configuration, or an out-of-band source), it can pre-load those definitions so that headers are sent immediately—without a round trip to the server.
+
+```csharp
+// Build the tool definition with x-mcp-header annotations
+var tool = new Tool
+{
+    Name = "execute_sql",
+    InputSchema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "region": {
+                    "type": "string",
+                    "x-mcp-header": "Region"
+                },
+                "query": {
+                    "type": "string"
+                }
+            }
+        }
+        """).RootElement.Clone(),
+};
+
+// Pre-load the tool definition — no ListToolsAsync needed
+client.AddKnownTools([tool]);
+
+// This call now sends an Mcp-Param-Region header automatically
+var result = await client.CallToolAsync("execute_sql",
+    new Dictionary<string, object?> { ["region"] = "us-west-2", ["query"] = "SELECT 1" });
+```
+
+Known tools survive <xref:ModelContextProtocol.Client.McpClient.ListToolsAsync*> cache clears—they remain in the cache even when the server's tool list is refreshed. If the server returns a tool with the same name, the server's definition overwrites the cached one, but the tool keeps its known status.
+
+To remove known tools, use <xref:ModelContextProtocol.Client.McpClient.RemoveKnownTools*> for specific tools or <xref:ModelContextProtocol.Client.McpClient.ClearKnownTools*> to remove all:
+
+```csharp
+// Remove specific known tools by name
+client.RemoveKnownTools(["execute_sql"]);
+
+// Or remove all known tools at once
+client.ClearKnownTools();
+```
+
+All tools passed to <xref:ModelContextProtocol.Client.McpClient.AddKnownTools*> are validated for correct `x-mcp-header` annotations. If any tool in the batch fails validation, an <xref:System.ArgumentException> is thrown and no tools are added (all-or-nothing).

@@ -49,9 +49,12 @@ public static class NodeHelpers
 
             var repoRoot = FindRepoRoot();
             var nodeModulesPath = Path.Combine(repoRoot, "node_modules");
+            var lockFilePath = Path.Combine(repoRoot, "package-lock.json");
 
-            // Use 'npm ci' if node_modules doesn't exist, otherwise assume it's up to date.
-            if (!Directory.Exists(nodeModulesPath))
+            // Run 'npm ci' if node_modules doesn't exist or is outdated
+            // (package-lock.json is newer than node_modules).
+            if (!Directory.Exists(nodeModulesPath) ||
+                File.GetLastWriteTimeUtc(lockFilePath) > Directory.GetLastWriteTimeUtc(nodeModulesPath))
             {
                 var startInfo = NpmStartInfo("ci", repoRoot);
                 using var process = Process.Start(startInfo)
@@ -79,6 +82,13 @@ public static class NodeHelpers
     public static ProcessStartInfo ConformanceTestStartInfo(string arguments)
     {
         EnsureNpmDependenciesInstalled();
+
+        // If MCP_CONFORMANCE_PROTOCOL_VERSION is set, pass it as --spec-version to the runner.
+        var protocolVersion = Environment.GetEnvironmentVariable("MCP_CONFORMANCE_PROTOCOL_VERSION");
+        if (!string.IsNullOrEmpty(protocolVersion))
+        {
+            arguments += $" --spec-version {protocolVersion}";
+        }
 
         var repoRoot = FindRepoRoot();
         var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
@@ -150,6 +160,44 @@ public static class NodeHelpers
 
             process.WaitForExit(5000);
             return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Checks whether the SEP-2243 conformance scenarios are available by reading
+    /// the conformance package version from the repo's package.json.
+    /// The http-standard-headers, http-custom-headers, http-invalid-tool-headers,
+    /// http-header-validation, and http-custom-header-server-validation scenarios
+    /// require a conformance package version that includes SEP-2243 support.
+    /// </summary>
+    public static bool HasSep2243Scenarios()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var packageJsonPath = Path.Combine(repoRoot, "package.json");
+            if (!File.Exists(packageJsonPath))
+            {
+                return false;
+            }
+
+            var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (json.RootElement.TryGetProperty("dependencies", out var deps) &&
+                deps.TryGetProperty("@modelcontextprotocol/conformance", out var versionElement))
+            {
+                var versionStr = versionElement.GetString();
+                if (versionStr is not null && Version.TryParse(versionStr, out var version))
+                {
+                    // SEP-2243 scenarios are expected in conformance package >= 0.2.0
+                    return version >= new Version(0, 2, 0);
+                }
+            }
+
+            return false;
         }
         catch
         {

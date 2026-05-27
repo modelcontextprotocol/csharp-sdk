@@ -421,7 +421,13 @@ internal sealed partial class McpServerImpl : McpServer
 
         listResourcesHandler ??= (static async (_, __) => new ListResourcesResult());
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
-        readResourceHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.ResourceNotFound));
+        readResourceHandler ??= (static async (request, _) =>
+        {
+            var errorCode = McpHttpHeaders.UseInvalidParamsForMissingResource(request.Server.NegotiatedProtocolVersion)
+                ? McpErrorCode.InvalidParams
+                : McpErrorCode.ResourceNotFound;
+            throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", errorCode);
+        });
         subscribeHandler ??= (static async (_, __) => new EmptyResult());
         unsubscribeHandler ??= (static async (_, __) => new EmptyResult());
         var listChanged = resourcesCapability?.ListChanged;
