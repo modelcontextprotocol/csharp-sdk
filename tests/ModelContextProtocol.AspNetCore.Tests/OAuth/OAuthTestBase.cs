@@ -106,7 +106,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         return app;
     }
 
-    protected async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    protected async Task<ModelContextProtocol.Authentication.AuthorizationResult?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
     {
         using var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
@@ -115,7 +115,11 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         if (location is not null && !string.IsNullOrEmpty(location.Query))
         {
             var queryParams = QueryHelpers.ParseQuery(location.Query);
-            return queryParams["code"];
+            return new ModelContextProtocol.Authentication.AuthorizationResult
+            {
+                Code = queryParams["code"],
+                Iss = queryParams.TryGetValue("iss", out var iss) ? (string?)iss : null,
+            };
         }
 
         return null;

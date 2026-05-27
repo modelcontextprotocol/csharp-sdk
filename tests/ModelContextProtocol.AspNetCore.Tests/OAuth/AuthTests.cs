@@ -41,7 +41,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -78,7 +78,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "unregistered-demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -98,7 +98,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -122,7 +122,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl)
             },
         }, HttpClient, LoggerFactory);
@@ -147,7 +147,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
                 DynamicClientRegistration = new()
                 {
@@ -176,7 +176,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
             },
         }, HttpClient, LoggerFactory);
@@ -198,7 +198,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri(uri),
             },
         }, HttpClient, LoggerFactory);
@@ -263,7 +263,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -290,7 +290,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     lastAuthorizationUri = uri;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -322,7 +322,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
                     ["redirect_uri"] = "custom_value",
@@ -347,7 +347,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -369,7 +369,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -397,7 +397,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -448,7 +448,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -537,7 +537,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -575,7 +575,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -614,7 +614,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -642,7 +642,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -675,7 +675,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -739,7 +739,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -794,7 +794,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -835,7 +835,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -883,7 +883,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1035,7 +1035,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1152,7 +1152,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1254,7 +1254,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1278,7 +1278,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -1310,7 +1310,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -1349,7 +1349,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -1386,7 +1386,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -1417,7 +1417,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     var query = QueryHelpers.ParseQuery(uri.Query);
                     requestedScope = query["scope"].ToString();
@@ -1455,7 +1455,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ScopeSelector = scopes =>
                 {
                     capturedInput = scopes;
@@ -1485,7 +1485,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -1515,7 +1515,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -1546,7 +1546,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
                 ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
             },

@@ -85,6 +85,24 @@ public sealed class ClientOAuthOptions
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
+    /// Gets or sets a callback that handles the full OAuth authorization flow, returning both the
+    /// authorization code and the issuer identifier for RFC 9207 validation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this handler takes precedence over <see cref="AuthorizationRedirectDelegate"/>.
+    /// It enables the SDK to validate the <c>iss</c> parameter in the authorization response per
+    /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>, which mitigates
+    /// mix-up attacks.
+    /// </para>
+    /// <para>
+    /// Implementations should extract both the <c>code</c> and <c>iss</c> query parameters from
+    /// the redirect URI callback and return them in an <see cref="AuthorizationResult"/>.
+    /// </para>
+    /// </remarks>
+    public Func<Uri, Uri, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
+
+    /// <summary>
     /// Gets or sets the authorization server selector function.
     /// </summary>
     /// <remarks>

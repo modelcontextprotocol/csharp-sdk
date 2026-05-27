@@ -26,7 +26,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     authDelegateCalledInitially = true;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -53,7 +53,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     authDelegateCalledAgain = true;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -82,7 +82,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 TokenCache = tokenCache
             },
         }, HttpClient, LoggerFactory);
@@ -109,7 +109,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     authDelegateCalled = true;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -141,7 +141,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     authDelegateCalledInitially = true;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
@@ -171,7 +171,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (uri, redirect, ct) =>
                 {
                     authDelegateCalledAgain = true;
                     return HandleAuthorizationUrlAsync(uri, redirect, ct);
