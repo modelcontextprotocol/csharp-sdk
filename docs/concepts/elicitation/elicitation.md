@@ -172,36 +172,15 @@ Here's an example implementation of how a console application might handle elici
 
 ### Multi Round-Trip Requests (MRTR)
 
-When both the client and server opt in to the experimental [MRTR](xref:mrtr) protocol, elicitation requests are handled via incomplete result / retry instead of a direct JSON-RPC request. This is transparent — the existing `ElicitAsync` API works identically regardless of whether MRTR is active.
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `DRAFT-2026-v1`. Under the draft protocol, the server-to-client `elicitation/create` request method is removed; the only supported way to ask the user for input from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
-#### High-level API
+> [!IMPORTANT]
+> Calling `ElicitAsync` after negotiating `DRAFT-2026-v1` throws `InvalidOperationException`. Use `InputRequiredException` from your tool/prompt handler instead — it works under both the current protocol (resolved via legacy JSON-RPC + retry on stateful sessions) and the draft protocol (wire-format `InputRequiredResult`, no server-side handler state required).
 
-No code changes are needed. `ElicitAsync` automatically uses MRTR when both sides have opted in, and falls back to legacy JSON-RPC requests otherwise:
-
-```csharp
-// This code works the same with or without MRTR — the SDK handles it transparently.
-var result = await server.ElicitAsync(new ElicitRequestParams
-{
-    Message = "Please confirm the action",
-    RequestedSchema = new()
-    {
-        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
-        {
-            ["confirm"] = new ElicitRequestParams.BooleanSchema
-            {
-                Description = "Confirm the action"
-            }
-        }
-    }
-}, cancellationToken);
-```
-
-#### Low-level API
-
-For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.InputRequiredException> with an elicitation input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+For example:
 
 ```csharp
-[McpServerTool, Description("Tool that elicits via low-level MRTR")]
+[McpServerTool, Description("Tool that elicits via MRTR")]
 public static string ElicitWithMrtr(
     McpServer server,
     RequestContext<CallToolRequestParams> context)
@@ -217,7 +196,7 @@ public static string ElicitWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support.";
+        return "This tool requires MRTR support (DRAFT-2026-v1, or a stateful current-protocol session).";
     }
 
     // First call — request user input

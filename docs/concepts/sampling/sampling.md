@@ -123,36 +123,15 @@ Sampling requires the client to advertise the `sampling` capability. This is han
 
 ### Multi Round-Trip Requests (MRTR)
 
-When both the client and server opt in to the experimental [MRTR](xref:mrtr) protocol, sampling requests are handled via incomplete result / retry instead of a direct JSON-RPC request. This is transparent — the existing `SampleAsync` and `AsSamplingChatClient` APIs work identically regardless of whether MRTR is active.
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `DRAFT-2026-v1`. Under the draft protocol, the server-to-client `sampling/createMessage` request method is removed; the only supported way to ask the client to sample from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
-#### High-level API
+> [!IMPORTANT]
+> Calling `SampleAsync` or `AsSamplingChatClient` after negotiating `DRAFT-2026-v1` throws `InvalidOperationException`. Use `InputRequiredException` from your tool/prompt handler instead — it works under both the current protocol (resolved via legacy JSON-RPC + retry on stateful sessions) and the draft protocol (wire-format `InputRequiredResult`, no server-side handler state required).
 
-No code changes are needed. `SampleAsync` and `AsSamplingChatClient` automatically use MRTR when both sides have opted in, and fall back to legacy JSON-RPC requests otherwise:
-
-```csharp
-// This code works the same with or without MRTR — the SDK handles it transparently.
-var result = await server.SampleAsync(
-    new CreateMessageRequestParams
-    {
-        Messages =
-        [
-            new SamplingMessage
-            {
-                Role = Role.User,
-                Content = [new TextContentBlock { Text = "Summarize the data" }]
-            }
-        ],
-        MaxTokens = 256,
-    },
-    cancellationToken);
-```
-
-#### Low-level API
-
-For stateless servers or scenarios requiring manual control, throw <xref:ModelContextProtocol.Protocol.InputRequiredException> with a sampling input request. On retry, read the client's response from <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses>:
+For example:
 
 ```csharp
-[McpServerTool, Description("Tool that samples via low-level MRTR")]
+[McpServerTool, Description("Tool that samples via MRTR")]
 public static string SampleWithMrtr(
     McpServer server,
     RequestContext<CallToolRequestParams> context)
@@ -167,7 +146,7 @@ public static string SampleWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support.";
+        return "This tool requires MRTR support (DRAFT-2026-v1, or a stateful current-protocol session).";
     }
 
     // First call — request LLM completion from the client

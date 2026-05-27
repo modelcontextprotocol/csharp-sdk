@@ -159,13 +159,6 @@ public abstract class McpServerTool : IMcpServerPrimitive
     public abstract Tool ProtocolTool { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the tool defers task creation, allowing
-    /// ephemeral MRTR exchanges before committing to a background task.
-    /// </summary>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public virtual bool DeferTaskCreation => false;
-
-    /// <summary>
     /// Gets the metadata for this tool instance.
     /// </summary>
     /// <remarks>

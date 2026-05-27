@@ -9,47 +9,37 @@ uid: mrtr
 
 <!-- mlc-disable-next-line -->
 > [!WARNING]
-> MRTR is an **experimental feature** based on a draft MCP specification proposal. The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs. Both the client and server must opt in via <xref:ModelContextProtocol.Client.McpClientOptions.ExperimentalProtocolVersion> and <xref:ModelContextProtocol.Server.McpServerOptions.ExperimentalProtocolVersion> respectively.
+> MRTR is part of the **`DRAFT-2026-v1`** revision of the MCP specification ([SEP-2322](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2322)). The wire format and API surface may change before the revision is ratified. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
-Multi Round-Trip Requests (MRTR) allow a server tool to request input from the client — such as [elicitation](xref:elicitation), [sampling](xref:sampling), or [roots](xref:roots) — as part of a single tool call, without requiring a separate JSON-RPC request for each interaction. Instead of sending a final result, the server returns an **incomplete result** containing one or more input requests. The client fulfills those requests and retries the original tool call with the responses attached.
+Multi Round-Trip Requests (MRTR) let a server tool request input from the client — such as [elicitation](xref:elicitation), [sampling](xref:sampling), or [roots](xref:roots) — as part of a single tool call, without requiring a separate server-to-client JSON-RPC request for each interaction. Instead of returning a final result, the server returns an **incomplete result** containing one or more input requests. The client fulfills those requests and retries the original tool call with the responses attached.
 
 ## Overview
 
 MRTR is useful when:
 
-- A tool needs user confirmation before proceeding (elicitation)
-- A tool needs LLM reasoning from the client (sampling)
-- A tool needs an updated list of client roots
-- A tool needs to perform multiple rounds of interaction in a single logical operation
-- A stateless server needs to orchestrate multi-step flows without keeping handler state in memory
+- A tool needs user confirmation before proceeding (elicitation).
+- A tool needs LLM reasoning from the client (sampling).
+- A tool needs an updated list of client roots.
+- A tool needs to perform multiple rounds of interaction in a single logical operation.
+- A stateless server needs to orchestrate multi-step flows without keeping handler state in memory between rounds.
 
 ## How MRTR works
 
 1. The client calls a tool on the server via `tools/call`.
 2. The server tool determines it needs client input and returns an `InputRequiredResult` containing `inputRequests` and/or `requestState`.
-3. The client resolves each input request (e.g., prompts the user for elicitation, calls an LLM for sampling).
+3. The client resolves each input request (for example by prompting the user for elicitation, calling an LLM for sampling, or listing its roots).
 4. The client retries the original `tools/call` with `inputResponses` (keyed to the input requests) and `requestState` echoed back.
 5. The server processes the responses and either returns a final result or another `InputRequiredResult` for additional rounds.
 
 ## Opting in
 
-MRTR requires both the client and server to opt in by setting `ExperimentalProtocolVersion` to a draft protocol version. Currently, this is `"2026-06-XX"`:
-
-```csharp
-// Server
-var builder = Host.CreateApplicationBuilder();
-builder.Services.AddMcpServer(options =>
-{
-    options.ExperimentalProtocolVersion = "2026-06-XX";
-})
-.WithTools<MyTools>();
-```
+MRTR activates when both peers negotiate protocol revision **`DRAFT-2026-v1`** during `initialize`. The C# SDK opts in by listing `DRAFT-2026-v1` as a supported protocol version on the client; servers automatically accept it when offered. No experimental flags are required.
 
 ```csharp
 // Client
-var options = new McpClientOptions
+var clientOptions = new McpClientOptions
 {
-    ExperimentalProtocolVersion = "2026-06-XX",
+    ProtocolVersion = "DRAFT-2026-v1",
     Handlers = new McpClientHandlers
     {
         ElicitationHandler = HandleElicitationAsync,
@@ -58,70 +48,31 @@ var options = new McpClientOptions
 };
 ```
 
-When both sides opt in, the negotiated protocol version activates MRTR. When either side does not opt in, the SDK gracefully falls back to standard behavior.
+Under `DRAFT-2026-v1`, MRTR is the **only** way to obtain client input from a server handler. The legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods are removed; calling <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*> on a server that negotiated `DRAFT-2026-v1` throws `InvalidOperationException`. Tools that need client input must throw <xref:ModelContextProtocol.Protocol.InputRequiredException> instead.
 
-## High-level API
+Under the current protocol revision (`2025-06-18` and earlier), `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see [Compatibility](#compatibility) below.
 
-The high-level API lets tool handlers call <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*> and <xref:ModelContextProtocol.Server.McpServer.SampleAsync*> as if they were simple async calls. The SDK transparently manages the incomplete result / retry cycle.
+## Authoring an MRTR tool
 
-```csharp
-[McpServerToolType]
-public class InteractiveTools
-{
-    [McpServerTool, Description("Asks the user for confirmation before proceeding")]
-    public static async Task<string> ConfirmAction(
-        McpServer server,
-        [Description("The action to confirm")] string action,
-        CancellationToken cancellationToken)
-    {
-        var result = await server.ElicitAsync(new ElicitRequestParams
-        {
-            Message = $"Do you want to proceed with: {action}?",
-            RequestedSchema = new()
-            {
-                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
-                {
-                    ["confirm"] = new ElicitRequestParams.BooleanSchema
-                    {
-                        Description = "Confirm the action"
-                    }
-                }
-            }
-        }, cancellationToken);
-
-        return result.Action == "accept" ? "Action confirmed!" : "Action cancelled.";
-    }
-}
-```
-
-From the client's perspective, this is a single `CallToolAsync` call. The SDK handles all retries automatically:
-
-```csharp
-var result = await client.CallToolAsync("ConfirmAction", new { action = "delete all files" });
-Console.WriteLine(result.Content.OfType<TextContentBlock>().First().Text);
-```
-
-> [!TIP]
-> The high-level API requires session affinity — the handler task stays suspended in server memory between round trips. This works well for stateful (non-stateless) server configurations.
-
-## Low-level API
-
-The low-level API gives tool handlers direct control over `inputRequests` and `requestState`. This enables stateless multi-round-trip flows where the server does not need to keep handler state in memory between retries.
+A tool participates in MRTR by throwing <xref:ModelContextProtocol.Protocol.InputRequiredException> with an <xref:ModelContextProtocol.Protocol.InputRequiredResult> describing what it needs. On retry, the client's responses arrive on the request parameters and the tool inspects them to decide what to do next.
 
 ### Checking MRTR support
 
-Before using the low-level API, check <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> to determine if the connected client supports MRTR. If it does not, provide a fallback experience:
+Tools should check <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> before throwing `InputRequiredException`. It returns `true` when either:
+
+- The negotiated protocol revision is `DRAFT-2026-v1` (MRTR is native), or
+- The session is stateful under the current protocol (the SDK can resolve input requests via legacy JSON-RPC and retry the handler).
 
 ```csharp
-[McpServerTool, Description("A tool that uses low-level MRTR")]
+[McpServerTool, Description("A tool that uses MRTR")]
 public static string MyTool(
     McpServer server,
     RequestContext<CallToolRequestParams> context)
 {
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires a client that supports multi-round-trip requests. "
-             + "Please upgrade your client or enable experimental protocol support.";
+        return "This tool requires a client that negotiates DRAFT-2026-v1, "
+             + "or a stateful current-protocol session.";
     }
 
     // ... MRTR logic
@@ -130,11 +81,11 @@ public static string MyTool(
 
 ### Returning an incomplete result
 
-Throw <xref:ModelContextProtocol.Protocol.InputRequiredException> to return an incomplete result to the client. The exception carries an <xref:ModelContextProtocol.Protocol.InputRequiredResult> containing `inputRequests` and/or `requestState`:
+Throw <xref:ModelContextProtocol.Protocol.InputRequiredException> to return an incomplete result. The exception carries an <xref:ModelContextProtocol.Protocol.InputRequiredResult> containing `inputRequests` and/or `requestState`:
 
 ```csharp
-[McpServerTool, Description("Stateless tool managing its own MRTR flow")]
-public static string StatelessTool(
+[McpServerTool, Description("Tool managing its own MRTR flow")]
+public static string AnswerTool(
     McpServer server,
     RequestContext<CallToolRequestParams> context,
     [Description("The user's question")] string question)
@@ -181,14 +132,14 @@ public static string StatelessTool(
 
 When the client retries a tool call, the retry data is available on the request parameters:
 
-- <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses> — a dictionary of client responses keyed by the same keys used in `inputRequests`
-- <xref:ModelContextProtocol.Protocol.RequestParams.RequestState> — the opaque state string echoed back by the client
+- <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses> — a dictionary of client responses keyed by the same keys used in `inputRequests`.
+- <xref:ModelContextProtocol.Protocol.RequestParams.RequestState> — the opaque state string echoed back by the client.
 
 Each `InputResponse` has typed accessors for the response type:
 
-- `ElicitationResult` — the result of an elicitation request
-- `SamplingResult` — the result of a sampling request
-- `RootsResult` — the result of a roots list request
+- `ElicitationResult` — the result of an elicitation request.
+- `SamplingResult` — the result of a sampling request.
+- `RootsResult` — the result of a roots list request.
 
 ### Load shedding with requestState-only responses
 
@@ -227,7 +178,7 @@ The client automatically retries `requestState`-only incomplete results, echoing
 
 ### Multiple round trips
 
-A tool can perform multiple rounds of interaction by throwing `InputRequiredException` multiple times across retries:
+A tool can perform multiple rounds of interaction by throwing `InputRequiredException` multiple times across retries. Use `requestState` to track which round you're on:
 
 ```csharp
 [McpServerTool, Description("Multi-step wizard")]
@@ -306,159 +257,35 @@ When MRTR is not supported, you can provide domain-specific guidance:
 ```csharp
 if (!server.IsMrtrSupported)
 {
-    return "This tool requires interactive input, but your client doesn't support "
-         + "multi-round-trip requests. To use this feature:\n"
-         + "1. Update to a client that supports MCP protocol version 2026-06-XX or later\n"
-         + "2. Enable the experimental protocol version in your client configuration\n"
-         + "\nFor more information, see: https://example.com/mrtr-setup";
+    return "This tool requires interactive input. To use it:\n"
+         + "1. Connect with a client that negotiates MCP protocol revision DRAFT-2026-v1, or\n"
+         + "2. Use a stateful current-protocol session so the server can resolve the input requests for you.\n"
+         + "\nStateless current-protocol sessions cannot resolve MRTR input requests.";
 }
 ```
 
 ## Compatibility
 
-The SDK handles all four combinations of experimental/non-experimental client and server:
+The SDK supports `InputRequiredException` across two protocol revisions and two session modes:
 
-| Server Experimental | Client Experimental | Behavior |
+| Negotiated protocol | Session mode | Behavior |
 |---|---|---|
-| ✅ | ✅ | MRTR — incomplete results with retry cycle |
-| ✅ | ❌ | Server falls back to legacy JSON-RPC requests for elicitation/sampling |
-| ❌ | ✅ | Client accepts stable protocol version; MRTR retry loop is a no-op |
-| ❌ | ❌ | Standard behavior — no MRTR |
-
-When a server has MRTR enabled but the connected client does not:
-
-- The high-level API (`ElicitAsync`, `SampleAsync`) automatically falls back to sending standard JSON-RPC requests — no code changes needed.
-- The low-level API reports `IsMrtrSupported == false`, allowing the tool to provide a custom fallback message.
-
-### Backward compatibility for MRTR-native tools
-
-Tools written with the low-level MRTR pattern (`InputRequiredException`) work automatically with clients that don't support MRTR. When a tool throws `InputRequiredException` and the client hasn't negotiated MRTR, the SDK resolves each `InputRequest` by sending the corresponding standard JSON-RPC call (elicitation, sampling, or roots) to the client, then retries the handler with the resolved responses.
-
-This means you can write a single tool implementation using the MRTR-native pattern and it will work with any client:
-
-```csharp
-[McpServerTool, Description("Get weather with user's preferred units")]
-public static string GetWeather(
-    RequestContext<CallToolRequestParams> context,
-    string location)
-{
-    // On retry, inputResponses and requestState are populated
-    if (context.Params!.InputResponses?.TryGetValue("units", out var response) == true)
-    {
-        var units = response.ElicitationResult?.Content?.FirstOrDefault().Value;
-        return $"Weather for {location} in {units}: 72°";
-    }
-
-    // First call: request the user's preferred units
-    throw new InputRequiredException(
-        inputRequests: new Dictionary<string, InputRequest>
-        {
-            ["units"] = InputRequest.ForElicitation(new ElicitRequestParams
-            {
-                Message = "Which temperature units?",
-                RequestedSchema = new()
-            })
-        },
-        requestState: "awaiting-units");
-}
-```
-
-- **With an MRTR client**: The `InputRequiredResult` is sent over the wire. The client resolves the elicitation and retries with `inputResponses`.
-- **Without MRTR**: The SDK sends a standard `elicitation/create` JSON-RPC request to the client, collects the response, and retries the handler internally. The client never sees the `InputRequiredResult`.
+| `DRAFT-2026-v1` | Stateful | Native MRTR — `InputRequiredResult` is serialized directly to the wire. |
+| `DRAFT-2026-v1` | Stateless | Native MRTR — `InputRequiredResult` is serialized directly to the wire. No server-side handler state needed. |
+| Current (`2025-06-18` and earlier) | Stateful | Backward-compatibility resolver — the SDK sends standard `elicitation/create` / `sampling/createMessage` / `roots/list` JSON-RPC requests to the client, collects the responses, and retries the handler with `inputResponses` populated. Up to 10 retry rounds. |
+| Current (`2025-06-18` and earlier) | Stateless | **Not supported** — `InputRequiredException` raises an `McpException`. The client doesn't speak MRTR, and the server can't resolve input requests via JSON-RPC without a persistent session. |
 
 > [!NOTE]
-> The backcompat retry loop resolves up to 10 rounds. Tools that need more rounds should use the high-level API (`ElicitAsync`) instead.
+> The backcompat resolver is intentionally limited to 10 retry rounds. Tools that need more rounds should require `DRAFT-2026-v1` (check `IsMrtrSupported`).
 
-## Transitioning from MRTR to Tasks
+### Why `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` throw under draft
 
-<!-- mlc-disable-next-line -->
-> [!WARNING]
-> Deferred task creation depends on both the [MRTR](xref:mrtr) and [Tasks](xref:tasks) experimental features.
+The `DRAFT-2026-v1` revision removes the server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods entirely. Servers cannot use those request methods because clients no longer advertise the corresponding capabilities or implement handlers for them. The SDK fails fast with a clear `InvalidOperationException` so you can fix the call site before it manifests as a wire-level error.
 
-Some tools need user input before they can decide whether to start a long-running background task. For example, a VM provisioning tool might confirm costs with the user before committing to a task that takes minutes. **Deferred task creation** lets a tool perform ephemeral MRTR exchanges first, then transition to a background task only when ready.
+Under the current protocol revision (`2025-06-18` and earlier), these methods continue to work normally and are the recommended way to do simple, one-shot client interactions. `InputRequiredException` is the way to write tools that work the same on both revisions.
 
-### How it works
+### Future direction
 
-1. The tool sets `DeferTaskCreation = true` on its attribute or options.
-2. When the client sends task metadata with the `tools/call` request, the SDK runs the tool through the normal MRTR-wrapped path instead of creating a task immediately.
-3. The tool calls `ElicitAsync` or `SampleAsync` as usual — these use MRTR (incomplete result / retry cycles).
-4. When the tool is ready, it calls `await server.CreateTaskAsync(cancellationToken)` to transition to a background task.
-5. After `CreateTaskAsync`, the MRTR phase ends. Any subsequent `ElicitAsync` or `SampleAsync` calls use the task's own `input_required` / `tasks/input_response` mechanism instead.
-6. If the tool returns without calling `CreateTaskAsync`, a normal (non-task) result is sent to the client.
+The `DRAFT-2026-v1` revision is moving toward a stateless-only model: `Mcp-Session-Id` is being removed, and Streamable HTTP servers will run statelessly by default under the draft revision. When that happens, the `Stateful` row of the compatibility matrix above collapses into the `Stateless` row, and `InputRequiredException` becomes uniformly native across both. The current-protocol resolver path will remain for backward compatibility with older clients and stateful servers.
 
-### Server example
-
-```csharp
-McpServerTool.Create(
-    async (string vmName, McpServer server, CancellationToken ct) =>
-    {
-        // Phase 1: Ephemeral MRTR — confirm with user before starting expensive work.
-        var confirmation = await server.ElicitAsync(new ElicitRequestParams
-        {
-            Message = $"Provision VM '{vmName}'? This will incur costs.",
-            RequestedSchema = new()
-        }, ct);
-
-        if (confirmation.Action != "confirm")
-        {
-            return "Cancelled by user.";
-        }
-
-        // Phase 2: Transition to a background task.
-        await server.CreateTaskAsync(ct);
-
-        // Phase 3: Background work — runs as a task, client polls for status.
-        await Task.Delay(TimeSpan.FromMinutes(5), ct);
-        return $"VM '{vmName}' provisioned successfully.";
-    },
-    new McpServerToolCreateOptions
-    {
-        Name = "provision-vm",
-        Description = "Provisions a VM with user confirmation",
-        DeferTaskCreation = true,
-        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional },
-    })
-```
-
-The attribute-based equivalent uses `DeferTaskCreation` on <xref:ModelContextProtocol.Server.McpServerToolAttribute>:
-
-```csharp
-[McpServerTool(DeferTaskCreation = true, TaskSupport = ToolTaskSupport.Optional)]
-[Description("Provisions a VM with user confirmation")]
-public static async Task<string> ProvisionVm(
-    string vmName, McpServer server, CancellationToken ct)
-{
-    var confirmation = await server.ElicitAsync(new ElicitRequestParams
-    {
-        Message = $"Provision VM '{vmName}'? This will incur costs.",
-        RequestedSchema = new()
-    }, ct);
-
-    if (confirmation.Action != "confirm")
-        return "Cancelled by user.";
-
-    await server.CreateTaskAsync(ct);
-
-    await Task.Delay(TimeSpan.FromMinutes(5), ct);
-    return $"VM '{vmName}' provisioned successfully.";
-}
-```
-
-### Key points
-
-- **One-way transition**: Once `CreateTaskAsync` is called, the tool cannot go back to ephemeral MRTR. All subsequent input requests use the task workflow.
-- **Optional task creation**: A `DeferTaskCreation` tool can return a normal result without ever calling `CreateTaskAsync`. The tool decides at runtime whether to create a task.
-- **No task metadata, no deferral**: If the client calls the tool without task metadata, the tool runs normally with MRTR — `DeferTaskCreation` has no effect.
-
-For more details on task configuration and lifecycle, see the [Tasks](xref:tasks) documentation.
-
-## Choosing between high-level and low-level APIs
-
-| Consideration | High-level API | Low-level API |
-|---|---|---|
-| **Session affinity** | Required — handler stays suspended in memory | Not required — handler completes each round |
-| **State management** | Automatic (SDK manages via `MrtrContext`) | Manual (`requestState` encoded by you) |
-| **Complexity** | Simple `await` calls | More code, but full control |
-| **Stateless servers** | Not compatible | Designed for stateless scenarios |
-| **Fallback** | Automatic — SDK sends legacy requests | Manual — check `IsMrtrSupported` |
-| **Multiple input types** | One at a time (elicit or sample) | Multiple in a single round |
+This work is a follow-up to the present PR.

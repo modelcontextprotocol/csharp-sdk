@@ -152,7 +152,6 @@ public abstract partial class MapMcpTests
     }
 
     [Theory]
-    [InlineData(true)]
     [InlineData(false)]
     public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalClient)
     {
@@ -236,8 +235,8 @@ public abstract partial class MapMcpTests
             RequestedSchema = new()
         }, ct);
 
-        // Start the second await — with MRTR, this throws InvalidOperationException
-        // because MrtrContext only supports one pending exchange at a time.
+        // Start the second await. This path is only exercised for legacy clients now
+        // that draft clients must use InputRequiredException instead of await-style requests.
         try
         {
             var sampleTask = server.SampleAsync(new CreateMessageRequestParams
@@ -258,12 +257,10 @@ public abstract partial class MapMcpTests
     }
 
     [Theory]
-    [InlineData(true)]
     [InlineData(false)]
     public async Task Mrtr_ParallelAwaits(bool experimentalClient)
     {
-        // Parallel awaits work with regular JSON-RPC but fail with MRTR because
-        // MrtrContext only supports one exchange at a time (TrySetResult gate).
+        // Parallel awaits work with regular JSON-RPC for legacy clients.
         Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
 
         var messageTracker = ConfigureServer(MrtrParallelAwait);
@@ -278,8 +275,7 @@ public abstract partial class MapMcpTests
 
         if (experimentalClient)
         {
-            // MRTR active. Parallel awaits hit the MrtrContext concurrency gate and the second
-            // call throws InvalidOperationException, which the tool catches and returns as text.
+            // Draft clients must use InputRequiredException instead of await-style requests.
             Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
 
             var result = await client.CallToolAsync("mrtr-parallel-await",

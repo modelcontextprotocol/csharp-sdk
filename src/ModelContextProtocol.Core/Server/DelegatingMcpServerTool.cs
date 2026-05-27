@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
 
@@ -22,9 +22,6 @@ public abstract class DelegatingMcpServerTool : McpServerTool
 
     /// <inheritdoc />
     public override Tool ProtocolTool => _innerTool.ProtocolTool;
-
-    /// <inheritdoc />
-    public override bool DeferTaskCreation => _innerTool.DeferTaskCreation;
 
     /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _innerTool.Metadata;

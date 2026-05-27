@@ -1370,7 +1370,7 @@ public class McpServerTests : LoggedTest
         public override ValueTask DisposeAsync() => default;
 
         public override string? SessionId => throw new NotImplementedException();
-        public override string? NegotiatedProtocolVersion => throw new NotImplementedException();
+        public override string? NegotiatedProtocolVersion => null;
         public override Implementation? ClientInfo => throw new NotImplementedException();
         public override IServiceProvider? Services => throw new NotImplementedException();
         public override LoggingLevel? LoggingLevel => throw new NotImplementedException();
