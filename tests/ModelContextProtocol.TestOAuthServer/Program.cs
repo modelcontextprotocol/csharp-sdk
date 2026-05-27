@@ -78,8 +78,21 @@ public sealed class Program
     /// </remarks>
     public bool ExpectResource { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server advertises support for
+    /// <c>offline_access</c> in its <c>scopes_supported</c> metadata. This simulates an OIDC-flavored
+    /// authorization server that issues refresh tokens when the client requests the <c>offline_access</c> scope.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>false</c>.
+    /// </remarks>
+    public bool IncludeOfflineAccessInMetadata { get; set; }
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastRegistrationScope { get; private set; }
 
     /// <summary>
     /// Entry point for the application.
@@ -188,7 +201,9 @@ public sealed class Program
                 ResponseTypesSupported = ["code"],
                 SubjectTypesSupported = ["public"],
                 IdTokenSigningAlgValuesSupported = ["RS256"],
-                ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
+                ScopesSupported = IncludeOfflineAccessInMetadata
+                    ? ["openid", "profile", "email", "mcp:tools", "offline_access"]
+                    : ["openid", "profile", "email", "mcp:tools"],
                 TokenEndpointAuthMethodsSupported = ["client_secret_post"],
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = ["S256"],
@@ -500,6 +515,8 @@ public sealed class Program
                     ErrorDescription = "Invalid registration request"
                 });
             }
+
+            LastRegistrationScope = registrationRequest.Scope;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)

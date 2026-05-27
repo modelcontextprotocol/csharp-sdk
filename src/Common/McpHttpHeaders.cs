@@ -75,4 +75,12 @@ internal static class McpHttpHeaders
     /// </summary>
     public static bool SupportsStandardHeaders(string? protocolVersion)
         => !string.IsNullOrEmpty(protocolVersion) && s_versionsWithStandardHeaders.Contains(protocolVersion!);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the negotiated protocol version reports unresolvable
+    /// resource URIs with the standard JSON-RPC <see cref="McpErrorCode.InvalidParams"/> (-32602)
+    /// rather than the legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002).
+    /// </summary>
+    internal static bool UseInvalidParamsForMissingResource(string? protocolVersion)
+        => string.Equals(protocolVersion, MinVersionForStandardHeaders, StringComparison.Ordinal);
 }
