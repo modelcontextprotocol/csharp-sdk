@@ -139,7 +139,7 @@ public static string SampleWithMrtr(
     // On retry, process the client's sampling response
     if (context.Params!.InputResponses?.TryGetValue("llm_call", out var response) is true)
     {
-        var text = response.SamplingResult?.Content
+        var text = response.Deserialize(InputResponse.SamplingResultTypeInfo)?.Content
             .OfType<TextContentBlock>().FirstOrDefault()?.Text;
         return $"LLM said: {text}";
     }

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -28,7 +29,10 @@ public sealed class InputResponse
     /// Gets or sets the raw JSON element representing the response.
     /// </summary>
     /// <remarks>
-    /// Use <see cref="Deserialize{T}"/> or the typed factory methods to work with concrete response types.
+    /// Use <see cref="Deserialize{T}"/> with the <c>JsonTypeInfo&lt;T&gt;</c> matching the
+    /// associated <see cref="InputRequest.Method"/> — for elicitation, sampling, or roots see
+    /// <see cref="ElicitResultTypeInfo"/>, <see cref="SamplingResultTypeInfo"/>, and
+    /// <see cref="RootsResultTypeInfo"/>.
     /// </remarks>
     [JsonIgnore]
     public JsonElement RawValue { get; set; }
@@ -43,28 +47,25 @@ public sealed class InputResponse
         JsonSerializer.Deserialize(RawValue, typeInfo);
 
     /// <summary>
-    /// Gets the response as a <see cref="CreateMessageResult"/>.
+    /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="ElicitResult"/>, suitable for use with
+    /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
+    /// <see cref="RequestMethods.ElicitationCreate"/>.
     /// </summary>
-    /// <returns>The deserialized sampling result, or <see langword="null"/> if deserialization fails.</returns>
-    [JsonIgnore]
-    public CreateMessageResult? SamplingResult =>
-        JsonSerializer.Deserialize(RawValue, McpJsonUtilities.JsonContext.Default.CreateMessageResult);
+    public static JsonTypeInfo<ElicitResult> ElicitResultTypeInfo => McpJsonUtilities.JsonContext.Default.ElicitResult;
 
     /// <summary>
-    /// Gets the response as an <see cref="ElicitResult"/>.
+    /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="CreateMessageResult"/>, suitable for use with
+    /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
+    /// <see cref="RequestMethods.SamplingCreateMessage"/>.
     /// </summary>
-    /// <returns>The deserialized elicitation result, or <see langword="null"/> if deserialization fails.</returns>
-    [JsonIgnore]
-    public ElicitResult? ElicitationResult =>
-        JsonSerializer.Deserialize(RawValue, McpJsonUtilities.JsonContext.Default.ElicitResult);
+    public static JsonTypeInfo<CreateMessageResult> SamplingResultTypeInfo => McpJsonUtilities.JsonContext.Default.CreateMessageResult;
 
     /// <summary>
-    /// Gets the response as a <see cref="ListRootsResult"/>.
+    /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="ListRootsResult"/>, suitable for use with
+    /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
+    /// <see cref="RequestMethods.RootsList"/>.
     /// </summary>
-    /// <returns>The deserialized roots list result, or <see langword="null"/> if deserialization fails.</returns>
-    [JsonIgnore]
-    public ListRootsResult? RootsResult =>
-        JsonSerializer.Deserialize(RawValue, McpJsonUtilities.JsonContext.Default.ListRootsResult);
+    public static JsonTypeInfo<ListRootsResult> RootsResultTypeInfo => McpJsonUtilities.JsonContext.Default.ListRootsResult;
 
     /// <summary>
     /// Creates an <see cref="InputResponse"/> from a <see cref="CreateMessageResult"/>.

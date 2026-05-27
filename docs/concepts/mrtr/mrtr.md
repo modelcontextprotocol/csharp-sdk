@@ -96,7 +96,7 @@ public static string AnswerTool(
     // On retry, process the client's responses
     if (requestState is not null && inputResponses is not null)
     {
-        var elicitResult = inputResponses["user_answer"].ElicitationResult;
+        var elicitResult = inputResponses["user_answer"].Deserialize(InputResponse.ElicitResultTypeInfo);
         return $"You answered: {elicitResult?.Content?.FirstOrDefault().Value}";
     }
 
@@ -135,11 +135,11 @@ When the client retries a tool call, the retry data is available on the request 
 - <xref:ModelContextProtocol.Protocol.RequestParams.InputResponses> — a dictionary of client responses keyed by the same keys used in `inputRequests`.
 - <xref:ModelContextProtocol.Protocol.RequestParams.RequestState> — the opaque state string echoed back by the client.
 
-Each `InputResponse` has typed accessors for the response type:
+Use <xref:ModelContextProtocol.Protocol.InputResponse.Deserialize*> with the `JsonTypeInfo<T>` matching the response type. The expected type follows from the matching <xref:ModelContextProtocol.Protocol.InputRequest.Method> in the original `inputRequests` map — there is no on-the-wire discriminator.
 
-- `ElicitationResult` — the result of an elicitation request.
-- `SamplingResult` — the result of a sampling request.
-- `RootsResult` — the result of a roots list request.
+- Elicitation — `response.Deserialize(InputResponse.ElicitResultTypeInfo)`
+- Sampling — `response.Deserialize(InputResponse.SamplingResultTypeInfo)`
+- Roots list — `response.Deserialize(InputResponse.RootsResultTypeInfo)`
 
 ### Load shedding with requestState-only responses
 
@@ -191,14 +191,14 @@ public static string WizardTool(
 
     if (requestState == "step-2" && inputResponses is not null)
     {
-        var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
-        var age = inputResponses["age"].ElicitationResult?.Content?.FirstOrDefault().Value;
+        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
+        var age = inputResponses["age"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
         return $"Welcome, {name}! You are {age} years old.";
     }
 
     if (requestState == "step-1" && inputResponses is not null)
     {
-        var name = inputResponses["name"].ElicitationResult?.Content?.FirstOrDefault().Value;
+        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
 
         // Second round — ask for age
         throw new InputRequiredException(

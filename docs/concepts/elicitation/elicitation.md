@@ -188,7 +188,7 @@ public static string ElicitWithMrtr(
     // On retry, process the client's elicitation response
     if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
     {
-        var elicitResult = response.ElicitationResult;
+        var elicitResult = response.Deserialize(InputResponse.ElicitResultTypeInfo);
         return elicitResult?.Action == "accept"
             ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
             : "User declined.";

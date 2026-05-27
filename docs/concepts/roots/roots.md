@@ -122,7 +122,7 @@ public static string ListRootsWithMrtr(
     // On retry, process the client's roots response
     if (context.Params!.InputResponses?.TryGetValue("get_roots", out var response) is true)
     {
-        var roots = response.RootsResult?.Roots ?? [];
+        var roots = response.Deserialize(InputResponse.RootsResultTypeInfo)?.Roots ?? [];
         return $"Found {roots.Count} roots: {string.Join(", ", roots.Select(r => r.Uri))}";
     }
 

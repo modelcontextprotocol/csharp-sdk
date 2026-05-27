@@ -566,20 +566,41 @@ internal sealed partial class McpClientImpl : McpClient
         IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken)
     {
-        var responses = new Dictionary<string, InputResponse>(inputRequests.Count);
+        // Resolve all input requests concurrently. If any fails, cancel the rest so user-facing
+        // handlers (sampling/elicitation prompts) don't keep running for a request whose caller
+        // has already given up, and ensure exceptions from late-completing tasks are observed.
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        // Resolve all input requests concurrently
-        var tasks = new List<(string Key, Task<InputResponse> Task)>(inputRequests.Count);
+        var keyed = new (string Key, Task<InputResponse> Task)[inputRequests.Count];
+        int i = 0;
         foreach (var kvp in inputRequests)
         {
-            tasks.Add((kvp.Key, ResolveInputRequestAsync(kvp.Value, cancellationToken)));
+            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(kvp.Value, linkedCts.Token));
         }
 
-        foreach (var entry in tasks)
+        try
         {
-            responses[entry.Key] = await entry.Task.ConfigureAwait(false);
+            await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+        }
+        catch
+        {
+            linkedCts.Cancel();
+            try
+            {
+                await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Observed; the original exception is the one we want to surface.
+            }
+            throw;
         }
 
+        var responses = new Dictionary<string, InputResponse>(keyed.Length);
+        foreach (var (key, task) in keyed)
+        {
+            responses[key] = task.Result;
+        }
         return responses;
     }
 

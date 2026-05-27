@@ -27,7 +27,7 @@ public sealed class IncompleteResultTools
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("user_name", out var response))
         {
-            var elicit = response.ElicitationResult;
+            var elicit = response.Deserialize(InputResponse.ElicitResultTypeInfo);
             var name = TryReadString(elicit?.Content, "name") ?? "world";
             return TextResult($"Hello, {name}!");
         }
@@ -58,7 +58,7 @@ public sealed class IncompleteResultTools
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("capital_question", out var response))
         {
-            var text = response.SamplingResult?.Content?.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "(no text)";
+            var text = response.Deserialize(InputResponse.SamplingResultTypeInfo)?.Content?.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "(no text)";
             return TextResult($"Sampling said: {text}");
         }
 
@@ -88,7 +88,7 @@ public sealed class IncompleteResultTools
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("client_roots", out var response))
         {
-            var count = response.RootsResult?.Roots?.Count ?? 0;
+            var count = response.Deserialize(InputResponse.RootsResultTypeInfo)?.Roots?.Count ?? 0;
             return TextResult($"Got {count} root(s) from the client.");
         }
 
@@ -238,7 +238,7 @@ public sealed class IncompleteResultTools
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("user_name", out var response))
         {
-            var elicit = response.ElicitationResult;
+            var elicit = response.Deserialize(InputResponse.ElicitResultTypeInfo);
             var name = TryReadString(elicit?.Content, "name") ?? "world";
             return TextResult($"Hello, {name}!");
         }

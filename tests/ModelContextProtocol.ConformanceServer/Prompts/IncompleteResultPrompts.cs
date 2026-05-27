@@ -23,7 +23,7 @@ public sealed class IncompleteResultPrompts
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("user_context", out var response))
         {
-            var elicit = response.ElicitationResult;
+            var elicit = response.Deserialize(InputResponse.ElicitResultTypeInfo);
             var contextValue = TryReadString(elicit?.Content, "context") ?? "(unknown)";
             return new GetPromptResult
             {

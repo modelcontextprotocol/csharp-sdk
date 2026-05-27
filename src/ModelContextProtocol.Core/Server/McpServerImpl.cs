@@ -1217,11 +1217,7 @@ internal sealed partial class McpServerImpl : McpServer
                 }
 
                 // Resolve each input request by sending the corresponding JSON-RPC call to the client.
-                var inputResponses = new Dictionary<string, InputResponse>(inputRequests.Count);
-                foreach (var kvp in inputRequests)
-                {
-                    inputResponses[kvp.Key] = await ResolveInputRequestAsync(kvp.Value, cancellationToken).ConfigureAwait(false);
-                }
+                var inputResponses = await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
 
                 // Reconstruct request params with inputResponses and requestState for the retry.
                 var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
@@ -1242,6 +1238,52 @@ internal sealed partial class McpServerImpl : McpServer
                 };
             }
         }
+    }
+
+    /// <summary>
+    /// Resolves a batch of MRTR input requests concurrently by dispatching each as a standard
+    /// JSON-RPC request to the client. On the first failure all remaining handlers are cancelled
+    /// so user-facing flows (sampling/elicitation prompts) don't keep running once the caller has
+    /// given up, and exceptions from late-completing tasks are observed before the original
+    /// exception is rethrown.
+    /// </summary>
+    private async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests,
+        CancellationToken cancellationToken)
+    {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var keyed = new (string Key, Task<InputResponse> Task)[inputRequests.Count];
+        int i = 0;
+        foreach (var kvp in inputRequests)
+        {
+            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(kvp.Value, linkedCts.Token));
+        }
+
+        try
+        {
+            await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+        }
+        catch
+        {
+            linkedCts.Cancel();
+            try
+            {
+                await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Observed; the original exception is the one we want to surface.
+            }
+            throw;
+        }
+
+        var responses = new Dictionary<string, InputResponse>(keyed.Length);
+        foreach (var (key, task) in keyed)
+        {
+            responses[key] = task.Result;
+        }
+        return responses;
     }
 
     /// <summary>
