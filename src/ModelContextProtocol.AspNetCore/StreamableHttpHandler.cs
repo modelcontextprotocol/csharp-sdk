@@ -209,7 +209,20 @@ internal sealed class StreamableHttpHandler(
         }
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (sessionManager.TryRemove(sessionId, out var session))
+        if (string.IsNullOrEmpty(sessionId) || !sessionManager.TryGetValue(sessionId, out var session))
+        {
+            return;
+        }
+
+        if (!session.HasSameUserId(context.User))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: The currently authenticated user does not match the user who initiated the session.",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
+        if (sessionManager.TryRemove(sessionId, out session))
         {
             await session.DisposeAsync();
         }
