@@ -36,7 +36,7 @@ public static class McpApps
     /// This MIME type should be used when registering UI resources with
     /// <c>text/html;profile=mcp-app</c> to indicate they are MCP App resources.
     /// </remarks>
-    public const string ResourceMimeType = "text/html;profile=mcp-app";
+    public const string HtmlMimeType = "text/html;profile=mcp-app";
 
     /// <summary>
     /// The extension identifier used for MCP Apps capability negotiation.

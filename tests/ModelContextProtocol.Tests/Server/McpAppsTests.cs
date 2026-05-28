@@ -22,7 +22,7 @@ public class McpAppsTests
     [Fact]
     public void McpApps_Constants_HaveExpectedValues()
     {
-        Assert.Equal("text/html;profile=mcp-app", McpApps.ResourceMimeType);
+        Assert.Equal("text/html;profile=mcp-app", McpApps.HtmlMimeType);
         Assert.Equal("io.modelcontextprotocol/ui", McpApps.ExtensionId);
     }
 
@@ -113,14 +113,14 @@ public class McpAppsTests
     {
         var caps = new McpUiClientCapabilities
         {
-            MimeTypes = [McpApps.ResourceMimeType],
+            MimeTypes = [McpApps.HtmlMimeType],
         };
 
         var json = JsonSerializer.Serialize(caps, McpApps.SerializerOptions);
         var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(json, McpApps.SerializerOptions);
 
         Assert.NotNull(deserialized);
-        Assert.Equal([McpApps.ResourceMimeType], deserialized.MimeTypes);
+        Assert.Equal([McpApps.HtmlMimeType], deserialized.MimeTypes);
     }
 
     #endregion
@@ -164,7 +164,7 @@ public class McpAppsTests
             {
                 "extensions": {
                     "{{McpApps.ExtensionId}}": {
-                        "mimeTypes": ["{{McpApps.ResourceMimeType}}"]
+                        "mimeTypes": ["{{McpApps.HtmlMimeType}}"]
                     }
                 }
             }
@@ -176,7 +176,7 @@ public class McpAppsTests
         var uiCaps = McpApps.GetUiCapability(caps);
 
         Assert.NotNull(uiCaps);
-        Assert.Equal([McpApps.ResourceMimeType], uiCaps.MimeTypes);
+        Assert.Equal([McpApps.HtmlMimeType], uiCaps.MimeTypes);
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public class McpAppsTests
             {
                 [McpApps.ExtensionId] = new McpUiClientCapabilities
                 {
-                    MimeTypes = [McpApps.ResourceMimeType],
+                    MimeTypes = [McpApps.HtmlMimeType],
                 },
             }
         };
@@ -236,7 +236,7 @@ public class McpAppsTests
 
         var uiCaps = McpApps.GetUiCapability(caps);
         Assert.NotNull(uiCaps);
-        Assert.Equal([McpApps.ResourceMimeType], uiCaps.MimeTypes);
+        Assert.Equal([McpApps.HtmlMimeType], uiCaps.MimeTypes);
     }
 
     #endregion
