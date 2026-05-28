@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>
 /// Provides well-known visibility values for <see cref="McpUiToolMeta.Visibility"/>.

@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>
 /// Represents the UI metadata associated with an MCP resource in the MCP Apps extension.

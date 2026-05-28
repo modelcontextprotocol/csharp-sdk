@@ -1,6 +1,8 @@
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>
 /// Specifies MCP Apps UI metadata for a tool method.
@@ -11,10 +13,11 @@ namespace ModelContextProtocol.Server;
 /// UI resource with the tool. When processed by <see cref="McpApps.ApplyAppUiAttributes(McpServerTool)"/>
 /// or <see cref="McpApps.ApplyAppUiAttributes(IEnumerable{McpServerTool})"/>, it populates the
 /// structured <c>_meta.ui</c> object in the tool's metadata.
+/// </para>
 /// <para>
 /// Explicit <c>Meta["ui"]</c> set via <see cref="McpServerToolCreateOptions"/> or a raw
 /// <c>[McpMeta("ui", ...)]</c> attribute takes precedence over this attribute: if the tool
-/// already has a <c>ui</c> key in <see cref="Protocol.Tool.Meta"/>, this attribute is ignored.
+/// already has a <c>ui</c> key in <see cref="Tool.Meta"/>, this attribute is ignored.
 /// </para>
 /// </remarks>
 /// <example>

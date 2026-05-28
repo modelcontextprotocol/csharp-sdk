@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>
 /// Extension methods for <see cref="IMcpServerBuilder"/> to enable MCP Apps support.
@@ -49,6 +51,14 @@ public static class McpAppsBuilderExtensions
     {
         public void PostConfigure(string? name, McpServerOptions options)
         {
+            // Advertise server-side MCP Apps support in capabilities.
+            options.Capabilities ??= new ServerCapabilities();
+            options.Capabilities.Extensions ??= new Dictionary<string, object>();
+            if (!options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId))
+            {
+                options.Capabilities.Extensions[McpApps.ExtensionId] = new { };
+            }
+
             if (options.ToolCollection is { IsEmpty: false } tools)
             {
                 foreach (var tool in tools)

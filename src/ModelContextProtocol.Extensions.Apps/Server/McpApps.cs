@@ -1,9 +1,10 @@
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>
 /// Provides constants and helper methods for building MCP Apps-enabled servers.
@@ -85,10 +86,29 @@ public static class McpApps
             return null;
         }
 
+        // Handle the case where the value was set programmatically (e.g. in tests
+        // or a non-JSON code path) rather than deserialized from the handshake.
+        if (value is McpUiClientCapabilities uiCapabilities)
+        {
+            return uiCapabilities;
+        }
+
         if (value is JsonElement element)
         {
-            return element.ValueKind == JsonValueKind.Null ? null :
-                JsonSerializer.Deserialize(element, McpAppsJsonContext.Default.McpUiClientCapabilities);
+            // Guard against malformed extension values (e.g. a bare string or number)
+            // that would throw JsonException during deserialization. Return null
+            // consistently for any non-object value, matching the other failure modes.
+            if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return null;
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize(element, McpAppsJsonContext.Default.McpUiClientCapabilities);
         }
 
         return null;
@@ -130,6 +150,44 @@ public static class McpApps
         }
 
         return tool;
+    }
+
+    /// <summary>
+    /// Sets the MCP Apps UI metadata on a resource's <see cref="ResourceTemplate.Meta"/> property.
+    /// </summary>
+    /// <param name="resource">The resource to set the UI metadata on.</param>
+    /// <param name="resourceUi">The UI metadata to apply.</param>
+    /// <returns>The same <paramref name="resource"/> instance, for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method sets the <c>ui</c> key in the resource's <see cref="ResourceTemplate.Meta"/> object.
+    /// If a <c>ui</c> key is already present in <see cref="ResourceTemplate.Meta"/>, it is not overwritten.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="resource"/> or <paramref name="resourceUi"/> is <see langword="null"/>.</exception>
+    public static McpServerResource SetResourceUi(McpServerResource resource, McpUiResourceMeta resourceUi)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(resource);
+        ArgumentNullException.ThrowIfNull(resourceUi);
+#else
+        if (resource is null) throw new ArgumentNullException(nameof(resource));
+        if (resourceUi is null) throw new ArgumentNullException(nameof(resourceUi));
+#endif
+
+        var protocolResource = resource.ProtocolResourceTemplate;
+        protocolResource.Meta ??= new JsonObject();
+
+        if (!protocolResource.Meta.ContainsKey("ui"))
+        {
+            var uiNode = JsonSerializer.SerializeToNode(resourceUi, McpAppsJsonContext.Default.McpUiResourceMeta);
+            if (uiNode is not null)
+            {
+                protocolResource.Meta["ui"] = uiNode;
+            }
+        }
+
+        return resource;
     }
 
     /// <summary>

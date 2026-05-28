@@ -7,8 +7,8 @@
     <PackageId>ModelContextProtocol.Extensions.Apps</PackageId>
     <Description>MCP Apps extension for the .NET Model Context Protocol (MCP) SDK</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress the experimental MCP Apps warning -->
-    <NoWarn>$(NoWarn);MCPEXP003</NoWarn>
+    <!-- Suppress the experimental MCP warnings for internal usage -->
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>
     <!-- New package with no published baseline yet -->
     <EnablePackageValidation>false</EnablePackageValidation>
   </PropertyGroup>

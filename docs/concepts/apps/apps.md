@@ -126,9 +126,55 @@ UI resources are HTML pages registered with the MCP server using the `ui://` URI
 - **Domain** — Dedicated origin for OAuth flows and CORS
 - **PrefersBorder** — Whether the host should render a visual border
 
+## App-only tools
+
+Tools with `Visibility = [McpUiToolVisibility.App]` are not visible to the LLM — they are intended only for use by the app UI.
+This is useful for tools that serve UI interaction (button handlers, form submissions) without cluttering the model's tool list:
+
+```csharp
+[McpServerTool, Description("Submit the weather form")]
+[McpAppUi(ResourceUri = "ui://weather/view.html", Visibility = [McpUiToolVisibility.App])]
+public static string SubmitWeatherForm(string city) => GetWeatherHtml(city);
+```
+
+## Graceful degradation
+
+Not all clients support MCP Apps. Use `GetUiCapability` to detect support and return text-only content as a fallback:
+
+```csharp
+[McpServerTool, Description("Get weather")]
+[McpAppUi(ResourceUri = "ui://weather/view.html")]
+public static string GetWeather(McpServer server, string location)
+{
+    var uiCapability = McpApps.GetUiCapability(server.ClientCapabilities);
+    if (uiCapability is null)
+    {
+        // Client doesn't support MCP Apps — return plain text
+        return $"Current weather for {location}: 72°F, sunny";
+    }
+
+    // Client supports MCP Apps — the UI resource will be displayed
+    return $"Weather data for {location} loaded into UI";
+}
+```
+
+## Display modes
+
+The MCP Apps spec defines display modes (`inline`, `fullscreen`, `pip`) that control how the host renders the UI. Display mode is negotiated between the client and server during capability exchange and is not set per-tool — it depends on the host implementation.
+
+## Host theming
+
+Hosts pass standardized CSS custom properties (e.g., `--color-background-primary`, `--color-text-primary`) to app iframes. Your HTML can reference these variables to automatically match the host's theme without any server-side configuration.
+
+See the [MCP Apps specification](https://modelcontextprotocol.io/specification/draft/extensions/apps) for the full list of CSS variables.
+
+## Single-file HTML bundling
+
+The default Content Security Policy restricts external script and style loads. For production apps, bundle all JavaScript and CSS into a single HTML file using tools like [vite-plugin-singlefile](https://github.com/niccolodipi/vite-plugin-singlefile). For simple apps, inline `<script>` and `<style>` tags work directly.
+
 ## Constants
 
-The <xref:ModelContextProtocol.Server.McpApps> class provides constants for protocol values:
+The <xref:ModelContextProtocol.Extensions.Apps.McpApps> class provides constants for protocol values:
 
 | Constant | Value | Usage |
 | - | - | - |

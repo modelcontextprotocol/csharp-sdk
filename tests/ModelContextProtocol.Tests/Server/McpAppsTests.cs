@@ -2,6 +2,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
@@ -193,6 +194,49 @@ public class McpAppsTests
         Assert.NotNull(caps);
 
         Assert.Null(McpApps.GetUiCapability(caps));
+    }
+
+    [Theory]
+    [InlineData("\"a string value\"")]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("[1, 2, 3]")]
+    public void GetUiCapability_ReturnsNull_WhenExtensionValueIsMalformed(string malformedValue)
+    {
+        var json = $$"""
+            {
+                "extensions": {
+                    "{{McpApps.ExtensionId}}": {{malformedValue}}
+                }
+            }
+            """;
+
+        var caps = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(caps);
+
+        // Should return null gracefully, not throw
+        Assert.Null(McpApps.GetUiCapability(caps));
+    }
+
+    [Fact]
+    public void GetUiCapability_ReturnsCapabilities_WhenValueIsStronglyTyped()
+    {
+#pragma warning disable MCPEXP001
+        var caps = new ClientCapabilities
+        {
+            Extensions = new Dictionary<string, object>
+            {
+                [McpApps.ExtensionId] = new McpUiClientCapabilities
+                {
+                    MimeTypes = [McpApps.ResourceMimeType],
+                },
+            }
+        };
+#pragma warning restore MCPEXP001
+
+        var uiCaps = McpApps.GetUiCapability(caps);
+        Assert.NotNull(uiCaps);
+        Assert.Equal([McpApps.ResourceMimeType], uiCaps.MimeTypes);
     }
 
     #endregion
@@ -393,6 +437,35 @@ public class McpAppsTests
 
         var weatherTool = toolsWithUi.First(t => t.ProtocolTool.Meta!["ui"]!["resourceUri"]?.GetValue<string>() == "ui://weather/view.html");
         Assert.NotNull(weatherTool);
+    }
+
+    [Fact]
+    public void WithMcpApps_EmptyToolCollection_DoesNotThrow()
+    {
+        var sc = new ServiceCollection();
+        sc.AddMcpServer()
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        // Should be a no-op when no tools are registered
+        Assert.True(options.ToolCollection is null || options.ToolCollection.IsEmpty);
+    }
+
+    [Fact]
+    public void WithMcpApps_AdvertisesServerCapability()
+    {
+        var sc = new ServiceCollection();
+        sc.AddMcpServer()
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.NotNull(options.Capabilities);
+        Assert.NotNull(options.Capabilities.Extensions);
+        Assert.True(options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId));
     }
 
     #endregion
