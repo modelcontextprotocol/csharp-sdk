@@ -223,9 +223,6 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        // Defense-in-depth: require the caller to be the same user that owns the session
-        // before tearing it down. A leaked session ID alone shouldn't be enough to cancel
-        // another user's session.
         if (!session.HasSameUserId(context.User))
         {
             await WriteJsonRpcErrorAsync(context,
