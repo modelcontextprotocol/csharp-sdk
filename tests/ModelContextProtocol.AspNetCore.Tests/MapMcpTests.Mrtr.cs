@@ -153,6 +153,7 @@ public abstract partial class MapMcpTests
 
     [Theory]
     [InlineData(false)]
+    [InlineData(true)]
     public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalClient)
     {
         // The server always supports DRAFT-2026-v1 (it's in SupportedProtocolVersions). The
@@ -217,7 +218,10 @@ public abstract partial class MapMcpTests
 
         if (experimentalClient)
         {
-            messageTracker.AssertMrtrUsed();
+            // Rounds 1-2 use wire-format MRTR (InputRequiredResult), but round 3's await calls
+            // still issue legacy elicitation/create + sampling/createMessage requests, so this
+            // configuration is mixed-mode.
+            messageTracker.AssertMrtrUsedAtLeastOnce();
         }
         else
         {
@@ -228,75 +232,45 @@ public abstract partial class MapMcpTests
     [McpServerTool(Name = "mrtr-parallel-await")]
     private static async Task<string> MrtrParallelAwait(McpServer server, CancellationToken ct)
     {
-        // Start the first await — succeeds with MRTR (creates exchange)
         var elicitTask = server.ElicitAsync(new ElicitRequestParams
         {
             Message = "Parallel elicit",
             RequestedSchema = new()
         }, ct);
 
-        // Start the second await. This path is only exercised for legacy clients now
-        // that draft clients must use InputRequiredException instead of await-style requests.
-        try
+        var sampleTask = server.SampleAsync(new CreateMessageRequestParams
         {
-            var sampleTask = server.SampleAsync(new CreateMessageRequestParams
-            {
-                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Parallel sample" }] }],
-                MaxTokens = 100
-            }, ct);
+            Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Parallel sample" }] }],
+            MaxTokens = 100
+        }, ct);
 
-            // If we get here, both calls succeeded (non-MRTR path)
-            var sampleResult = await sampleTask;
-            var elicitResult = await elicitTask;
-            return $"parallel-ok:{elicitResult.Action}:{sampleResult.Content.OfType<TextContentBlock>().First().Text}";
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ex.Message;
-        }
+        var sampleResult = await sampleTask;
+        var elicitResult = await elicitTask;
+        return $"parallel-ok:{elicitResult.Action}:{sampleResult.Content.OfType<TextContentBlock>().First().Text}";
     }
 
-    [Theory]
-    [InlineData(false)]
-    public async Task Mrtr_ParallelAwaits(bool experimentalClient)
+    [Fact]
+    public async Task Mrtr_ParallelAwaits()
     {
-        // Parallel awaits work with regular JSON-RPC for legacy clients.
-        Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
+        // Server-side parallel ElicitAsync + SampleAsync awaits use the legacy server-to-client
+        // request path on stateful sessions, which works the same under either negotiated revision
+        // (the spec only removes those request methods from Streamable HTTP under draft, which is
+        // stateless-only territory). Stateless servers can't issue server-to-client requests at all.
+        Assert.SkipWhen(Stateless, "Server-side awaits require stateful server-to-client requests.");
 
-        var messageTracker = ConfigureServer(MrtrParallelAwait);
+        ConfigureServer(MrtrParallelAwait);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
-            : ConfigureMrtrHandlers;
-        await using var client = await ConnectAsync(configureClient: configureClient);
+        await using var client = await ConnectAsync(configureClient: ConfigureMrtrHandlers);
 
-        if (experimentalClient)
-        {
-            // Draft clients must use InputRequiredException instead of await-style requests.
-            Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        var result = await client.CallToolAsync("mrtr-parallel-await",
+            cancellationToken: TestContext.Current.CancellationToken);
 
-            var result = await client.CallToolAsync("mrtr-parallel-await",
-                cancellationToken: TestContext.Current.CancellationToken);
-
-            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-            Assert.Contains("Concurrent server-to-client requests are not supported", text);
-            Assert.True(result.IsError is not true);
-        }
-        else
-        {
-            // Non-MRTR: awaits go through regular JSON-RPC — concurrent calls work.
-            Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
-
-            var result = await client.CallToolAsync("mrtr-parallel-await",
-                cancellationToken: TestContext.Current.CancellationToken);
-
-            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-            Assert.StartsWith("parallel-ok:", text);
-            Assert.True(result.IsError is not true);
-        }
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.StartsWith("parallel-ok:", text);
+        Assert.True(result.IsError is not true);
     }
 
     [McpServerTool(Name = "mrtr-elicit")]
@@ -321,7 +295,7 @@ public abstract partial class MapMcpTests
     }
 
     [Fact]
-    public async Task Mrtr_LowLevel_Roots_CompletesViaMrtr()
+    public async Task Mrtr_Roots_CompletesViaMrtr()
     {
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-roots")] (RequestContext<CallToolRequestParams> context) =>
@@ -558,7 +532,7 @@ public abstract partial class MapMcpTests
     }
 
     [Fact]
-    public async Task Mrtr_Experimental_LoadShedding_RequestStateOnly_CompletesViaMrtr()
+    public async Task Mrtr_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-loadshed")] (RequestContext<CallToolRequestParams> context) =>

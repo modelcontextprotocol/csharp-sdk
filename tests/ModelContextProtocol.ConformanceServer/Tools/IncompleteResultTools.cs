@@ -11,7 +11,7 @@ namespace ConformanceServer.Tools;
 
 /// <summary>
 /// Tools implementing the SEP-2322 (MRTR / IncompleteResult) conformance scenarios from
-/// <c>incomplete-result.ts</c> in the conformance test suite. All tools use the low-level
+/// <c>incomplete-result.ts</c> in the conformance test suite. All tools use the
 /// <see cref="InputRequiredException"/> API so they work both in stateful sessions with
 /// MRTR-aware clients and in legacy-resolve mode (the SDK will translate exceptions to the
 /// proper wire shape based on negotiated protocol version).

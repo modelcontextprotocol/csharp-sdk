@@ -781,7 +781,7 @@ internal sealed partial class McpServerImpl : McpServer
                     // (client request cancellation, session shutdown, MRTR teardown), not a
                     // tool error.
                     // Skip logging for InputRequiredException — it's normal MRTR control flow,
-                    // not an error (the low-level API uses it to signal an InputRequiredResult).
+                    // not an error (tools throw it to signal an InputRequiredResult).
                     if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
                     {
                         ToolCallError(request.Params?.Name ?? string.Empty, e);
@@ -1134,26 +1134,17 @@ internal sealed partial class McpServerImpl : McpServer
         _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
 
     /// <summary>
-    /// Returns <see langword="true"/> when the session is stateful (i.e., the same server instance
-    /// will handle subsequent requests). The implicit MRTR path — where a handler can call
-    /// <c>ElicitAsync</c>/<c>SampleAsync</c> and the SDK suspends/resumes the handler across an
-    /// <see cref="InputRequiredResult"/> round trip — requires the continuation map to outlive the
-    /// initial response, so it is only available on stateful sessions. Stateless transports always
-    /// go through the exception-based path.
+    /// Returns <see langword="true"/> when the session is stateful — the same server instance handles
+    /// subsequent requests on the same session. The legacy backcompat resolver in
+    /// <see cref="InvokeWithInputRequiredResultHandlingAsync"/> needs a stateful session so it can send
+    /// <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> to the client and
+    /// retry the handler with the responses.
     /// </summary>
     internal bool IsStatefulSession() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
 
-    /// <summary>
-    /// Checks whether the low-level MRTR API (<see cref="InputRequiredException"/>) is available
-    /// for the current request. Returns <see langword="true"/> in all cases except stateless mode
-    /// with a client that hasn't negotiated MRTR — that's the one configuration where nobody can
-    /// drive the retry loop (the server can't send JSON-RPC requests to the client, and the client
-    /// doesn't know about <c>InputRequiredResult</c>).
-    /// </summary>
-    internal bool IsLowLevelMrtrAvailable() =>
-        ClientSupportsMrtr() ||
-        _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+    /// <inheritdoc />
+    public override bool IsMrtrSupported => ClientSupportsMrtr() || IsStatefulSession();
 
     /// <summary>
     /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an

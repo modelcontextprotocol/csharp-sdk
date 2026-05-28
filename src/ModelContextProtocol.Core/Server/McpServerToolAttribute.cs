@@ -325,5 +325,4 @@ public sealed class McpServerToolAttribute : Attribute
         get => _taskSupport ?? ToolTaskSupport.Forbidden;
         set => _taskSupport = value;
     }
-
 }

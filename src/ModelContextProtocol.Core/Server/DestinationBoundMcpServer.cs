@@ -14,7 +14,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     public override IServiceProvider? Services => server.Services;
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
 
-    public override bool IsMrtrSupported => server.IsLowLevelMrtrAvailable();
+    public override bool IsMrtrSupported => server.IsMrtrSupported;
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 

@@ -7,14 +7,14 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for the low-level MRTR server API — IsMrtrSupported, InputRequiredException,
+/// Tests for the MRTR server API — IsMrtrSupported, InputRequiredException,
 /// and client auto-retry of incomplete results.
 /// </summary>
-public class MrtrLowLevelApiTests : ClientServerTestBase
+public class MrtrInputRequiredExceptionTests : ClientServerTestBase
 {
     private readonly ServerMessageTracker _messageTracker = new();
 
-    public MrtrLowLevelApiTests(ITestOutputHelper testOutputHelper)
+    public MrtrInputRequiredExceptionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
@@ -42,7 +42,7 @@ public class MrtrLowLevelApiTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LowLevel_InputRequiredException_WithoutInputRequests_ExhaustsRetries()
+    public async Task InputRequiredException_WithoutInputRequests_ExhaustsRetries()
     {
         StartServer();
         var clientOptions = new McpClientOptions();

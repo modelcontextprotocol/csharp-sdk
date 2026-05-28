@@ -288,7 +288,6 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
 
     }
 
-
     [Fact]
     public async Task IncomingFilter_SeesClientRequests()
     {

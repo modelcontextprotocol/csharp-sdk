@@ -6,7 +6,7 @@ using ModelContextProtocol.Server;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies that the high-level server-to-client request methods (<see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>,
+/// Verifies that the server-to-client request methods (<see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.SampleAsync(CreateMessageRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.RequestRootsAsync"/>) keep working when the negotiated protocol revision is
 /// <c>DRAFT-2026-v1</c> on a stateful session — for example, stdio.

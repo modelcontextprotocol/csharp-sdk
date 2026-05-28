@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This exception is part of the low-level Multi Round-Trip Requests (MRTR) API. Tool handlers
+/// This exception is part of the Multi Round-Trip Requests (MRTR) API. Tool handlers
 /// throw this exception to directly control the input-required result payload, including
 /// <see cref="Protocol.InputRequiredResult.InputRequests"/> and <see cref="Protocol.InputRequiredResult.RequestState"/>.
 /// </para>
@@ -30,7 +30,7 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 /// <example>
 /// <code>
-/// [McpServerTool, Description("A stateless tool using low-level MRTR")]
+/// [McpServerTool, Description("A stateless tool using MRTR")]
 /// public static string MyTool(McpServer server, RequestContext&lt;CallToolRequestParams&gt; context)
 /// {
 ///     if (context.Params.RequestState is { } state)

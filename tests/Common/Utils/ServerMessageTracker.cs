@@ -73,6 +73,16 @@ internal sealed class ServerMessageTracker
     }
 
     /// <summary>
+    /// Asserts that MRTR was used at least once (at least one InputRequiredResult response was sent),
+    /// independent of whether the session also issued any legacy server-to-client requests.
+    /// </summary>
+    public void AssertMrtrUsedAtLeastOnce()
+    {
+        Assert.True(_incompleteResultCount > 0,
+            "Expected at least one InputRequiredResult response (MRTR mode), but none were detected.");
+    }
+
+    /// <summary>
     /// Asserts that legacy mode was used: at least one legacy JSON-RPC request was sent
     /// and no MRTR retries or InputRequiredResult responses were detected.
     /// </summary>
