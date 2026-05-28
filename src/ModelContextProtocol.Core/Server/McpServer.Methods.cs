@@ -63,7 +63,6 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
-        ThrowIfDraftProtocol(nameof(SampleAsync), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForSampling(...)' instead.");
         ThrowIfSamplingUnsupported();
 
         return await SendRequestWithTaskStatusTrackingAsync(
@@ -97,7 +96,6 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
         Throw.IfNull(taskMetadata);
-        ThrowIfDraftProtocol(nameof(SampleAsTaskAsync), "Task-augmented sampling via the legacy 'sampling/createMessage' method is removed under draft. Track https://github.com/modelcontextprotocol/csharp-sdk for the upcoming 'tasks/input_response' MRTR-task pattern.");
         ThrowIfSamplingUnsupported();
         ThrowIfTasksUnsupportedForSampling();
 
@@ -129,7 +127,6 @@ public abstract partial class McpServer : McpSession
         IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(messages);
-        ThrowIfDraftProtocol(nameof(SampleAsync), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForSampling(...)' instead.");
 
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
@@ -257,7 +254,6 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
-        ThrowIfDraftProtocol(nameof(AsSamplingChatClient), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForSampling(...)' instead.");
         ThrowIfSamplingUnsupported();
 
         return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
@@ -282,7 +278,6 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
-        ThrowIfDraftProtocol(nameof(RequestRootsAsync), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForRootsList(...)' instead.");
         ThrowIfRootsUnsupported();
 
         return SendRequestAsync(
@@ -312,7 +307,6 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
-        ThrowIfDraftProtocol(nameof(ElicitAsync), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForElicitation(...)' instead.");
         ThrowIfElicitationUnsupported(requestParams);
 
         var result = await SendRequestWithTaskStatusTrackingAsync(
@@ -348,7 +342,6 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
         Throw.IfNull(taskMetadata);
-        ThrowIfDraftProtocol(nameof(ElicitAsTaskAsync), "Task-augmented elicitation via the legacy 'elicitation/create' method is removed under draft. Track https://github.com/modelcontextprotocol/csharp-sdk for the upcoming 'tasks/input_response' MRTR-task pattern.");
         ThrowIfElicitationUnsupported(requestParams);
         ThrowIfTasksUnsupportedForElicitation();
 
@@ -683,7 +676,6 @@ public abstract partial class McpServer : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNullOrWhiteSpace(message);
-        ThrowIfDraftProtocol(nameof(ElicitAsync), "Throw 'InputRequiredException' from your handler with 'InputRequest.ForElicitation(...)' instead.");
 
         var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
@@ -844,25 +836,6 @@ public abstract partial class McpServer : McpSession
 
         error = string.Empty;
         return true;
-    }
-
-    /// <summary>
-    /// SEP-2322 (MRTR) removes the server→client <c>elicitation/create</c>,
-    /// <c>sampling/createMessage</c>, and <c>roots/list</c> request methods from the
-    /// <c>DRAFT-2026-v1</c> protocol revision. The only supported way to obtain client
-    /// input from a server handler under draft is to throw
-    /// <see cref="ModelContextProtocol.Protocol.InputRequiredException"/> and let the SDK
-    /// emit an <see cref="ModelContextProtocol.Protocol.InputRequiredResult"/> on the wire.
-    /// </summary>
-    private void ThrowIfDraftProtocol(string memberName, string replacement)
-    {
-        if (NegotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion)
-        {
-            throw new InvalidOperationException(
-                $"'{memberName}' is not supported after negotiating MCP protocol version '{McpSessionHandler.DraftProtocolVersion}'. " +
-                $"The draft protocol removes the corresponding server-to-client request method per SEP-2322 (Multi Round-Trip Requests). " +
-                $"{replacement} See docs/concepts/mrtr/mrtr.md for details.");
-        }
     }
 
     private void ThrowIfSamplingUnsupported()

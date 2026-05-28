@@ -48,7 +48,7 @@ var clientOptions = new McpClientOptions
 };
 ```
 
-Under `DRAFT-2026-v1`, MRTR is the **only** way to obtain client input from a server handler. The legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods are removed; calling <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*> on a server that negotiated `DRAFT-2026-v1` throws `InvalidOperationException`. Tools that need client input must throw <xref:ModelContextProtocol.Protocol.InputRequiredException> instead.
+Under `DRAFT-2026-v1`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `DRAFT-2026-v1` Streamable HTTP server (which will be stateless-only in a future revision) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — that's how stdio servers keep working under draft today — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on any stateless session, current or draft.
 
 Under the current protocol revision (`2025-06-18` and earlier), `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see [Compatibility](#compatibility) below.
 
@@ -96,7 +96,7 @@ public static string AnswerTool(
     // On retry, process the client's responses
     if (requestState is not null && inputResponses is not null)
     {
-        var elicitResult = inputResponses["user_answer"].Deserialize(InputResponse.ElicitResultTypeInfo);
+        var elicitResult = inputResponses["user_answer"].Deserialize(InputResponse.ElicitResultJsonTypeInfo);
         return $"You answered: {elicitResult?.Content?.FirstOrDefault().Value}";
     }
 
@@ -137,9 +137,9 @@ When the client retries a tool call, the retry data is available on the request 
 
 Use <xref:ModelContextProtocol.Protocol.InputResponse.Deserialize*> with the `JsonTypeInfo<T>` matching the response type. The expected type follows from the matching <xref:ModelContextProtocol.Protocol.InputRequest.Method> in the original `inputRequests` map — there is no on-the-wire discriminator.
 
-- Elicitation — `response.Deserialize(InputResponse.ElicitResultTypeInfo)`
-- Sampling — `response.Deserialize(InputResponse.SamplingResultTypeInfo)`
-- Roots list — `response.Deserialize(InputResponse.RootsResultTypeInfo)`
+- Elicitation — `response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)`
+- Sampling — `response.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)`
+- Roots list — `response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)`
 
 ### Load shedding with requestState-only responses
 
@@ -191,14 +191,14 @@ public static string WizardTool(
 
     if (requestState == "step-2" && inputResponses is not null)
     {
-        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
-        var age = inputResponses["age"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
+        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Content?.FirstOrDefault().Value;
+        var age = inputResponses["age"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Content?.FirstOrDefault().Value;
         return $"Welcome, {name}! You are {age} years old.";
     }
 
     if (requestState == "step-1" && inputResponses is not null)
     {
-        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
+        var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Content?.FirstOrDefault().Value;
 
         // Second round — ask for age
         throw new InputRequiredException(
@@ -278,14 +278,14 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 > [!NOTE]
 > The backcompat resolver is intentionally limited to 10 retry rounds. Tools that need more rounds should require `DRAFT-2026-v1` (check `IsMrtrSupported`).
 
-### Why `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` throw under draft
+### Why `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` throw on stateless servers
 
-The `DRAFT-2026-v1` revision removes the server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods entirely. Servers cannot use those request methods because clients no longer advertise the corresponding capabilities or implement handlers for them. The SDK fails fast with a clear `InvalidOperationException` so you can fix the call site before it manifests as a wire-level error.
+`ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Stateless servers don't have a persistent session to wait on, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")` (the check is `McpServer.ClientCapabilities is null`, which is the SDK's proxy for stateless).
 
-Under the current protocol revision (`2025-06-18` and earlier), these methods continue to work normally and are the recommended way to do simple, one-shot client interactions. `InputRequiredException` is the way to write tools that work the same on both revisions.
+Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `DRAFT-2026-v1`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on draft stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
 ### Future direction
 
-The `DRAFT-2026-v1` revision is moving toward a stateless-only model: `Mcp-Session-Id` is being removed, and Streamable HTTP servers will run statelessly by default under the draft revision. When that happens, the `Stateful` row of the compatibility matrix above collapses into the `Stateless` row, and `InputRequiredException` becomes uniformly native across both. The current-protocol resolver path will remain for backward compatibility with older clients and stateful servers.
+The `DRAFT-2026-v1` revision is moving toward a stateless-only model: `Mcp-Session-Id` is being removed, and Streamable HTTP servers will run statelessly by default under the draft revision. When that lands, the `Stateful` row for `DRAFT-2026-v1` in the compatibility matrix above collapses into the `Stateless` row (Streamable HTTP under draft becomes stateless-only), and `InputRequiredException` becomes uniformly required for non-stdio servers. The current-protocol resolver path will remain for backward compatibility with older clients and stateful servers.
 
 This work is a follow-up to the present PR.

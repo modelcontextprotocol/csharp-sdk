@@ -91,7 +91,7 @@ public abstract partial class MapMcpTests
         // Round 3 entry: confirmation from round 2 available. Transition to await API.
         if (state == "round-2" && responses?.TryGetValue("confirm", out var confirmResponse) == true)
         {
-            var confirmation = confirmResponse.Deserialize(InputResponse.ElicitResultTypeInfo)?.Action ?? "unknown";
+            var confirmation = confirmResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Action ?? "unknown";
 
             // Await API: sequential sampling then elicitation
             var sampleResult = await server.SampleAsync(new CreateMessageRequestParams
@@ -114,10 +114,10 @@ public abstract partial class MapMcpTests
         // Round 2 entry: parallel results from round 1 available.
         if (state == "round-1" && responses is not null)
         {
-            var name = responses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
-            var weather = responses["weather"].Deserialize(InputResponse.SamplingResultTypeInfo)?.Content
+            var name = responses["name"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Content?.FirstOrDefault().Value;
+            var weather = responses["weather"].Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)?.Content
                 .OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "";
-            var root = responses["roots"].Deserialize(InputResponse.RootsResultTypeInfo)?.Roots?.FirstOrDefault()?.Name ?? "";
+            var root = responses["roots"].Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots?.FirstOrDefault()?.Name ?? "";
 
             // Exception API: single elicitation with requestState
             throw new InputRequiredException(
@@ -305,7 +305,7 @@ public abstract partial class MapMcpTests
         if (context.Params!.InputResponses is { } responses &&
             responses.TryGetValue("user_input", out var response))
         {
-            return $"elicit-ok:{response.Deserialize(InputResponse.ElicitResultTypeInfo)?.Action}";
+            return $"elicit-ok:{response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Action}";
         }
 
         throw new InputRequiredException(
@@ -329,7 +329,7 @@ public abstract partial class MapMcpTests
                 if (context.Params!.InputResponses is { } responses &&
                     responses.TryGetValue("roots", out var response))
                 {
-                    var roots = response.Deserialize(InputResponse.RootsResultTypeInfo)?.Roots;
+                    var roots = response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots;
                     return $"roots-ok:{string.Join(",", roots?.Select(r => r.Uri) ?? [])}";
                 }
 
@@ -363,13 +363,13 @@ public abstract partial class MapMcpTests
 
         if (requestState == "round-2" && inputResponses is not null)
         {
-            var greeting = inputResponses["greeting"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Action;
+            var greeting = inputResponses["greeting"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Action;
             return $"multi-done:greeting={greeting}";
         }
 
         if (requestState == "round-1" && inputResponses is not null)
         {
-            var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Content?.FirstOrDefault().Value;
+            var name = inputResponses["name"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Content?.FirstOrDefault().Value;
             throw new InputRequiredException(
                 inputRequests: new Dictionary<string, InputRequest>
                 {
@@ -475,11 +475,11 @@ public abstract partial class MapMcpTests
             responses.ContainsKey("sample") &&
             responses.ContainsKey("roots"))
         {
-            var elicitAction = responses["elicit"].Deserialize(InputResponse.ElicitResultTypeInfo)?.Action;
-            var sampleText = responses["sample"].Deserialize(InputResponse.SamplingResultTypeInfo)?
+            var elicitAction = responses["elicit"].Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Action;
+            var sampleText = responses["sample"].Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)?
                 .Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
             var rootUris = string.Join(",",
-                responses["roots"].Deserialize(InputResponse.RootsResultTypeInfo)?.Roots.Select(r => r.Uri) ?? []);
+                responses["roots"].Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots.Select(r => r.Uri) ?? []);
             return $"all-ok:elicit={elicitAction},sample={sampleText},roots={rootUris}";
         }
 
@@ -596,7 +596,7 @@ public abstract partial class MapMcpTests
                 if (context.Params!.InputResponses is { } responses &&
                     responses.TryGetValue("roots", out var response))
                 {
-                    var roots = response.Deserialize(InputResponse.RootsResultTypeInfo)?.Roots;
+                    var roots = response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots;
                     return $"roots-ok:{roots?.FirstOrDefault()?.Name}";
                 }
 
@@ -633,8 +633,8 @@ public abstract partial class MapMcpTests
                     responses.TryGetValue("confirm", out var elicitResponse) &&
                     responses.TryGetValue("summarize", out var sampleResponse))
                 {
-                    var action = elicitResponse.Deserialize(InputResponse.ElicitResultTypeInfo)?.Action;
-                    var text = sampleResponse.Deserialize(InputResponse.SamplingResultTypeInfo)?.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+                    var action = elicitResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo)?.Action;
+                    var text = sampleResponse.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)?.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
                     return $"both:{action}:{text}";
                 }
 

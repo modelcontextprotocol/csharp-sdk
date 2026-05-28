@@ -31,8 +31,8 @@ public sealed class InputResponse
     /// <remarks>
     /// Use <see cref="Deserialize{T}"/> with the <c>JsonTypeInfo&lt;T&gt;</c> matching the
     /// associated <see cref="InputRequest.Method"/> — for elicitation, sampling, or roots see
-    /// <see cref="ElicitResultTypeInfo"/>, <see cref="SamplingResultTypeInfo"/>, and
-    /// <see cref="RootsResultTypeInfo"/>.
+    /// <see cref="ElicitResultJsonTypeInfo"/>, <see cref="CreateMessageResultJsonTypeInfo"/>, and
+    /// <see cref="ListRootsResultJsonTypeInfo"/>.
     /// </remarks>
     [JsonIgnore]
     public JsonElement RawValue { get; set; }
@@ -51,21 +51,21 @@ public sealed class InputResponse
     /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
     /// <see cref="RequestMethods.ElicitationCreate"/>.
     /// </summary>
-    public static JsonTypeInfo<ElicitResult> ElicitResultTypeInfo => McpJsonUtilities.JsonContext.Default.ElicitResult;
+    public static JsonTypeInfo<ElicitResult> ElicitResultJsonTypeInfo => McpJsonUtilities.JsonContext.Default.ElicitResult;
 
     /// <summary>
     /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="CreateMessageResult"/>, suitable for use with
     /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
     /// <see cref="RequestMethods.SamplingCreateMessage"/>.
     /// </summary>
-    public static JsonTypeInfo<CreateMessageResult> SamplingResultTypeInfo => McpJsonUtilities.JsonContext.Default.CreateMessageResult;
+    public static JsonTypeInfo<CreateMessageResult> CreateMessageResultJsonTypeInfo => McpJsonUtilities.JsonContext.Default.CreateMessageResult;
 
     /// <summary>
     /// Gets the <see cref="JsonTypeInfo{T}"/> for <see cref="ListRootsResult"/>, suitable for use with
     /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
     /// <see cref="RequestMethods.RootsList"/>.
     /// </summary>
-    public static JsonTypeInfo<ListRootsResult> RootsResultTypeInfo => McpJsonUtilities.JsonContext.Default.ListRootsResult;
+    public static JsonTypeInfo<ListRootsResult> ListRootsResultJsonTypeInfo => McpJsonUtilities.JsonContext.Default.ListRootsResult;
 
     /// <summary>
     /// Creates an <see cref="InputResponse"/> from a <see cref="CreateMessageResult"/>.

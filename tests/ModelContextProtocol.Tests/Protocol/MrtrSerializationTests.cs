@@ -175,7 +175,7 @@ public static class MrtrSerializationTests
         var deserialized = JsonSerializer.Deserialize<InputResponse>(json, McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(deserialized);
-        var sampling = deserialized.Deserialize(InputResponse.SamplingResultTypeInfo);
+        var sampling = deserialized.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo);
         Assert.NotNull(sampling);
         Assert.Equal("test-model", sampling.Model);
     }
@@ -198,7 +198,7 @@ public static class MrtrSerializationTests
         var deserialized = JsonSerializer.Deserialize<InputResponse>(json, McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(deserialized);
-        var elicit = deserialized.Deserialize(InputResponse.ElicitResultTypeInfo);
+        var elicit = deserialized.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
         Assert.NotNull(elicit);
         Assert.Equal("confirm", elicit.Action);
     }
@@ -217,7 +217,7 @@ public static class MrtrSerializationTests
         var deserialized = JsonSerializer.Deserialize<InputResponse>(json, McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(deserialized);
-        var roots = deserialized.Deserialize(InputResponse.RootsResultTypeInfo);
+        var roots = deserialized.Deserialize(InputResponse.ListRootsResultJsonTypeInfo);
         Assert.NotNull(roots);
         Assert.Single(roots.Roots);
         Assert.Equal("file:///test", roots.Roots[0].Uri);

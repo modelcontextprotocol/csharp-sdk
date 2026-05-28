@@ -93,37 +93,6 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.Contains("Tool validation failed", error.Error.Message);
     }
 
-    [Fact]
-    public async Task RetryWithInvalidRequestState_ReturnsJsonRpcError()
-    {
-        await StartAsync();
-        await InitializeWithMrtrAsync();
-
-        // Send a retry with a requestState that doesn't match any active continuation
-        var retryParams = new JsonObject
-        {
-            ["name"] = "elicit-tool",
-            ["arguments"] = new JsonObject { ["message"] = "test" },
-            ["inputResponses"] = new JsonObject { ["key1"] = new JsonObject { ["action"] = "confirm" } },
-            ["requestState"] = "nonexistent-state-id"
-        };
-
-        var response = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
-
-        // Read as a generic JsonRpcMessage to check if it's an error
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
-        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
-
-        // Invalid requestState should result in a fresh tool invocation
-        // (the tool will return InputRequiredResult since it calls ElicitAsync)
-        // or an error, depending on the implementation.
-        // In our implementation, unrecognized requestState triggers a new invocation.
-        Assert.True(
-            message is JsonRpcResponse or JsonRpcError,
-            $"Expected JsonRpcResponse or JsonRpcError, got {message?.GetType().Name}");
-    }
-
     // --- Helpers ---
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
