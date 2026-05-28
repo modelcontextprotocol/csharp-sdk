@@ -1208,7 +1208,13 @@ internal sealed partial class McpServerImpl : McpServer
                 }
 
                 // Resolve each input request by sending the corresponding JSON-RPC call to the client.
-                var inputResponses = await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
+                // Route the outgoing requests via the same DestinationBoundMcpServer used for normal tool
+                // handlers, so they go through the POST's response stream (RelatedTransport) rather than
+                // the session-level transport. Without this, the messages can race with the client's GET
+                // stream startup and be silently dropped by StreamableHttpServerTransport.SendMessageAsync
+                // when no GET request has arrived yet.
+                var destinationServer = CreateDestinationBoundServer(request);
+                var inputResponses = await ResolveInputRequestsAsync(destinationServer, inputRequests, cancellationToken).ConfigureAwait(false);
 
                 // Reconstruct request params with inputResponses and requestState for the retry.
                 var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
@@ -1233,12 +1239,15 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Resolves a batch of MRTR input requests concurrently by dispatching each as a standard
-    /// JSON-RPC request to the client. On the first failure all remaining handlers are cancelled
-    /// so user-facing flows (sampling/elicitation prompts) don't keep running once the caller has
-    /// given up, and exceptions from late-completing tasks are observed before the original
-    /// exception is rethrown.
+    /// JSON-RPC request to the client. The requests are routed via <paramref name="destinationServer"/>
+    /// so they go out through the POST's response stream (matching the behavior of tool-initiated
+    /// server-to-client requests like <c>server.SampleAsync</c>) and avoid racing with the client's
+    /// GET stream startup. On the first failure all remaining handlers are cancelled so user-facing
+    /// flows (sampling/elicitation prompts) don't keep running once the caller has given up, and
+    /// exceptions from late-completing tasks are observed before the original exception is rethrown.
     /// </summary>
-    private async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+    private static async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        McpServer destinationServer,
         IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken)
     {
@@ -1248,7 +1257,7 @@ internal sealed partial class McpServerImpl : McpServer
         int i = 0;
         foreach (var kvp in inputRequests)
         {
-            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(kvp.Value, linkedCts.Token));
+            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(destinationServer, kvp.Value, linkedCts.Token));
         }
 
         try
@@ -1279,28 +1288,29 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Resolves a single MRTR <see cref="InputRequest"/> by dispatching it as a standard JSON-RPC
-    /// request to the client. This is the server-side mirror of the client's input resolution logic,
-    /// used for backward compatibility when the client doesn't support MRTR.
+    /// request to the client via <paramref name="destinationServer"/>. This is the server-side mirror
+    /// of the client's input resolution logic, used for backward compatibility when the client doesn't
+    /// support MRTR.
     /// </summary>
-    private async Task<InputResponse> ResolveInputRequestAsync(InputRequest inputRequest, CancellationToken cancellationToken)
+    private static async Task<InputResponse> ResolveInputRequestAsync(McpServer destinationServer, InputRequest inputRequest, CancellationToken cancellationToken)
     {
         switch (inputRequest.Method)
         {
             case RequestMethods.ElicitationCreate:
                 var elicitParams = inputRequest.ElicitationParams
                     ?? throw new McpException("Failed to deserialize elicitation parameters from MRTR input request.");
-                var elicitResult = await ElicitAsync(elicitParams, cancellationToken).ConfigureAwait(false);
+                var elicitResult = await destinationServer.ElicitAsync(elicitParams, cancellationToken).ConfigureAwait(false);
                 return InputResponse.FromElicitResult(elicitResult);
 
             case RequestMethods.SamplingCreateMessage:
                 var samplingParams = inputRequest.SamplingParams
                     ?? throw new McpException("Failed to deserialize sampling parameters from MRTR input request.");
-                var samplingResult = await SampleAsync(samplingParams, cancellationToken).ConfigureAwait(false);
+                var samplingResult = await destinationServer.SampleAsync(samplingParams, cancellationToken).ConfigureAwait(false);
                 return InputResponse.FromSamplingResult(samplingResult);
 
             case RequestMethods.RootsList:
                 var rootsParams = inputRequest.RootsParams ?? new ListRootsRequestParams();
-                var rootsResult = await RequestRootsAsync(rootsParams, cancellationToken).ConfigureAwait(false);
+                var rootsResult = await destinationServer.RequestRootsAsync(rootsParams, cancellationToken).ConfigureAwait(false);
                 return InputResponse.FromRootsResult(rootsResult);
 
             default:
