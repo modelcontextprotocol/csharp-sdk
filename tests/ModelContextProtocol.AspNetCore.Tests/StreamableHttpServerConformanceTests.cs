@@ -384,7 +384,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     public async Task SendNotificationAsync_DoesNotThrow_WhenNoGetRequestHasBeenMade()
     {
         // Clients are not required to make a GET request for unsolicited messages.
-        // If no GET request has been made, the messages should be dropped rather than throwing.
+        // If no GET request has been made, the messages should be dropped rather than throwing,
+        // and the drop should be visible as a Debug-level log so it can be diagnosed.
         McpServer? server = null;
 
         Builder.Services.AddMcpServer()
@@ -409,6 +410,150 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var exception = await Record.ExceptionAsync(() =>
             server.SendNotificationAsync("test-method", TestContext.Current.CancellationToken));
         Assert.Null(exception);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Debug &&
+            log.Message.Contains("test-method") &&
+            log.Message.Contains("no GET SSE stream"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Throws_OnRequest_WhenNoGetRequestHasBeenMade()
+    {
+        // A server-to-client request sent before any GET SSE stream is opened can never
+        // receive a response, so SendMessageAsync should fail fast with InvalidOperationException
+        // instead of silently dropping the message and leaving the caller hanging.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        var request = new JsonRpcRequest
+        {
+            Method = "roots/list",
+            Id = new RequestId(42),
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            server.SendMessageAsync(request, TestContext.Current.CancellationToken));
+
+        Assert.Contains("roots/list", ex.Message);
+        Assert.Contains("no GET SSE stream", ex.Message);
+        Assert.Contains("RequestContext", ex.Message);
+        Assert.Contains("RelatedTransport", ex.Message);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_LogsWarning_OnUnexpectedResponse_WhenNoGetRequestHasBeenMade()
+    {
+        // Responses normally ride the originating POST response stream via RelatedTransport, so
+        // receiving one through the GET path without an open GET is unexpected. The message is
+        // dropped (preserving best-effort semantics) but a warning is logged so the situation is
+        // visible.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        var response = new JsonRpcResponse
+        {
+            Id = new RequestId(7),
+            Result = JsonSerializer.SerializeToNode(new { }, GetJsonTypeInfo<object>()),
+        };
+
+        var exception = await Record.ExceptionAsync(() =>
+            server.SendMessageAsync(response, TestContext.Current.CancellationToken));
+        Assert.Null(exception);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Warning &&
+            log.Message.Contains(nameof(JsonRpcResponse)) &&
+            log.Message.Contains("no GET SSE stream"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_LogsWarning_OnRequest_WhenGetRequestIsOpen()
+    {
+        // Even when the GET SSE stream is open and the request is delivered, server-to-client
+        // requests sent via the GET path are fragile (no per-request correlation, depend on a
+        // long-lived GET, race with startup/teardown). A warning is logged to direct callers at
+        // the RequestContext.RelatedTransport channel instead, without changing behavior.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        // Send a request via the GET stream and assert it lands on the wire (proving behavior is unchanged).
+        var request = new JsonRpcRequest
+        {
+            Method = "roots/list",
+            Id = new RequestId(99),
+        };
+
+        var sendTask = server.SendMessageAsync(request, TestContext.Current.CancellationToken);
+
+        await foreach (var sseEvent in ReadSseAsync(getResponse.Content))
+        {
+            var received = JsonSerializer.Deserialize(sseEvent, GetJsonTypeInfo<JsonRpcRequest>());
+            Assert.NotNull(received);
+            Assert.Equal("roots/list", received.Method);
+            break;
+        }
+
+        await sendTask;
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Warning &&
+            log.Message.Contains("roots/list") &&
+            log.Message.Contains("RequestContext"));
     }
 
     [Fact]
