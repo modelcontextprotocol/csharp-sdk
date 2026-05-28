@@ -87,11 +87,13 @@ internal sealed partial class McpServerImpl : McpServer
         // Configure all request handlers based on the supplied options.
         ServerCapabilities = new();
         ConfigureInitialize(options);
+        ConfigureDiscover(options);
         ConfigureTools(options);
         ConfigurePrompts(options);
         ConfigureResources(options);
         ConfigureLogging(options);
         ConfigureCompletion(options);
+        ConfigureSubscriptions(options);
         ConfigureExperimentalAndExtensions(options);
         ConfigureTasks(options);
         ConfigureMrtr();
@@ -136,15 +138,78 @@ internal sealed partial class McpServerImpl : McpServer
         // And initialize the session.
         var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters);
         var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
+
+        // Prepend a built-in filter that picks up per-request _meta values populated by
+        // McpSessionHandler.PopulateContextFromMeta and projects them onto the server's
+        // per-session state. Under the draft protocol revision (SEP-2575) the client no longer
+        // performs an initialize handshake, so this is the only place client info / capabilities
+        // / negotiated protocol version are recorded server-side. This filter is a no-op for
+        // legacy clients that already populated these via initialize.
+        var draftStateSyncFilter = CreateDraftStateSyncFilter();
+        var combinedIncomingFilter = ComposeFilters(draftStateSyncFilter, incomingMessageFilter);
+
         _sessionHandler = new McpSessionHandler(
             isServer: true,
             _sessionTransport,
             _endpointName!,
             _requestHandlers,
             _notificationHandlers,
-            incomingMessageFilter,
+            combinedIncomingFilter,
             outgoingMessageFilter,
             _logger);
+    }
+
+    /// <summary>Composes two <see cref="JsonRpcMessageFilter"/>s so <paramref name="outer"/> runs first.</summary>
+    private static JsonRpcMessageFilter ComposeFilters(JsonRpcMessageFilter outer, JsonRpcMessageFilter inner) =>
+        next => outer(inner(next));
+
+    /// <summary>
+    /// Builds an incoming message filter that, for every JSON-RPC request, synchronizes server-side state
+    /// (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>)
+    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/>.
+    /// </summary>
+    /// <remarks>
+    /// Under the draft protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
+    /// MUST be populated per-request. For legacy clients the per-request values are absent and this filter
+    /// is a no-op (the values were captured during the initialize handler).
+    /// </remarks>
+    private JsonRpcMessageFilter CreateDraftStateSyncFilter()
+    {
+        return next => async (message, cancellationToken) =>
+        {
+            if (message is JsonRpcRequest { Method: not RequestMethods.Initialize } request && request.Context is { } context)
+            {
+                bool endpointNameNeedsRefresh = false;
+
+                if (context.ProtocolVersion is { } protocolVersion &&
+                    !string.Equals(_negotiatedProtocolVersion, protocolVersion, StringComparison.Ordinal))
+                {
+                    _negotiatedProtocolVersion = protocolVersion;
+                    _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+                }
+
+                if (context.ClientCapabilities is { } clientCapabilities)
+                {
+                    _clientCapabilities = clientCapabilities;
+                }
+
+                if (context.ClientInfo is { } clientInfo &&
+                    (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
+                     !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
+                {
+                    _clientInfo = clientInfo;
+                    endpointNameNeedsRefresh = true;
+                }
+
+                if (endpointNameNeedsRefresh)
+                {
+                    UpdateEndpointNameWithClientInfo();
+                    _sessionHandler.EndpointName = _endpointName;
+                }
+            }
+
+            await next(message, cancellationToken).ConfigureAwait(false);
+        };
     }
 
     /// <inheritdoc/>
@@ -288,6 +353,99 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
             McpJsonUtilities.JsonContext.Default.InitializeResult);
     }
+
+    /// <summary>
+    /// Registers the <c>server/discover</c> request handler introduced by the draft protocol revision (SEP-2575).
+    /// </summary>
+    /// <remarks>
+    /// The handler is registered unconditionally so legacy clients can probe it too. It returns the server's
+    /// supported protocol versions (<see cref="McpSessionHandler.SupportedProtocolVersions"/>), server
+    /// capabilities, server info, and optional instructions.
+    /// </remarks>
+    private void ConfigureDiscover(McpServerOptions options)
+    {
+        _requestHandlers.Set(RequestMethods.ServerDiscover,
+            (request, _, _) =>
+            {
+                return new ValueTask<DiscoverResult>(new DiscoverResult
+                {
+                    SupportedVersions = [.. McpSessionHandler.SupportedProtocolVersions],
+                    Capabilities = ServerCapabilities ?? new(),
+                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
+                    Instructions = options.ServerInstructions,
+                });
+            },
+            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
+            McpJsonUtilities.JsonContext.Default.DiscoverResult);
+    }
+
+    /// <summary>
+    /// Registers the <c>subscriptions/listen</c> request handler introduced by the draft protocol revision (SEP-2575).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handler opens a long-lived response stream (over the per-request <see cref="StreamableHttpPostTransport"/>
+    /// for HTTP, or the shared STDIO channel) that first sends
+    /// <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> reporting which subscriptions the
+    /// server agreed to honor, and then streams matching notifications until the request is cancelled.
+    /// </para>
+    /// <para>
+    /// Subscription-bound notifications carry the listen request's id in their
+    /// <c>_meta/io.modelcontextprotocol/subscriptionId</c> field per SEP-2575 so clients can demultiplex.
+    /// </para>
+    /// </remarks>
+    private void ConfigureSubscriptions(McpServerOptions options)
+    {
+        _requestHandlers.Set(RequestMethods.SubscriptionsListen,
+            async (request, jsonRpcRequest, cancellationToken) =>
+            {
+                // Filter the requested notifications against what the server actually supports.
+                var requested = request?.Notifications ?? new SubscriptionsListenNotifications();
+                var granted = new SubscriptionsListenNotifications
+                {
+                    ToolsListChanged = requested.ToolsListChanged == true && ServerCapabilities?.Tools?.ListChanged == true ? true : null,
+                    PromptsListChanged = requested.PromptsListChanged == true && ServerCapabilities?.Prompts?.ListChanged == true ? true : null,
+                    ResourcesListChanged = requested.ResourcesListChanged == true && ServerCapabilities?.Resources?.ListChanged == true ? true : null,
+                    ResourceSubscriptions = requested.ResourceSubscriptions is { Count: > 0 } subs && ServerCapabilities?.Resources?.Subscribe == true
+                        ? new List<string>(subs)
+                        : null,
+                };
+
+                // Track this subscription so notifications can tag themselves with the right subscriptionId
+                // and so we can stream resource-updated notifications for the requested URIs.
+                var subscription = new ActiveSubscription(jsonRpcRequest.Id, granted, jsonRpcRequest.Context?.LogLevel);
+                _activeSubscriptions[jsonRpcRequest.Id] = subscription;
+
+                try
+                {
+                    // Send the acknowledgement notification first, as required by SEP-2575.
+                    await this.SendNotificationAsync(
+                        NotificationMethods.SubscriptionsAcknowledgedNotification,
+                        new SubscriptionsAcknowledgedNotificationParams { Notifications = granted },
+                        McpJsonUtilities.JsonContext.Default.SubscriptionsAcknowledgedNotificationParams,
+                        cancellationToken).ConfigureAwait(false);
+
+                    // Keep the subscription open until the request is cancelled (client disconnect on HTTP,
+                    // or notifications/cancelled on STDIO).
+                    var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var registration = cancellationToken.Register(static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), tcs);
+                    await tcs.Task.ConfigureAwait(false);
+                }
+                finally
+                {
+                    _activeSubscriptions.TryRemove(jsonRpcRequest.Id, out _);
+                }
+
+                return new EmptyResult();
+            },
+            McpJsonUtilities.JsonContext.Default.SubscriptionsListenRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult);
+    }
+
+    /// <summary>Tracks an active <c>subscriptions/listen</c> subscription for notification fan-out.</summary>
+    private sealed record ActiveSubscription(RequestId Id, SubscriptionsListenNotifications Granted, LoggingLevel? LogLevel);
+
+    private readonly ConcurrentDictionary<RequestId, ActiveSubscription> _activeSubscriptions = new();
 
     private void ConfigureCompletion(McpServerOptions options)
     {
@@ -1407,7 +1565,7 @@ internal sealed partial class McpServerImpl : McpServer
         };
 
     /// <summary>
-    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (DRAFT-2026-v1).
+    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (2026-07-28).
     /// </summary>
     internal bool ClientSupportsMrtr() =>
         _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
@@ -1465,7 +1623,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // In stateless mode without MRTR, the server can't resolve input requests via
                 // JSON-RPC (no persistent session for server-to-client requests), and the client
                 // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-                // TODO(stateless-draft): When DRAFT-2026-v1 becomes stateless-only, the IsStatefulSession() gate collapses - the stateful path will only matter for legacy clients on the current protocol.
+                // TODO(stateless-draft): When 2026-07-28 becomes stateless-only, the IsStatefulSession() gate collapses - the stateful path will only matter for legacy clients on the current protocol.
                 if (!IsStatefulSession())
                 {
                     throw new McpException(
@@ -1692,7 +1850,7 @@ internal sealed partial class McpServerImpl : McpServer
             }
 
             // Implicit MRTR (handler suspension across ElicitAsync/SampleAsync) emits
-            // InputRequiredResult on the wire, which only DRAFT-2026-v1 clients understand,
+            // InputRequiredResult on the wire, which only 2026-07-28 clients understand,
             // and requires the same server instance to handle the retry (stateful session).
             // For all other cases - legacy clients, stateless sessions - fall through to the
             // exception-based path, which transparently resolves InputRequiredException via

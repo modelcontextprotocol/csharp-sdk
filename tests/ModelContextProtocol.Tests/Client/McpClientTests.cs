@@ -590,9 +590,9 @@ public class McpClientTests : ClientServerTestBase
     [Fact]
     public async Task ReturnsNegotiatedProtocolVersion_WithExperimentalProtocol()
     {
-        Server.ServerOptions.ProtocolVersion = "DRAFT-2026-v1";
-        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "DRAFT-2026-v1" });
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Server.ServerOptions.ProtocolVersion = "2026-07-28";
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "2026-07-28" });
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
     }
 
     [Fact]

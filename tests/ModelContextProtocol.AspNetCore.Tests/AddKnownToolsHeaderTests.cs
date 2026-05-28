@@ -46,7 +46,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "DRAFT-2026-v1",
+                        ProtocolVersion = "2026-07-28",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "header-capture-test", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions)

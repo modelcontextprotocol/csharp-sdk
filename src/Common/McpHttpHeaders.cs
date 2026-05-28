@@ -30,7 +30,7 @@ internal static class McpHttpHeaders
     /// The associated helpers perform exact ordinal matches against this single value rather
     /// than any ordered comparison.
     /// </remarks>
-    public const string DraftProtocolVersion = "DRAFT-2026-v1";
+    public const string DraftProtocolVersion = "2026-07-28";
 
     /// <summary>The session identifier header.</summary>
     public const string SessionId = "Mcp-Session-Id";

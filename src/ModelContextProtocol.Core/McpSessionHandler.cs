@@ -36,7 +36,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Clients and servers opt in by setting <see cref="McpClientOptions.ProtocolVersion"/>
     /// or <see cref="McpServerOptions.ProtocolVersion"/> to this value.
     /// </summary>
-    internal const string DraftProtocolVersion = "DRAFT-2026-v1";
+    internal const string DraftProtocolVersion = "2026-07-28";
 
     /// <summary>
     /// All protocol versions supported by this implementation.
@@ -263,6 +263,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                     Message = urlException.Message,
                                     Data = urlException.CreateErrorDataNode(),
                                 },
+                                UnsupportedProtocolVersionException upvException => new()
+                                {
+                                    Code = (int)upvException.ErrorCode,
+                                    Message = upvException.Message,
+                                    Data = upvException.CreateErrorDataNode(),
+                                },
+                                MissingRequiredClientCapabilityException mrccException => new()
+                                {
+                                    Code = (int)mrccException.ErrorCode,
+                                    Message = mrccException.Message,
+                                    Data = mrccException.CreateErrorDataNode(),
+                                },
                                 McpProtocolException mcpProtocolException => new()
                                 {
                                     Code = (int)mcpProtocolException.ErrorCode,
@@ -371,6 +383,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task HandleMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
+        // Project the draft-protocol per-request _meta fields onto the message context before any
+        // filters run so they (and downstream handlers) can read client info / capabilities /
+        // protocol version / log level without re-parsing.
+        if (_isServer && message is JsonRpcRequest incomingRequest)
+        {
+            PopulateContextFromMeta(incomingRequest);
+        }
+
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
 
@@ -504,6 +524,104 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }, cancellationToken).ConfigureAwait(false);
 
         return result;
+    }
+
+    /// <summary>
+    /// Reads the draft-protocol per-request <c>_meta</c> fields off the request and projects them onto
+    /// <see cref="JsonRpcMessage.Context"/> so they're available without re-parsing throughout the pipeline.
+    /// </summary>
+    /// <remarks>
+    /// Per SEP-2575 the keys are <c>io.modelcontextprotocol/protocolVersion</c>,
+    /// <c>/clientInfo</c>, <c>/clientCapabilities</c>, and (optional) <c>/logLevel</c>. Any field
+    /// that's already set on the context (e.g., <see cref="JsonRpcMessageContext.ProtocolVersion"/>
+    /// populated by the HTTP transport from the <c>MCP-Protocol-Version</c> header) is left alone
+    /// unless explicitly overwritten by a non-null value parsed here.
+    /// </remarks>
+    internal static void PopulateContextFromMeta(JsonRpcRequest request)
+    {
+        if (request.Params is not JsonObject paramsObj)
+        {
+            return;
+        }
+
+        if (paramsObj["_meta"] is not JsonObject metaObj)
+        {
+            return;
+        }
+
+        var context = request.Context ??= new JsonRpcMessageContext();
+
+        if (metaObj[NotificationMethods.ProtocolVersionMetaKey] is JsonValue protocolVersion &&
+            protocolVersion.TryGetValue(out string? protocolVersionValue))
+        {
+            // If a transport-level header already populated this, validate it matches per SEP-2575.
+            if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
+            {
+                throw new McpProtocolException(
+                    $"Protocol version mismatch: the per-request _meta value '{protocolVersionValue}' does not match the transport-level header value '{existing}'.",
+                    McpErrorCode.InvalidParams);
+            }
+
+            context.ProtocolVersion = protocolVersionValue;
+        }
+
+        if (metaObj[NotificationMethods.ClientInfoMetaKey] is JsonNode clientInfoNode)
+        {
+            context.ClientInfo = JsonSerializer.Deserialize(clientInfoNode, McpJsonUtilities.JsonContext.Default.Implementation);
+        }
+
+        if (metaObj[NotificationMethods.ClientCapabilitiesMetaKey] is JsonNode clientCapabilitiesNode)
+        {
+            context.ClientCapabilities = JsonSerializer.Deserialize(clientCapabilitiesNode, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
+        }
+
+        if (metaObj[NotificationMethods.LogLevelMetaKey] is JsonNode logLevelNode)
+        {
+            context.LogLevel = JsonSerializer.Deserialize(logLevelNode, McpJsonUtilities.JsonContext.Default.LoggingLevel);
+        }
+    }
+
+    /// <summary>
+    /// Injects the draft-protocol per-request <c>_meta</c> fields into an outgoing request,
+    /// idempotently overwriting any existing values.
+    /// </summary>
+    /// <remarks>
+    /// Used by <see cref="Client.McpClient"/> in draft mode to carry protocol version, client info, and
+    /// client capabilities on every outgoing request (replacing what the legacy <c>initialize</c> handshake
+    /// previously negotiated once).
+    /// </remarks>
+    internal static void InjectDraftMeta(
+        JsonRpcRequest request,
+        string protocolVersion,
+        Implementation clientInfo,
+        ClientCapabilities clientCapabilities,
+        LoggingLevel? logLevel = null)
+    {
+        var paramsObj = request.Params as JsonObject;
+        if (paramsObj is null)
+        {
+            paramsObj = new JsonObject();
+            request.Params = paramsObj;
+        }
+
+        if (paramsObj["_meta"] is not JsonObject metaObj)
+        {
+            metaObj = new JsonObject();
+            paramsObj["_meta"] = metaObj;
+        }
+
+        metaObj[NotificationMethods.ProtocolVersionMetaKey] = protocolVersion;
+        metaObj[NotificationMethods.ClientInfoMetaKey] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.JsonContext.Default.Implementation);
+        metaObj[NotificationMethods.ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
+
+        if (logLevel is { } level)
+        {
+            metaObj[NotificationMethods.LogLevelMetaKey] = JsonSerializer.SerializeToNode(level, McpJsonUtilities.JsonContext.Default.LoggingLevel);
+        }
+        else
+        {
+            metaObj.Remove(NotificationMethods.LogLevelMetaKey);
+        }
     }
 
     private CancellationTokenRegistration RegisterCancellation(CancellationToken cancellationToken, JsonRpcRequest request)
@@ -994,6 +1112,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     }
 
     private static McpProtocolException CreateRemoteProtocolException(JsonRpcError error)
+        => CreateRemoteProtocolExceptionFromError(error);
+
+    /// <summary>
+    /// Creates a typed <see cref="McpProtocolException"/> from a JSON-RPC error response.
+    /// </summary>
+    /// <remarks>
+    /// Exposed internally so transports that surface an HTTP-level error containing a JSON-RPC error
+    /// body (e.g., a <c>400</c> with <see cref="McpErrorCode.UnsupportedProtocolVersion"/>) can convert
+    /// the error to the same typed exception that JSON-RPC-level error responses produce.
+    /// </remarks>
+    internal static McpProtocolException CreateRemoteProtocolExceptionFromError(JsonRpcError error)
     {
         string formattedMessage = $"Request failed (remote): {error.Error.Message}";
         var errorCode = (McpErrorCode)error.Error.Code;
@@ -1003,6 +1132,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             UrlElicitationRequiredException.TryCreateFromError(formattedMessage, error.Error, out var urlException))
         {
             exception = urlException;
+        }
+        else if (errorCode == McpErrorCode.UnsupportedProtocolVersion &&
+            UnsupportedProtocolVersionException.TryCreateFromError(formattedMessage, error.Error, out var upvException))
+        {
+            exception = upvException;
+        }
+        else if (errorCode == McpErrorCode.MissingRequiredClientCapability &&
+            MissingRequiredClientCapabilityException.TryCreateFromError(formattedMessage, error.Error, out var mrccException))
+        {
+            exception = mrccException;
         }
         else
         {

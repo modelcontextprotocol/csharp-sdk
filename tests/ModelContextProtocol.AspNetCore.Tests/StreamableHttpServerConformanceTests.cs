@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -894,7 +894,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // Send a tools/call request without Mcp-Method header — should be rejected
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         // Deliberately omit Mcp-Method header
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -910,7 +910,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // Send a tools/call request but set Mcp-Method to wrong value
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -926,7 +926,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
 
@@ -956,7 +956,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(InitializeRequestDraft);
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "initialize");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -968,7 +968,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     private static string InitializeRequestDraft => """
-        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
         """;
 
     #endregion

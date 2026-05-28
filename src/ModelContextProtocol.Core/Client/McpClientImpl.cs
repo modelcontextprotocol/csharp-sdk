@@ -289,55 +289,88 @@ internal sealed partial class McpClientImpl : McpClient
 
             try
             {
-                // Send initialize request
-                string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                var initializeResponse = await SendRequestAsync(
-                    RequestMethods.Initialize,
-                    new InitializeRequestParams
+                // Under the draft protocol revision (SEP-2575), there is no initialize handshake.
+                // Instead, the client calls server/discover to learn the server's capabilities and
+                // then begins sending normal RPCs that carry protocolVersion / clientInfo /
+                // clientCapabilities in their per-request _meta.
+                if (_options.ProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+                {
+                    string draftVersion = McpSessionHandler.DraftProtocolVersion;
+
+                    // Eagerly set the negotiated version so InjectDraftMetaIfNeeded recognizes us as
+                    // a draft client when SendRequestAsync is invoked for server/discover.
+                    _negotiatedProtocolVersion = draftVersion;
+                    _sessionHandler.NegotiatedProtocolVersion = draftVersion;
+
+                    DiscoverResult? discoverResult = null;
+                    bool fallbackToLegacy = false;
+                    IList<string>? serverSupportedVersions = null;
+                    try
                     {
-                        ProtocolVersion = requestProtocol,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo ?? DefaultImplementation,
-                        Meta = _options.InitializeMeta,
-                    },
-                    McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
-                    McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
+                        discoverResult = await SendRequestAsync(
+                            RequestMethods.ServerDiscover,
+                            new DiscoverRequestParams(),
+                            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
+                            McpJsonUtilities.JsonContext.Default.DiscoverResult,
+                            cancellationToken: initializationCts.Token).ConfigureAwait(false);
+                    }
+                    catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.MethodNotFound)
+                    {
+                        // Server doesn't implement server/discover (likely a legacy server). Fall back
+                        // to the legacy initialize handshake per SEP-2575 §"Supporting Multiple Versions".
+                        fallbackToLegacy = true;
+                    }
+                    catch (UnsupportedProtocolVersionException ex)
+                    {
+                        // Server rejected the experimental protocol version at the transport layer.
+                        // Per SEP-2575, fall back to a mutually-supported version reported in ex.Supported.
+                        fallbackToLegacy = true;
+                        serverSupportedVersions = (IList<string>)ex.Supported;
+                    }
 
-                // Store server information
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    LogServerCapabilitiesReceived(_endpointName,
-                        capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                        serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                    if (discoverResult is not null && !discoverResult.SupportedVersions.Contains(draftVersion))
+                    {
+                        // Server is reachable and supports server/discover, but doesn't support the
+                        // experimental version. Fall back to legacy initialize with the highest
+                        // mutually-supported version from supportedVersions[].
+                        fallbackToLegacy = true;
+                        serverSupportedVersions = discoverResult.SupportedVersions;
+                    }
+
+                    if (fallbackToLegacy)
+                    {
+                        // Reset negotiated state and try legacy initialize.
+                        _negotiatedProtocolVersion = null;
+                        _sessionHandler.NegotiatedProtocolVersion = null;
+
+                        string fallbackVersion = serverSupportedVersions?
+                            .Where(McpSessionHandler.SupportedProtocolVersions.Contains)
+                            .OrderByDescending(v => v, StringComparer.Ordinal)
+                            .FirstOrDefault()
+                            ?? McpSessionHandler.LatestProtocolVersion;
+
+                        await PerformLegacyInitializeAsync(fallbackVersion, initializationCts.Token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        if (_logger.IsEnabled(LogLevel.Information))
+                        {
+                            LogServerCapabilitiesReceived(_endpointName,
+                                capabilities: JsonSerializer.Serialize(discoverResult!.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                        }
+
+                        _serverCapabilities = discoverResult!.Capabilities;
+                        _serverInfo = discoverResult.ServerInfo;
+                        _serverInstructions = discoverResult.Instructions;
+                    }
                 }
-
-                _serverCapabilities = initializeResponse.Capabilities;
-                _serverInfo = initializeResponse.ServerInfo;
-                _serverInstructions = initializeResponse.Instructions;
-
-                // Validate protocol version
-                bool isResponseProtocolValid =
-                    _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
-                if (!isResponseProtocolValid)
+                else
                 {
-                    LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
-                    throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
+                    // Legacy initialize handshake.
+                    string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
+                    await PerformLegacyInitializeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
                 }
-
-                _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
-
-                // Update session handler with the negotiated protocol version for telemetry
-                _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
-
-                // Send initialized notification
-                await this.SendNotificationAsync(
-                    NotificationMethods.InitializedNotification,
-                    new InitializedNotificationParams(),
-                    McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
-
             }
             catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -353,6 +386,55 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         LogClientConnected(_endpointName);
+    }
+
+    /// <summary>
+    /// Performs the legacy initialize handshake (initialize request + initialized notification),
+    /// records the negotiated protocol version, and stores the server capabilities/info/instructions.
+    /// </summary>
+    private async Task PerformLegacyInitializeAsync(string requestProtocol, CancellationToken cancellationToken)
+    {
+        var initializeResponse = await SendRequestAsync(
+            RequestMethods.Initialize,
+            new InitializeRequestParams
+            {
+                ProtocolVersion = requestProtocol,
+                Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                ClientInfo = _options.ClientInfo ?? DefaultImplementation,
+                Meta = _options.InitializeMeta,
+            },
+            McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
+            McpJsonUtilities.JsonContext.Default.InitializeResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            LogServerCapabilitiesReceived(_endpointName,
+                capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+        }
+
+        _serverCapabilities = initializeResponse.Capabilities;
+        _serverInfo = initializeResponse.ServerInfo;
+        _serverInstructions = initializeResponse.Instructions;
+
+        bool isResponseProtocolValid =
+            _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
+            McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+        if (!isResponseProtocolValid)
+        {
+            LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
+            throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
+        }
+
+        _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
+        _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
+
+        await this.SendNotificationAsync(
+            NotificationMethods.InitializedNotification,
+            new InitializedNotificationParams(),
+            McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -467,6 +549,8 @@ internal sealed partial class McpClientImpl : McpClient
 
         const int maxRetries = 10;
 
+        InjectDraftMetaIfNeeded(request);
+
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
             JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
@@ -504,6 +588,7 @@ internal sealed partial class McpClientImpl : McpClient
                     }
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
+                    InjectDraftMetaIfNeeded(request);
                 }
                 else if (inputRequiredResult.RequestState is not null)
                 {
@@ -513,10 +598,7 @@ internal sealed partial class McpClientImpl : McpClient
                     paramsObj.Remove("inputResponses");
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
-                }
-                else
-                {
-                    throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
+                    InjectDraftMetaIfNeeded(request);
                 }
 
                 continue; // retry with the updated request
@@ -527,6 +609,39 @@ internal sealed partial class McpClientImpl : McpClient
 
         throw new McpException($"Server returned InputRequiredResult more than {maxRetries} times.");
     }
+
+    /// <summary>
+    /// Injects the draft-protocol per-request <c>_meta</c> fields (protocol version, client info,
+    /// client capabilities) into the request when this client is using the draft protocol revision
+    /// (SEP-2575). No-op for legacy clients.
+    /// </summary>
+    private void InjectDraftMetaIfNeeded(JsonRpcRequest request)
+    {
+        if (!IsDraftProtocol())
+        {
+            return;
+        }
+
+        // Initialize is never sent under the draft revision, but guard defensively in case a caller
+        // routes it through here (e.g., during back-compat fallback negotiation).
+        if (request.Method == RequestMethods.Initialize)
+        {
+            return;
+        }
+
+        McpSessionHandler.InjectDraftMeta(
+            request,
+            _negotiatedProtocolVersion!,
+            _options.ClientInfo ?? DefaultImplementation,
+            _options.Capabilities ?? new ClientCapabilities());
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the negotiated protocol version is the draft revision
+    /// (SEP-2575 + SEP-2567 + MRTR).
+    /// </summary>
+    internal bool IsDraftProtocol() =>
+        _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
 
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)

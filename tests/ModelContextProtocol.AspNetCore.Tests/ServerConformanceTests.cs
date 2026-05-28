@@ -178,7 +178,7 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     // SEP-2322 (Multi Round-Trip Requests / IncompleteResult) conformance scenarios.
     // The csharp-sdk ConformanceServer surfaces the matching tools/prompts via
     // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts.
-    // Each scenario uses the conformance harness's RawMcpSession, which negotiates DRAFT-2026-v1
+    // Each scenario uses the conformance harness's RawMcpSession, which negotiates 2026-07-28
     // so the csharp-sdk emits InputRequiredResult on the wire. These tests skip until the
     // upstream conformance package ships with SEP-2322 scenarios
     // (https://github.com/modelcontextprotocol/conformance/pull/188).

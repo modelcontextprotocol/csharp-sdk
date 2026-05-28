@@ -79,7 +79,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     // moves to the standard JSON-RPC code see -32602 (McpErrorCode.InvalidParams).
     [Theory]
     [InlineData("2025-11-25", McpErrorCode.ResourceNotFound)]
-    [InlineData("DRAFT-2026-v1", McpErrorCode.InvalidParams)]
+    [InlineData("2026-07-28", McpErrorCode.InvalidParams)]
     public async Task ResourceNotFound_ErrorCode_IsVersionGated(string serverProtocolVersion, McpErrorCode expectedCode)
     {
         var resource = McpServerResource.Create(

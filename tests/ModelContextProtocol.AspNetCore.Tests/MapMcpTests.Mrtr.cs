@@ -17,7 +17,7 @@ public abstract partial class MapMcpTests
         {
             options.ServerInfo = new Implementation { Name = "MrtrTestServer", Version = "1" };
             // Do not pin a protocol version - let it be negotiated based on what the client requests.
-            // DRAFT-2026-v1 is in SupportedProtocolVersions, so an opt-in client gets it; others get
+            // 2026-07-28 is in SupportedProtocolVersions, so an opt-in client gets it; others get
             // the latest non-draft.
             messageTracker.AddFilters(options.Filters.Message);
         })
@@ -30,7 +30,7 @@ public abstract partial class MapMcpTests
         ConnectAsync(configureClient: options =>
         {
             ConfigureMrtrHandlers(options);
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
         });
 
     private Task<McpClient> ConnectDefaultAsync() =>
@@ -79,7 +79,7 @@ public abstract partial class MapMcpTests
 
     // =====================================================================
     // MRTR tests: experimental (native), backcompat (legacy JSON-RPC), and edge cases.
-    // Each test creates its own server with DRAFT-2026-v1 enabled.
+    // Each test creates its own server with 2026-07-28 enabled.
     // =====================================================================
 
     [McpServerTool(Name = "mrtr-mixed")]
@@ -156,8 +156,15 @@ public abstract partial class MapMcpTests
     [InlineData(true)]
     public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalClient)
     {
-        // The server always supports DRAFT-2026-v1 (it's in SupportedProtocolVersions). The
-        // client opts in by pinning ProtocolVersion = "DRAFT-2026-v1"; otherwise it negotiates
+        // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3,
+        // which requires server-to-client requests - only available in stateful sessions. Under
+        // the draft protocol revision (SEP-2567), Streamable HTTP is implicitly stateless, so the
+        // experimental-client + HTTP combination cannot resolve the await-style portion. Stdio
+        // coverage for this scenario lives in DraftProtocolBackcompatTests.
+        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; draft protocol revision (SEP-2567) makes Streamable HTTP sessionless. See DraftProtocolBackcompatTests for stdio coverage.");
+
+        // The server always supports 2026-07-28 (it's in SupportedProtocolVersions). The
+        // client opts in by pinning ProtocolVersion = "2026-07-28"; otherwise it negotiates
         // the latest non-draft version and the server falls back to the exception path with
         // legacy JSON-RPC resolution.
         var messageTracker = ConfigureServer(MrtrMixed);
@@ -167,7 +174,7 @@ public abstract partial class MapMcpTests
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
             : ConfigureMrtrHandlers;
 
         // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3.
@@ -180,6 +187,7 @@ public abstract partial class MapMcpTests
             // and no persistent server instance for the backcompat retry loop). The server returns
             // a JSON-RPC error.
             await using var client = await ConnectAsync(configureClient: configureClient);
+
             var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
                 client.CallToolAsync("mrtr-mixed",
                     cancellationToken: TestContext.Current.CancellationToken).AsTask());
@@ -202,7 +210,7 @@ public abstract partial class MapMcpTests
         // Stateful path - both client modes complete all 3 rounds.
         await using var statefulClient = await ConnectAsync(configureClient: configureClient);
 
-        Assert.Equal(experimentalClient ? "DRAFT-2026-v1" : "2025-11-25",
+        Assert.Equal(experimentalClient ? "2026-07-28" : "2025-11-25",
             statefulClient.NegotiatedProtocolVersion);
 
         var result = await statefulClient.CallToolAsync("mrtr-mixed",
@@ -267,6 +275,10 @@ public abstract partial class MapMcpTests
         // Parallel awaits work with regular JSON-RPC but fail with MRTR because
         // MrtrContext only supports one exchange at a time (TrySetResult gate).
         Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
+        // Under the draft protocol revision (SEP-2567), the server is implicitly stateless for draft
+        // clients, so parallel-await MRTR can't reach its concurrency gate. Skip the experimental-client
+        // case for the same reason as Mrtr_MixedExceptionAndAwaitStyle.
+        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; draft protocol revision (SEP-2567) is sessionless.");
 
         ConfigureServer(MrtrParallelAwait);
         await using var app = Builder.Build();
@@ -274,7 +286,7 @@ public abstract partial class MapMcpTests
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
             : ConfigureMrtrHandlers;
 
         await using var client = await ConnectAsync(configureClient: configureClient);
@@ -283,7 +295,7 @@ public abstract partial class MapMcpTests
         {
             // MRTR active. Parallel awaits hit the MrtrContext concurrency gate and the second
             // call throws InvalidOperationException, which the tool catches and returns as text.
-            Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+            Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
             var result = await client.CallToolAsync("mrtr-parallel-await",
                 cancellationToken: TestContext.Current.CancellationToken);
@@ -351,7 +363,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectExperimentalAsync();
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-roots",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -413,7 +425,7 @@ public abstract partial class MapMcpTests
 
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -437,7 +449,7 @@ public abstract partial class MapMcpTests
 
         if (experimentalClient)
         {
-            Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+            Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
             messageTracker.AssertMrtrUsed();
         }
         else
@@ -459,10 +471,10 @@ public abstract partial class MapMcpTests
 
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
-            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
             : ConfigureMrtrHandlers;
         await using var client = await ConnectAsync(configureClient: configureClient);
-        Assert.Equal(experimentalClient ? "DRAFT-2026-v1" : "2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(experimentalClient ? "2026-07-28" : "2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-check",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -526,7 +538,7 @@ public abstract partial class MapMcpTests
 
         await using var client = await ConnectAsync(configureClient: options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
             options.Handlers.ElicitationHandler = async (request, ct) =>
             {
                 elicitCalled.TrySetResult();
@@ -553,7 +565,7 @@ public abstract partial class MapMcpTests
                 };
             };
         });
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-concurrent-three",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -582,7 +594,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         await using var client = await ConnectExperimentalAsync();
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-loadshed",
             cancellationToken: TestContext.Current.CancellationToken);
