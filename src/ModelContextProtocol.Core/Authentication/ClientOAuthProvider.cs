@@ -377,7 +377,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 // Validate the issuer in the metadata document per RFC 8414 Section 3.3:
                 // the issuer value MUST be identical to the issuer identifier used to construct
                 // the well-known URL.
-                if (metadata.Issuer is not null &&
+                // Skip validation in legacy backcompat mode (resourceUri is null) because the
+                // authServerUri was derived from the server origin rather than from Protected
+                // Resource Metadata, so it may not match the server's canonical issuer.
+                // Note: resourceUri is null exclusively in the 2025-03-26 legacy path. For newer
+                // protocol versions, ExtractProtectedResourceMetadata throws if the PRM document
+                // omits the resource field (VerifyResourceMatch returns false for null Resource),
+                // so we never reach this point with resourceUri == null in non-legacy flows.
+                if (resourceUri is not null &&
+                    metadata.Issuer is not null &&
                     !string.Equals(metadata.Issuer.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
                 {
                     ThrowFailedToHandleUnauthorizedResponse(
