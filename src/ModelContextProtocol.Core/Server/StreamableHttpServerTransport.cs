@@ -44,7 +44,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     private TaskCompletionSource<bool>? _httpResponseTcs;
     private string? _negotiatedProtocolVersion;
     private bool _getHttpRequestStarted;
-    private bool _getHttpResponseCompleted;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamableHttpServerTransport"/> class.
@@ -177,7 +177,6 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             // otherwise accumulate significant unmanaged memory per session during that interval.
             using (await _unsolicitedMessageLock.LockAsync(CancellationToken.None).ConfigureAwait(false))
             {
-                _getHttpResponseCompleted = true;
                 if (_httpSseWriter is { } writer)
                 {
                     _httpSseWriter = null;
@@ -240,23 +239,19 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             return;
         }
 
-        // _httpSseWriter may be null here if the GET request has already ended (e.g. client
-        // disconnected). _getHttpResponseCompleted is set to true in that case, so the write
-        // below is correctly skipped. The event store writer (if configured) still captures
-        // the message so a reconnecting client can replay it via Last-Event-ID.
         Debug.Assert(_httpResponseTcs is not null);
 
         var item = SseItem.Message(message);
 
         if (_storeSseWriter is not null)
         {
+            // Always record the message in the event store (if configured) — even when the GET
+            // response stream is gone — so a reconnecting client can replay it via Last-Event-ID.
             item = await _storeSseWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_getHttpResponseCompleted && _httpSseWriter is { } writer)
+        if (_httpSseWriter is { } writer)
         {
-            // Only write the message to the response if the response has not completed.
-
             try
             {
                 await writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
@@ -273,12 +268,12 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     {
         using var _ = await _unsolicitedMessageLock.LockAsync().ConfigureAwait(false);
 
-        if (_getHttpResponseCompleted)
+        if (_disposed)
         {
             return;
         }
 
-        _getHttpResponseCompleted = true;
+        _disposed = true;
 
         try
         {
@@ -290,7 +285,11 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             try
             {
                 _httpResponseTcs?.TrySetResult(true);
-                _httpSseWriter?.Dispose();
+                if (_httpSseWriter is { } writer)
+                {
+                    _httpSseWriter = null;
+                    writer.Dispose();
+                }
 
                 if (_storeSseWriter is not null)
                 {
