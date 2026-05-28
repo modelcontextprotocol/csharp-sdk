@@ -22,7 +22,7 @@ test: build
 		--filter '(Execution!=Manual)' \
 		--blame \
 		--blame-crash \
-		--blame-hang-timeout 15m \
+		--blame-hang-timeout 7m \
 		--diag "$(ARTIFACT_PATH)/diag.txt" \
 		--logger "trx" \
 		--collect "XPlat Code Coverage" \
