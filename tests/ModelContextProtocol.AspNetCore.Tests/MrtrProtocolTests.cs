@@ -93,6 +93,157 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.Contains("Tool validation failed", error.Error.Message);
     }
 
+    /// <summary>
+    /// Regression test for a CI hang where the server-side MRTR backcompat resolver routed its
+    /// outgoing <c>roots/list</c> request through the session-level transport, which silently
+    /// dropped the message when the client's GET stream had not been established yet. The
+    /// outgoing request must instead go through the POST's response stream (the request's
+    /// <see cref="ModelContextProtocol.Protocol.JsonRpcMessageContext.RelatedTransport"/>) so it
+    /// reaches the client without depending on the GET stream at all.
+    ///
+    /// This test deliberately never opens a GET stream — it only POSTs the initialize, the
+    /// initialized notification, the <c>tools/call</c>, and the <c>roots/list</c> response. If the
+    /// server falls back to <c>_transport.SendMessageAsync</c>, the test times out instead of
+    /// reading the expected <c>roots/list</c> SSE event off the <c>tools/call</c> POST response.
+    /// </summary>
+    [Fact]
+    public async Task BackcompatResolver_SendsServerRequestOverPostStream_WithoutGetStream()
+    {
+        // Configure a server that does NOT pin DRAFT-2026-v1 so it can negotiate the current
+        // protocol with a legacy client. The backcompat resolver path only runs when the
+        // negotiated version is not DRAFT-2026-v1.
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new Implementation
+            {
+                Name = nameof(MrtrProtocolTests),
+                Version = "1",
+            };
+        }).WithTools([
+            McpServerTool.Create(
+                static string (RequestContext<CallToolRequestParams> context) =>
+                {
+                    if (context.Params!.InputResponses is { } responses &&
+                        responses.TryGetValue("roots", out var response))
+                    {
+                        var roots = response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots;
+                        return $"roots-ok:{roots?.FirstOrDefault()?.Name}";
+                    }
+
+                    throw new InputRequiredException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
+                        },
+                        requestState: "roots-state");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "backcompat-roots-tool",
+                    Description = "Throws InputRequiredException so the server's backcompat resolver issues a roots/list",
+                }),
+        ]).WithHttpTransport();
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        // Initialize with the current (non-draft) protocol so the server's backcompat resolver runs.
+        var initJson = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"BackcompatTestClient","version":"1.0.0"}}}
+            """;
+
+        string sessionId;
+        using (var initResponse = await PostJsonRpcAsync(initJson))
+        {
+            var initRpcResponse = await AssertSingleSseResponseAsync(initResponse);
+            Assert.NotNull(initRpcResponse.Result);
+            Assert.Equal("2025-11-25", initRpcResponse.Result["protocolVersion"]?.GetValue<string>());
+
+            sessionId = Assert.Single(initResponse.Headers.GetValues("mcp-session-id"));
+        }
+
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+        HttpClient.DefaultRequestHeaders.Remove("MCP-Protocol-Version");
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2025-11-25");
+
+        // Send the initialized notification.
+        using (var initializedResponse = await PostJsonRpcAsync(
+            """{"jsonrpc":"2.0","method":"notifications/initialized"}"""))
+        {
+            Assert.True(initializedResponse.IsSuccessStatusCode);
+        }
+
+        _lastRequestId = 1;
+
+        // POST the tools/call and start reading the response SSE stream. We deliberately do NOT
+        // open a GET stream — the server-to-client roots/list must be delivered on this POST's
+        // response. Use HttpCompletionOption.ResponseHeadersRead so the POST returns as soon as
+        // the response headers arrive instead of waiting for the SSE stream to close.
+        var callRequest = new HttpRequestMessage(HttpMethod.Post, (string?)null)
+        {
+            Content = JsonContent(CallTool("backcompat-roots-tool")),
+        };
+        callRequest.Content.Headers.Add("Mcp-Method", "tools/call");
+        callRequest.Content.Headers.Add("Mcp-Name", "backcompat-roots-tool");
+
+        using var callResponse = await HttpClient.SendAsync(
+            callRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, callResponse.StatusCode);
+        Assert.Equal("text/event-stream", callResponse.Content.Headers.ContentType?.MediaType);
+
+        var sseEvents = ReadSseAsync(callResponse.Content)
+            .GetAsyncEnumerator(TestContext.Current.CancellationToken);
+
+        try
+        {
+            // First SSE event on this POST should be the server-initiated roots/list request.
+            Assert.True(await sseEvents.MoveNextAsync(),
+                "Server did not send a roots/list request on the tools/call POST response stream. " +
+                "If this hangs/times out, the MRTR backcompat resolver is routing the outgoing request " +
+                "through the session-level transport instead of the POST's RelatedTransport.");
+
+            var rootsRequestNode = JsonNode.Parse(sseEvents.Current) as JsonObject;
+            Assert.NotNull(rootsRequestNode);
+            Assert.Equal("roots/list", rootsRequestNode["method"]?.GetValue<string>());
+            var rootsRequestId = rootsRequestNode["id"];
+            Assert.NotNull(rootsRequestId);
+
+            // POST the roots/list response on a separate connection. The server's pending
+            // RequestRootsAsync await will complete and the backcompat resolver will retry the tool.
+            var rootsIdLiteral = rootsRequestId.ToJsonString();
+            var rootsResponseJson =
+                "{\"jsonrpc\":\"2.0\",\"id\":" + rootsIdLiteral +
+                ",\"result\":{\"roots\":[{\"uri\":\"file:///workspace\",\"name\":\"Workspace\"}]}}";
+            using (var rootsResponseHttp = await PostJsonRpcAsync(rootsResponseJson))
+            {
+                Assert.True(rootsResponseHttp.IsSuccessStatusCode);
+            }
+
+            // Next SSE event on the original POST should be the final tools/call response.
+            Assert.True(await sseEvents.MoveNextAsync(), "Server did not return the final tools/call response.");
+            var finalResponse = JsonSerializer.Deserialize(sseEvents.Current, GetJsonTypeInfo<JsonRpcResponse>());
+            Assert.NotNull(finalResponse);
+            Assert.NotNull(finalResponse.Result);
+
+            var content = finalResponse.Result["content"]?.AsArray();
+            Assert.NotNull(content);
+            var firstContent = Assert.Single(content);
+            Assert.Equal("roots-ok:Workspace", firstContent?["text"]?.GetValue<string>());
+        }
+        finally
+        {
+            await sseEvents.DisposeAsync();
+        }
+    }
+
     // --- Helpers ---
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
