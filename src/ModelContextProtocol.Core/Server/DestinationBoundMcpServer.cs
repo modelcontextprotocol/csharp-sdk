@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol.Protocol;
-using System.Diagnostics;
 
 namespace ModelContextProtocol.Server;
 

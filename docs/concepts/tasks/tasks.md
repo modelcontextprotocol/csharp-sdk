@@ -41,6 +41,7 @@ When a `TaskStore` is configured:
 - `tasks/get`, `tasks/update`, and `tasks/cancel` handlers are auto-wired from the store.
 - Built-in tools are automatically wrapped: if the client signals task support, the tool is offloaded to a background task via the store.
 - Server-initiated requests (elicitation, sampling) are redirected through the store's input request mechanism while inside a task scope.
+- Task cancellation propagates to the tool's `CancellationToken`, allowing cooperative cancellation.
 
 ### Custom Task Handlers
 
@@ -119,17 +120,55 @@ Supported input request types:
 
 The client deduplicates input requests across polling cycles to avoid re-resolving the same request.
 
+## Implementing a Custom Task Store
+
+Implement `IMcpTaskStore` for production scenarios (durability, session isolation, TTL-based cleanup). Key requirements:
+
+1. **Thread safety**: All methods may be called concurrently.
+2. **`InputResponseReceived` event**: Implementations must raise this event for each resolved response in `ResolveInputRequestsAsync`. This enables the server to complete pending input request waiters. In distributed deployments where different server instances may receive the `tasks/update` request, the event is the mechanism by which the originating server is notified.
+
+```csharp
+public class MyTaskStore : IMcpTaskStore
+{
+    public event Action<InputResponseReceivedEventArgs>? InputResponseReceived;
+
+    public Task ResolveInputRequestsAsync(
+        string taskId,
+        IDictionary<string, JsonElement> inputResponses,
+        CancellationToken cancellationToken = default)
+    {
+        // Remove matched input requests from the task...
+
+        // Then notify subscribers
+        foreach (var kvp in inputResponses)
+        {
+            InputResponseReceived?.Invoke(new InputResponseReceivedEventArgs
+            {
+                TaskId = taskId,
+                RequestId = kvp.Key,
+                Response = kvp.Value,
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // ... other IMcpTaskStore methods
+}
+```
+
 ## Architecture Notes
-
-### Filter Model (3 Cases)
-
-1. **Non-task filter + non-task handler**: Filters applied normally, final result converted to task shape.
-2. **Task filter + task handler**: Filters applied directly to the task-augmented handler.
-3. **Mixed**: Throws `InvalidOperationException`.
 
 ### Immutable Store Design
 
 `InMemoryMcpTaskStore` uses immutable records with compare-and-swap (CAS) updates for lock-free thread safety. `ImmutableDictionary<string, JsonElement>` is used for input requests/responses.
+
+### Cancellation Propagation
+
+When a task store is configured, each background task gets its own `CancellationTokenSource`. When `tasks/cancel` is received:
+1. The store's `SetCancelledAsync` transitions the task to `Cancelled`.
+2. The associated CTS is signaled, propagating cancellation to the tool's `CancellationToken`.
+3. Outstanding `CancellationTokenSource` instances are cleaned up on server disposal.
 
 ## Known Limitations / TODOs
 

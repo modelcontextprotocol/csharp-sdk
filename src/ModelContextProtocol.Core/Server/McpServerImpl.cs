@@ -206,6 +206,13 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
+        foreach (var kvp in _taskCancellationSources)
+        {
+            kvp.Value.Cancel();
+            kvp.Value.Dispose();
+        }
+        _taskCancellationSources.Clear();
+
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
     }
@@ -943,7 +950,7 @@ internal sealed partial class McpServerImpl : McpServer
             TtlMs = info.TtlMs,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
-            TaskResult = info.Result!.Value,
+            TaskResult = info.Result ?? throw new InvalidOperationException($"Task '{info.TaskId}' is completed but has no result."),
             ResultType = "complete",
         },
         McpTaskStatus.Failed => new FailedTaskResult
@@ -954,7 +961,7 @@ internal sealed partial class McpServerImpl : McpServer
             TtlMs = info.TtlMs,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
-            Error = info.Error!.Value,
+            Error = info.Error ?? throw new InvalidOperationException($"Task '{info.TaskId}' is failed but has no error."),
             ResultType = "complete",
         },
         McpTaskStatus.Cancelled => new CancelledTaskResult
