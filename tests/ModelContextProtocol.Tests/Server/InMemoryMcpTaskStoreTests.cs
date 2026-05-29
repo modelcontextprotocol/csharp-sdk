@@ -206,7 +206,10 @@ public class InMemoryMcpTaskStoreTests
             ["req2"] = JsonSerializer.SerializeToElement("request2", McpJsonUtilities.DefaultOptions),
         }, CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, ["req1"], CT);
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["req1"] = JsonSerializer.SerializeToElement("response1", McpJsonUtilities.DefaultOptions),
+        }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
         Assert.NotNull(task);
@@ -227,7 +230,10 @@ public class InMemoryMcpTaskStoreTests
             ["req1"] = JsonSerializer.SerializeToElement("request1", McpJsonUtilities.DefaultOptions),
         }, CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, ["req1"], CT);
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["req1"] = JsonSerializer.SerializeToElement("response1", McpJsonUtilities.DefaultOptions),
+        }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
         Assert.NotNull(task);
@@ -270,7 +276,10 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, ["unknown-key"], CT);
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["unknown-key"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+        }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
         Assert.NotNull(task);

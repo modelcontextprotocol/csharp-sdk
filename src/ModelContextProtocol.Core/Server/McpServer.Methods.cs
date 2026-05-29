@@ -581,8 +581,16 @@ public abstract partial class McpServer : McpSession
         var requestJson = JsonSerializer.SerializeToElement(envelope, McpJsonUtilities.JsonContext.Default.JsonObject);
 
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskInputResponseWaiters[(taskContext.TaskId, requestId)] = tcs;
 
+        void handler(InputResponseReceivedEventArgs args)
+        {
+            if (args.TaskId == taskContext.TaskId && args.RequestId == requestId)
+            {
+                tcs.TrySetResult(args.Response);
+            }
+        }
+
+        taskContext.Store.InputResponseReceived += handler;
         try
         {
             await taskContext.Store.SetInputRequestsAsync(
@@ -596,7 +604,7 @@ public abstract partial class McpServer : McpSession
         }
         finally
         {
-            TaskInputResponseWaiters.TryRemove((taskContext.TaskId, requestId), out _);
+            taskContext.Store.InputResponseReceived -= handler;
         }
     }
 

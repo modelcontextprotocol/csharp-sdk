@@ -28,6 +28,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _taskCancellationSources = new();
 
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
@@ -84,8 +85,8 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureResources(options);
         ConfigureLogging(options);
         ConfigureCompletion(options);
-        ConfigureTasks(options);
         ConfigureExperimentalAndExtensions(options);
+        ConfigureTasks(options);
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -408,16 +409,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             updateTaskHandler ??= async (request, cancellationToken) =>
             {
-                await taskStore.ResolveInputRequestsAsync(request.Params!.TaskId, request.Params.InputResponses.Keys, cancellationToken).ConfigureAwait(false);
-
-                // Signal any waiters for the provided response keys.
-                foreach (var kvp in request.Params.InputResponses)
-                {
-                    if (TaskInputResponseWaiters.TryRemove((request.Params.TaskId, kvp.Key), out var tcs))
-                    {
-                        tcs.TrySetResult(kvp.Value);
-                    }
-                }
+                await taskStore.ResolveInputRequestsAsync(request.Params!.TaskId, request.Params.InputResponses, cancellationToken).ConfigureAwait(false);
 
                 return new UpdateTaskResult();
             };
@@ -428,6 +420,13 @@ internal sealed partial class McpServerImpl : McpServer
                 if (!cancelled)
                 {
                     throw new McpProtocolException($"Task '{request.Params.TaskId}' could not be cancelled.", McpErrorCode.InvalidParams);
+                }
+
+                // Signal the task's CancellationTokenSource if one exists.
+                if (_taskCancellationSources.TryRemove(request.Params.TaskId, out var cts))
+                {
+                    cts.Cancel();
+                    cts.Dispose();
                 }
 
                 return new CancelTaskResult();
@@ -853,13 +852,16 @@ internal sealed partial class McpServerImpl : McpServer
                     var taskInfo = await taskStore.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
                     var taskId = taskInfo.TaskId;
 
+                    var cts = new CancellationTokenSource();
+                    _taskCancellationSources[taskId] = cts;
+
                     _ = Task.Run(async () =>
                     {
                         using (CreateMcpTaskScope(taskId, taskStore))
                         {
                             try
                             {
-                                var augmented = await innerTaskHandler(request, CancellationToken.None).ConfigureAwait(false);
+                                var augmented = await innerTaskHandler(request, cts.Token).ConfigureAwait(false);
                                 if (augmented.IsTask)
                                 {
                                     return;
@@ -868,11 +870,20 @@ internal sealed partial class McpServerImpl : McpServer
                                 var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.JsonContext.Default.CallToolResult);
                                 await taskStore.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
                             }
+                            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                            {
+                                await taskStore.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
+                            }
                             catch (Exception ex)
                             {
                                 var escapedMessage = JsonSerializer.Serialize(ex.Message, McpJsonUtilities.JsonContext.Default.String);
                                 var errorJson = JsonDocument.Parse($$$"""{{"message": {{{escapedMessage}}}}}""").RootElement;
                                 await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
+                            }
+                            finally
+                            {
+                                _taskCancellationSources.TryRemove(taskId, out _);
+                                cts.Dispose();
                             }
                         }
                     }, CancellationToken.None);

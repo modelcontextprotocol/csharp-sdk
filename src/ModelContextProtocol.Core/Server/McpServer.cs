@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -10,12 +8,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public abstract partial class McpServer : McpSession
 {
-    /// <summary>
-    /// Waiters for task-based input responses. Keyed by (taskId, requestId), signaled when
-    /// input responses arrive via tasks/update.
-    /// </summary>
-    internal virtual ConcurrentDictionary<(string TaskId, string RequestId), TaskCompletionSource<JsonElement>> TaskInputResponseWaiters { get; } = new();
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServer"/> class.
     /// </summary>

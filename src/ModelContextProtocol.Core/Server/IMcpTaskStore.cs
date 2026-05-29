@@ -82,23 +82,43 @@ public interface IMcpTaskStore
     Task<bool> SetCancelledAsync(string taskId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Removes input requests that have been satisfied by the provided responses.
+    /// Removes input requests that have been satisfied by the provided responses and
+    /// raises <see cref="InputResponseReceived"/> for each resolved entry.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task.</param>
-    /// <param name="inputResponseKeys">
-    /// The keys of input requests that have been satisfied.
+    /// <param name="inputResponses">
+    /// The input responses keyed by the original request identifier.
     /// Matched input requests are removed from the task's pending set.
     /// </param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <remarks>
+    /// <para>
     /// After removing the satisfied requests, if no pending input requests remain the task
     /// transitions back to <see cref="McpTaskStatus.Working"/>. Otherwise it remains in
     /// <see cref="McpTaskStatus.InputRequired"/>.
+    /// </para>
+    /// <para>
+    /// Implementations must raise <see cref="InputResponseReceived"/> for each entry in
+    /// <paramref name="inputResponses"/> after updating the store state. In distributed
+    /// deployments, this event enables the originating server to be notified even if a
+    /// different server instance processes the <c>tasks/update</c> request.
+    /// </para>
     /// </remarks>
     Task ResolveInputRequestsAsync(
         string taskId,
-        IEnumerable<string> inputResponseKeys,
+        IDictionary<string, JsonElement> inputResponses,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Occurs when an input response is resolved for a task.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must raise this event for each input response resolved in
+    /// <see cref="ResolveInputRequestsAsync"/>. Subscribers use this to complete
+    /// pending input request waiters (e.g., elicitation or sampling calls that are
+    /// awaiting a client response).
+    /// </remarks>
+    event Action<InputResponseReceivedEventArgs>? InputResponseReceived;
 
     /// <summary>
     /// Adds input requests to a task, transitioning it to <see cref="McpTaskStatus.InputRequired"/>.

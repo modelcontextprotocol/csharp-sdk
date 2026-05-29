@@ -102,9 +102,12 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     }
 
     /// <inheritdoc/>
+    public event Action<InputResponseReceivedEventArgs>? InputResponseReceived;
+
+    /// <inheritdoc/>
     public Task ResolveInputRequestsAsync(
         string taskId,
-        IEnumerable<string> inputResponseKeys,
+        IDictionary<string, JsonElement> inputResponses,
         CancellationToken cancellationToken = default)
     {
         Update(taskId, entry =>
@@ -113,7 +116,7 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
                 ?? entry.InputRequests?.ToImmutableDictionary()
                 ?? ImmutableDictionary<string, JsonElement>.Empty;
 
-            foreach (var key in inputResponseKeys)
+            foreach (var key in inputResponses.Keys)
             {
                 requests = requests.Remove(key);
             }
@@ -127,6 +130,16 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
                 LastUpdatedAt = DateTimeOffset.UtcNow,
             };
         });
+
+        foreach (var kvp in inputResponses)
+        {
+            InputResponseReceived?.Invoke(new InputResponseReceivedEventArgs
+            {
+                TaskId = taskId,
+                RequestId = kvp.Key,
+                Response = kvp.Value,
+            });
+        }
 
         return Task.CompletedTask;
     }
