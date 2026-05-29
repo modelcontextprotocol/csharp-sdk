@@ -34,10 +34,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly Uri? _clientMetadataDocumentUri;
 
-    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
     private readonly Uri? _dcrClientUri;
     private readonly string? _dcrInitialAccessToken;
+    private readonly string? _dcrApplicationType;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
     private readonly HttpClient _httpClient;
@@ -91,6 +92,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+        _dcrApplicationType = ResolveApplicationType(options, _redirectUri);
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
@@ -656,6 +658,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
+            ApplicationType = _dcrApplicationType,
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -709,6 +712,34 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             await _dcrResponseDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static string? ResolveApplicationType(ClientOAuthOptions options, Uri redirectUri)
+    {
+        var explicitType = options.DynamicClientRegistration?.ApplicationType;
+        var inferredType = InferApplicationType(redirectUri);
+
+        if (explicitType is not null &&
+            inferredType is not null &&
+            !string.Equals(explicitType, inferredType, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"DynamicClientRegistrationOptions.ApplicationType \"{explicitType}\" conflicts with the type inferred from the redirect URI (\"{inferredType}\").",
+                nameof(options));
+        }
+
+        var resolved = explicitType ?? inferredType;
+        options.DynamicClientRegistration?.ApplicationType = resolved;
+        return resolved;
+    }
+
+    private static string? InferApplicationType(Uri redirectUri)
+    {
+        if (redirectUri.Scheme is "http" or "https")
+        {
+            return redirectUri.IsLoopback ? "native" : "web";
+        }
+        return "native";
     }
 
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
