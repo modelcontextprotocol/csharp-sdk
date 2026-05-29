@@ -4,12 +4,12 @@ using ModelContextProtocol.Authentication;
 
 namespace ModelContextProtocol.Tests;
 
-public sealed class CrossApplicationAccessTests : IDisposable
+public sealed class IdentityAssertionGrantTests : IDisposable
 {
     private readonly MockHttpMessageHandler _mockHandler;
     private readonly HttpClient _httpClient;
 
-    public CrossApplicationAccessTests()
+    public IdentityAssertionGrantTests()
     {
         _mockHandler = new MockHttpMessageHandler();
         _httpClient = new HttpClient(_mockHandler);
@@ -21,10 +21,10 @@ public sealed class CrossApplicationAccessTests : IDisposable
         _mockHandler.Dispose();
     }
 
-    #region CrossApplicationAccessProvider Tests
+    #region IdentityAssertionGrantProvider Tests
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_FullFlow_ReturnsAccessToken()
+    public async Task IdentityAssertionGrantProvider_FullFlow_ReturnsAccessToken()
     {
         _mockHandler.Handler = request =>
         {
@@ -63,8 +63,8 @@ public sealed class CrossApplicationAccessTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         };
 
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "mcp-client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -89,7 +89,7 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_CachesTokens()
+    public async Task IdentityAssertionGrantProvider_CachesTokens()
     {
         var mcpTokenCallCount = 0;
         _mockHandler.Handler = request =>
@@ -124,8 +124,8 @@ public sealed class CrossApplicationAccessTests : IDisposable
         };
 
         var idTokenCallCount = 0;
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -154,7 +154,7 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_InvalidateCache_ForcesRefresh()
+    public async Task IdentityAssertionGrantProvider_InvalidateCache_ForcesRefresh()
     {
         var idTokenCallCount = 0;
         _mockHandler.Handler = request =>
@@ -187,8 +187,8 @@ public sealed class CrossApplicationAccessTests : IDisposable
             });
         };
 
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -217,7 +217,7 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_IdTokenCallbackReturnsEmpty_ThrowsException()
+    public async Task IdentityAssertionGrantProvider_IdTokenCallbackReturnsEmpty_ThrowsException()
     {
         _mockHandler.Handler = request =>
         {
@@ -234,8 +234,8 @@ public sealed class CrossApplicationAccessTests : IDisposable
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         };
 
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -244,7 +244,7 @@ public sealed class CrossApplicationAccessTests : IDisposable
             },
             _httpClient);
 
-        await Assert.ThrowsAsync<CrossApplicationAccessException>(
+        await Assert.ThrowsAsync<IdentityAssertionGrantException>(
             () => provider.GetAccessTokenAsync(
                 new Uri("https://resource.example.com"),
                 new Uri("https://auth.example.com"),
@@ -252,16 +252,16 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public void CrossApplicationAccessProvider_NullOptions_ThrowsArgumentNullException()
+    public void IdentityAssertionGrantProvider_NullOptions_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new CrossApplicationAccessProvider(null!, _httpClient));
+        Assert.Throws<ArgumentNullException>(() => new IdentityAssertionGrantProvider(null!, _httpClient));
     }
 
     [Fact]
-    public void CrossApplicationAccessProvider_NullHttpClient_ThrowsArgumentNullException()
+    public void IdentityAssertionGrantProvider_NullHttpClient_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        Assert.Throws<ArgumentNullException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -272,10 +272,10 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public void CrossApplicationAccessProvider_MissingClientId_ThrowsArgumentException()
+    public void IdentityAssertionGrantProvider_MissingClientId_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        Assert.Throws<ArgumentException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -286,10 +286,10 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public void CrossApplicationAccessProvider_MissingIdTokenCallback_ThrowsArgumentNullException()
+    public void IdentityAssertionGrantProvider_MissingIdTokenCallback_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        Assert.Throws<ArgumentNullException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpTokenEndpoint = "https://idp.example.com/token",
@@ -300,10 +300,10 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public void CrossApplicationAccessProvider_MissingIdpConfig_ThrowsArgumentException()
+    public void IdentityAssertionGrantProvider_MissingIdpConfig_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        Assert.Throws<ArgumentException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "client-id",
                 IdpClientId = "idp-client-id",
@@ -315,12 +315,12 @@ public sealed class CrossApplicationAccessTests : IDisposable
 
     #endregion
 
-    #region CrossApplicationAccessException Tests
+    #region IdentityAssertionGrantException Tests
 
     [Fact]
-    public void CrossApplicationAccessException_WithErrorCodeAndDescription_FormatsMessage()
+    public void IdentityAssertionGrantException_WithErrorCodeAndDescription_FormatsMessage()
     {
-        var ex = new CrossApplicationAccessException("Base message", "invalid_grant", "Token expired");
+        var ex = new IdentityAssertionGrantException("Base message", "invalid_grant", "Token expired");
 
         Assert.Contains("Base message", ex.Message);
         Assert.Contains("invalid_grant", ex.Message);
@@ -330,17 +330,17 @@ public sealed class CrossApplicationAccessTests : IDisposable
     }
 
     [Fact]
-    public void CrossApplicationAccessException_WithErrorUri_StoresIt()
+    public void IdentityAssertionGrantException_WithErrorUri_StoresIt()
     {
-        var ex = new CrossApplicationAccessException("msg", "error", "desc", "https://docs.example.com/error");
+        var ex = new IdentityAssertionGrantException("msg", "error", "desc", "https://docs.example.com/error");
 
         Assert.Equal("https://docs.example.com/error", ex.ErrorUri);
     }
 
     [Fact]
-    public void CrossApplicationAccessException_WithoutErrorDetails_PlainMessage()
+    public void IdentityAssertionGrantException_WithoutErrorDetails_PlainMessage()
     {
-        var ex = new CrossApplicationAccessException("Simple error");
+        var ex = new IdentityAssertionGrantException("Simple error");
 
         Assert.Equal("Simple error", ex.Message);
         Assert.Null(ex.ErrorCode);

@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Authentication;
 /// Implements the Enterprise Managed Authorization flow as specified at
 /// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
 /// </remarks>
-internal static class CrossApplicationAccess
+internal static class IdentityAssertionGrant
 {
     #region Constants
 
@@ -103,7 +103,7 @@ internal static class CrossApplicationAccess
                 // Could not parse error response
             }
 
-            throw new CrossApplicationAccessException(
+            throw new IdentityAssertionGrantException(
                 $"Token exchange failed with status {(int)httpResponse.StatusCode}.",
                 errorResponse?.Error,
                 errorResponse?.ErrorDescription,
@@ -114,25 +114,25 @@ internal static class CrossApplicationAccess
 
         if (response is null)
         {
-            var ex = new CrossApplicationAccessException("Failed to parse token exchange response.");
+            var ex = new IdentityAssertionGrantException("Failed to parse token exchange response.");
             ex.Data["ResponseBody"] = responseBody;
             throw ex;
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
         {
-            throw new CrossApplicationAccessException("Token exchange response missing required field: access_token");
+            throw new IdentityAssertionGrantException("Token exchange response missing required field: access_token");
         }
 
         if (!string.Equals(response.IssuedTokenType, TokenTypeIdJag, StringComparison.Ordinal))
         {
-            throw new CrossApplicationAccessException(
+            throw new IdentityAssertionGrantException(
                 $"Token exchange response issued_token_type must be '{TokenTypeIdJag}', got '{response.IssuedTokenType}'.");
         }
 
         if (!string.Equals(response.TokenType, TokenTypeNotApplicable, StringComparison.Ordinal))
         {
-            throw new CrossApplicationAccessException(
+            throw new IdentityAssertionGrantException(
                 $"Token exchange response token_type must be '{TokenTypeNotApplicable}' per RFC 8693 §2.2.1, got '{response.TokenType}'.");
         }
 
@@ -197,7 +197,7 @@ internal static class CrossApplicationAccess
                 // Could not parse error response
             }
 
-            throw new CrossApplicationAccessException(
+            throw new IdentityAssertionGrantException(
                 $"JWT bearer grant failed with status {(int)httpResponse.StatusCode}.",
                 errorResponse?.Error,
                 errorResponse?.ErrorDescription,
@@ -208,24 +208,24 @@ internal static class CrossApplicationAccess
 
         if (response is null)
         {
-            var ex = new CrossApplicationAccessException("Failed to parse JWT bearer grant response.");
+            var ex = new IdentityAssertionGrantException("Failed to parse JWT bearer grant response.");
             ex.Data["ResponseBody"] = responseBody;
             throw ex;
         }
 
         if (string.IsNullOrEmpty(response.AccessToken))
         {
-            throw new CrossApplicationAccessException("JWT bearer grant response missing required field: access_token");
+            throw new IdentityAssertionGrantException("JWT bearer grant response missing required field: access_token");
         }
 
         if (string.IsNullOrEmpty(response.TokenType))
         {
-            throw new CrossApplicationAccessException("JWT bearer grant response missing required field: token_type");
+            throw new IdentityAssertionGrantException("JWT bearer grant response missing required field: token_type");
         }
 
         if (!string.Equals(response.TokenType, "bearer", StringComparison.OrdinalIgnoreCase))
         {
-            throw new CrossApplicationAccessException(
+            throw new IdentityAssertionGrantException(
                 $"JWT bearer grant response token_type must be 'bearer' per RFC 7523, got '{response.TokenType}'.");
         }
 
@@ -289,7 +289,7 @@ internal static class CrossApplicationAccess
             }
         }
 
-        throw new CrossApplicationAccessException($"Failed to discover authorization server metadata for: {issuerUrl}");
+        throw new IdentityAssertionGrantException($"Failed to discover authorization server metadata for: {issuerUrl}");
     }
 
     #endregion

@@ -1,10 +1,10 @@
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Context provided to the <see cref="CrossApplicationAccessIdTokenCallback"/> for a Cross-Application Access
+/// Context provided to the <see cref="IdentityAssertionGrantIdTokenCallback"/> for a Cross-Application Access
 /// authorization flow. Contains the URLs discovered during the OAuth flow needed for the token exchange step.
 /// </summary>
-public sealed class CrossApplicationAccessContext
+public sealed class IdentityAssertionGrantContext
 {
     /// <summary>
     /// Gets the MCP resource server URL (i.e., the <c>resource</c> parameter for token exchange).

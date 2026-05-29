@@ -1,9 +1,9 @@
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Configuration options for the <see cref="CrossApplicationAccessProvider"/>.
+/// Configuration options for the <see cref="IdentityAssertionGrantProvider"/>.
 /// </summary>
-public sealed class CrossApplicationAccessProviderOptions
+public sealed class IdentityAssertionGrantProviderOptions
 {
     /// <summary>
     /// Gets or sets the MCP client ID used for the JWT Bearer grant (RFC 7523) at the MCP authorization server.
@@ -55,7 +55,7 @@ public sealed class CrossApplicationAccessProviderOptions
     /// <remarks>
     /// <para>
     /// This callback is invoked after the MCP resource and authorization server URLs have been discovered.
-    /// It receives a <see cref="CrossApplicationAccessContext"/> with these URLs and should return the
+    /// It receives a <see cref="IdentityAssertionGrantContext"/> with these URLs and should return the
     /// OIDC ID token string obtained from the enterprise Identity Provider (e.g., from an SSO login session).
     /// </para>
     /// <para>
@@ -64,5 +64,5 @@ public sealed class CrossApplicationAccessProviderOptions
     /// the MCP authorization server via RFC 7523.
     /// </para>
     /// </remarks>
-    public required CrossApplicationAccessIdTokenCallback IdTokenCallback { get; set; }
+    public required IdentityAssertionGrantIdTokenCallback IdTokenCallback { get; set; }
 }

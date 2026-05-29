@@ -15,7 +15,7 @@ internal sealed class JagTokenExchangeResponse
 
     /// <summary>
     /// Gets or sets the type of the security token issued.
-    /// This MUST be <see cref="CrossApplicationAccess.TokenTypeIdJag"/>.
+    /// This MUST be <see cref="IdentityAssertionGrant.TokenTypeIdJag"/>.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("issued_token_type")]
     public string IssuedTokenType { get; set; } = null!;

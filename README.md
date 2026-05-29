@@ -34,7 +34,7 @@ For more information about MCP:
 ## Cross-Application Access (Identity Assertion Authorization Grant flow)
 
 The SDK provides support for the [Identity Assertion Authorization Grant flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx)
-via `CrossApplicationAccessProvider`. See the [Cross-Application Access](docs/concepts/transports/transports.md#cross-application-access) section in the transport docs for full usage details.
+via `IdentityAssertionGrantProvider`. See the [Cross-Application Access](docs/concepts/transports/transports.md#cross-application-access) section in the transport docs for full usage details.
 
 ## License
 

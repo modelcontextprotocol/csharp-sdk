@@ -14,8 +14,8 @@ namespace ModelContextProtocol.Authentication;
 /// </para>
 /// <list type="number">
 /// <item><description>
-/// The <see cref="CrossApplicationAccessProviderOptions.IdTokenCallback"/> is called to obtain an OIDC ID token.
-/// It receives a <see cref="CrossApplicationAccessContext"/> with the discovered resource and authorization
+/// The <see cref="IdentityAssertionGrantProviderOptions.IdTokenCallback"/> is called to obtain an OIDC ID token.
+/// It receives a <see cref="IdentityAssertionGrantContext"/> with the discovered resource and authorization
 /// server URLs.
 /// </description></item>
 /// <item><description>
@@ -31,8 +31,8 @@ namespace ModelContextProtocol.Authentication;
 /// </remarks>
 /// <example>
 /// <code>
-/// var provider = new CrossApplicationAccessProvider(
-///     new CrossApplicationAccessProviderOptions
+/// var provider = new IdentityAssertionGrantProvider(
+///     new IdentityAssertionGrantProviderOptions
 ///     {
 ///         ClientId = "mcp-client-id",
 ///         IdpTokenEndpoint = "https://company.okta.com/oauth2/token",
@@ -48,16 +48,16 @@ namespace ModelContextProtocol.Authentication;
 ///     cancellationToken: ct);
 /// </code>
 /// </example>
-public sealed class CrossApplicationAccessProvider
+public sealed class IdentityAssertionGrantProvider
 {
-    private readonly CrossApplicationAccessProviderOptions _options;
+    private readonly IdentityAssertionGrantProviderOptions _options;
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
 
     private TokenContainer? _cachedTokens;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CrossApplicationAccessProvider"/> class.
+    /// Initializes a new instance of the <see cref="IdentityAssertionGrantProvider"/> class.
     /// </summary>
     /// <param name="options">Configuration for the Cross-Application Access provider.</param>
     /// <param name="httpClient">
@@ -66,8 +66,8 @@ public sealed class CrossApplicationAccessProvider
     /// <param name="loggerFactory">Optional logger factory.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> or <paramref name="httpClient"/> is null.</exception>
     /// <exception cref="ArgumentException">Required option values are missing.</exception>
-    public CrossApplicationAccessProvider(
-        CrossApplicationAccessProviderOptions options,
+    public IdentityAssertionGrantProvider(
+        IdentityAssertionGrantProviderOptions options,
         HttpClient httpClient,
         ILoggerFactory? loggerFactory = null)
     {
@@ -89,7 +89,7 @@ public sealed class CrossApplicationAccessProvider
 
         _options = options;
         _httpClient = httpClient;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<CrossApplicationAccessProvider>() ?? NullLogger.Instance;
+        _logger = (ILogger?)loggerFactory?.CreateLogger<IdentityAssertionGrantProvider>() ?? NullLogger.Instance;
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public sealed class CrossApplicationAccessProvider
     /// <param name="authorizationServerUrl">The MCP authorization server URL.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A <see cref="TokenContainer"/> containing the access token.</returns>
-    /// <exception cref="CrossApplicationAccessException">Thrown when any step of the flow fails.</exception>
+    /// <exception cref="IdentityAssertionGrantException">Thrown when any step of the flow fails.</exception>
     public async Task<TokenContainer> GetAccessTokenAsync(
         Uri resourceUrl,
         Uri authorizationServerUrl,
@@ -114,15 +114,15 @@ public sealed class CrossApplicationAccessProvider
         _logger.LogDebug("Starting Cross-Application Access flow for resource {ResourceUrl}", resourceUrl);
 
         // Step 1: Discover MCP authorization server metadata to find the token endpoint
-        var mcpAuthMetadata = await CrossApplicationAccess.DiscoverAuthServerMetadataAsync(
+        var mcpAuthMetadata = await IdentityAssertionGrant.DiscoverAuthServerMetadataAsync(
             authorizationServerUrl, _httpClient, cancellationToken).ConfigureAwait(false);
 
         var mcpTokenEndpoint = mcpAuthMetadata.TokenEndpoint?.ToString()
-            ?? throw new CrossApplicationAccessException(
+            ?? throw new IdentityAssertionGrantException(
                 $"MCP authorization server metadata at {authorizationServerUrl} missing token_endpoint.");
 
         // Step 2: Call the ID token callback to get the caller's OIDC ID token
-        var context = new CrossApplicationAccessContext
+        var context = new IdentityAssertionGrantContext
         {
             ResourceUrl = resourceUrl,
             AuthorizationServerUrl = authorizationServerUrl,
@@ -133,14 +133,14 @@ public sealed class CrossApplicationAccessProvider
 
         if (string.IsNullOrEmpty(idToken))
         {
-            throw new CrossApplicationAccessException("ID token callback returned a null or empty token.");
+            throw new IdentityAssertionGrantException("ID token callback returned a null or empty token.");
         }
 
         // Step 3: RFC 8693 token exchange — ID token → JWT Authorization Grant (JAG) at the enterprise IdP
         _logger.LogDebug("Performing RFC 8693 token exchange at IdP");
         var idpTokenEndpoint = await ResolveIdpTokenEndpointAsync(cancellationToken).ConfigureAwait(false);
 
-        var jag = await CrossApplicationAccess.RequestJwtAuthorizationGrantAsync(
+        var jag = await IdentityAssertionGrant.RequestJwtAuthorizationGrantAsync(
             new RequestJwtAuthGrantOptions
             {
                 TokenEndpoint = idpTokenEndpoint,
@@ -154,7 +154,7 @@ public sealed class CrossApplicationAccessProvider
 
         // Step 4: RFC 7523 JWT bearer grant — JAG → access token at the MCP authorization server
         _logger.LogDebug("Exchanging JAG for access token at {McpTokenEndpoint}", mcpTokenEndpoint);
-        var tokens = await CrossApplicationAccess.ExchangeJwtBearerGrantAsync(
+        var tokens = await IdentityAssertionGrant.ExchangeJwtBearerGrantAsync(
             new ExchangeJwtBearerGrantOptions
             {
                 TokenEndpoint = mcpTokenEndpoint,
@@ -194,13 +194,14 @@ public sealed class CrossApplicationAccessProvider
         }
 
         // Discover from IdpUrl
-        var idpMetadata = await CrossApplicationAccess.DiscoverAuthServerMetadataAsync(
+        var idpMetadata = await IdentityAssertionGrant.DiscoverAuthServerMetadataAsync(
             new Uri(_options.IdpUrl!), _httpClient, cancellationToken).ConfigureAwait(false);
 
-        _resolvedIdpTokenEndpoint = idpMetadata.TokenEndpoint?.ToString()
-            ?? throw new CrossApplicationAccessException(
+        var resolved = idpMetadata.TokenEndpoint?.ToString()
+            ?? throw new IdentityAssertionGrantException(
                 $"IdP metadata discovery for {_options.IdpUrl} did not return a token_endpoint.");
 
-        return _resolvedIdpTokenEndpoint;
+        _resolvedIdpTokenEndpoint = resolved;
+        return resolved;
     }
 }

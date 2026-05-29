@@ -11,7 +11,7 @@ namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 /// the MCP Authorization Server (AS).
 ///
 /// Flow exercised:
-///   1. <see cref="CrossApplicationAccessProvider.GetAccessTokenAsync"/> discovers the MCP AS
+///   1. <see cref="IdentityAssertionGrantProvider.GetAccessTokenAsync"/> discovers the MCP AS
 ///      metadata and calls the ID token callback.
 ///   2. The provider performs RFC 8693 token exchange at <c>/idp/token</c> on the test OAuth server
 ///      (ID token → JAG).
@@ -20,15 +20,15 @@ namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 ///   4. The access token is passed to the MCP client transport and used to authenticate
 ///      against the protected MCP server.
 /// </summary>
-public class CrossApplicationAccessIntegrationTests : OAuthTestBase
+public class IdentityAssertionGrantIntegrationTests : OAuthTestBase
 {
-    public CrossApplicationAccessIntegrationTests(ITestOutputHelper outputHelper)
+    public IdentityAssertionGrantIntegrationTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
     }
 
     [Fact]
-    public async Task CanAuthenticate_WithCrossApplicationAccessProvider()
+    public async Task CanAuthenticate_WithIdentityAssertionGrantProvider()
     {
         // Enable Enterprise Managed Authorization endpoints on the test OAuth server.
         TestOAuthServer.EnterpriseSupportEnabled = true;
@@ -41,8 +41,8 @@ public class CrossApplicationAccessIntegrationTests : OAuthTestBase
         // Create the provider with IdP config folded into options.
         // The ID token callback just returns the SSO ID token; the provider performs
         // RFC 8693 (ID token → JAG) and RFC 7523 (JAG → access token) internally.
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",
@@ -86,7 +86,7 @@ public class CrossApplicationAccessIntegrationTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_ReturnsCachedToken_OnSecondCall()
+    public async Task IdentityAssertionGrantProvider_ReturnsCachedToken_OnSecondCall()
     {
         TestOAuthServer.EnterpriseSupportEnabled = true;
 
@@ -94,8 +94,8 @@ public class CrossApplicationAccessIntegrationTests : OAuthTestBase
 
         var idTokenCallCount = 0;
 
-        var provider = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",
@@ -124,7 +124,7 @@ public class CrossApplicationAccessIntegrationTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task CrossApplicationAccessProvider_FetchesFreshToken_AfterInvalidateCache()
+    public async Task IdentityAssertionGrantProvider_FetchesFreshToken_AfterInvalidateCache()
     {
         TestOAuthServer.EnterpriseSupportEnabled = true;
 
@@ -132,8 +132,8 @@ public class CrossApplicationAccessIntegrationTests : OAuthTestBase
 
         var idTokenCallCount2 = 0;
 
-        var provider2 = new CrossApplicationAccessProvider(
-            new CrossApplicationAccessProviderOptions
+        var provider2 = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "enterprise-mcp-client",
                 ClientSecret = "enterprise-mcp-secret",

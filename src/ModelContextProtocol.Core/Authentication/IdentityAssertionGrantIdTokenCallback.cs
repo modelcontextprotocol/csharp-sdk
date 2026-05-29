@@ -12,6 +12,6 @@ namespace ModelContextProtocol.Authentication;
 /// obtained from the enterprise Identity Provider (e.g., via SSO login). The provider will then use this
 /// ID token to perform the RFC 8693 token exchange to obtain a JWT Authorization Grant.
 /// </returns>
-public delegate Task<string> CrossApplicationAccessIdTokenCallback(
-    CrossApplicationAccessContext context,
+public delegate Task<string> IdentityAssertionGrantIdTokenCallback(
+    IdentityAssertionGrantContext context,
     CancellationToken cancellationToken);

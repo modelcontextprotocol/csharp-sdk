@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Authentication;
 /// Represents an error that occurred during a Cross-Application Access authorization operation
 /// (token exchange per RFC 8693, and JWT bearer grant per RFC 7523).
 /// </summary>
-public sealed class CrossApplicationAccessException : Exception
+public sealed class IdentityAssertionGrantException : Exception
 {
     /// <summary>
     /// Gets the OAuth error code, if available (e.g., "invalid_request", "invalid_grant").
@@ -22,13 +22,13 @@ public sealed class CrossApplicationAccessException : Exception
     public string? ErrorUri { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="CrossApplicationAccessException"/> class.
+    /// Initializes a new instance of the <see cref="IdentityAssertionGrantException"/> class.
     /// </summary>
     /// <param name="message">The error message.</param>
     /// <param name="errorCode">The OAuth error code.</param>
     /// <param name="errorDescription">The human-readable error description.</param>
     /// <param name="errorUri">The error URI.</param>
-    public CrossApplicationAccessException(string message, string? errorCode = null, string? errorDescription = null, string? errorUri = null)
+    public IdentityAssertionGrantException(string message, string? errorCode = null, string? errorDescription = null, string? errorUri = null)
         : base(FormatMessage(message, errorCode, errorDescription))
     {
         ErrorCode = errorCode;
