@@ -189,7 +189,7 @@ public sealed class IdentityAssertionGrantProvider
 
         if (!string.IsNullOrEmpty(_options.IdpTokenEndpoint))
         {
-            _resolvedIdpTokenEndpoint = _options.IdpTokenEndpoint;
+            _resolvedIdpTokenEndpoint = _options.IdpTokenEndpoint!;
             return _resolvedIdpTokenEndpoint;
         }
 
