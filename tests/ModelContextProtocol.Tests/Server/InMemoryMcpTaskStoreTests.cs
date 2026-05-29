@@ -285,4 +285,201 @@ public class InMemoryMcpTaskStoreTests
         Assert.NotNull(task);
         Assert.Equal(McpTaskStatus.Working, task.Status);
     }
+
+    [Fact]
+    public async Task ResolveInputRequestsAsync_AlreadyResolvedKey_IsNoOp()
+    {
+        // SEP-2663: "Each entry key SHOULD be unique across the lifetime of a given task" and
+        // servers should tolerate clients re-sending an inputResponse for an already-resolved key.
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["a"] = JsonSerializer.SerializeToElement("ask-a", McpJsonUtilities.DefaultOptions),
+            ["b"] = JsonSerializer.SerializeToElement("ask-b", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        // First resolve "a" — task should still be InputRequired because "b" remains.
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["a"] = JsonSerializer.SerializeToElement("answer-a", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        var afterFirst = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(afterFirst);
+        Assert.Equal(McpTaskStatus.InputRequired, afterFirst.Status);
+        Assert.NotNull(afterFirst.InputRequests);
+        Assert.Single(afterFirst.InputRequests);
+        Assert.Contains("b", afterFirst.InputRequests.Keys);
+
+        // Re-send "a" — should be a no-op (no exception, no state change).
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["a"] = JsonSerializer.SerializeToElement("answer-a-again", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        var afterDup = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(afterDup);
+        Assert.Equal(McpTaskStatus.InputRequired, afterDup.Status);
+        Assert.NotNull(afterDup.InputRequests);
+        Assert.Single(afterDup.InputRequests);
+        Assert.Contains("b", afterDup.InputRequests.Keys);
+
+        // Resolve the remaining "b" — task should transition back to Working with an empty inputRequests.
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["b"] = JsonSerializer.SerializeToElement("answer-b", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        var final = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(final);
+        Assert.Equal(McpTaskStatus.Working, final.Status);
+        Assert.True(final.InputRequests is null || final.InputRequests.Count == 0);
+    }
+
+    [Fact]
+    public async Task ConcurrentResolveInputRequests_OnDisjointKeys_AllResolveCorrectly()
+    {
+        // Verifies the optimistic-concurrency loop in InMemoryMcpTaskStore handles parallel
+        // tasks/update calls that each resolve a distinct subset of pending input requests.
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        var seed = Enumerable.Range(0, 20).ToDictionary(
+            i => $"req{i}",
+            i => JsonSerializer.SerializeToElement($"ask{i}", McpJsonUtilities.DefaultOptions));
+        await store.SetInputRequestsAsync(created.TaskId, seed, CT);
+
+        var resolveTasks = Enumerable.Range(0, 20).Select(i =>
+            store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+            {
+                [$"req{i}"] = JsonSerializer.SerializeToElement($"answer{i}", McpJsonUtilities.DefaultOptions),
+            }, CT));
+
+        await Task.WhenAll(resolveTasks);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Working, task.Status);
+        Assert.True(task.InputRequests is null || task.InputRequests.Count == 0);
+    }
+
+    [Fact]
+    public async Task SetCompletedAsync_DoesNotOverwriteCancelledTask()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        var cancelled = await store.SetCancelledAsync(created.TaskId, CT);
+        Assert.True(cancelled);
+
+        // Background worker finishing after cancellation must not flip the task back to Completed.
+        await store.SetCompletedAsync(
+            created.TaskId,
+            JsonSerializer.SerializeToElement("late-result", McpJsonUtilities.DefaultOptions),
+            CT);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Cancelled, task.Status);
+        Assert.Null(task.Result);
+    }
+
+    [Fact]
+    public async Task SetFailedAsync_DoesNotOverwriteCancelledTask()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        await store.SetCancelledAsync(created.TaskId, CT);
+
+        await store.SetFailedAsync(
+            created.TaskId,
+            JsonSerializer.SerializeToElement(new { message = "boom" }, McpJsonUtilities.DefaultOptions),
+            CT);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Cancelled, task.Status);
+        Assert.Null(task.Error);
+    }
+
+    [Fact]
+    public async Task SetCompletedAsync_DoesNotOverwriteCompletedTask()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        var first = JsonSerializer.SerializeToElement("first", McpJsonUtilities.DefaultOptions);
+        await store.SetCompletedAsync(created.TaskId, first, CT);
+
+        // A second completion attempt must not replace the original result.
+        var second = JsonSerializer.SerializeToElement("second", McpJsonUtilities.DefaultOptions);
+        await store.SetCompletedAsync(created.TaskId, second, CT);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Completed, task.Status);
+        Assert.Equal("first", task.Result!.Value.GetString());
+    }
+
+    [Fact]
+    public async Task ResolveInputRequestsAsync_OnTerminalTask_DoesNotResurrect()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        await store.SetCompletedAsync(
+            created.TaskId,
+            JsonSerializer.SerializeToElement("done", McpJsonUtilities.DefaultOptions),
+            CT);
+
+        // A client tasks/update against a Completed task must not flip it back to Working.
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["req1"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Completed, task.Status);
+    }
+
+    [Fact]
+    public async Task ResolveInputRequestsAsync_OnTerminalTask_DoesNotFireEvent()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        await store.SetCancelledAsync(created.TaskId, CT);
+
+        int eventCount = 0;
+        store.InputResponseReceived += _ => Interlocked.Increment(ref eventCount);
+
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["req1"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        Assert.Equal(0, eventCount);
+    }
+
+    [Fact]
+    public async Task SetInputRequestsAsync_OnTerminalTask_NoOps()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        await store.SetCancelledAsync(created.TaskId, CT);
+
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        {
+            ["req1"] = JsonSerializer.SerializeToElement("payload", McpJsonUtilities.DefaultOptions),
+        }, CT);
+
+        var task = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(task);
+        Assert.Equal(McpTaskStatus.Cancelled, task.Status);
+        Assert.True(task.InputRequests is null || task.InputRequests.Count == 0);
+    }
 }

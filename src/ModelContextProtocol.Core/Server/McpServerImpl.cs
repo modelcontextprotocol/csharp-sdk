@@ -423,13 +423,14 @@ internal sealed partial class McpServerImpl : McpServer
 
             cancelTaskHandler ??= async (request, cancellationToken) =>
             {
-                var cancelled = await taskStore.SetCancelledAsync(request.Params!.TaskId, cancellationToken).ConfigureAwait(false);
-                if (!cancelled)
-                {
-                    throw new McpProtocolException($"Task '{request.Params.TaskId}' could not be cancelled.", McpErrorCode.InvalidParams);
-                }
+                // Idempotent ack per SEP-2663: always return CancelTaskResult regardless of whether
+                // the task was known/cancellable. The store's SetCancelledAsync no-ops for unknown
+                // or already-terminal tasks; we still surface a success response to the client.
+                await taskStore.SetCancelledAsync(request.Params!.TaskId, cancellationToken).ConfigureAwait(false);
 
-                // Signal the task's CancellationTokenSource if one exists.
+                // Signal the task's CancellationTokenSource if one exists. Whichever side
+                // (this handler or the background runner's finally block) wins TryRemove owns disposal,
+                // which prevents the runner from observing ObjectDisposedException through cts.Token.
                 if (_taskCancellationSources.TryRemove(request.Params.TaskId, out var cts))
                 {
                     cts.Cancel();
@@ -862,13 +863,19 @@ internal sealed partial class McpServerImpl : McpServer
                     var cts = new CancellationTokenSource();
                     _taskCancellationSources[taskId] = cts;
 
+                    // Capture the token synchronously before Task.Run dispatches the work.
+                    // The cancel handler may race with the background runner: whichever side wins
+                    // the TryRemove call owns disposal. If we accessed cts.Token from inside the
+                    // lambda after the handler had already disposed cts, we'd hit ObjectDisposedException.
+                    var taskCancellationToken = cts.Token;
+
                     _ = Task.Run(async () =>
                     {
                         using (CreateMcpTaskScope(taskId, taskStore))
                         {
                             try
                             {
-                                var augmented = await innerTaskHandler(request, cts.Token).ConfigureAwait(false);
+                                var augmented = await innerTaskHandler(request, taskCancellationToken).ConfigureAwait(false);
                                 if (augmented.IsTask)
                                 {
                                     return;
@@ -877,7 +884,7 @@ internal sealed partial class McpServerImpl : McpServer
                                 var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.JsonContext.Default.CallToolResult);
                                 await taskStore.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
                             }
-                            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                            catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
                             {
                                 await taskStore.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
                             }
@@ -889,8 +896,12 @@ internal sealed partial class McpServerImpl : McpServer
                             }
                             finally
                             {
-                                _taskCancellationSources.TryRemove(taskId, out _);
-                                cts.Dispose();
+                                // Only the side that wins TryRemove disposes cts. This prevents a
+                                // double-dispose race with the default tasks/cancel handler.
+                                if (_taskCancellationSources.TryRemove(taskId, out var registeredCts))
+                                {
+                                    registeredCts.Dispose();
+                                }
                             }
                         }
                     }, CancellationToken.None);
@@ -982,6 +993,12 @@ internal sealed partial class McpServerImpl : McpServer
             TtlMs = info.TtlMs,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
+            // McpTaskInfo.InputRequests is IReadOnlyDictionary (covers immutable store
+            // implementations like InMemoryMcpTaskStore's ImmutableDictionary), while the wire
+            // DTO uses IDictionary like every other Protocol type. Most concrete stores back
+            // their dictionaries with a type that implements both interfaces (Dictionary,
+            // ImmutableDictionary, ConcurrentDictionary), so the cast usually succeeds and we
+            // only allocate a copy as a fallback.
             InputRequests = info.InputRequests is IDictionary<string, JsonElement> dict
                 ? dict
                 : info.InputRequests?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)

@@ -60,6 +60,10 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
 
         // If executing inside a background task, redirect sampling through the task store.
+        // Capability checks (ThrowIfSamplingUnsupported) are intentionally skipped here because the
+        // client opted into the tasks extension when submitting the originating request, and input
+        // requests are delivered through the tasks/get response channel rather than as direct
+        // server->client requests. See SendRequestViaTaskAsync remarks.
         if (McpTaskExecutionContext.Current.Value is { } taskContext)
         {
             return SendRequestViaTaskAsync(taskContext, RequestMethods.SamplingCreateMessage, requestParams,
@@ -246,6 +250,10 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
 
         // If executing inside a background task, redirect through the task store.
+        // Capability checks (ThrowIfRootsUnsupported) are intentionally skipped here because the
+        // client opted into the tasks extension when submitting the originating request, and input
+        // requests are delivered through the tasks/get response channel rather than as direct
+        // server->client requests. See SendRequestViaTaskAsync remarks.
         if (McpTaskExecutionContext.Current.Value is { } taskContext)
         {
             return SendRequestViaTaskAsync(taskContext, RequestMethods.RootsList, requestParams,
@@ -280,6 +288,10 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
 
         // If executing inside a background task, redirect elicitation through the task store.
+        // Capability checks (ThrowIfElicitationUnsupported) are intentionally skipped here because
+        // the client opted into the tasks extension when submitting the originating request, and
+        // input requests are delivered through the tasks/get response channel rather than as
+        // direct server->client requests. See SendRequestViaTaskAsync remarks.
         if (McpTaskExecutionContext.Current.Value is { } taskContext)
         {
             var taskResult = await SendRequestViaTaskAsync(taskContext, RequestMethods.ElicitationCreate, requestParams,
@@ -561,6 +573,14 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Sends a server-initiated request through the task store as an input request, then awaits the response.
     /// </summary>
+    /// <remarks>
+    /// When executing inside a task scope, capability negotiation checks (such as
+    /// <see cref="ThrowIfSamplingUnsupported"/>, <see cref="ThrowIfRootsUnsupported"/>, and
+    /// <see cref="ThrowIfElicitationUnsupported"/>) are intentionally skipped by the callers
+    /// of this helper. The task channel itself is the negotiated capability: the client opted
+    /// in to the tasks extension when it submitted the originating request, and is responsible
+    /// for handling or rejecting the input requests surfaced through <c>tasks/get</c>.
+    /// </remarks>
     private async ValueTask<TResponse> SendRequestViaTaskAsync<TRequest, TResponse>(
         McpTaskExecutionContext taskContext,
         string method,

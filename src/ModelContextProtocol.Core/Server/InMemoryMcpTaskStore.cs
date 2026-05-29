@@ -58,12 +58,14 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task SetCompletedAsync(string taskId, JsonElement result, CancellationToken cancellationToken = default)
     {
-        Update(taskId, entry => entry with
-        {
-            Status = McpTaskStatus.Completed,
-            Result = result,
-            LastUpdatedAt = DateTimeOffset.UtcNow,
-        });
+        Update(taskId, entry => IsTerminal(entry.Status)
+            ? entry
+            : entry with
+            {
+                Status = McpTaskStatus.Completed,
+                Result = result,
+                LastUpdatedAt = DateTimeOffset.UtcNow,
+            });
 
         return Task.CompletedTask;
     }
@@ -71,12 +73,14 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task SetFailedAsync(string taskId, JsonElement error, CancellationToken cancellationToken = default)
     {
-        Update(taskId, entry => entry with
-        {
-            Status = McpTaskStatus.Failed,
-            Error = error,
-            LastUpdatedAt = DateTimeOffset.UtcNow,
-        });
+        Update(taskId, entry => IsTerminal(entry.Status)
+            ? entry
+            : entry with
+            {
+                Status = McpTaskStatus.Failed,
+                Error = error,
+                LastUpdatedAt = DateTimeOffset.UtcNow,
+            });
 
         return Task.CompletedTask;
     }
@@ -84,21 +88,24 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task<bool> SetCancelledAsync(string taskId, CancellationToken cancellationToken = default)
     {
-        if (!_tasks.TryGetValue(taskId, out var entry))
+        if (!_tasks.TryGetValue(taskId, out var entry) || IsTerminal(entry.Status))
         {
             return Task.FromResult(false);
         }
 
-        if (entry.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
+        bool transitioned = false;
+        Update(taskId, e =>
         {
-            return Task.FromResult(false);
-        }
+            if (IsTerminal(e.Status))
+            {
+                return e;
+            }
 
-        Update(taskId, e => e.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled
-            ? e
-            : e with { Status = McpTaskStatus.Cancelled, LastUpdatedAt = DateTimeOffset.UtcNow });
+            transitioned = true;
+            return e with { Status = McpTaskStatus.Cancelled, LastUpdatedAt = DateTimeOffset.UtcNow };
+        });
 
-        return Task.FromResult(true);
+        return Task.FromResult(transitioned);
     }
 
     /// <inheritdoc/>
@@ -110,8 +117,15 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
         IDictionary<string, JsonElement> inputResponses,
         CancellationToken cancellationToken = default)
     {
+        bool wasTerminal = false;
         Update(taskId, entry =>
         {
+            if (IsTerminal(entry.Status))
+            {
+                wasTerminal = true;
+                return entry;
+            }
+
             var requests = entry.InputRequests as ImmutableDictionary<string, JsonElement>
                 ?? entry.InputRequests?.ToImmutableDictionary()
                 ?? ImmutableDictionary<string, JsonElement>.Empty;
@@ -130,6 +144,12 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
                 LastUpdatedAt = DateTimeOffset.UtcNow,
             };
         });
+
+        if (wasTerminal)
+        {
+            // Drop responses targeting a terminal task — there are no listeners that can act on them.
+            return Task.CompletedTask;
+        }
 
         foreach (var kvp in inputResponses)
         {
@@ -152,6 +172,11 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     {
         Update(taskId, entry =>
         {
+            if (IsTerminal(entry.Status))
+            {
+                return entry;
+            }
+
             var requests = entry.InputRequests as ImmutableDictionary<string, JsonElement>
                 ?? entry.InputRequests?.ToImmutableDictionary()
                 ?? ImmutableDictionary<string, JsonElement>.Empty;
@@ -171,6 +196,9 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
 
         return Task.CompletedTask;
     }
+
+    private static bool IsTerminal(McpTaskStatus status) =>
+        status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
 
     private void Update(string taskId, Func<McpTaskInfo, McpTaskInfo> transform)
     {

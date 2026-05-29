@@ -885,6 +885,13 @@ public abstract partial class McpClient : McpSession
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// This overload supports the tasks extension transparently. If the server responds with a
+    /// task handle rather than an immediate result, this method polls <c>tasks/get</c> until the
+    /// task completes, dispatching any <see cref="McpTaskStatus.InputRequired"/> entries through
+    /// the client's registered sampling and elicitation handlers along the way. Use
+    /// <see cref="CallToolRawAsync"/> to disable automatic polling.
+    /// </remarks>
     public ValueTask<CallToolResult> CallToolAsync(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
@@ -985,13 +992,27 @@ public abstract partial class McpClient : McpSession
         CreateTaskResult taskCreated,
         CancellationToken cancellationToken)
     {
+        // If the server claims InputRequired but never publishes new input requests after we have
+        // already responded to everything it asked for, treat that as a stuck task. The client
+        // can still cancel earlier via cancellationToken; this guard prevents an unbounded poll
+        // loop when the server is misbehaving.
+        const int MaxConsecutiveStuckPolls = 60;
+
         string taskId = taskCreated.TaskId;
         long pollIntervalMs = taskCreated.PollIntervalMs ?? 1000;
         HashSet<string>? resolvedRequestKeys = null;
+        bool isFirstPoll = true;
+        int consecutiveStuckPolls = 0;
 
         while (true)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(pollIntervalMs), cancellationToken).ConfigureAwait(false);
+            // Skip the delay before the first poll: many tasks complete almost immediately and we
+            // don't want to pay the poll interval as gratuitous latency.
+            if (!isFirstPoll)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(pollIntervalMs), cancellationToken).ConfigureAwait(false);
+            }
+            isFirstPoll = false;
 
             var taskResult = await GetTaskAsync(taskId, cancellationToken).ConfigureAwait(false);
 
@@ -1026,7 +1047,34 @@ public abstract partial class McpClient : McpSession
 
                     if (newRequests.Count > 0)
                     {
-                        var inputResponses = await ResolveInputRequestsAsync(newRequests, cancellationToken).ConfigureAwait(false);
+                        consecutiveStuckPolls = 0;
+
+                        IDictionary<string, JsonElement> inputResponses;
+                        try
+                        {
+                            inputResponses = await ResolveInputRequestsAsync(newRequests, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                            // The input handler failed (e.g., ElicitationHandler threw or no handler was registered).
+                            // Best-effort cancel of the server-side task so it doesn't stay stuck in InputRequired
+                            // until TTL expires.
+                            try
+                            {
+                                await CancelTaskAsync(taskId, CancellationToken.None).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                // Swallow secondary failures; we're already propagating the original exception.
+                            }
+
+                            throw;
+                        }
+
                         await UpdateTaskAsync(new UpdateTaskRequestParams
                         {
                             TaskId = taskId,
@@ -1039,12 +1087,33 @@ public abstract partial class McpClient : McpSession
                             resolvedRequestKeys.Add(key);
                         }
                     }
+                    else if (++consecutiveStuckPolls >= MaxConsecutiveStuckPolls)
+                    {
+                        // Best-effort cancel of the server-side task so it doesn't leak until TTL expires.
+                        try
+                        {
+                            await CancelTaskAsync(taskId, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // Swallow secondary failures; we're already propagating an exception.
+                        }
+
+                        throw new McpException(
+                            $"Task '{taskId}' has remained in '{McpTaskStatus.InputRequired}' for {MaxConsecutiveStuckPolls} consecutive polls " +
+                            "without publishing new input requests after all previously requested inputs were resolved.");
+                    }
 
                     break;
 
                 case WorkingTaskResult:
                     // Continue polling.
+                    consecutiveStuckPolls = 0;
                     break;
+
+                default:
+                    throw new McpException(
+                        $"Unexpected task result type '{taskResult.GetType().Name}' for task '{taskId}'.");
             }
         }
     }

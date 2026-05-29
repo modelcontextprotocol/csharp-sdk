@@ -98,7 +98,7 @@ public abstract class GetTaskResult : Result
             JsonObject? meta = null;
             JsonElement? result = null;
             JsonElement? error = null;
-            IDictionary<string, JsonElement>? inputRequests = null;
+            Dictionary<string, JsonElement>? inputRequests = null;
 
             while (reader.Read())
             {
@@ -151,7 +151,25 @@ public abstract class GetTaskResult : Result
                         error = JsonElement.ParseValue(ref reader);
                         break;
                     case "inputRequests":
-                        inputRequests = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<IDictionary<string, JsonElement>>());
+                        if (reader.TokenType != JsonTokenType.StartObject)
+                        {
+                            throw new JsonException("'inputRequests' must be a JSON object.");
+                        }
+                        inputRequests = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                        while (reader.Read())
+                        {
+                            if (reader.TokenType == JsonTokenType.EndObject)
+                            {
+                                break;
+                            }
+                            if (reader.TokenType != JsonTokenType.PropertyName)
+                            {
+                                throw new JsonException("Expected property name in 'inputRequests'.");
+                            }
+                            string requestKey = reader.GetString()!;
+                            reader.Read();
+                            inputRequests[requestKey] = JsonElement.ParseValue(ref reader);
+                        }
                         break;
                     default:
                         reader.Skip();
@@ -288,7 +306,13 @@ public abstract class GetTaskResult : Result
                     break;
                 case InputRequiredTaskResult inputRequired:
                     writer.WritePropertyName("inputRequests");
-                    JsonSerializer.Serialize(writer, inputRequired.InputRequests, options.GetTypeInfo<IDictionary<string, JsonElement>>());
+                    writer.WriteStartObject();
+                    foreach (var kvp in inputRequired.InputRequests)
+                    {
+                        writer.WritePropertyName(kvp.Key);
+                        kvp.Value.WriteTo(writer);
+                    }
+                    writer.WriteEndObject();
                     break;
             }
 

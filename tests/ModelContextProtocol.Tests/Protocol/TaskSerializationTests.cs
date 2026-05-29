@@ -271,6 +271,42 @@ public static class TaskSerializationTests
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
     }
 
+    [Theory]
+    [InlineData(typeof(WorkingTaskResult))]
+    [InlineData(typeof(CompletedTaskResult))]
+    [InlineData(typeof(FailedTaskResult))]
+    [InlineData(typeof(CancelledTaskResult))]
+    [InlineData(typeof(InputRequiredTaskResult))]
+    public static void GetTaskResult_WireResultType_IsComplete_WhenSet(Type subType)
+    {
+        // SEP-2663: standard task responses (tasks/get, tasks/update, tasks/cancel) use resultType="complete".
+        var created = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        GetTaskResult value = subType switch
+        {
+            Type t when t == typeof(WorkingTaskResult) => new WorkingTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
+            Type t when t == typeof(CompletedTaskResult) => new CompletedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, TaskResult = JsonSerializer.SerializeToElement(new { ok = true }), ResultType = "complete" },
+            Type t when t == typeof(FailedTaskResult) => new FailedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Error = JsonSerializer.SerializeToElement(new { code = -32603, message = "boom" }), ResultType = "complete" },
+            Type t when t == typeof(CancelledTaskResult) => new CancelledTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
+            Type t when t == typeof(InputRequiredTaskResult) => new InputRequiredTaskResult
+            {
+                TaskId = "t",
+                CreatedAt = created,
+                LastUpdatedAt = created,
+                ResultType = "complete",
+                InputRequests = new Dictionary<string, JsonElement>
+                {
+                    ["k"] = JsonSerializer.SerializeToElement("ask", McpJsonUtilities.DefaultOptions),
+                },
+            },
+            _ => throw new InvalidOperationException()
+        };
+
+        string json = JsonSerializer.Serialize(value, McpJsonUtilities.DefaultOptions);
+        var node = JsonNode.Parse(json)!;
+
+        Assert.Equal("complete", (string?)node["resultType"]);
+    }
+
     #endregion
 
     #region McpTaskStatus Enum
@@ -439,6 +475,32 @@ public static class TaskSerializationTests
 
         Assert.False(result.IsTask);
         Assert.True(task.IsTask);
+    }
+
+    #endregion
+
+    #region UpdateTaskResult / CancelTaskResult Wire Format
+
+    [Fact]
+    public static void UpdateTaskResult_WireResultType_IsComplete_WhenSet()
+    {
+        // SEP-2663: tasks/update responses use resultType="complete".
+        var result = new UpdateTaskResult { ResultType = "complete" };
+        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        var node = JsonNode.Parse(json)!;
+
+        Assert.Equal("complete", (string?)node["resultType"]);
+    }
+
+    [Fact]
+    public static void CancelTaskResult_WireResultType_IsComplete_WhenSet()
+    {
+        // SEP-2663: tasks/cancel responses use resultType="complete".
+        var result = new CancelTaskResult { ResultType = "complete" };
+        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        var node = JsonNode.Parse(json)!;
+
+        Assert.Equal("complete", (string?)node["resultType"]);
     }
 
     #endregion

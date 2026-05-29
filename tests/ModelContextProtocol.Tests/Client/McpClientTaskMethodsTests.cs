@@ -176,15 +176,16 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CancelTaskAsync_UnknownTaskId_Throws()
+    public async Task CancelTaskAsync_UnknownTaskId_AcknowledgesIdempotently()
     {
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.CancelTaskAsync("nonexistent-id", ct));
+        // SEP-2663 requires servers to always acknowledge tasks/cancel, even when the task is
+        // unknown (e.g., has been garbage collected). The default handler must not throw.
+        var result = await client.CancelTaskAsync("nonexistent-id", ct);
 
-        Assert.Contains("could not be cancelled", ex.Message);
+        Assert.NotNull(result);
     }
 
     [Fact]

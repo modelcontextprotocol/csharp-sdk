@@ -71,6 +71,19 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
             if (augmented.IsTask)
             {
+                // Guard against a misconfiguration where a handler opts into task-augmented
+                // execution but the server has no task lifecycle handlers wired up. Without
+                // tasks/get, a client that received a CreateTaskResult would have no way to
+                // poll the task to completion. Configure McpServerOptions.TaskStore or set
+                // the task handlers explicitly via McpServerOptions.Handlers.
+                if (!ContainsKey(RequestMethods.TasksGet))
+                {
+                    throw new InvalidOperationException(
+                        $"Handler for '{method}' returned a {nameof(CreateTaskResult)}, but the server has no " +
+                        $"'{RequestMethods.TasksGet}' handler registered. Configure McpServerOptions.TaskStore " +
+                        "or set the task handlers explicitly in McpServerOptions.Handlers before starting the server.");
+                }
+
                 return JsonSerializer.SerializeToNode(augmented.TaskCreated!, taskResultTypeInfo);
             }
 

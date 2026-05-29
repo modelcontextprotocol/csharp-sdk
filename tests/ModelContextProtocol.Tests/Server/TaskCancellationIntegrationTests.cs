@@ -311,7 +311,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CompletedTask_CannotBeCancelled()
+    public async Task CompletedTask_CancelIsAcknowledgedIdempotentlyAndStateUnchanged()
     {
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
@@ -331,19 +331,17 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         }
         while (taskResult is not CompletedTaskResult);
 
-        // Try to cancel a completed task — should fail
-        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.CancelTaskAsync(taskId, ct));
+        // SEP-2663: cancel on a terminal task must be acknowledged idempotently.
+        var cancelResult = await client.CancelTaskAsync(taskId, ct);
+        Assert.NotNull(cancelResult);
 
-        Assert.Contains("could not be cancelled", ex.Message);
-
-        // Verify status is still completed
+        // Verify status is still completed (not flipped to cancelled).
         var verifyResult = await client.GetTaskAsync(taskId, ct);
         Assert.IsType<CompletedTaskResult>(verifyResult);
     }
 
     [Fact]
-    public async Task CompletedWithErrorTask_CannotBeCancelled()
+    public async Task CompletedWithErrorTask_CancelIsAcknowledgedIdempotently()
     {
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
@@ -363,10 +361,12 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         }
         while (taskResult is not CompletedTaskResult);
 
-        // Try to cancel — should fail
-        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
-            await client.CancelTaskAsync(taskId, ct));
+        // SEP-2663: cancel on a terminal task must be acknowledged idempotently.
+        var cancelResult = await client.CancelTaskAsync(taskId, ct);
+        Assert.NotNull(cancelResult);
 
-        Assert.Contains("could not be cancelled", ex.Message);
+        // Verify status is still completed (not flipped to cancelled).
+        var verifyResult = await client.GetTaskAsync(taskId, ct);
+        Assert.IsType<CompletedTaskResult>(verifyResult);
     }
 }

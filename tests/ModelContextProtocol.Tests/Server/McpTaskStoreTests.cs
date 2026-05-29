@@ -278,6 +278,150 @@ public class McpTaskStoreTests : ClientServerTestBase
         Assert.IsType<InputRequiredTaskResult>(taskResult);
     }
 
+    [Fact]
+    public async Task CancelTaskAsync_AlreadyCompleted_AcknowledgesIdempotently_AndDoesNotResurrect()
+    {
+        // Exercises the SDK's default tasks/cancel handler against the real InMemoryMcpTaskStore.
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        // Run a fast tool to completion via the task store.
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "fast-tool" }, ct);
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 40 && taskResult is not CompletedTaskResult; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+        }
+        Assert.IsType<CompletedTaskResult>(taskResult);
+
+        // SEP-2663: tasks/cancel must be acknowledged idempotently even after the task has completed.
+        var cancelResult = await client.CancelTaskAsync(taskId, ct);
+        Assert.NotNull(cancelResult);
+
+        // The task must remain Completed and the result must not be lost.
+        var verifyResult = await client.GetTaskAsync(taskId, ct);
+        var stillCompleted = Assert.IsType<CompletedTaskResult>(verifyResult);
+        Assert.NotEqual(default(JsonElement), stillCompleted.TaskResult);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_ElicitHandlerThrows_PropagatesAndDoesNotLeaveClientStuck()
+    {
+        // Verifies bug fix: when the client-side input handler throws while resolving an
+        // InputRequired task, the exception propagates promptly (instead of the poll loop
+        // hanging) and the client issues a best-effort tasks/cancel to release the server.
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (request, ct) =>
+                    throw new InvalidOperationException("handler-failed"),
+            }
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await client.CallToolAsync(new CallToolRequestParams { Name = "elicit-tool" }, ct));
+        sw.Stop();
+
+        Assert.Equal("handler-failed", ex.Message);
+
+        // Must fail fast: without the fix this would keep polling until the test cancellation token fires.
+        // Allow generous slack for CI but well under the test timeout.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10),
+            $"CallToolAsync should propagate input handler exceptions promptly but took {sw.Elapsed}.");
+    }
+
+    [Fact]
+    public async Task CallTool_WithoutTaskExtensionMeta_ReturnsCallToolResultImmediately()
+    {
+        // SEP-2663: "A server MUST NOT return a CreateTaskResult to a client that did not include the
+        // extension capability." We bypass CallToolRawAsync (which injects the marker) and send a raw
+        // tools/call request without the io.modelcontextprotocol/tasks key in _meta.
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
+            RequestMethods.ToolsCall,
+            new CallToolRequestParams { Name = "fast-tool" },
+            serializerOptions: McpJsonUtilities.DefaultOptions,
+            cancellationToken: ct);
+
+        // Server should return a regular CallToolResult, never escalate to a task.
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.Equal("fast result", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+        // resultType is reserved and must not be the "task" discriminator for plain results.
+        Assert.NotEqual("task", result.ResultType);
+    }
+
+    [Fact]
+    public async Task ToolReturnsCallToolResultWithIsError_AsTask_StoresAsCompleted_NotFailed()
+    {
+        // SEP-2663: "An MCP server MUST NOT use [Failed] for errors that would have been signaled
+        // by setting `CallToolResult.isError` to true ... Such errors are domain-level errors, and
+        // their result MUST be returned by the server in the same way that any standard call-tool
+        // result is returned." So a tool that returns isError:true MUST end up as a Completed task.
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "iserror-tool" }, ct);
+
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 40 && taskResult is not CompletedTaskResult; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+        }
+
+        var completed = Assert.IsType<CompletedTaskResult>(taskResult);
+        Assert.Equal(McpTaskStatus.Completed, completed.Status);
+        Assert.True(completed.TaskResult.GetProperty("isError").GetBoolean());
+    }
+
+    [Fact]
+    public async Task MultiElicit_ViaTask_HandlerCalledExactlyOncePerUniqueKey_AcrossPolls()
+    {
+        // SEP-2663: "Each entry [in inputRequests] MUST be treated as if it were an equivalent
+        // standalone server-to-client request" and "clients SHOULD use [keys] to deduplicate".
+        // A tool that fires two concurrent server->client requests produces two unique keys; the
+        // client must dispatch the handler exactly twice in total, even across multiple polls.
+        int elicitCount = 0;
+        var observedMessages = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (request, ct) =>
+                {
+                    Interlocked.Increment(ref elicitCount);
+                    observedMessages.Add(request?.Message ?? string.Empty);
+                    return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+                }
+            }
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams { Name = "multi-elicit-tool" }, ct);
+
+        // Exactly two handler invocations — one per unique input request key.
+        Assert.Equal(2, elicitCount);
+        Assert.Contains("first", observedMessages);
+        Assert.Contains("second", observedMessages);
+        Assert.Equal("accept|accept", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+    }
+
     [McpServerToolType]
     private sealed class TaskStoreTestTools
     {
@@ -316,6 +460,33 @@ public class McpTaskStoreTests : ClientServerTestBase
             }, cancellationToken);
 
             return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "no response";
+        }
+
+        [McpServerTool(Name = "iserror-tool"), System.ComponentModel.Description("A tool that returns IsError=true without throwing")]
+        public static CallToolResult IsErrorTool() => new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock { Text = "domain-error" }],
+        };
+
+        [McpServerTool(Name = "multi-elicit-tool"), System.ComponentModel.Description("A tool that issues two parallel elicitations")]
+        public static async Task<string> MultiElicitTool(McpServer server, CancellationToken cancellationToken)
+        {
+            var first = server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = "first",
+                RequestedSchema = new(),
+            }, cancellationToken);
+
+            var second = server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = "second",
+                RequestedSchema = new(),
+            }, cancellationToken);
+
+            await Task.WhenAll(first.AsTask(), second.AsTask());
+
+            return $"{first.Result.Action}|{second.Result.Action}";
         }
     }
 }
