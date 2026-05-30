@@ -1318,8 +1318,8 @@ internal sealed partial class McpServerImpl : McpServer
         }
     }
 
-    private static JsonNode? SerializeInputRequiredResult(InputRequiredResult InputRequiredResult) =>
-        JsonSerializer.SerializeToNode(InputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
+    private static JsonNode? SerializeInputRequiredResult(InputRequiredResult inputRequiredResult) =>
+        JsonSerializer.SerializeToNode(inputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);

@@ -639,8 +639,8 @@ internal sealed partial class McpClientImpl : McpClient
             case RequestMethods.RootsList:
                 if (_options.Handlers.RootsHandler is { } rootsHandler)
                 {
-                    var rootsParams = inputRequest.RootsParams
-                        ?? throw new McpException($"Failed to deserialize roots parameters from MRTR input request.");
+                    // ListRootsRequest params are optional per the spec, so fall back to an empty params instance.
+                    var rootsParams = inputRequest.RootsParams ?? new ListRootsRequestParams();
                     var result = await rootsHandler(rootsParams, cancellationToken).ConfigureAwait(false);
                     return InputResponse.FromRootsResult(result);
                 }
@@ -859,10 +859,10 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 WarnIfInputRequiredResultOnNonMrtrSession(request.Method);
 
-                var InputRequiredResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.InputRequiredResult)
+                var inputRequiredResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.InputRequiredResult)
                     ?? throw new JsonException("Failed to deserialize InputRequiredResult.");
 
-                if (InputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
+                if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
                 {
                     IDictionary<string, InputResponse> inputResponses =
                         await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
@@ -873,18 +873,18 @@ internal sealed partial class McpClientImpl : McpClient
                     paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
                         inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
 
-                    if (InputRequiredResult.RequestState is { } requestState)
+                    if (inputRequiredResult.RequestState is { } requestState)
                     {
                         paramsObj["requestState"] = requestState;
                     }
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
                 }
-                else if (InputRequiredResult.RequestState is not null)
+                else if (inputRequiredResult.RequestState is not null)
                 {
                     // No input requests but has requestState (e.g., load shedding) — just retry with state.
                     var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-                    paramsObj["requestState"] = InputRequiredResult.RequestState;
+                    paramsObj["requestState"] = inputRequiredResult.RequestState;
                     paramsObj.Remove("inputResponses");
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };

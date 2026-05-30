@@ -385,10 +385,12 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             new Dictionary<string, object?> { ["prompt"] = "Hello" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains("initialize-response", observedMessageTypes);
-        Assert.Contains("tools-list-response", observedMessageTypes);
-        Assert.Contains("tool-call-response", observedMessageTypes);
-        Assert.Contains($"request:{RequestMethods.SamplingCreateMessage}", observedMessageTypes);
+        // Exact counts catch regressions where the outgoing filter pipeline gets applied more than once
+        // per outbound message (e.g., SendRequestAsync double-wrapping SendToRelatedTransportAsync).
+        Assert.Equal(1, observedMessageTypes.Count(m => m == "initialize-response"));
+        Assert.Equal(1, observedMessageTypes.Count(m => m == "tools-list-response"));
+        Assert.Equal(2, observedMessageTypes.Count(m => m == "tool-call-response")); // one per CallToolAsync
+        Assert.Equal(2, observedMessageTypes.Count(m => m == $"request:{RequestMethods.SamplingCreateMessage}")); // sampling-tool makes two SampleAsync calls
     }
 
     [Fact]

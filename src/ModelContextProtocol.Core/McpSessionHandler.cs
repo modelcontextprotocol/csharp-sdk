@@ -591,16 +591,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, request, method, target);
             }
 
-            if (_logger.IsEnabled(LogLevel.Trace))
-            {
-                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-            }
-            else
-            {
-                LogSendingRequest(EndpointName, request.Method);
-            }
-
-            await _outgoingMessageFilter(SendToRelatedTransportAsync)(request, cancellationToken).ConfigureAwait(false);
+            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which

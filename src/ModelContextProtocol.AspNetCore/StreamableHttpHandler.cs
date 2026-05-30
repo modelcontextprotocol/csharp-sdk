@@ -548,7 +548,7 @@ internal sealed class StreamableHttpHandler(
     /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,
     /// but an invalid or unsupported value must be rejected with 400 Bad Request per the MCP spec.
     /// </summary>
-    private bool ValidateProtocolVersionHeader(HttpContext context, out string? errorMessage)
+    private static bool ValidateProtocolVersionHeader(HttpContext context, out string? errorMessage)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
