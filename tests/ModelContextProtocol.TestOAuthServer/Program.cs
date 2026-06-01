@@ -135,6 +135,16 @@ public sealed class Program
     /// </summary>
     public HashSet<string> MetadataPathsWithoutPkceSupport { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Gets or sets the authentication methods advertised in the discovery document's
+    /// <c>token_endpoint_auth_methods_supported</c>. Tests can set this to mimic authorization servers
+    /// (such as Auth0) that advertise <c>client_secret_basic</c> ahead of <c>none</c>.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>["client_secret_post"]</c>.
+    /// </remarks>
+    public List<string> SupportedTokenEndpointAuthMethods { get; set; } = ["client_secret_post"];
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
@@ -276,7 +286,7 @@ public sealed class Program
                 ScopesSupported = IncludeOfflineAccessInMetadata
                     ? ["openid", "profile", "email", "mcp:tools", "offline_access"]
                     : ["openid", "profile", "email", "mcp:tools"],
-                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+                TokenEndpointAuthMethodsSupported = SupportedTokenEndpointAuthMethods,
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = MetadataPathsWithoutPkceSupport.Contains(context.Request.Path)
                     ? null
