@@ -928,7 +928,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
         metadata.WwwAuthenticateScope = wwwAuthenticateScope;
 
-        // Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server
+        // Validate that the resource URI in metadata corresponds to the server we're connecting to.
+        // VerifyResourceMatch accepts both an exact URI match and an authority-level (base URL) match per the MCP spec.
         LogValidatingResourceMetadata(resourceUri);
 
         if (!isLegacyFallback && !VerifyResourceMatch(metadata, resourceUri))
