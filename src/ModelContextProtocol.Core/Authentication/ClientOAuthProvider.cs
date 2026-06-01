@@ -75,6 +75,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         _clientId = options.ClientId;
         _clientSecret = options.ClientSecret;
+        _tokenEndpointAuthMethod = options.TokenEndpointAuthMethod;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
         _scopeSelector = options.ScopeSelector;
@@ -698,9 +699,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             _clientSecret = registrationResponse.ClientSecret;
         }
 
+        // Honor an explicitly configured ClientOAuthOptions.TokenEndpointAuthMethod over the value returned by
+        // dynamic client registration.
         if (!string.IsNullOrEmpty(registrationResponse.TokenEndpointAuthMethod))
         {
-            _tokenEndpointAuthMethod = registrationResponse.TokenEndpointAuthMethod;
+            _tokenEndpointAuthMethod ??= registrationResponse.TokenEndpointAuthMethod;
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);

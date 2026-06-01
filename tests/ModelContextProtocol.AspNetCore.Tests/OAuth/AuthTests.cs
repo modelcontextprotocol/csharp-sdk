@@ -132,6 +132,59 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WithClientMetadataDocument_WhenServerAdvertisesClientSecretBasicFirst()
+    {
+        // Mimic authorization servers (e.g. Auth0) that advertise client_secret_basic ahead of "none".
+        // A CIMD client is a public client, but without an explicit TokenEndpointAuthMethod the client falls back to
+        // the first advertised method (client_secret_basic) and authenticates with the client id and an empty secret
+        // in the Authorization header rather than placing the client id in the body — which a public client cannot
+        // satisfy, so the token exchange fails.
+        TestOAuthServer.SupportedTokenEndpointAuthMethods = ["client_secret_basic", "client_secret_post", "none"];
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithClientMetadataDocument_AndExplicitNoneAuthMethod()
+    {
+        // Same Auth0-like server that advertises client_secret_basic first, but the client explicitly declares the
+        // public-client "none" method. The token request must then carry the client id in the body (no secret) and
+        // succeed, proving ClientOAuthOptions.TokenEndpointAuthMethod overrides the server-advertised default.
+        TestOAuthServer.SupportedTokenEndpointAuthMethods = ["client_secret_basic", "client_secret_post", "none"];
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+                TokenEndpointAuthMethod = "none",
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task UsesDynamicClientRegistration_WhenCimdNotSupported()
     {
         // Disable CIMD support on the test OAuth server so the client
