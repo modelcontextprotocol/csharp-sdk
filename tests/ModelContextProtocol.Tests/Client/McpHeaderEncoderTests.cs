@@ -106,10 +106,12 @@ public class McpHeaderEncoderTests
     }
 
     [Fact]
-    public void DecodeValue_CaseInsensitivePrefix_Decodes()
+    public void DecodeValue_CaseSensitivePrefix_ReturnsLiteralValue()
     {
+        // Per SEP-2243: sentinel markers are case-sensitive and MUST appear exactly as shown (lowercase).
+        // An uppercase prefix should NOT be decoded as base64.
         var result = McpHeaderEncoder.DecodeValue("=?BASE64?SGVsbG8=?=");
-        Assert.Equal("Hello", result);
+        Assert.Equal("=?BASE64?SGVsbG8=?=", result);
     }
 
     [Fact]
@@ -159,5 +161,35 @@ public class McpHeaderEncoderTests
         // Verify round-trip
         var decoded = McpHeaderEncoder.DecodeValue(result);
         Assert.Equal("col1\tcol2", decoded);
+    }
+
+    [Theory]
+    [InlineData("=?base64?literal?=")]
+    [InlineData("=?base64?SGVsbG8=?=")]
+    [InlineData("=?base64??=")]
+    public void EncodeValue_SentinelCollision_Base64Encodes(string input)
+    {
+        var result = McpHeaderEncoder.EncodeValue(input);
+        Assert.NotNull(result);
+        Assert.StartsWith("=?base64?", result);
+        Assert.EndsWith("?=", result);
+
+        // The encoded value must be different from the input to avoid ambiguity
+        Assert.NotEqual(input, result);
+
+        // Verify round-trip: decode must recover the original literal value
+        var decoded = McpHeaderEncoder.DecodeValue(result);
+        Assert.Equal(input, decoded);
+    }
+
+    [Theory]
+    [InlineData("=?BASE64?literal?=", false)]   // Case-sensitive: uppercase prefix does not match sentinel
+    [InlineData("=?base64?start", false)]         // Missing suffix: no sentinel match
+    [InlineData("end?=", false)]                  // Missing prefix: no sentinel match
+    [InlineData("plain-text", false)]             // No sentinel pattern
+    public void EncodeValue_NonSentinelPattern_NotBase64Encoded(string input, bool _)
+    {
+        var result = McpHeaderEncoder.EncodeValue(input);
+        Assert.Equal(input, result);
     }
 }

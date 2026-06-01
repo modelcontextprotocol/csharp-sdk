@@ -121,9 +121,9 @@ public static class McpHeaderEncoder
             return headerValue;
         }
 
-        // Check for Base64 wrapper. The spec defines the prefix as lowercase "=?base64?"
-        // but we match case-insensitively for robustness against non-conforming senders.
-        if (headerValue.StartsWith(Base64Prefix, StringComparison.OrdinalIgnoreCase) &&
+        // Check for Base64 wrapper. The spec requires the sentinel markers to be
+        // case-sensitive and exactly lowercase per SEP-2243.
+        if (headerValue.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
             headerValue.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
             var base64Content = headerValue.Substring(
@@ -217,6 +217,14 @@ public static class McpHeaderEncoder
 
         // Check for leading/trailing whitespace (space or tab)
         if (value[0] is ' ' or '\t' || value[^1] is ' ' or '\t')
+        {
+            return true;
+        }
+
+        // Avoid sentinel collision: if the value matches the base64 wrapper pattern,
+        // it must be encoded to prevent ambiguity during decoding.
+        if (value.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
+            value.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
             return true;
         }

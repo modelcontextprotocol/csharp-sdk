@@ -187,7 +187,8 @@ public abstract partial class McpClient : McpSession
             foreach (var tool in toolResults.Tools)
             {
                 // Validate x-mcp-header annotations per SEP-2243.
-                // Clients MUST exclude tools with invalid annotations and SHOULD log a warning.
+                // Streamable HTTP clients MUST exclude tools with invalid annotations;
+                // non-HTTP clients MAY also reject them for safety.
                 if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
                 {
                     ToolRejected?.Invoke(tool, rejectionReason!);

@@ -630,8 +630,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             if (!IsPrimitiveHeaderType(paramType))
             {
                 throw new InvalidOperationException(
-                    $"Parameter '{param.Name}' on method '{method.Name}' has [McpHeader] but is not a primitive type. " +
-                    "Only string, numeric, and boolean types may be annotated with [McpHeader].");
+                    $"Parameter '{param.Name}' on method '{method.Name}' has [McpHeader] but is not a supported type. " +
+                    "Only string, integer, and boolean types may be annotated with [McpHeader].");
             }
 
             // Validate case-insensitive uniqueness
@@ -682,9 +682,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                type == typeof(int) ||
                type == typeof(uint) ||
                type == typeof(long) ||
-               type == typeof(ulong) ||
-               type == typeof(float) ||
-               type == typeof(double) ||
-               type == typeof(decimal);
+               type == typeof(ulong);
     }
 }

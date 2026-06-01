@@ -703,8 +703,41 @@ internal sealed class StreamableHttpHandler(
 
         // Check that every x-mcp-header annotated parameter has a corresponding header,
         // that the header value is validly encoded, and that it matches the body value.
+        return ValidateCustomParamHeadersFromProperties(context, properties, arguments, out errorMessage);
+    }
+
+    /// <summary>
+    /// Recursively validates x-mcp-header annotated properties at any nesting depth.
+    /// </summary>
+    private static bool ValidateCustomParamHeadersFromProperties(
+        HttpContext context,
+        System.Text.Json.JsonElement properties,
+        System.Text.Json.Nodes.JsonNode? arguments,
+        [NotNullWhen(false)] out string? errorMessage)
+    {
         foreach (var property in properties.EnumerateObject())
         {
+            if (property.Value.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            // Recurse into nested object properties
+            if (property.Value.TryGetProperty("properties", out var nestedProperties) &&
+                nestedProperties.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                System.Text.Json.Nodes.JsonNode? nestedArgs = null;
+                if (arguments is System.Text.Json.Nodes.JsonObject parentObj)
+                {
+                    parentObj.TryGetPropertyValue(property.Name, out nestedArgs);
+                }
+
+                if (!ValidateCustomParamHeadersFromProperties(context, nestedProperties, nestedArgs, out errorMessage))
+                {
+                    return false;
+                }
+            }
+
             if (!property.Value.TryGetProperty("x-mcp-header", out var headerNameElement))
             {
                 continue;
