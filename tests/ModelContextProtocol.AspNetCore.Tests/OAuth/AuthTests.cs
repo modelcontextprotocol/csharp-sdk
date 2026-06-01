@@ -768,7 +768,7 @@ public class AuthTests : OAuthTestBase
         //
         // https://datatracker.ietf.org/doc/html/rfc9728/#section-3.3
         //
-        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fall back to root in this case.
+        // CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates that a root-level resource is accepted in this case.
         // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fall back to root when resource_metadata is missing.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
@@ -888,6 +888,53 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         // This should fail because the resource URI doesn't match
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match", ex.Message);
+    }
+
+    /// <summary>
+    /// Verifies that OAuth authentication fails when the protected resource metadata URI is an
+    /// unrelated path on the same host as the requested endpoint (e.g. resource=.../service-a vs
+    /// endpoint .../service-b). This ensures the authority-level fallback only accepts an exact match
+    /// or an authority-only resource, and not arbitrary sibling paths on the same host.
+    /// </summary>
+    [Fact]
+    public async Task CannotAuthenticate_WhenResourceMetadataResourceIsDifferentPathOnSameAuthority()
+    {
+        const string requestedResourcePath = "/service-b";
+        const string differentResourcePath = "/service-a";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = $"{McpServerUrl}{differentResourcePath}",
+                AuthorizationServers = { OAuthServerUrl },
+            };
+        });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should fail because the resource URI is a different path on the same host,
+        // which is neither an exact match nor the authority-only base URL.
         var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
