@@ -10,7 +10,7 @@ The following process is used when publishing new releases to NuGet.org.
 
 ## 2. Prepare the release
 
-From a local clone of the repository, use Copilot CLI to invoke the `prepare-release` skill. The skill assesses the semantic version, bumps the version in [`src/Directory.Build.props`](../../src/Directory.Build.props), runs API compatibility checks, reviews documentation, drafts release notes, and creates a pull request with all release artifacts.
+From a local clone of the repository, use Copilot CLI to invoke the `prepare-release` skill. The skill assesses the semantic version, bumps the version in [`src/Directory.Build.props`](../src/Directory.Build.props), runs API compatibility checks, reviews documentation, drafts release notes, and creates a pull request with all release artifacts.
 
 Review the PR, request changes if needed, and merge when ready.
 
