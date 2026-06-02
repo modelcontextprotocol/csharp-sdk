@@ -8,6 +8,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -832,5 +833,77 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Assert.Equal(client.SessionId, c.TagValue);
             });
         }
+    }
+
+    [Fact]
+    public async Task DeleteRequest_FromDifferentUser_IsRejected_AndSessionSurvives()
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        // Pick the user from a test header so different HttpClient requests can act as different users.
+        app.Use(next => async context =>
+        {
+            var name = context.Request.Headers["X-Test-User"].ToString();
+            if (!string.IsNullOrEmpty(name))
+            {
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
+                    "TestAuthType", "name", "role"));
+            }
+            await next(context);
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        initRequest.Headers.Add("X-Test-User", "Alice");
+        initRequest.Headers.Accept.ParseAdd("application/json");
+        initRequest.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken);
+        Assert.True(initResponse.IsSuccessStatusCode);
+        var sessionId = Assert.Single(initResponse.Headers.GetValues("Mcp-Session-Id"));
+
+        // A DELETE from a different authenticated user must not be able to tear down Alice's session.
+        using var bobDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        bobDelete.Headers.Add("X-Test-User", "Bob");
+        bobDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var bobDeleteResponse = await HttpClient.SendAsync(bobDelete, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, bobDeleteResponse.StatusCode);
+
+        // Alice should still be able to use the session.
+        const string toolCallRequest = """
+            {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+            """;
+        using var aliceCall = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(toolCallRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        aliceCall.Headers.Add("X-Test-User", "Alice");
+        aliceCall.Headers.Add("Mcp-Session-Id", sessionId);
+        aliceCall.Headers.Accept.ParseAdd("application/json");
+        aliceCall.Headers.Accept.ParseAdd("text/event-stream");
+        using var aliceCallResponse = await HttpClient.SendAsync(aliceCall, TestContext.Current.CancellationToken);
+        Assert.True(aliceCallResponse.IsSuccessStatusCode);
+
+        // Alice can still terminate her own session.
+        using var aliceDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        aliceDelete.Headers.Add("X-Test-User", "Alice");
+        aliceDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var aliceDeleteResponse = await HttpClient.SendAsync(aliceDelete, TestContext.Current.CancellationToken);
+        Assert.True(aliceDeleteResponse.IsSuccessStatusCode);
     }
 }
