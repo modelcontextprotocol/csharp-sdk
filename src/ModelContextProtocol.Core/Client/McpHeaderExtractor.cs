@@ -180,22 +180,71 @@ internal static class McpHeaderExtractor
                 return false;
             }
 
-            // MUST only be applied to primitive types (integer, string, boolean).
-            // Parameters with type "number" are not permitted.
+            // MUST only be applied to parameters with primitive types (string, integer, boolean).
+            // Parameters with type "number" (or any other non-primitive type) are not permitted.
+            // The "type" keyword may be omitted (treated as unknown, not rejected, since many valid
+            // schemas constrain the value via enum/const/$ref instead) or expressed as a JSON Schema
+            // union array such as ["string", "null"]; only an explicitly disallowed or malformed type
+            // causes rejection.
             if (property.Value.TryGetProperty("type", out var typeElement) &&
-                typeElement.ValueKind == JsonValueKind.String)
+                !IsAllowedHeaderType(typeElement))
             {
-                var typeName = typeElement.GetString();
-                if (typeName is not ("string" or "integer" or "boolean"))
-                {
-                    rejectionReason = $"Tool '{tool.Name}': x-mcp-header on property '{property.Name}' has non-primitive type '{typeName}'.";
-                    return false;
-                }
+                rejectionReason = $"Tool '{tool.Name}': x-mcp-header on property '{property.Name}' has unsupported type '{typeElement}'. Only 'string', 'integer', and 'boolean' are allowed.";
+                return false;
             }
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Determines whether a JSON Schema <c>type</c> keyword is compatible with <c>x-mcp-header</c>,
+    /// which per SEP-2243 may only be applied to <c>string</c>, <c>integer</c>, or <c>boolean</c>
+    /// parameters. A union array (e.g., <c>["string", "null"]</c>) is allowed as long as it contains
+    /// at least one allowed primitive; <c>"null"</c> is tolerated only as an additional union member.
+    /// Any other shape (a disallowed type name, a non-string array element, an empty array, or a
+    /// non-string/non-array value) is treated as incompatible.
+    /// </summary>
+    private static bool IsAllowedHeaderType(JsonElement typeElement)
+    {
+        switch (typeElement.ValueKind)
+        {
+            case JsonValueKind.String:
+                return IsAllowedPrimitiveTypeName(typeElement.GetString());
+
+            case JsonValueKind.Array:
+                bool hasAllowedPrimitive = false;
+                foreach (var entry in typeElement.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.String)
+                    {
+                        return false;
+                    }
+
+                    var entryName = entry.GetString();
+                    if (entryName == "null")
+                    {
+                        continue;
+                    }
+
+                    if (!IsAllowedPrimitiveTypeName(entryName))
+                    {
+                        return false;
+                    }
+
+                    hasAllowedPrimitive = true;
+                }
+
+                return hasAllowedPrimitive;
+
+            default:
+                // A "type" that is present but is neither a string nor an array of strings is malformed.
+                return false;
+        }
+    }
+
+    private static bool IsAllowedPrimitiveTypeName(string? typeName) =>
+        typeName is "string" or "integer" or "boolean";
 
     // Valid HTTP token characters (tchar) per RFC 9110 Section 5.6.2:
     // tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /

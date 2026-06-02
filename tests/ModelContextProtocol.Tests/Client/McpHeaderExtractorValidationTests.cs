@@ -75,6 +75,34 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
             { "type": "object", "properties": { "config": { "type": "object", "properties": { "threshold": { "type": "number", "x-mcp-header": "Threshold" } } } } }
             """).RootElement.Clone();
         mcpServerBuilder.WithTools([nestedNumberTool]);
+
+        // Tool with a nullable union type ["string", "null"] (should be accepted)
+        var nullableUnionTool = McpServerTool.Create((string x) => x, new() { Name = "NullableUnionTool" });
+        nullableUnionTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
+            { "type": "object", "properties": { "region": { "type": ["string", "null"], "x-mcp-header": "Region" } } }
+            """).RootElement.Clone();
+        mcpServerBuilder.WithTools([nullableUnionTool]);
+
+        // Tool with a union type containing a disallowed type ["number", "null"] (should be rejected)
+        var numberUnionTool = McpServerTool.Create((string x) => x, new() { Name = "NumberUnionTool" });
+        numberUnionTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
+            { "type": "object", "properties": { "value": { "type": ["number", "null"], "x-mcp-header": "Value" } } }
+            """).RootElement.Clone();
+        mcpServerBuilder.WithTools([numberUnionTool]);
+
+        // Tool with a "null"-only union type (should be rejected: no allowed primitive present)
+        var nullOnlyTool = McpServerTool.Create((string x) => x, new() { Name = "NullOnlyTool" });
+        nullOnlyTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
+            { "type": "object", "properties": { "value": { "type": ["null"], "x-mcp-header": "Value" } } }
+            """).RootElement.Clone();
+        mcpServerBuilder.WithTools([nullOnlyTool]);
+
+        // Tool whose annotated property omits "type" (should be accepted: type is unknown, not invalid)
+        var missingTypeTool = McpServerTool.Create((string x) => x, new() { Name = "MissingTypeTool" });
+        missingTypeTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
+            { "type": "object", "properties": { "region": { "x-mcp-header": "Region" } } }
+            """).RootElement.Clone();
+        mcpServerBuilder.WithTools([missingTypeTool]);
     }
 
     [Fact]
@@ -148,5 +176,43 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
 
         Assert.Contains(tools, t => t.Name == "ValidTool");
         Assert.DoesNotContain(tools, t => t.Name == "NestedNumberTool");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_NullableUnionType_AcceptsTool()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(tools, t => t.Name == "NullableUnionTool");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_NumberUnionType_ExcludesTool()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(tools, t => t.Name == "ValidTool");
+        Assert.DoesNotContain(tools, t => t.Name == "NumberUnionTool");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_NullOnlyUnionType_ExcludesTool()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(tools, t => t.Name == "ValidTool");
+        Assert.DoesNotContain(tools, t => t.Name == "NullOnlyTool");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_MissingType_AcceptsTool()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(tools, t => t.Name == "MissingTypeTool");
     }
 }

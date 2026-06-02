@@ -183,11 +183,11 @@ public class McpHeaderEncoderTests
     }
 
     [Theory]
-    [InlineData("=?BASE64?literal?=", false)]   // Case-sensitive: uppercase prefix does not match sentinel
-    [InlineData("=?base64?start", false)]         // Missing suffix: no sentinel match
-    [InlineData("end?=", false)]                  // Missing prefix: no sentinel match
-    [InlineData("plain-text", false)]             // No sentinel pattern
-    public void EncodeValue_NonSentinelPattern_NotBase64Encoded(string input, bool _)
+    [InlineData("=?BASE64?literal?=")]   // Case-sensitive: uppercase prefix does not match sentinel
+    [InlineData("=?base64?start")]       // Missing suffix: no sentinel match
+    [InlineData("end?=")]                // Missing prefix: no sentinel match
+    [InlineData("plain-text")]           // No sentinel pattern
+    public void EncodeValue_NonSentinelPattern_NotBase64Encoded(string input)
     {
         var result = McpHeaderEncoder.EncodeValue(input);
         Assert.Equal(input, result);

@@ -186,9 +186,10 @@ public abstract partial class McpClient : McpSession
             tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
-                // Validate x-mcp-header annotations per SEP-2243.
-                // Streamable HTTP clients MUST exclude tools with invalid annotations;
-                // non-HTTP clients MAY also reject them for safety.
+                // Validate x-mcp-header annotations per SEP-2243. The spec requires Streamable HTTP
+                // clients to exclude tools with invalid annotations and permits other transports
+                // (e.g., stdio) to ignore the annotations entirely. This client validates on all
+                // transports so a malformed definition is rejected consistently regardless of transport.
                 if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
                 {
                     ToolRejected?.Invoke(tool, rejectionReason!);
