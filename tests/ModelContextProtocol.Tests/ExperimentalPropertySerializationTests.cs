@@ -97,7 +97,7 @@ public class ExperimentalPropertySerializationTests
     {
         var capabilities = new ServerCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ServerMcpTasksCapability()
         };
 
         string json = JsonSerializer.Serialize(capabilities, McpJsonUtilities.DefaultOptions);

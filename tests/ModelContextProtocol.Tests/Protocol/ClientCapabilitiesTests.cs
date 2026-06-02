@@ -21,7 +21,7 @@ public static class ClientCapabilitiesTests
                 Form = new FormElicitationCapability(),
                 Url = new UrlElicitationCapability()
             },
-            Tasks = new McpTasksCapability(),
+            Tasks = new ClientMcpTasksCapability(),
             Extensions = new Dictionary<string, object>
             {
                 ["io.modelcontextprotocol/test"] = new object()

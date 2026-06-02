@@ -343,7 +343,7 @@ public class McpServerTests : LoggedTest
             Resources = new ResourcesCapability(),
             Tools = new ToolsCapability(),
             Completions = new CompletionsCapability(),
-            Tasks = new McpTasksCapability(),
+            Tasks = new ServerMcpTasksCapability(),
             Extensions = new Dictionary<string, object> { ["io.test"] = new JsonObject() },
         };
 

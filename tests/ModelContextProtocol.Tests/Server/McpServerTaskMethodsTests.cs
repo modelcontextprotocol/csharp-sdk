@@ -98,9 +98,9 @@ public class McpServerTaskMethodsTests : LoggedTest
         await InitializeServerAsync(transport, new ClientCapabilities
         {
             Sampling = new SamplingCapability(),
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
-                Requests = new RequestMcpTasksCapability
+                Requests = new ClientRequestMcpTasksCapability
                 {
                     Sampling = new SamplingMcpTasksCapability
                     {
@@ -201,9 +201,9 @@ public class McpServerTaskMethodsTests : LoggedTest
         await InitializeServerAsync(transport, new ClientCapabilities
         {
             Elicitation = new ElicitationCapability { Form = new() },
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
-                Requests = new RequestMcpTasksCapability
+                Requests = new ClientRequestMcpTasksCapability
                 {
                     Elicitation = new ElicitationMcpTasksCapability
                     {
@@ -267,7 +267,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act
@@ -296,7 +296,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act & Assert
@@ -343,7 +343,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act
@@ -391,7 +391,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
                 // Note: No List capability
             }
@@ -440,7 +440,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
                 List = new ListMcpTasksCapability()
             }
@@ -490,7 +490,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
                 // Note: No Cancel capability
             }
@@ -521,7 +521,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability
+            Tasks = new ClientMcpTasksCapability
             {
                 Cancel = new CancelMcpTasksCapability()
             }
@@ -565,7 +565,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act
@@ -598,7 +598,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act
@@ -640,7 +640,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act
@@ -679,7 +679,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act & Assert
@@ -711,7 +711,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
         await InitializeServerAsync(transport, new ClientCapabilities
         {
-            Tasks = new McpTasksCapability()
+            Tasks = new ClientMcpTasksCapability()
         }, TestContext.Current.CancellationToken);
 
         // Act & Assert

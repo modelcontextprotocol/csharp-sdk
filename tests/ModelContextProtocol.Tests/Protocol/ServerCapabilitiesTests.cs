@@ -15,7 +15,7 @@ public static class ServerCapabilitiesTests
             Resources = new ResourcesCapability { Subscribe = true, ListChanged = true },
             Tools = new ToolsCapability { ListChanged = false },
             Completions = new CompletionsCapability(),
-            Tasks = new McpTasksCapability(),
+            Tasks = new ServerMcpTasksCapability(),
             Extensions = new Dictionary<string, object>
             {
                 ["io.modelcontextprotocol/apps"] = new object()
