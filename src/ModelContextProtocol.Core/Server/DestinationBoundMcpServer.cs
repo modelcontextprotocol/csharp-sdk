@@ -1,4 +1,6 @@
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
 
@@ -13,6 +15,12 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
+
+    /// <summary>
+    /// Gets or sets the MRTR context for the current request, if any.
+    /// Set by <see cref="McpServerImpl.CreateDestinationBoundServer"/> when an MRTR-aware handler invocation is in progress.
+    /// </summary>
+    internal MrtrContext? ActiveMrtrContext { get; set; }
 
     public override bool IsMrtrSupported => server.IsMrtrSupported;
 
@@ -40,6 +48,16 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
 
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
     {
+        // When an MRTR context is active, intercept server-to-client requests (sampling, elicitation, roots)
+        // and route them through the MRTR mechanism instead of sending them over the wire.
+        // Task-augmented requests (SampleAsTaskAsync/ElicitAsTaskAsync) have a "task" property on their params
+        // and expect a CreateTaskResult response, so they must bypass MRTR and go over the wire.
+        if (ActiveMrtrContext is { } mrtrContext &&
+            !(request.Params is JsonObject paramsObj && paramsObj.ContainsKey("task")))
+        {
+            return SendRequestViaMrtrAsync(mrtrContext, request, cancellationToken);
+        }
+
         if (request.Context is not null)
         {
             throw new ArgumentException("Only transports can provide a JsonRpcMessageContext.");
@@ -51,5 +69,24 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
         };
 
         return server.SendRequestAsync(request, cancellationToken);
+    }
+
+    private static async Task<JsonRpcResponse> SendRequestViaMrtrAsync(
+        MrtrContext mrtrContext, JsonRpcRequest request, CancellationToken cancellationToken)
+    {
+        var inputRequest = new InputRequest
+        {
+            Method = request.Method,
+            Params = request.Params is { } paramsNode
+                ? JsonSerializer.Deserialize(paramsNode, McpJsonUtilities.JsonContext.Default.JsonElement)
+                : null,
+        };
+        var inputResponse = await mrtrContext.RequestInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+
+        return new JsonRpcResponse
+        {
+            Id = request.Id,
+            Result = JsonSerializer.SerializeToNode(inputResponse.RawValue, McpJsonUtilities.JsonContext.Default.JsonElement),
+        };
     }
 }

@@ -12,10 +12,8 @@ namespace ModelContextProtocol.Protocol;
 /// An <see cref="InputRequiredResult"/> is returned in response to a client-initiated request when
 /// the server needs the client to fulfill one or more server-initiated requests before it can produce
 /// a final result. Per SEP-2322 the wire format is valid for <see cref="RequestMethods.ToolsCall"/>,
-/// <see cref="RequestMethods.PromptsGet"/>, and <c>resources/read</c>, but this SDK currently only wires
-/// the MRTR interceptor into <see cref="RequestMethods.ToolsCall"/>; throwing
-/// <see cref="InputRequiredException"/> from a prompts or resources handler will surface as an internal
-/// error until the other methods are opted in.
+/// <see cref="RequestMethods.PromptsGet"/>, and <c>resources/read</c>; this SDK wires the MRTR
+/// interceptor into all three methods.
 /// </para>
 /// <para>
 /// At least one of <see cref="InputRequests"/> or <see cref="RequestState"/> must be present.

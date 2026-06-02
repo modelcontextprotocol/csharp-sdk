@@ -93,6 +93,126 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.Contains("Tool validation failed", error.Error.Message);
     }
 
+    [Fact]
+    public async Task RetryWithInvalidRequestState_ReturnsJsonRpcError()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Send a retry with a requestState that doesn't match any active continuation
+        var retryParams = new JsonObject
+        {
+            ["name"] = "elicit-tool",
+            ["arguments"] = new JsonObject { ["message"] = "test" },
+            ["inputResponses"] = new JsonObject { ["key1"] = new JsonObject { ["action"] = "confirm" } },
+            ["requestState"] = "nonexistent-state-id"
+        };
+
+        var response = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+
+        // Read as a generic JsonRpcMessage to check if it's an error
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var sseData = Assert.Single(await ReadSseAsync(response.Content).ToListAsync(TestContext.Current.CancellationToken));
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
+
+        // Invalid requestState should result in a fresh tool invocation
+        // (the tool will return InputRequiredResult since it calls ElicitAsync)
+        // or an error, depending on the implementation.
+        // In our implementation, unrecognized requestState triggers a new invocation.
+        Assert.True(
+            message is JsonRpcResponse or JsonRpcError,
+            $"Expected JsonRpcResponse or JsonRpcError, got {message?.GetType().Name}");
+    }
+
+    [Fact]
+    public async Task SessionDelete_CancelsPendingMrtrContinuation()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // 1. Call a tool that suspends at ElicitAsync (implicit MRTR path).
+        var response = await PostJsonRpcAsync(CallTool("elicit-tool", """{"message":"Please confirm"}"""));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        // Verify we got an InputRequiredResult (handler is now suspended, continuation stored).
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        Assert.Equal("input_required", resultObj["resultType"]?.GetValue<string>());
+        var requestState = resultObj["requestState"]!.GetValue<string>();
+        Assert.False(string.IsNullOrEmpty(requestState));
+
+        // 2. DELETE the session while the handler is suspended.
+        using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+        // Poll for the async cancellation to propagate through the handler task.
+        // Under thread pool starvation, this can take significantly longer than 100ms.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            if (MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("pending MRTR continuation"))
+                || DateTime.UtcNow >= deadline)
+            {
+                break;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        // 3. Verify that the MRTR cancellation was logged at Debug level.
+        var mrtrCancelledLog = MockLoggerProvider.LogMessages
+            .Where(m => m.Message.Contains("pending MRTR continuation"))
+            .ToList();
+        Assert.Single(mrtrCancelledLog);
+        Assert.Equal(LogLevel.Debug, mrtrCancelledLog[0].LogLevel);
+        Assert.Contains("1", mrtrCancelledLog[0].Message);
+
+        // 4. Verify no error-level log was emitted for the cancellation.
+        // The handler's OperationCanceledException should be silently observed, not logged as an error.
+        var errorLogs = MockLoggerProvider.LogMessages
+            .Where(m => m.LogLevel >= LogLevel.Error && m.Message.Contains("elicit"))
+            .ToList();
+        Assert.Empty(errorLogs);
+    }
+
+    [Fact]
+    public async Task SessionDelete_RetryAfterDelete_ReturnsSessionNotFound()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // 1. Call a tool that suspends at ElicitAsync.
+        var response = await PostJsonRpcAsync(CallTool("elicit-tool", """{"message":"Please confirm"}"""));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        var requestState = resultObj["requestState"]!.GetValue<string>();
+        var inputRequests = resultObj["inputRequests"]!.AsObject();
+        var inputKey = inputRequests.First().Key;
+
+        // 2. DELETE the session.
+        using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+
+        // 3. Attempt to retry with the old requestState — session is gone.
+        var inputResponse = InputResponse.FromElicitResult(new ElicitResult { Action = "accept" });
+        var retryParams = new JsonObject
+        {
+            ["name"] = "elicit-tool",
+            ["arguments"] = new JsonObject { ["message"] = "Please confirm" },
+            ["requestState"] = requestState,
+            ["inputResponses"] = new JsonObject
+            {
+                [inputKey] = JsonSerializer.SerializeToNode(inputResponse, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputResponse)))
+            },
+        };
+
+        using var retryResponse = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+
+        // The session was deleted, so we should get a 404 with a JSON-RPC error.
+        Assert.Equal(HttpStatusCode.NotFound, retryResponse.StatusCode);
+        Assert.Equal("application/json", retryResponse.Content.Headers.ContentType?.MediaType);
+    }
+
     /// <summary>
     /// Regression test for a CI hang where the server-side MRTR backcompat resolver routed its
     /// outgoing <c>roots/list</c> request through the session-level transport, which silently

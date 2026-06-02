@@ -238,39 +238,72 @@ public abstract partial class MapMcpTests
             RequestedSchema = new()
         }, ct);
 
-        var sampleTask = server.SampleAsync(new CreateMessageRequestParams
+        // Start the second await — with MRTR, this throws InvalidOperationException
+        // because MrtrContext only supports one pending exchange at a time.
+        try
         {
-            Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Parallel sample" }] }],
-            MaxTokens = 100
-        }, ct);
+            var sampleTask = server.SampleAsync(new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "Parallel sample" }] }],
+                MaxTokens = 100
+            }, ct);
 
-        var sampleResult = await sampleTask;
-        var elicitResult = await elicitTask;
-        return $"parallel-ok:{elicitResult.Action}:{sampleResult.Content.OfType<TextContentBlock>().First().Text}";
+            // If we get here, both calls succeeded (non-MRTR path)
+            var sampleResult = await sampleTask;
+            var elicitResult = await elicitTask;
+            return $"parallel-ok:{elicitResult.Action}:{sampleResult.Content.OfType<TextContentBlock>().First().Text}";
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
-    [Fact]
-    public async Task Mrtr_ParallelAwaits()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Mrtr_ParallelAwaits(bool experimentalClient)
     {
-        // Server-side parallel ElicitAsync + SampleAsync awaits use the legacy server-to-client
-        // request path on stateful sessions, which works the same under either negotiated revision
-        // (the spec only removes those request methods from Streamable HTTP under draft, which is
-        // stateless-only territory). Stateless servers can't issue server-to-client requests at all.
-        Assert.SkipWhen(Stateless, "Server-side awaits require stateful server-to-client requests.");
+        // Parallel awaits work with regular JSON-RPC but fail with MRTR because
+        // MrtrContext only supports one exchange at a time (TrySetResult gate).
+        Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
 
         ConfigureServer(MrtrParallelAwait);
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var client = await ConnectAsync(configureClient: ConfigureMrtrHandlers);
+        Action<McpClientOptions> configureClient = experimentalClient
+            ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
+            : ConfigureMrtrHandlers;
 
-        var result = await client.CallToolAsync("mrtr-parallel-await",
-            cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await ConnectAsync(configureClient: configureClient);
 
-        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-        Assert.StartsWith("parallel-ok:", text);
-        Assert.True(result.IsError is not true);
+        if (experimentalClient)
+        {
+            // MRTR active. Parallel awaits hit the MrtrContext concurrency gate and the second
+            // call throws InvalidOperationException, which the tool catches and returns as text.
+            Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+
+            var result = await client.CallToolAsync("mrtr-parallel-await",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.Contains("Concurrent server-to-client requests are not supported", text);
+            Assert.True(result.IsError is not true);
+        }
+        else
+        {
+            // Non-MRTR: awaits go through regular JSON-RPC — concurrent calls work.
+            Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+
+            var result = await client.CallToolAsync("mrtr-parallel-await",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.StartsWith("parallel-ok:", text);
+            Assert.True(result.IsError is not true);
+        }
     }
 
     [McpServerTool(Name = "mrtr-elicit")]
