@@ -24,6 +24,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
     private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _registeredToolNames = new(StringComparer.Ordinal);
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -72,7 +73,23 @@ internal sealed partial class McpClientImpl : McpClient
 
         ToolDiscovered = tool => _toolCache[tool.Name] = tool;
         ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
-        ToolCacheClearing = () => _toolCache.Clear();
+        ToolCacheClearing = () =>
+        {
+            if (_registeredToolNames.IsEmpty)
+            {
+                _toolCache.Clear();
+                return;
+            }
+
+            // Only remove server-discovered tools; preserve manually registered tools.
+            foreach (var key in _toolCache.Keys)
+            {
+                if (!_registeredToolNames.ContainsKey(key))
+                {
+                    _toolCache.TryRemove(key, out _);
+                }
+            }
+        };
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -638,6 +655,69 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
+    public override void AddKnownTools(IEnumerable<Tool> tools)
+    {
+        Throw.IfNull(tools);
+
+        var snapshot = tools as IReadOnlyCollection<Tool> ?? [.. tools];
+
+        List<string>? rejections = null;
+        foreach (var tool in snapshot)
+        {
+            Throw.IfNull(tool);
+
+            if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+            {
+                ToolRejected?.Invoke(tool, rejectionReason!);
+                (rejections ??= []).Add($"{tool.Name}: {rejectionReason}");
+            }
+        }
+
+        if (rejections is { Count: > 0 })
+        {
+            throw new ArgumentException(
+                "One or more tools failed x-mcp-header validation: " + string.Join("; ", rejections),
+                nameof(tools));
+        }
+
+        foreach (var tool in snapshot)
+        {
+            _registeredToolNames[tool.Name] = 0;
+            _toolCache[tool.Name] = tool;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void RemoveKnownTools(IEnumerable<string> toolNames)
+    {
+        Throw.IfNull(toolNames);
+
+        var snapshot = toolNames as IReadOnlyCollection<string> ?? [.. toolNames];
+
+        foreach (var name in snapshot)
+        {
+            Throw.IfNull(name);
+        }
+
+        foreach (var name in snapshot)
+        {
+            _registeredToolNames.TryRemove(name, out _);
+            _toolCache.TryRemove(name, out _);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ClearKnownTools()
+    {
+        foreach (var name in _registeredToolNames.Keys)
+        {
+            _toolCache.TryRemove(name, out _);
+        }
+
+        _registeredToolNames.Clear();
+    }
+
+    /// <inheritdoc/>
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
     {
         // For tools/call requests, attach the cached tool definition to the message context
@@ -645,12 +725,18 @@ internal sealed partial class McpClientImpl : McpClient
         if (request.Method == RequestMethods.ToolsCall &&
             request.Params is System.Text.Json.Nodes.JsonObject paramsObj &&
             paramsObj.TryGetPropertyValue("name", out var nameNode) &&
-            nameNode?.GetValue<string>() is { } toolName &&
-            _toolCache.TryGetValue(toolName, out var tool))
+            nameNode?.GetValue<string>() is { } toolName)
         {
-            request.Context ??= new();
-            request.Context.Items ??= new Dictionary<string, object?>();
-            request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            if (_toolCache.TryGetValue(toolName, out var tool))
+            {
+                request.Context ??= new();
+                request.Context.Items ??= new Dictionary<string, object?>();
+                request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            }
+            else if (_transport is StreamableHttpClientSessionTransport)
+            {
+                LogToolCacheMiss(toolName);
+            }
         }
 
         return _sessionHandler.SendRequestAsync(request, cancellationToken);
@@ -706,6 +792,9 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' not found in cache during tools/call. Mcp-Param-* headers will not be sent. Call AddKnownTools or ListToolsAsync to populate the cache.")]
+    private partial void LogToolCacheMiss(string toolName);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]
     private partial void LogToolRejected(string toolName, string reason);
