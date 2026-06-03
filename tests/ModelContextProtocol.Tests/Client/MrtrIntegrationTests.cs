@@ -55,7 +55,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             McpServerTool.Create(
                 async (McpServer server) =>
                 {
-                    // Attempt to send a JsonRpcRequest via SendMessageAsync — should always throw
+                    // Attempt to send a JsonRpcRequest via SendMessageAsync - should always throw
                     // since requests must go through SendRequestAsync for response correlation.
                     try
                     {
@@ -88,7 +88,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
     public async Task ClientHandlerException_DuringMrtrInputResolution_SurfacesToCaller()
     {
         // When the CLIENT's elicitation handler throws during MRTR input resolution,
-        // the retry never reaches the server ΓÇö the server's handler remains suspended
+        // the retry never reaches the server - the server's handler remains suspended
         // on ElicitAsync(). The exception should surface to the CallToolAsync caller,
         // and the server's orphaned handler should be cleaned up on disposal.
         // This is a fundamental MRTR limitation: the client has no channel to communicate
@@ -165,7 +165,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 Model = "test-model"
             });
 
-        // Start the client task ΓÇö it will send initialize and block waiting for response
+        // Start the client task - it will send initialize and block waiting for response
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
@@ -253,7 +253,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        // Client does NOT set DRAFT-2026-v1 ΓÇö standard protocol only
+        // Client does NOT set DRAFT-2026-v1 - standard protocol only
         var clientOptions = new McpClientOptions();
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult
@@ -265,7 +265,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 }
             });
 
-        // Start the client task ΓÇö it will send initialize and block waiting for response
+        // Start the client task - it will send initialize and block waiting for response
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
@@ -365,7 +365,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             await WriteJsonRpcAsync(serverWriter, normalResult);
         }, cancellationToken);
 
-        // Client calls the tool ΓÇö the non-compliant server will send InputRequiredResult
+        // Client calls the tool - the non-compliant server will send InputRequiredResult
         var response = await client.SendRequestAsync(
             new JsonRpcRequest
             {
@@ -431,7 +431,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var serverReader = new StreamReader(clientToServer.Reader.AsStream());
         var serverWriter = serverToClient.Writer.AsStream();
 
-        // Initialize handshake — negotiate DRAFT-2026-v1 so the client treats InputRequiredResult as MRTR.
+        // Initialize handshake - negotiate DRAFT-2026-v1 so the client treats InputRequiredResult as MRTR.
         var initLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(initLine);
         var initRequest = JsonSerializer.Deserialize<JsonRpcRequest>(initLine, McpJsonUtilities.DefaultOptions);
@@ -491,7 +491,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             Assert.NotNull(call2);
             retry1Params = call2.Params as JsonObject;
 
-            // Respond with another InputRequiredResult — this time WITHOUT requestState — to force the
+            // Respond with another InputRequiredResult - this time WITHOUT requestState - to force the
             // client to clear any stale state on the next retry params clone.
             var round2Result = new JsonObject
             {
@@ -506,7 +506,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
             };
             await WriteJsonRpcAsync(serverWriter, new JsonRpcResponse { Id = call2.Id, Result = round2Result });
 
-            // --- Round 3: receive second retry — assertion target. Must NOT contain "requestState".
+            // --- Round 3: receive second retry - assertion target. Must NOT contain "requestState".
             var call3Line = await serverReader.ReadLineAsync(cancellationToken);
             Assert.NotNull(call3Line);
             var call3 = JsonSerializer.Deserialize<JsonRpcRequest>(call3Line, McpJsonUtilities.DefaultOptions);

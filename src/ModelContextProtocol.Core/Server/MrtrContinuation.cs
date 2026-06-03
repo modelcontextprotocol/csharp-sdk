@@ -41,7 +41,7 @@ internal sealed class MrtrContinuation
     public MrtrExchange? PendingExchange { get; set; }
 
     /// <summary>
-    /// Cancels the handler. Safe to call multiple times and concurrently ΓÇö
+    /// Cancels the handler. Safe to call multiple times and concurrently -
     /// <see cref="CancellationTokenSource.Cancel()"/> is thread-safe with itself.
     /// The CTS is intentionally never disposed to avoid deadlock risks from
     /// calling Cancel/Dispose inside synchronization primitives.

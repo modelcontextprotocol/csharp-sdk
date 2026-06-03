@@ -16,7 +16,7 @@ public abstract partial class MapMcpTests
         Builder.Services.AddMcpServer(options =>
         {
             options.ServerInfo = new Implementation { Name = "MrtrTestServer", Version = "1" };
-            // Do not pin a protocol version — let it be negotiated based on what the client requests.
+            // Do not pin a protocol version - let it be negotiated based on what the client requests.
             // DRAFT-2026-v1 is in SupportedProtocolVersions, so an opt-in client gets it; others get
             // the latest non-draft.
             messageTracker.AddFilters(options.Filters.Message);
@@ -172,7 +172,7 @@ public abstract partial class MapMcpTests
 
         // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3.
         // In stateless mode, those calls succeed only when the request is still open on the same
-        // SSE stream — which it is — so the tool runs end-to-end as long as the input requests
+        // SSE stream - which it is - so the tool runs end-to-end as long as the input requests
         // themselves can be resolved (MRTR client) or replayed via legacy JSON-RPC (stateful + legacy).
         if (Stateless && !experimentalClient)
         {
@@ -194,12 +194,12 @@ public abstract partial class MapMcpTests
         {
             // Stateless + MRTR client: the await-style portion (server.SampleAsync on round 3)
             // requires handler suspension across requests, which only works in stateful mode.
-            // Skip this combination — the await API is documented as stateful-only.
+            // Skip this combination - the await API is documented as stateful-only.
             Assert.SkipWhen(true, "Await-style API requires handler suspension (stateful only).");
             return;
         }
 
-        // Stateful path — both client modes complete all 3 rounds.
+        // Stateful path - both client modes complete all 3 rounds.
         await using var statefulClient = await ConnectAsync(configureClient: configureClient);
 
         Assert.Equal(experimentalClient ? "DRAFT-2026-v1" : "2025-11-25",
@@ -238,7 +238,7 @@ public abstract partial class MapMcpTests
             RequestedSchema = new()
         }, ct);
 
-        // Start the second await — with MRTR, this throws InvalidOperationException
+        // Start the second await - with MRTR, this throws InvalidOperationException
         // because MrtrContext only supports one pending exchange at a time.
         try
         {
@@ -294,7 +294,7 @@ public abstract partial class MapMcpTests
         }
         else
         {
-            // Non-MRTR: awaits go through regular JSON-RPC — concurrent calls work.
+            // Non-MRTR: awaits go through regular JSON-RPC - concurrent calls work.
             Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
             var result = await client.CallToolAsync("mrtr-parallel-await",
@@ -411,7 +411,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Configure client — experimental or default based on parameter.
+        // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
@@ -457,7 +457,7 @@ public abstract partial class MapMcpTests
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Configure client — experimental or default based on parameter.
+        // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "DRAFT-2026-v1"; }
             : ConfigureMrtrHandlers;
@@ -689,7 +689,7 @@ public abstract partial class MapMcpTests
         ConfigureServer(
             [McpServerTool(Name = "mrtr-always-incomplete")] (RequestContext<CallToolRequestParams> context) =>
             {
-                // Always throw — never complete
+                // Always throw - never complete
                 throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>
                     {

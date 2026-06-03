@@ -220,7 +220,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
-        // Dispose the session handler first — cancels message processing and waits for all
+        // Dispose the session handler first - cancels message processing and waits for all
         // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
         // After this returns, no new requests can be processed and no new MRTR continuations
         // can be created, so _mrtrContinuations is effectively frozen.
@@ -812,10 +812,10 @@ internal sealed partial class McpServerImpl : McpServer
                 catch (Exception e)
                 {
                     // Skip logging for OperationCanceledException when the cancellation token
-                    // is signaled — tool handler cancellation is an expected lifecycle event
+                    // is signaled - tool handler cancellation is an expected lifecycle event
                     // (client request cancellation, session shutdown, MRTR teardown), not a
                     // tool error.
-                    // Skip logging for InputRequiredException — it's normal MRTR control flow,
+                    // Skip logging for InputRequiredException - it's normal MRTR control flow,
                     // not an error (tools throw it to signal an InputRequiredResult).
                     if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
                     {
@@ -1171,7 +1171,7 @@ internal sealed partial class McpServerImpl : McpServer
         _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
 
     /// <summary>
-    /// Returns <see langword="true"/> when the session is stateful — the same server instance handles
+    /// Returns <see langword="true"/> when the session is stateful - the same server instance handles
     /// subsequent requests on the same session. The legacy backcompat resolver in
     /// <see cref="InvokeWithInputRequiredResultHandlingAsync"/> needs a stateful session so it can send
     /// <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> to the client and
@@ -1187,7 +1187,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an
     /// <see cref="InputRequiredResult"/> JSON response. When MRTR is negotiated or the server is stateless,
     /// the result is serialized directly. Otherwise, input requests are resolved via standard JSON-RPC
-    /// calls (elicitation, sampling, roots) and the handler is retried with the responses — allowing
+    /// calls (elicitation, sampling, roots) and the handler is retried with the responses - allowing
     /// MRTR-native tools to work transparently with clients that don't support MRTR.
     /// </summary>
     private async Task<JsonNode?> InvokeWithInputRequiredResultHandlingAsync(
@@ -1213,7 +1213,7 @@ internal sealed partial class McpServerImpl : McpServer
             }
             catch (InputRequiredException ex)
             {
-                // If the client natively supports MRTR, serialize and return directly —
+                // If the client natively supports MRTR, serialize and return directly -
                 // the client will drive the retry loop.
                 if (ClientSupportsMrtr())
                 {
@@ -1223,7 +1223,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // In stateless mode without MRTR, the server can't resolve input requests via
                 // JSON-RPC (no persistent session for server-to-client requests), and the client
                 // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-                // TODO(stateless-draft): When DRAFT-2026-v1 becomes stateless-only, the IsStatefulSession() gate collapses — the stateful path will only matter for legacy clients on the current protocol.
+                // TODO(stateless-draft): When DRAFT-2026-v1 becomes stateless-only, the IsStatefulSession() gate collapses - the stateful path will only matter for legacy clients on the current protocol.
                 if (!IsStatefulSession())
                 {
                     throw new McpException(
@@ -1452,7 +1452,7 @@ internal sealed partial class McpServerImpl : McpServer
             // Implicit MRTR (handler suspension across ElicitAsync/SampleAsync) emits
             // InputRequiredResult on the wire, which only DRAFT-2026-v1 clients understand,
             // and requires the same server instance to handle the retry (stateful session).
-            // For all other cases — legacy clients, stateless sessions — fall through to the
+            // For all other cases - legacy clients, stateless sessions - fall through to the
             // exception-based path, which transparently resolves InputRequiredException via
             // legacy JSON-RPC requests when the client doesn't speak MRTR.
             if (!ClientSupportsMrtr() || !IsStatefulSession())
@@ -1466,7 +1466,7 @@ internal sealed partial class McpServerImpl : McpServer
             // Create a long-lived CTS for the handler that survives across retries.
             // The original request's combinedCts will be disposed when this lambda returns,
             // breaking the cancellation chain. This CTS keeps the handler cancellable.
-            // Like Kestrel's HttpContext.RequestAborted, the CTS is never disposed — Cancel()
+            // Like Kestrel's HttpContext.RequestAborted, the CTS is never disposed - Cancel()
             // is thread-safe with itself, and not disposing avoids deadlock risks from
             // calling Cancel/Dispose inside locks or Interlocked guards.
             var handlerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1546,9 +1546,10 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Fire-and-forget observer for an MRTR handler task. Logs unhandled exceptions at Error
-    /// level and decrements <see cref="_mrtrInFlightCount"/> when the handler completes, following
-    /// the same in-flight tracking pattern as <see cref="McpSessionHandler"/>.
+    /// Fire-and-forget observer for an MRTR handler task. Logs unhandled exceptions at Debug
+    /// level (the same exception still propagates to the request pipeline, so Debug avoids
+    /// double-reporting at Error) and decrements <see cref="_mrtrInFlightCount"/> when the
+    /// handler completes, following the same in-flight tracking pattern as <see cref="McpSessionHandler"/>.
     /// </summary>
     private async Task ObserveHandlerCompletionAsync(Task<JsonNode?> handlerTask)
     {
@@ -1558,7 +1559,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
         catch (OperationCanceledException)
         {
-            // Handler cancelled — expected lifecycle event (disposal, client cancel, session shutdown).
+            // Handler cancelled - expected lifecycle event (disposal, client cancel, session shutdown).
         }
         catch (InputRequiredException)
         {

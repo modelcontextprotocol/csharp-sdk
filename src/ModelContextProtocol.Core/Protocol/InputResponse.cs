@@ -30,7 +30,7 @@ public sealed class InputResponse
     /// </summary>
     /// <remarks>
     /// Use <see cref="Deserialize{T}"/> with the <c>JsonTypeInfo&lt;T&gt;</c> matching the
-    /// associated <see cref="InputRequest.Method"/> — for elicitation, sampling, or roots see
+    /// associated <see cref="InputRequest.Method"/> - for elicitation, sampling, or roots see
     /// <see cref="ElicitResultJsonTypeInfo"/>, <see cref="CreateMessageResultJsonTypeInfo"/>, and
     /// <see cref="ListRootsResultJsonTypeInfo"/>.
     /// </remarks>

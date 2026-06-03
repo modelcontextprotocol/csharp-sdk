@@ -64,7 +64,7 @@ internal sealed class MrtrContext
         var exchange = new MrtrExchange(key, inputRequest, tcs);
 
         // TrySetResult is the sole atomicity gate. If it returns false,
-        // the TCS was already completed by a prior call ΓÇö concurrent exchanges
+        // the TCS was already completed by a prior call - concurrent exchanges
         // are not supported.
         if (!tcs.TrySetResult(exchange))
         {

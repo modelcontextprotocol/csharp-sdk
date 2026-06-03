@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests that message filters correctly observe MRTR protocol behavior ΓÇö verifying that
+/// Tests that message filters correctly observe MRTR protocol behavior - verifying that
 /// InputRequiredResult responses are visible to outgoing filters, and that no legacy
 /// elicitation/sampling requests are sent when MRTR is active.
 /// </summary>

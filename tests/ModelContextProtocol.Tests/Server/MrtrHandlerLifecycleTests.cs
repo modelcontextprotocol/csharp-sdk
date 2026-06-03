@@ -10,7 +10,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for the server's MRTR handler lifecycle management ΓÇö cancellation, disposal, and error
+/// Tests for the server's MRTR handler lifecycle management - cancellation, disposal, and error
 /// logging during multi round-trip request processing.
 /// </summary>
 public class MrtrHandlerLifecycleTests : ClientServerTestBase
@@ -75,7 +75,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             McpServerTool.Create(
                 async (string message, McpServer server, CancellationToken ct) =>
                 {
-                    // Elicit first, then block forever ΓÇö the retry request stays in-flight
+                    // Elicit first, then block forever - the retry request stays in-flight
                     // until the client cancels, verifying that notifications/cancelled for
                     // the retry's request ID flows through to cancel this handler.
                     _handlerStarted.TrySetResult(true);
@@ -162,7 +162,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
                 (McpServer server) =>
                 {
                     // Low-level MRTR: throw InputRequiredException directly instead of using ElicitAsync.
-                    // This should NOT be logged at Error level ΓÇö it's normal MRTR control flow.
+                    // This should NOT be logged at Error level - it's normal MRTR control flow.
                     throw new InputRequiredException(new InputRequiredResult
                     {
                         InputRequests = new Dictionary<string, InputRequest>
@@ -241,7 +241,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // Wait for the MRTR round trip to reach the client's elicitation handler.
         await elicitHandlerCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
-        // Dispose the server ΓÇö HandlerCts.Cancel() should trigger the handler's CancellationToken.
+        // Dispose the server - HandlerCts.Cancel() should trigger the handler's CancellationToken.
         await Server.DisposeAsync();
 
         // Verify the handler's CancellationToken was actually cancelled via HandlerCts,
@@ -276,7 +276,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             new Dictionary<string, object?> { ["message"] = "test" },
             cancellationToken: cts.Token).AsTask();
 
-        // Wait for the handler to resume after ElicitAsync ΓÇö at this point the retry
+        // Wait for the handler to resume after ElicitAsync - at this point the retry
         // request is in-flight (server is awaiting WhenAny in AwaitMrtrHandlerAsync).
         await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
@@ -329,7 +329,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
                 McpJsonUtilities.DefaultOptions),
         }, TestContext.Current.CancellationToken);
 
-        // The tool should complete successfully ΓÇö the stale notification didn't affect it.
+        // The tool should complete successfully - the stale notification didn't affect it.
         var result = await callTask;
         Assert.Contains("accept", result.Content.OfType<TextContentBlock>().First().Text);
 
@@ -359,11 +359,11 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
             new Dictionary<string, object?> { ["message"] = "dispose-wait-test" },
             cancellationToken: cts.Token);
 
-        // Wait for the handler to resume after ElicitAsync ΓÇö it's now blocking on _releaseHandler.
+        // Wait for the handler to resume after ElicitAsync - it's now blocking on _releaseHandler.
         await _handlerResumed.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Dispose the server. The handler is still running (blocked on _releaseHandler).
-        // Release the handler after a delay ΓÇö DisposeAsync must wait for it.
+        // Release the handler after a delay - DisposeAsync must wait for it.
         var ct = TestContext.Current.CancellationToken;
         _ = Task.Run(async () =>
         {
@@ -401,7 +401,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // Verify the tool error was logged at Error level during the MRTR retry.
         // The ToolsCall handler catches the exception, logs it via ToolCallError,
-        // and converts it to an error result ΓÇö so the error is properly surfaced.
+        // and converts it to an error result - so the error is properly surfaced.
         Assert.Contains(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Error &&
             m.Message.Contains("elicit-then-throw-tool") &&

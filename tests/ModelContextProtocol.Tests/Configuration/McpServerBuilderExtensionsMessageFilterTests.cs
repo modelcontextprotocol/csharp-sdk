@@ -534,7 +534,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
             {
-                // Skip processing tools/list requests — handler never runs, no response sent
+                // Skip processing tools/list requests - handler never runs, no response sent
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
                     return Task.CompletedTask;
@@ -570,7 +570,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
             {
-                // Pass through — handler runs, response is sent
+                // Pass through - handler runs, response is sent
                 return next(context, cancellationToken);
             }))
             .WithTools<TestTool>();

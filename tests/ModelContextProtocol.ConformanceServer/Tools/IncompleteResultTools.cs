@@ -230,7 +230,7 @@ public sealed class IncompleteResultTools
         return TextResult("multi-round-ok");
     }
 
-    // ──── C1: Missing/wrong inputResponses key — re-request rather than error ────
+    // ──── C1: Missing/wrong inputResponses key - re-request rather than error ────
     [McpServerTool(Name = "test_incomplete_result_elicitation")]
     [Description("SEP-2322 C1: re-requests missing inputResponses key instead of erroring.")]
     public static CallToolResult ToolForMissingResponse(RequestContext<CallToolRequestParams> context)
@@ -243,7 +243,7 @@ public sealed class IncompleteResultTools
             return TextResult($"Hello, {name}!");
         }
 
-        // Either no inputResponses or wrong key — re-request via a fresh InputRequiredResult
+        // Either no inputResponses or wrong key - re-request via a fresh InputRequiredResult
         // (per SEP-2322 recommendation in scenario C1).
         throw new InputRequiredException(
             new Dictionary<string, InputRequest>

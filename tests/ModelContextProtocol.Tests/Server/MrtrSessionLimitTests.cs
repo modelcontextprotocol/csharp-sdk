@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for session-scoped MRTR resource governance ΓÇö verifying that outgoing message
+/// Tests for session-scoped MRTR resource governance - verifying that outgoing message
 /// filters can track and limit MRTR round trips per session.
 /// </summary>
 public class MrtrSessionLimitTests : ClientServerTestBase
@@ -137,7 +137,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
 
         await using var client = await CreateMcpClientForServer(clientOptions);
 
-        // Call the tool ΓÇö triggers one MRTR round-trip.
+        // Call the tool - triggers one MRTR round-trip.
         var result = await client.CallToolAsync("elicit-tool",
             new Dictionary<string, object?> { ["message"] = "confirm?" },
             cancellationToken: TestContext.Current.CancellationToken);

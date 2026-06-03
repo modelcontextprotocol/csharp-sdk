@@ -193,7 +193,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         using var deleteResponse = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
 
-        // 3. Attempt to retry with the old requestState — session is gone.
+        // 3. Attempt to retry with the old requestState - session is gone.
         var inputResponse = InputResponse.FromElicitResult(new ElicitResult { Action = "accept" });
         var retryParams = new JsonObject
         {
@@ -221,7 +221,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
     /// <see cref="ModelContextProtocol.Protocol.JsonRpcMessageContext.RelatedTransport"/>) so it
     /// reaches the client without depending on the GET stream at all.
     ///
-    /// This test deliberately never opens a GET stream — it only POSTs the initialize, the
+    /// This test deliberately never opens a GET stream - it only POSTs the initialize, the
     /// initialized notification, the <c>tools/call</c>, and the <c>roots/list</c> response. If the
     /// server falls back to <c>_transport.SendMessageAsync</c>, the test times out instead of
     /// reading the expected <c>roots/list</c> SSE event off the <c>tools/call</c> POST response.
@@ -301,7 +301,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         _lastRequestId = 1;
 
         // POST the tools/call and start reading the response SSE stream. We deliberately do NOT
-        // open a GET stream — the server-to-client roots/list must be delivered on this POST's
+        // open a GET stream - the server-to-client roots/list must be delivered on this POST's
         // response. Use HttpCompletionOption.ResponseHeadersRead so the POST returns as soon as
         // the response headers arrive instead of waiting for the SSE stream to close.
         var callRequest = new HttpRequestMessage(HttpMethod.Post, (string?)null)

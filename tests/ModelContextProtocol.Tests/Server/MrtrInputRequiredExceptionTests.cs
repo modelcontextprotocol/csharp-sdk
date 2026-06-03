@@ -7,7 +7,7 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests for the MRTR server API — IsMrtrSupported, InputRequiredException,
+/// Tests for the MRTR server API - IsMrtrSupported, InputRequiredException,
 /// and client auto-retry of incomplete results.
 /// </summary>
 public class MrtrInputRequiredExceptionTests : ClientServerTestBase

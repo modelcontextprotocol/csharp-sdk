@@ -825,7 +825,7 @@ internal sealed class StreamableHttpHandler(
         // JSON Schema defines two numeric types: "number" (any numeric value including
         // decimals like 3.14) and "integer" (whole numbers only like 42). Both produce
         // JsonValueKind.Number in the JSON body and are sent as numeric strings in headers.
-        // We check for both because different SDKs may serialize them differently —
+        // We check for both because different SDKs may serialize them differently -
         // e.g., a client might send header "42.0" for an "integer" body value of 42,
         // or header "42" for a "number" body value of 42.0. Without handling both types,
         // valid cross-SDK requests would be incorrectly rejected.

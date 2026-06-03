@@ -887,7 +887,7 @@ internal sealed partial class McpClientImpl : McpClient
                 }
                 else if (inputRequiredResult.RequestState is not null)
                 {
-                    // No input requests but has requestState (e.g., load shedding) — just retry with state.
+                    // No input requests but has requestState (e.g., load shedding) - just retry with state.
                     var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
                     paramsObj["requestState"] = inputRequiredResult.RequestState;
                     paramsObj.Remove("inputResponses");
