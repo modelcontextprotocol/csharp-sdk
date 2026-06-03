@@ -20,6 +20,15 @@ After the prepare-release PR is merged, invoke the `publish-release` skill. The 
 
 Review the draft release on GitHub, check 'Set as a pre-release' if appropriate, and click 'Publish release'.
 
+## Branching
+
+The `main` branch is the next-MAJOR preview and development line; currently, it produces the `2.0.0-preview.*` series. Nightly `cron` CI on `main` publishes CI-suffixed packages to GitHub Packages.
+Long-lived `release/{MAJOR}.x` branches are created on demand when a shipped MAJOR needs servicing releases. Every push to a `release/*` branch publishes a CI-suffixed package to GitHub Packages, so servicing CI packages are commit-driven rather than clock-driven.
+Short-lived `release-{version}` branches are local prepare-release work branches that become pull requests, such as `release-2.0.0-preview.1` or `release-1.3.1`.
+Official NuGet.org publishes occur only when a GitHub Release is created from a branch's tag.
+The prepare-release skill asks for the source/base branch first so the release PR targets the same line it assessed.
+For the agent-facing, structured version of these rules, see [release-branches.md](skills/shared-resources/release-branches.md).
+
 ## 4. Monitor the Release workflow
 
 - After publishing, a workflow will produce build artifacts and publish the NuGet packages to NuGet.org
