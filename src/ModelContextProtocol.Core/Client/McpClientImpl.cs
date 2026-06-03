@@ -761,7 +761,6 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
-    /// <inheritdoc/>
     public override void AddKnownTools(IEnumerable<Tool> tools)
     {
         Throw.IfNull(tools);
@@ -876,6 +875,12 @@ internal sealed partial class McpClientImpl : McpClient
                     if (inputRequiredResult.RequestState is { } requestState)
                     {
                         paramsObj["requestState"] = requestState;
+                    }
+                    else
+                    {
+                        // Strip any stale requestState carried over from the previous round's clone so
+                        // the server doesn't see a continuation token the current round is not using.
+                        paramsObj.Remove("requestState");
                     }
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };

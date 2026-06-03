@@ -1262,6 +1262,12 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     paramsObj["requestState"] = requestState;
                 }
+                else
+                {
+                    // Strip any stale requestState carried over from the previous round's clone so
+                    // the next tool invocation doesn't see a continuation token the current round is not using.
+                    paramsObj.Remove("requestState");
+                }
 
                 request = new JsonRpcRequest
                 {

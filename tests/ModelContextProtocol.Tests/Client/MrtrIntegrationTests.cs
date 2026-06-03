@@ -609,6 +609,168 @@ public class MrtrIntegrationTests : ClientServerTestBase
         serverToClient.Writer.Complete();
     }
 
+    [Fact]
+    public async Task IncompleteResultRetry_OmittingRequestState_StripsStaleStateFromRetryParams()
+    {
+        // Regression test for #1458 review feedback: when the server returns InputRequiredResult
+        // with requestState on round 1 and then InputRequiredResult WITHOUT requestState on round 2,
+        // the client's third retry must NOT carry the stale round-1 requestState forward via the
+        // params deep clone. Without the fix, the third retry's params contain {"requestState": "round1-state"}
+        // even though the round-2 InputRequiredResult cleared it.
+        StartServer(); // base-class disposal hook
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.ElicitationHandler = (_, _) =>
+            new ValueTask<ElicitResult>(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["confirmed"] = JsonDocument.Parse("\"yes\"").RootElement.Clone()
+                }
+            });
+
+        var clientTask = McpClient.CreateAsync(
+            new StreamClientTransport(
+                clientToServer.Writer.AsStream(),
+                serverToClient.Reader.AsStream(),
+                LoggerFactory),
+            clientOptions,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var serverReader = new StreamReader(clientToServer.Reader.AsStream());
+        var serverWriter = serverToClient.Writer.AsStream();
+
+        // Initialize handshake — negotiate DRAFT-2026-v1 so the client treats InputRequiredResult as MRTR.
+        var initLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initLine);
+        var initRequest = JsonSerializer.Deserialize<JsonRpcRequest>(initLine, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(initRequest);
+        Assert.Equal("initialize", initRequest.Method);
+
+        var initResponse = new JsonRpcResponse
+        {
+            Id = initRequest.Id,
+            Result = JsonSerializer.SerializeToNode(new InitializeResult
+            {
+                ProtocolVersion = "DRAFT-2026-v1",
+                Capabilities = new ServerCapabilities { Tools = new() },
+                ServerInfo = new Implementation { Name = "MrtrServer", Version = "1.0" }
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        await WriteJsonRpcAsync(serverWriter, initResponse);
+
+        var initializedLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(initializedLine);
+
+        await using var client = await clientTask;
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        // Capture the retry payloads sent by the client so we can inspect them after the call completes.
+        JsonObject? retry1Params = null;
+        JsonObject? retry2Params = null;
+
+        var serverLoop = Task.Run(async () =>
+        {
+            // --- Round 1: receive original tools/call, respond with InputRequiredResult + requestState="round1-state".
+            var call1Line = await serverReader.ReadLineAsync(cancellationToken);
+            Assert.NotNull(call1Line);
+            var call1 = JsonSerializer.Deserialize<JsonRpcRequest>(call1Line, McpJsonUtilities.DefaultOptions);
+            Assert.NotNull(call1);
+            Assert.Equal("tools/call", call1.Method);
+
+            var round1Result = new JsonObject
+            {
+                ["resultType"] = "input_required",
+                ["inputRequests"] = new JsonObject
+                {
+                    ["q1"] = JsonSerializer.SerializeToNode(
+                        InputRequest.ForElicitation(new ElicitRequestParams { Message = "round1", RequestedSchema = new() }),
+                        McpJsonUtilities.DefaultOptions),
+                },
+                ["requestState"] = "round1-state",
+            };
+            await WriteJsonRpcAsync(serverWriter, new JsonRpcResponse { Id = call1.Id, Result = round1Result });
+
+            // --- Round 2: receive first retry (should include requestState="round1-state" + inputResponses).
+            var call2Line = await serverReader.ReadLineAsync(cancellationToken);
+            Assert.NotNull(call2Line);
+            var call2 = JsonSerializer.Deserialize<JsonRpcRequest>(call2Line, McpJsonUtilities.DefaultOptions);
+            Assert.NotNull(call2);
+            retry1Params = call2.Params as JsonObject;
+
+            // Respond with another InputRequiredResult — this time WITHOUT requestState — to force the
+            // client to clear any stale state on the next retry params clone.
+            var round2Result = new JsonObject
+            {
+                ["resultType"] = "input_required",
+                ["inputRequests"] = new JsonObject
+                {
+                    ["q2"] = JsonSerializer.SerializeToNode(
+                        InputRequest.ForElicitation(new ElicitRequestParams { Message = "round2", RequestedSchema = new() }),
+                        McpJsonUtilities.DefaultOptions),
+                },
+                // Intentionally NO "requestState" key.
+            };
+            await WriteJsonRpcAsync(serverWriter, new JsonRpcResponse { Id = call2.Id, Result = round2Result });
+
+            // --- Round 3: receive second retry — assertion target. Must NOT contain "requestState".
+            var call3Line = await serverReader.ReadLineAsync(cancellationToken);
+            Assert.NotNull(call3Line);
+            var call3 = JsonSerializer.Deserialize<JsonRpcRequest>(call3Line, McpJsonUtilities.DefaultOptions);
+            Assert.NotNull(call3);
+            retry2Params = call3.Params as JsonObject;
+
+            // Final success response so the client's call completes cleanly.
+            await WriteJsonRpcAsync(serverWriter, new JsonRpcResponse
+            {
+                Id = call3.Id,
+                Result = JsonSerializer.SerializeToNode(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "done" }]
+                }, McpJsonUtilities.DefaultOptions),
+            });
+        }, cancellationToken);
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest
+            {
+                Method = "tools/call",
+                Params = JsonSerializer.SerializeToNode(new CallToolRequestParams { Name = "any-tool" }, McpJsonUtilities.DefaultOptions),
+            },
+            cancellationToken);
+
+        await serverLoop;
+
+        // Sanity check the final result reached us.
+        Assert.NotNull(response.Result);
+        var result = JsonSerializer.Deserialize<CallToolResult>(response.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result);
+        Assert.Equal("done", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+
+        // The first retry must carry requestState="round1-state".
+        Assert.NotNull(retry1Params);
+        Assert.NotNull(retry1Params!["inputResponses"]);
+        Assert.Equal("round1-state", retry1Params["requestState"]?.GetValue<string>());
+
+        // The second retry must NOT carry a stale requestState. Pre-fix, the deep clone of the
+        // round-1 request kept "round1-state" in paramsObj because the client only OVERWROTE it
+        // when InputRequiredResult.RequestState was non-null. With the fix, it explicitly removes
+        // the key whenever the server's new InputRequiredResult clears it.
+        Assert.NotNull(retry2Params);
+        Assert.NotNull(retry2Params!["inputResponses"]);
+        Assert.False(retry2Params.ContainsKey("requestState"),
+            "Retry params must not carry a stale requestState from the previous round.");
+
+        clientToServer.Writer.Complete();
+        serverToClient.Writer.Complete();
+    }
+
     private static async Task WriteJsonRpcAsync(Stream writer, JsonRpcMessage message)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes<JsonRpcMessage>(message, McpJsonUtilities.DefaultOptions);
