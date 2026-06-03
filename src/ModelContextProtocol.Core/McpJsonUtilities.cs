@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
@@ -143,6 +143,13 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    // MCP MRTR (Multi Round-Trip Requests)
+    [JsonSerializable(typeof(InputRequiredResult))]
+    [JsonSerializable(typeof(InputRequest))]
+    [JsonSerializable(typeof(InputResponse))]
+    [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
+    [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
 
     // MCP Task Request Params / Results
     [JsonSerializable(typeof(McpTask))]
