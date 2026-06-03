@@ -18,11 +18,21 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public sealed class ListPromptsResult : PaginatedResult
+public sealed class ListPromptsResult : PaginatedResult, ICacheableResult
 {
     /// <summary>
     /// Gets or sets a list of prompts or prompt templates that the server offers.
     /// </summary>
     [JsonPropertyName("prompts")]
     public IList<Prompt> Prompts { get; set; } = [];
+
+    /// <inheritdoc />
+    [JsonPropertyName("ttlMs")]
+    [JsonConverter(typeof(TimeSpanMillisecondsConverter))]
+    public TimeSpan? TimeToLive { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("cacheScope")]
+    [JsonConverter(typeof(CacheScopeConverter))]
+    public CacheScope? CacheScope { get; set; }
 }

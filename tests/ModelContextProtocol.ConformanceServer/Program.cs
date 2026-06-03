@@ -25,10 +25,25 @@ public class Program
         // because .NET does not have a built-in concurrent HashSet
         ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
+        // Allow running the server in the SEP-2575 stateless lifecycle, which the draft
+        // "caching" (SEP-2549) conformance scenario requires. A "--stateless true|false"
+        // command-line switch (read via configuration) takes precedence so an in-process test
+        // fixture can opt in or out per-instance deterministically; when it is not supplied,
+        // fall back to the MCP_CONFORMANCE_STATELESS environment variable for standalone runs.
+        // The default (no switch, no env var) remains the stateful server that serves the
+        // active conformance suite unchanged.
+        var statelessConfig = builder.Configuration["stateless"];
+        var stateless = statelessConfig is not null
+            ? string.Equals(statelessConfig, "true", StringComparison.OrdinalIgnoreCase)
+            : string.Equals(
+                Environment.GetEnvironmentVariable("MCP_CONFORMANCE_STATELESS"),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+
         builder.Services.AddDistributedMemoryCache();
         builder.Services
             .AddMcpServer()
-            .WithHttpTransport()
+            .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
             .WithTools<ConformanceTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
@@ -44,6 +59,44 @@ public class Program
                     await request.EnablePollingAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
                 }
 
+                return result;
+            })
+            // SEP-2549: advertise TTL/cacheScope caching hints on cacheable results. The
+            // conformance server's tools, prompts, resources, and resource templates are the
+            // same for every caller, so they are cacheable with a "public" scope.
+            .AddListToolsFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+                result.TimeToLive = TimeSpan.FromMinutes(5);
+                result.CacheScope = CacheScope.Public;
+                return result;
+            })
+            .AddListPromptsFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+                result.TimeToLive = TimeSpan.FromMinutes(5);
+                result.CacheScope = CacheScope.Public;
+                return result;
+            })
+            .AddListResourcesFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+                result.TimeToLive = TimeSpan.FromMinutes(5);
+                result.CacheScope = CacheScope.Public;
+                return result;
+            })
+            .AddListResourceTemplatesFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+                result.TimeToLive = TimeSpan.FromMinutes(5);
+                result.CacheScope = CacheScope.Public;
+                return result;
+            })
+            .AddReadResourceFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+                result.TimeToLive = TimeSpan.FromMinutes(1);
+                result.CacheScope = CacheScope.Public;
                 return result;
             }))
             .WithPrompts<ConformancePrompts>()
