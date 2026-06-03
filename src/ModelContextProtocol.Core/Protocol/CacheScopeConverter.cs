@@ -40,8 +40,15 @@ internal sealed class CacheScopeConverter : JsonConverter<CacheScope?>
             {
                 return CacheScope.Private;
             }
+
+            return null;
         }
 
+        // Any non-string token (number, bool, object, array) is an unrecognized hint. Consume the whole
+        // value, including the contents of an object or array, so the reader is left correctly positioned
+        // before mapping to null. Skipping is required for container tokens: returning without consuming
+        // them would leave the reader mispositioned and break deserialization of the enclosing result.
+        reader.Skip();
         return null;
     }
 

@@ -172,7 +172,8 @@ public static class CacheableResultTests
     {
         // A future/unknown cacheScope string must not break deserialization of the entire result; it is
         // tolerated and surfaced as null (equivalent to an absent field, which clients treat as public).
-        foreach (string scope in new[] { "\"shared\"", "\"\"", "123", "true", "null" })
+        // Non-string tokens, including objects and arrays, must likewise be tolerated and fully consumed.
+        foreach (string scope in new[] { "\"shared\"", "\"\"", "123", "true", "null", "{}", "[]", "{\"a\":1}", "[1,2]" })
         {
             string json = $"{{\"cacheScope\":{scope}}}";
 

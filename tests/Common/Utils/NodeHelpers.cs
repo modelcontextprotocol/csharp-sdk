@@ -224,14 +224,10 @@ public static class NodeHelpers
             var packageJsonPath = Path.Combine(
                 repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "package.json");
 
-            // Only trigger an install if the package isn't already present. This avoids a
-            // gate check inadvertently running 'npm ci' (which would restore the pinned
-            // version and clobber a locally installed private build).
-            if (!File.Exists(packageJsonPath))
-            {
-                EnsureNpmDependenciesInstalled();
-            }
-
+            // This is a skip gate for version-conditional conformance scenarios, so it must stay
+            // side-effect-free. If the conformance package isn't installed, report no version (the
+            // scenario is simply gated off); the actual scenario run path restores npm dependencies
+            // separately via ConformanceTestStartInfo.
             if (!File.Exists(packageJsonPath))
             {
                 return null;
