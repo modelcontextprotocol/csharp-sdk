@@ -378,3 +378,42 @@ Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
 ```
 
 Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. See [Sessions](xref:stateless) for how session behavior varies across transports.
+
+## Cross-Application Access
+
+The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
+
+The flow consists of two steps:
+1. **RFC 8693 Token Exchange** at the enterprise IdP: OIDC ID token → JWT Authorization Grant (JAG)
+2. **RFC 7523 JWT Bearer Grant** at the MCP authorization server: JAG → access token
+
+### Usage
+
+```csharp
+using ModelContextProtocol.Authentication;
+
+// The caller owns the HttpClient lifetime.
+var httpClient = new HttpClient();
+
+var provider = new IdentityAssertionGrantProvider(
+    new IdentityAssertionGrantProviderOptions
+    {
+        ClientId = "mcp-client-id",
+        IdpTokenEndpoint = "https://company.okta.com/oauth2/token",
+        IdpClientId = "idp-client-id",
+        IdTokenCallback = (context, cancellationToken) =>
+            // Fetch a fresh ID token from your SSO session.
+            mySsoClient.GetIdTokenAsync(cancellationToken)
+    },
+    httpClient);
+
+var tokens = await provider.GetAccessTokenAsync(
+    resourceUrl: new Uri("https://mcp-server.example.com"),
+    authorizationServerUrl: new Uri("https://auth.mcp-server.example.com"),
+    cancellationToken: ct);
+
+// Use tokens.AccessToken to authenticate against the MCP server.
+// Call provider.InvalidateCache() to force a fresh token exchange on the next call.
+```
+
+The provider caches the resulting access token and reuses it until it expires. To force re-authentication (e.g. after a 401 response), call `provider.InvalidateCache()` before retrying.
