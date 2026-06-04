@@ -59,10 +59,9 @@ public class McpHeaderEncoderTests
 
     [Theory]
     [InlineData(42, "42")]
-    [InlineData(3.14, "3.14")]
     [InlineData(0, "0")]
     [InlineData(-1, "-1")]
-    public void EncodeValue_Number_ConvertsToString(object input, string expected)
+    public void EncodeValue_Integer_ConvertsToString(object input, string expected)
     {
         var result = McpHeaderEncoder.EncodeValue(input);
         Assert.Equal(expected, result);

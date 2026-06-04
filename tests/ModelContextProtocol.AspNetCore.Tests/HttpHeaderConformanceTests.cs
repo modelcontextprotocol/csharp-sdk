@@ -54,7 +54,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     // Create a tool with x-mcp-header annotations in the schema.
     // We set InputSchema directly because TransformSchemaNode doesn't provide
     // property-level path context for lambda-based tool creation.
-    private static McpServerTool[] Tools { get; } = [CreateHeaderTestTool()];
+    private static McpServerTool[] Tools { get; } = [CreateHeaderTestTool(), CreateUnionHeaderTestTool()];
 
     private static readonly JsonSerializerOptions s_reflectionOptions = new()
     {
@@ -65,7 +65,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     {
         var tool = McpServerTool.Create(
             [McpServerTool(Name = "header_test")]
-            static (string region, int priority, bool verbose, string emptyVal) =>
+            static (string region, long priority, bool verbose, string emptyVal) =>
                 $"region={region},priority={priority},verbose={verbose},empty={emptyVal}",
             new McpServerToolCreateOptions { SerializerOptions = s_reflectionOptions });
 
@@ -86,7 +86,92 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         return tool;
     }
 
+    // A tool whose integer header parameter uses a JSON Schema union type (["integer", "null"]).
+    private static McpServerTool CreateUnionHeaderTestTool()
+    {
+        var tool = McpServerTool.Create(
+            [McpServerTool(Name = "union_test")]
+            static (long priority) => $"priority={priority}",
+            new McpServerToolCreateOptions { SerializerOptions = s_reflectionOptions });
+
+        using var doc = JsonDocument.Parse("""
+            {
+              "type": "object",
+              "properties": {
+                "priority": { "type": ["integer", "null"], "x-mcp-header": "Priority" }
+              },
+              "required": ["priority"]
+            }
+            """);
+        tool.ProtocolTool.InputSchema = doc.RootElement.Clone();
+
+        return tool;
+    }
+
     #region Server-side validation tests
+
+    [Fact]
+    public async Task Server_AcceptsUnionIntegerCanonicalForm()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Union-typed (["integer","null"]) parameter: header carries canonical "42" while the body
+        // carries the decimal form 42.0. The server must treat the union type as integer and match.
+        var callJson = CallTool("union_test", """{"priority":42.0}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "union_test");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Server_RejectsUnionIntegerOutsideSafeRange()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        var callJson = CallTool("union_test", """{"priority":9007199254740993}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "union_test");
+        request.Headers.Add("Mcp-Param-Priority", "9007199254740993");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Server_AcceptsExponentBodyMatchingDecimalHeader()
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Body carries the integer in exponent form (1e2 = 100); header carries the decimal "100".
+        var callJson = CallTool("header_test", """{"region":"test","priority":1e2,"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "test");
+        request.Headers.Add("Mcp-Param-Priority", "100");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
 
     [Fact]
     public async Task Server_AcceptsWhitespaceAroundMcpNameHeaderValue()
@@ -209,15 +294,15 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
-    public async Task Server_AcceptsLargeIntegerWithFullPrecision()
+    public async Task Server_AcceptsMaxSafeIntegerWithFullPrecision()
     {
         await StartAsync();
         await InitializeWithDraftVersionAsync();
 
-        // Use a large integer that would lose precision if converted through double
-        // 2^53 + 1 = 9007199254740993 (cannot be represented exactly as double)
-        const long largeInt = 9007199254740993L;
-        var callJson = CallTool("header_test", $$"""{"region":"test","priority":{{largeInt}},"verbose":false,"emptyVal":""}""");
+        // The maximum safe integer (2^53 - 1) must be accepted, and compared exactly without
+        // losing precision through a double conversion.
+        const long maxSafeInt = 9007199254740991L;
+        var callJson = CallTool("header_test", $$"""{"region":"test","priority":{{maxSafeInt}},"verbose":false,"emptyVal":""}""");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
@@ -225,12 +310,40 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
-        request.Headers.Add("Mcp-Param-Priority", largeInt.ToString());
+        request.Headers.Add("Mcp-Param-Priority", maxSafeInt.ToString());
         request.Headers.Add("Mcp-Param-Verbose", "false");
         request.Headers.Add("Mcp-Param-EmptyVal", "");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("9007199254740993")]   // 2^53 + 1, just outside the safe range
+    [InlineData("-9007199254740993")]  // -(2^53 + 1), just outside the safe range
+    [InlineData("100000000000000000000000000000000000000")] // far beyond decimal range
+    [InlineData("1e100")] // exponent form far beyond the safe range
+    public async Task Server_RejectsIntegerOutsideSafeRange(string outOfRangeValue)
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // Per SEP-2243 integer values MUST be within the JavaScript safe integer range.
+        // A matching header and body that are both outside the range must still be rejected.
+        var callJson = CallTool("header_test", $$"""{"region":"test","priority":{{outOfRangeValue}},"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "test");
+        request.Headers.Add("Mcp-Param-Priority", outOfRangeValue);
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Theory]

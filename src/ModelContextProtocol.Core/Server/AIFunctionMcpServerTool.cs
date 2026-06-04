@@ -673,6 +673,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private static bool IsPrimitiveHeaderType(Type type)
     {
+        // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters,
+        // and integer values must stay within the JavaScript safe integer range (-2^53+1 to 2^53-1).
+        // ulong is excluded because its upper range (above long.MaxValue) cannot be represented as a
+        // signed integer and the bulk of its domain falls outside the safe range. Remaining integer
+        // types are allowed here; long values are additionally range-checked per value when emitted
+        // (client) and validated (server).
         return type == typeof(string) ||
                type == typeof(bool) ||
                type == typeof(byte) ||
@@ -681,7 +687,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                type == typeof(ushort) ||
                type == typeof(int) ||
                type == typeof(uint) ||
-               type == typeof(long) ||
-               type == typeof(ulong);
+               type == typeof(long);
     }
 }
