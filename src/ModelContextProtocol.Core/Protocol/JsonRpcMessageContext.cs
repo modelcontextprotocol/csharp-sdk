@@ -74,4 +74,15 @@ public sealed class JsonRpcMessageContext
     /// </para>
     /// </remarks>
     public IDictionary<string, object?>? Items { get; set; }
+
+    /// <summary>
+    /// Gets or sets the protocol version from the transport-level header (e.g. <c>Mcp-Protocol-Version</c>)
+    /// that accompanied this JSON-RPC message.
+    /// </summary>
+    /// <remarks>
+    /// In stateless Streamable HTTP mode, the protocol version cannot be negotiated via the <c>initialize</c>
+    /// handshake because each request creates a new server instance. This property allows the transport layer
+    /// to flow the protocol version header so the server can determine client capabilities.
+    /// </remarks>
+    public string? ProtocolVersion { get; set; }
 }
