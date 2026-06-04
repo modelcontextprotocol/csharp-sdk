@@ -148,6 +148,40 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task StreamableHttp_NotificationWithEmptyAcceptedJsonResponse_DoesNotLogParseFailure()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("http://localhost:8080/mcp", request.RequestUri?.AbsoluteUri);
+
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Accepted,
+                Content = new StringContent("", Encoding.UTF8, "application/json"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcNotification { Method = "notifications/initialized" },
+            TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, log =>
+            log.Message.Contains("transport message parsing failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_Throws_HttpRequestException_With_ResponseBody_On_ErrorStatusCode()
     {
         using var mockHttpHandler = new MockHttpHandler();
