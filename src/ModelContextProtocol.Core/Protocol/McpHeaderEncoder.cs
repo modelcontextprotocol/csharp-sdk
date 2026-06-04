@@ -34,6 +34,10 @@ public static class McpHeaderEncoder
     private const string Base64Prefix = "=?base64?";
     private const string Base64Suffix = "?=";
 
+    // Strict UTF-8 decoder that throws on invalid byte sequences rather than silently substituting
+    // U+FFFD replacement characters, so a malformed Base64-wrapped header value is rejected.
+    private static readonly UTF8Encoding s_strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     /// <summary>
     /// Encodes a string parameter value for use in an HTTP header.
     /// </summary>
@@ -132,9 +136,13 @@ public static class McpHeaderEncoder
             try
             {
                 var bytes = Convert.FromBase64String(base64Content);
-                return Encoding.UTF8.GetString(bytes);
+                return s_strictUtf8.GetString(bytes);
             }
             catch (FormatException)
+            {
+                return null;
+            }
+            catch (DecoderFallbackException)
             {
                 return null;
             }

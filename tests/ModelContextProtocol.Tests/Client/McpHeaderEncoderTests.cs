@@ -121,6 +121,15 @@ public class McpHeaderEncoderTests
     }
 
     [Fact]
+    public void DecodeValue_ValidBase64ButInvalidUtf8_ReturnsNull()
+    {
+        // "//4=" is valid Base64 that decodes to the bytes 0xFF 0xFE, which are not valid UTF-8.
+        // A strict decoder must reject this rather than substituting U+FFFD replacement characters.
+        var result = McpHeaderEncoder.DecodeValue("=?base64?//4=?=");
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void DecodeValue_MissingPrefix_ReturnsLiteralValue()
     {
         var result = McpHeaderEncoder.DecodeValue("SGVsbG8=");

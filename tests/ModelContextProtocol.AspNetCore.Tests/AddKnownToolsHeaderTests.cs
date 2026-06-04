@@ -173,6 +173,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
     [InlineData("42.0", "42")]                                 // decimal body form canonicalized
     [InlineData("-7.00", "-7")]                                // trailing zeros canonicalized
     [InlineData("-0.0", "0")]                                  // negative zero canonicalized
+    [InlineData("4.2e1", "42")]                                // exponent body form canonicalized
     [InlineData("9007199254740991", "9007199254740991")]      // max safe integer preserved exactly
     [InlineData("-9007199254740991", "-9007199254740991")]    // min safe integer preserved exactly
     public async Task CallTool_EmitsCanonicalIntegerHeader(string bodyValue, string expectedHeader)
@@ -209,6 +210,8 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
     [InlineData("9007199254740993")]    // 2^53 + 1, above the safe range
     [InlineData("-9007199254740993")]   // -(2^53 + 1), below the safe range
     [InlineData("42.5")]                // not a whole number
+    [InlineData("12e-1")]               // 1.2 in exponent form, not a whole number
+    [InlineData("42.0000000000000000000000000001")] // high-precision fraction (decimal would round this to 42)
     public async Task CallTool_ThrowsForInvalidIntegerHeaderValue(string bodyValue)
     {
         await StartAsync();

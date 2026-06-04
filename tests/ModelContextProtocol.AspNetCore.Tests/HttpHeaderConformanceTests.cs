@@ -347,15 +347,19 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Theory]
-    [InlineData("42", 42)]       // "42" header vs 42 body → exact integer match
-    [InlineData("42.0", 42)]     // "42.0" header vs 42 body → numeric equivalence
-    [InlineData("42", 42.0)]     // "42" header vs 42.0 body → numeric equivalence
-    public async Task Server_AcceptsNumericEquivalentHeaderValues(string headerValue, double bodyValue)
+    [InlineData("42", "42")]       // "42" header vs 42 body -> exact integer match
+    [InlineData("42.0", "42")]     // "42.0" header vs 42 body -> numeric equivalence
+    [InlineData("42", "42.0")]     // "42" header vs 42.0 body (decimal form from another SDK) -> numeric equivalence
+    [InlineData("42", "4.2e1")]    // "42" header vs 4.2e1 body (exponent form) -> numeric equivalence
+    [InlineData("420e-1", "42")]   // "420e-1" header vs 42 body -> numeric equivalence
+    public async Task Server_AcceptsNumericEquivalentHeaderValues(string headerValue, string bodyValue)
     {
         await StartAsync();
         await InitializeWithDraftVersionAsync();
 
-        var callJson = CallTool("header_test", $$$"""{"region":"test","priority":{{{bodyValue.ToString(System.Globalization.CultureInfo.InvariantCulture)}}},"verbose":false,"emptyVal":""}""");
+        // bodyValue is inserted as a raw JSON numeric literal so that forms such as "42.0" and
+        // "4.2e1" are preserved in the body exactly as another SDK might serialize them.
+        var callJson = CallTool("header_test", $$"""{"region":"test","priority":{{bodyValue}},"verbose":false,"emptyVal":""}""");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
@@ -369,6 +373,34 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("42.5")]                                 // fractional value for an integer parameter
+    [InlineData("12e-1")]                                // 1.2 in exponent form
+    [InlineData("42.0000000000000000000000000001")]      // high-precision fraction that decimal would round to 42
+    public async Task Server_RejectsNonIntegerValue_EvenWhenHeaderAndBodyMatch(string nonIntegerValue)
+    {
+        await StartAsync();
+        await InitializeWithDraftVersionAsync();
+
+        // For an integer-typed parameter a non-whole numeric value is invalid and must be rejected
+        // even when the header and body strings are byte-for-byte identical (it must not slip through
+        // the ordinal comparison).
+        var callJson = CallTool("header_test", $$"""{"region":"test","priority":{{nonIntegerValue}},"verbose":false,"emptyVal":""}""");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "test");
+        request.Headers.Add("Mcp-Param-Priority", nonIntegerValue);
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

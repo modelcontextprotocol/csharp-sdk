@@ -859,24 +859,34 @@ internal sealed class StreamableHttpHandler(
         // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters.
         // For "integer" the spec recommends numeric comparison so that representations like "42" and
         // "42.0" are considered equal, while still requiring values to stay within the safe range.
-        // This must run before the ordinal comparison below so that an out-of-range value is rejected
-        // even when the header and body strings are byte-for-byte identical.
+        // This must run before the ordinal comparison below so that an invalid integer value is
+        // rejected even when the header and body strings are byte-for-byte identical.
         if (actual is not null && expected is not null && SchemaTypeIsInteger(propertySchema))
         {
-            bool actualParsed = TryParseSafeInteger(actual, out long actualValue, out bool actualOutOfRange);
-            bool expectedParsed = TryParseSafeInteger(expected, out long expectedValue, out bool expectedOutOfRange);
+            var actualResult = ParseSafeInteger(actual, out long actualValue);
+            var expectedResult = ParseSafeInteger(expected, out long expectedValue);
 
-            if (actualOutOfRange || expectedOutOfRange)
+            // A numeric value outside the safe integer range is always rejected.
+            if (actualResult == SafeIntegerParse.OutOfRange || expectedResult == SafeIntegerParse.OutOfRange)
             {
                 return HeaderValueComparison.IntegerOutOfRange;
             }
 
-            if (actualParsed && expectedParsed)
+            if (actualResult == SafeIntegerParse.SafeInteger && expectedResult == SafeIntegerParse.SafeInteger)
             {
                 return actualValue == expectedValue ? HeaderValueComparison.Match : HeaderValueComparison.Mismatch;
             }
 
-            // Not parseable as integers (e.g. a malformed value); fall through to ordinal comparison.
+            // A numeric-but-non-integer value (e.g. "42.5") for an integer-typed parameter is invalid
+            // and must not be allowed to slip through the ordinal comparison just because the header
+            // and body strings happen to be identical.
+            if (actualResult == SafeIntegerParse.NonInteger || expectedResult == SafeIntegerParse.NonInteger)
+            {
+                return HeaderValueComparison.Mismatch;
+            }
+
+            // Otherwise at least one side is not numeric at all (NotNumeric); fall through to the
+            // ordinal comparison below.
         }
 
         return string.Equals(actual, expected, StringComparison.Ordinal)
@@ -917,46 +927,61 @@ internal sealed class StreamableHttpHandler(
     }
 
     /// <summary>
-    /// Attempts to parse a header/body value as a whole integer within the JavaScript safe integer
-    /// range. Decimal and exponent forms whose fractional part is zero (e.g. <c>"42.0"</c>, <c>"4.2e1"</c>)
-    /// are accepted. When the value is a whole number but outside the safe range, <paramref name="outOfRange"/> is set.
+    /// Classifies how a header/body string parses as a SEP-2243 integer value.
     /// </summary>
-    private static bool TryParseSafeInteger(string text, out long value, out bool outOfRange)
+    private enum SafeIntegerParse
+    {
+        /// <summary>A whole number within the JavaScript safe integer range.</summary>
+        SafeInteger,
+
+        /// <summary>A numeric value whose magnitude is outside the safe integer range.</summary>
+        OutOfRange,
+
+        /// <summary>A numeric value that is not a whole number (e.g. <c>"42.5"</c>).</summary>
+        NonInteger,
+
+        /// <summary>The value is not a numeric literal at all.</summary>
+        NotNumeric,
+    }
+
+    /// <summary>
+    /// Parses a header/body value as a whole integer within the JavaScript safe integer range.
+    /// Decimal and exponent forms whose fractional part is zero (e.g. <c>"42.0"</c>, <c>"4.2e1"</c>)
+    /// are accepted. <see cref="long.TryParse(string, System.Globalization.NumberStyles, IFormatProvider, out long)"/>
+    /// inspects the actual digits (so it rejects non-integers such as <c>"42.5"</c> without rounding)
+    /// and fails fast on overflow (so a huge literal such as <c>"1e1000000"</c> cannot allocate a
+    /// large number).
+    /// </summary>
+    private static SafeIntegerParse ParseSafeInteger(string text, out long value)
     {
         value = 0;
-        outOfRange = false;
 
         const System.Globalization.NumberStyles Styles =
             System.Globalization.NumberStyles.AllowLeadingSign |
             System.Globalization.NumberStyles.AllowDecimalPoint |
             System.Globalization.NumberStyles.AllowExponent;
 
-        if (!decimal.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
+        if (long.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out long parsed))
         {
-            // A value that is a well-formed numeric literal but too large for decimal to represent
-            // is necessarily outside the safe integer range; flag it rather than letting identical
-            // out-of-range strings slip through the ordinal comparison. double has a far larger range
-            // than decimal, so if it can parse the literal then the value is a number that overflowed
-            // decimal. We only use double as a yes/no "is this numeric" gate here; its loss of integer
-            // precision past 2^53 is irrelevant because every in-range value is handled by decimal above.
-            outOfRange = double.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out _);
-            return false;
+            if (parsed < -MaxSafeInteger || parsed > MaxSafeInteger)
+            {
+                return SafeIntegerParse.OutOfRange;
+            }
+
+            value = parsed;
+            return SafeIntegerParse.SafeInteger;
         }
 
-        // Only whole numbers are valid integer values.
-        if (decimal.Truncate(parsed) != parsed)
+        // The value is not representable as a 64-bit integer. Use double only as an order-of-magnitude
+        // gate to distinguish a numeric literal beyond the safe range (e.g. "1e100") from a numeric but
+        // non-integer value (e.g. "42.5"). double's loss of precision is irrelevant for this magnitude
+        // comparison because every in-range value was already handled exactly by long.TryParse above.
+        if (double.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out double d))
         {
-            return false;
+            return System.Math.Abs(d) > MaxSafeInteger ? SafeIntegerParse.OutOfRange : SafeIntegerParse.NonInteger;
         }
 
-        if (parsed < -MaxSafeInteger || parsed > MaxSafeInteger)
-        {
-            outOfRange = true;
-            return false;
-        }
-
-        value = (long)parsed;
-        return true;
+        return SafeIntegerParse.NotNumeric;
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text.Json;
 #if NET
 using System.Buffers;
@@ -159,7 +160,8 @@ internal static class McpHeaderExtractor
 
     /// <summary>
     /// Attempts to interpret a JSON number as a whole integer within the JavaScript safe integer
-    /// range. Decimal forms whose fractional part is zero (e.g. <c>42.0</c>) are accepted.
+    /// range. Decimal and exponent forms whose fractional part is zero (e.g. <c>42.0</c>, <c>4.2e1</c>)
+    /// are accepted; non-integers and out-of-range values are rejected.
     /// </summary>
     private static bool TryGetCanonicalSafeInteger(JsonElement element, out long value)
     {
@@ -168,14 +170,15 @@ internal static class McpHeaderExtractor
             return value >= -MaxSafeInteger && value <= MaxSafeInteger;
         }
 
-        // Handle decimal representations of whole numbers such as "42.0".
-        if (element.TryGetDecimal(out decimal d) && decimal.Truncate(d) == d)
+        // Handle decimal/exponent representations of whole numbers such as "42.0" or "4.2e1".
+        // long.TryParse inspects the actual digits (so non-integers such as "42.5" are rejected
+        // without rounding) and fails fast on overflow (no large-number allocation).
+        const NumberStyles Styles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
+        if (long.TryParse(element.GetRawText(), Styles, CultureInfo.InvariantCulture, out long parsed) &&
+            parsed >= -MaxSafeInteger && parsed <= MaxSafeInteger)
         {
-            if (d >= -MaxSafeInteger && d <= MaxSafeInteger)
-            {
-                value = (long)d;
-                return true;
-            }
+            value = parsed;
+            return true;
         }
 
         value = 0;
@@ -338,13 +341,6 @@ internal static class McpHeaderExtractor
 #if NET
     private static readonly SearchValues<char> s_tcharValues = SearchValues.Create(TcharChars);
 
-    /// <summary>
-    /// Returns <see langword="true"/> if every character in <paramref name="value"/> is a valid
-    /// HTTP token character (tchar) per RFC 9110 Section 5.6.2.
-    /// </summary>
-    private static bool IsValidTcharString(string value) =>
-        value.AsSpan().IndexOfAnyExcept(s_tcharValues) < 0;
-
     internal static int FindFirstNonTchar(string value) =>
         value.AsSpan().IndexOfAnyExcept(s_tcharValues);
 #else
@@ -390,18 +386,6 @@ internal static class McpHeaderExtractor
         return c < 64
             ? (s_tcharBitmapLo & (1UL << c)) != 0
             : (s_tcharBitmapHi & (1UL << (c - 64))) != 0;
-    }
-
-    private static bool IsValidTcharString(string value)
-    {
-        foreach (char c in value)
-        {
-            if (!IsTchar(c))
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     internal static int FindFirstNonTchar(string value)
