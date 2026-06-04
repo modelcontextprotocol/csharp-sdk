@@ -935,8 +935,11 @@ internal sealed class StreamableHttpHandler(
         {
             // A value that is a well-formed numeric literal but too large for decimal to represent
             // is necessarily outside the safe integer range; flag it rather than letting identical
-            // out-of-range strings slip through the ordinal comparison.
-            outOfRange = LooksLikeNumericLiteral(text);
+            // out-of-range strings slip through the ordinal comparison. double has a far larger range
+            // than decimal, so if it can parse the literal then the value is a number that overflowed
+            // decimal. We only use double as a yes/no "is this numeric" gate here; its loss of integer
+            // precision past 2^53 is irrelevant because every in-range value is handled by decimal above.
+            outOfRange = double.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out _);
             return false;
         }
 
@@ -954,65 +957,6 @@ internal sealed class StreamableHttpHandler(
 
         value = (long)parsed;
         return true;
-    }
-
-    /// <summary>
-    /// Returns <see langword="true"/> if the text is a JSON-style numeric literal (optional leading
-    /// sign, digits, optional single decimal point, optional exponent). Used to distinguish a number
-    /// too large for <see cref="decimal"/> from non-numeric garbage.
-    /// </summary>
-    private static bool LooksLikeNumericLiteral(string text)
-    {
-        int i = 0;
-        if (i < text.Length && (text[i] == '+' || text[i] == '-'))
-        {
-            i++;
-        }
-
-        bool hasDigit = false;
-        bool hasDot = false;
-        for (; i < text.Length; i++)
-        {
-            char c = text[i];
-            if (c is >= '0' and <= '9')
-            {
-                hasDigit = true;
-            }
-            else if (c == '.' && !hasDot)
-            {
-                hasDot = true;
-            }
-            else if ((c == 'e' || c == 'E') && hasDigit)
-            {
-                // Exponent part: optional sign followed by one or more digits.
-                i++;
-                if (i < text.Length && (text[i] == '+' || text[i] == '-'))
-                {
-                    i++;
-                }
-
-                bool hasExpDigit = false;
-                for (; i < text.Length; i++)
-                {
-                    if (text[i] is >= '0' and <= '9')
-                    {
-                        hasExpDigit = true;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-
-                return hasExpDigit;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        return hasDigit;
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
