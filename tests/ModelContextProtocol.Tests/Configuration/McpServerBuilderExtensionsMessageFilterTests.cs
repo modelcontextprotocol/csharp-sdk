@@ -100,6 +100,12 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     [Fact]
     public async Task AddIncomingMessageFilter_Multiple_Filters_Execute_In_Order()
     {
+        // The client sends notifications/initialized fire-and-forget, so unlike the initialize and
+        // tools/list request/response exchanges it has no synchronization point the test can await.
+        // Signal once the outermost filter finishes processing it so the strict counts below observe a
+        // complete, stable log instead of racing the still-in-flight notification.
+        var initializedNotificationProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         McpServerBuilder
             .WithMessageFilters(filters =>
             {
@@ -109,6 +115,11 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     logger.LogInformation("MessageFilter1 before");
                     await next(context, cancellationToken);
                     logger.LogInformation("MessageFilter1 after");
+
+                    if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
+                    {
+                        initializedNotificationProcessed.TrySetResult(true);
+                    }
                 });
 
                 filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
@@ -126,6 +137,10 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Wait for the fire-and-forget initialized notification to flow through the filter pipeline
+        // before snapshotting the log; otherwise the strict counts below can race the notification.
+        await initializedNotificationProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         var logMessages = MockLoggerProvider.LogMessages
             .Where(m => m.Category.StartsWith("MessageFilter"))
