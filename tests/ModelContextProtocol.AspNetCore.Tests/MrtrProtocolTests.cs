@@ -56,7 +56,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Name = "throwing-tool",
                     Description = "A tool that throws immediately"
                 }),
-        ]).WithHttpTransport();
+        ]).WithHttpTransport(options => options.Stateless = false);
 
         _app = Builder.Build();
         _app.MapMcp();
@@ -262,7 +262,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Name = "backcompat-roots-tool",
                     Description = "Throws InputRequiredException so the server's backcompat resolver issues a roots/list",
                 }),
-        ]).WithHttpTransport();
+        ]).WithHttpTransport(options => options.Stateless = false);
 
         _app = Builder.Build();
         _app.MapMcp();

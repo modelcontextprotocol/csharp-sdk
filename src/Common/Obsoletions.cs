@@ -33,4 +33,8 @@ internal static class Obsoletions
     public const string EnableLegacySse_DiagnosticId = "MCP9004";
     public const string EnableLegacySse_Message = "Legacy SSE transport has no built-in request backpressure and should only be used with completely trusted clients in isolated processes. Use Streamable HTTP instead.";
     public const string EnableLegacySse_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
+
+    public const string LegacyStatefulHttp_DiagnosticId = "MCP9005";
+    public const string LegacyStatefulHttp_Message = "Stateful Streamable HTTP mode is a back-compat-only escape hatch for legacy clients. Set HttpServerTransportOptions.Stateless = true (the default as of the 2026-07-28 protocol revision) for new code. See SEP-2567.";
+    public const string LegacyStatefulHttp_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

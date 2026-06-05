@@ -425,7 +425,13 @@ public class Program
         }
 
         builder.Services.AddMcpServer(ConfigureOptions)
-            .WithHttpTransport(options => options.EnableLegacySse = true);
+            .WithHttpTransport(options =>
+            {
+                // The test fixture exercises legacy stateful behaviors (SSE + session-id flows).
+                // Set Stateless = false explicitly now that draft (SEP-2567) defaults to true.
+                options.Stateless = false;
+                options.EnableLegacySse = true;
+            });
 
         var app = builder.Build();
 

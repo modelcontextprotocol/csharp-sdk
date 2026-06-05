@@ -36,7 +36,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
                 Name = nameof(StreamableHttpServerConformanceTests),
                 Version = "73",
             };
-        }).WithTools(Tools).WithHttpTransport();
+        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = false);
 
         _app = Builder.Build();
 
@@ -963,8 +963,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertServerInfo(rpcResponse);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        SetSessionId(sessionId);
+        // Draft protocol revision (SEP-2567) is sessionless; the server does not return mcp-session-id.
+        // Subsequent requests carry MCP-Protocol-Version=2026-07-28 to opt back into the draft path.
     }
 
     private static string InitializeRequestDraft => """

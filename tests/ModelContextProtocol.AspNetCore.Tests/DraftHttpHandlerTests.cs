@@ -24,7 +24,12 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
         Builder.Services.AddMcpServer(options =>
         {
             options.ServerInfo = new Implementation { Name = nameof(DraftHttpHandlerTests), Version = "1" };
-        }).WithHttpTransport();
+        }).WithHttpTransport(options =>
+        {
+            // Map the GET/DELETE endpoints so we can exercise the draft-mode rejection paths
+            // (these endpoints are not registered in stateless mode, which is the new default).
+            options.Stateless = false;
+        });
 
         _app = Builder.Build();
         _app.MapMcp();

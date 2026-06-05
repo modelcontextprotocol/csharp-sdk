@@ -307,10 +307,12 @@ internal sealed class StreamableHttpHandler(
 
     private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(HttpContext context, string sessionId)
     {
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
         if (HttpServerTransportOptions.SessionMigrationHandler is not { } handler)
         {
             return null;
         }
+#pragma warning restore MCP9005
 
         var migrationLock = _migrationLocks.GetOrAdd(sessionId, static _ => new SemaphoreSlim(1, 1));
         await migrationLock.WaitAsync(context.RequestAborted);
@@ -414,6 +416,7 @@ internal sealed class StreamableHttpHandler(
         if (!isStateless)
         {
             sessionId = MakeNewSessionId();
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
             transport = new(loggerFactory)
             {
                 SessionId = sessionId,
@@ -423,6 +426,7 @@ internal sealed class StreamableHttpHandler(
                     ? (initParams, ct) => handler.OnSessionInitializedAsync(context, sessionId, initParams, ct)
                     : null,
             };
+#pragma warning restore MCP9005
 
             context.Response.Headers[McpSessionIdHeaderName] = sessionId;
         }
@@ -493,8 +497,10 @@ internal sealed class StreamableHttpHandler(
         var transport = new StreamableHttpServerTransport(loggerFactory)
         {
             SessionId = sessionId,
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
             FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
             EventStreamStore = HttpServerTransportOptions.EventStreamStore,
+#pragma warning restore MCP9005
         };
 
         // Initialize the transport with the migrated session's init params.
@@ -511,7 +517,9 @@ internal sealed class StreamableHttpHandler(
 
     private async ValueTask<ISseEventStreamReader?> GetEventStreamReaderAsync(HttpContext context, string lastEventId)
     {
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
         if (HttpServerTransportOptions.EventStreamStore is not { } eventStreamStore)
+#pragma warning restore MCP9005
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: This server does not support resuming streams.",

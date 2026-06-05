@@ -17,9 +17,11 @@ internal sealed partial class StatefulSessionManager(
     private readonly ConcurrentDictionary<string, StreamableHttpSession> _sessions = new(StringComparer.Ordinal);
 
     private readonly TimeProvider _timeProvider = httpServerTransportOptions.Value.TimeProvider;
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
     private readonly TimeSpan _idleTimeout = httpServerTransportOptions.Value.IdleTimeout;
     private readonly long _idleTimeoutTicks = GetIdleTimeoutInTimestampTicks(httpServerTransportOptions.Value.IdleTimeout, httpServerTransportOptions.Value.TimeProvider);
     private readonly int _maxIdleSessionCount = httpServerTransportOptions.Value.MaxIdleSessionCount;
+#pragma warning restore MCP9005
 
     private readonly object _idlePruningLock = new();
     private readonly List<long> _idleTimestamps = [];

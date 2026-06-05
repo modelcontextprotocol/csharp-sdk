@@ -582,9 +582,9 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
-        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+        // Draft protocol revision (SEP-2567) is sessionless: the server does not return a
+        // mcp-session-id header. Subsequent requests carry MCP-Protocol-Version=2026-07-28
+        // to route through the sessionless path.
     }
 
     private async Task InitializeWithNonDraftVersionAsync()
@@ -594,9 +594,8 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
-        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+        // Server is stateless by default (SEP-2567), so initializing with the non-draft protocol does not return
+        // a mcp-session-id header. Subsequent requests are independent, just like the draft path.
     }
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");

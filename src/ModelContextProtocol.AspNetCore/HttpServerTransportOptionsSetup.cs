@@ -12,7 +12,9 @@ internal sealed class HttpServerTransportOptionsSetup(IServiceProvider servicePr
 {
     public void Configure(HttpServerTransportOptions options)
     {
+#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
         options.EventStreamStore ??= serviceProvider.GetService<ISseEventStreamStore>();
         options.SessionMigrationHandler ??= serviceProvider.GetService<ISessionMigrationHandler>();
+#pragma warning restore MCP9005
     }
 }
