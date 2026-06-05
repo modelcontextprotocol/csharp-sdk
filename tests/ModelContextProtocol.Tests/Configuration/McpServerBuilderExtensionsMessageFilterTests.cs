@@ -87,13 +87,25 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // The message filter should intercept JsonRpcRequest messages
-        Assert.Contains("JsonRpcRequest", messageTypes);
+        // The message filter should intercept JsonRpcRequest messages.
+        // Use strict counts so a regression that invokes the filter pipeline more than once per
+        // incoming message (analogous to the SendRequestAsync double-wrap regression on the outgoing
+        // side) would fail this test instead of slipping through Assert.Contains.
+        // A single ListToolsAsync drives three server-bound messages: initialize (request),
+        // notifications/initialized (notification), and tools/list (request).
+        Assert.Equal(2, messageTypes.Count(m => m == nameof(JsonRpcRequest)));
+        Assert.Equal(1, messageTypes.Count(m => m == nameof(JsonRpcNotification)));
     }
 
     [Fact]
     public async Task AddIncomingMessageFilter_Multiple_Filters_Execute_In_Order()
     {
+        // The client sends notifications/initialized fire-and-forget, so unlike the initialize and
+        // tools/list request/response exchanges it has no synchronization point the test can await.
+        // Signal once the outermost filter finishes processing it so the strict counts below observe a
+        // complete, stable log instead of racing the still-in-flight notification.
+        var initializedNotificationProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         McpServerBuilder
             .WithMessageFilters(filters =>
             {
@@ -103,6 +115,11 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
                     logger.LogInformation("MessageFilter1 before");
                     await next(context, cancellationToken);
                     logger.LogInformation("MessageFilter1 after");
+
+                    if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
+                    {
+                        initializedNotificationProcessed.TrySetResult(true);
+                    }
                 });
 
                 filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
@@ -120,6 +137,10 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Wait for the fire-and-forget initialized notification to flow through the filter pipeline
+        // before snapshotting the log; otherwise the strict counts below can race the notification.
+        await initializedNotificationProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         var logMessages = MockLoggerProvider.LogMessages
             .Where(m => m.Category.StartsWith("MessageFilter"))
@@ -142,6 +163,13 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         Assert.True(idx1Before < idx2Before);
         Assert.True(idx2Before < idx2After);
         Assert.True(idx2After < idx1After);
+
+        // Verify each filter ran exactly once per incoming message (initialize + notifications/initialized + tools/list).
+        // Strict counts catch regressions where the incoming filter pipeline gets invoked more than once per message.
+        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter1 before"));
+        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter2 before"));
+        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter2 after"));
+        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter1 after"));
     }
 
     [Fact]
@@ -372,15 +400,20 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         await client.CallToolAsync("sampling-tool", new Dictionary<string, object?> { ["prompt"] = "Hello" },
             cancellationToken: TestContext.Current.CancellationToken);
 
+        // Exact counts catch regressions where the outgoing filter pipeline gets applied more than once
+        // per outbound message (e.g., SendRequestAsync double-wrapping SendToRelatedTransportAsync).
+        Assert.Equal(1, observedMessages.Count(m => m == "initialize"));
+        Assert.Equal(2, observedMessages.Count(m => m == "progress")); // ProgressTool sends two NotifyProgressAsync calls
+        Assert.Equal(2, observedMessages.Count(m => m == "response")); // one tool-call response per CallToolAsync
+        Assert.Equal(1, observedMessages.Count(m => m == $"request:{RequestMethods.SamplingCreateMessage}"));
+
+        // Preserve the original ordering intent: initialize first, then progress, then the final response.
         int initializeIndex = observedMessages.IndexOf("initialize");
         int progressIndex = observedMessages.IndexOf("progress");
         int responseIndex = observedMessages.LastIndexOf("response");
-        int requestIndex = observedMessages.IndexOf($"request:{RequestMethods.SamplingCreateMessage}");
 
-        Assert.True(initializeIndex >= 0);
         Assert.True(progressIndex > initializeIndex);
         Assert.True(responseIndex > progressIndex);
-        Assert.True(requestIndex >= 0);
     }
 
     [Fact]
@@ -516,7 +549,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
             {
-                // Skip processing tools/list requests — handler never runs, no response sent
+                // Skip processing tools/list requests - handler never runs, no response sent
                 if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == RequestMethods.ToolsList)
                 {
                     return Task.CompletedTask;
@@ -552,7 +585,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => (context, cancellationToken) =>
             {
-                // Pass through — handler runs, response is sent
+                // Pass through - handler runs, response is sent
                 return next(context, cancellationToken);
             }))
             .WithTools<TestTool>();
