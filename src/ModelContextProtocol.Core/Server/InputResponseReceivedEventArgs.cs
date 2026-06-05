@@ -1,5 +1,5 @@
+using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -22,5 +22,5 @@ public sealed class InputResponseReceivedEventArgs
     /// <summary>
     /// Gets the response payload.
     /// </summary>
-    public required JsonElement Response { get; init; }
+    public required InputResponse Response { get; init; }
 }

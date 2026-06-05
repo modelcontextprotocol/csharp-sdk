@@ -8,6 +8,8 @@ compatibility: Requires gh CLI with repo access and GitHub API access for PR det
 
 Create a GitHub release for the `modelcontextprotocol/csharp-sdk` repository after a **prepare-release** PR has been merged. This skill refreshes the release notes to include any PRs merged between the preparation branch point and the merge, warns about changes that affect the version or breaking change assessment, and creates a **draft** GitHub release.
 
+Use the shared [release branch reference](../shared-resources/release-branches.md) for branch roles, previous-release lookup rules, and release work-branch naming.
+
 > **Safety: This skill only creates and updates draft releases. It must never publish a release.** If the user asks to publish, decline and instruct them to publish manually through the GitHub UI.
 
 ## Process
@@ -18,7 +20,7 @@ Work through each step sequentially. Present findings at each step and get user 
 
 The user may provide:
 - **A PR number or URL** — use directly
-- **A version number** (e.g., `1.1.0`) — search for a merged PR titled `Release v{version}`
+- **A version number** (e.g., `1.1.0`, `2.0.0-preview.1`) — search for a merged PR titled `Release v{version}`. Prerelease versions are used verbatim, for example `Release v2.0.0-preview.1`
 - **No context** — list recently merged PRs with `Release v` in the title and ask the user to select
 
 Verify the PR is merged. Extract:
@@ -28,13 +30,13 @@ Verify the PR is merged. Extract:
 
 ### Step 2: Determine Version and Commit Range
 
-1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>`. The tag is `v{VersionPrefix}`.
-2. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`).
+1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>` and `<VersionSuffix>`. The tag is `v{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present; for example, `<VersionPrefix>2.0.0</VersionPrefix>` + `<VersionSuffix>preview.1</VersionSuffix>` → `v2.0.0-preview.1`.
+2. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`). The lookup is branch-aware: when the merge commit is on a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, use the most recent published release globally. See [release-branches.md](../shared-resources/release-branches.md).
 3. Identify the full commit range: previous release tag → merge commit.
 
 ### Step 3: Check for Additional PRs
 
-Compare the PRs included in the original prepare-release PR description with the full set of PRs now merged in the commit range. Use the [SemVer assessment guide](../bump-version/references/semver-assessment.md) (owned by the **bump-version** skill) to evaluate the impact of any new PRs against the version that was committed during preparation.
+Compare the PRs included in the original prepare-release PR description with the full set of PRs now merged in the commit range. Use the [SemVer assessment guide](../bump-version/references/semver-assessment.md) (owned by the **bump-version** skill) to evaluate the impact of any new PRs against the version that was committed during preparation, including its prerelease and branch-context computation rules. This is not a policy change; only the version computation and previous-release lookup change.
 
 1. Extract the PR list from the prepare-release PR description (all `#NNN` references in release notes sections).
 2. Get the full set of PRs merged between the previous release tag and the merge commit.
@@ -107,11 +109,11 @@ Follow [references/formatting.md](references/formatting.md) when composing and u
 ### Step 9: Create Draft Release
 
 Display release metadata for user review:
-- **Title / Tag**: the confirmed version (e.g. `v1.1.0`)
-- **Target**: merge commit SHA, its message, and the prepare-release PR link
+- **Title / Tag**: the confirmed tag, including any prerelease suffix (e.g. `v1.3.1`, `v2.0.0-preview.1`)
+- **Target**: merge commit SHA, its message, the merge commit's branch (the prepare-release PR base), and the prepare-release PR link
 
 After confirmation:
-- Create with `gh release create --draft` (always `--draft`)
+- Create with `gh release create --draft {tag} --target {merge-commit-branch}` (always `--draft`), using the prerelease tag verbatim when present
 - **Never publish.** If the user asks to publish, decline and instruct them to publish manually.
 
 When the user requests revisions after the initial creation, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
@@ -131,7 +133,7 @@ When the user requests revisions after the initial creation, always rewrite the 
 
 ## Release Notes Template
 
-Omit empty sections. The preamble is **always required** — it is not inside a section heading.
+Omit empty sections. The preamble is **always required** — it is not inside a section heading. Tags may include prerelease suffixes, such as `v2.0.0-preview.1`, and Full Changelog compare links should use the exact tag.
 
 ```markdown
 [Preamble — REQUIRED. Summarize the release theme.]
@@ -166,5 +168,6 @@ Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/vers
 * @user submitted issue #1234 (resolved by #5678)
 * @user1 @user2 @user3 reviewed pull requests
 
-**Full Changelog**: https://github.com/modelcontextprotocol/csharp-sdk/compare/previous-tag...new-tag
+**Full Changelog**: https://github.com/modelcontextprotocol/csharp-sdk/compare/{previous-tag}...v{version}
+<!-- Example: https://github.com/modelcontextprotocol/csharp-sdk/compare/v1.3.0...v2.0.0-preview.1 -->
 ```

@@ -508,12 +508,25 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is not null)
         {
-            message.Context = new()
+            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+            var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+
+            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
             {
-                User = context.User,
-            };
+                message.Context ??= new();
+
+                if (isAuthenticated)
+                {
+                    message.Context.User = context.User;
+                }
+
+                if (!string.IsNullOrEmpty(protocolVersion))
+                {
+                    message.Context.ProtocolVersion = protocolVersion;
+                }
+            }
         }
 
         return message;
@@ -812,7 +825,7 @@ internal sealed class StreamableHttpHandler(
         // JSON Schema defines two numeric types: "number" (any numeric value including
         // decimals like 3.14) and "integer" (whole numbers only like 42). Both produce
         // JsonValueKind.Number in the JSON body and are sent as numeric strings in headers.
-        // We check for both because different SDKs may serialize them differently —
+        // We check for both because different SDKs may serialize them differently -
         // e.g., a client might send header "42.0" for an "integer" body value of 42,
         // or header "42" for a "number" body value of 42.0. Without handling both types,
         // valid cross-SDK requests would be incorrectly rejected.

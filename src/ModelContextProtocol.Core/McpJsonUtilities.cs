@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
@@ -147,6 +147,14 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    // MCP MRTR (Multi Round-Trip Requests)
+    [JsonSerializable(typeof(InputRequiredResult))]
+    [JsonSerializable(typeof(InputRequest))]
+    [JsonSerializable(typeof(InputResponse))]
+    [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
+    [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
+
     [JsonSerializable(typeof(GetTaskRequestParams))]
     [JsonSerializable(typeof(GetTaskResult))]
     [JsonSerializable(typeof(WorkingTaskResult))]
@@ -186,6 +194,12 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(TokenResponse))]
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
+
+    // For Enterprise Managed Authorization flow as specified at
+    // https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx
+    [JsonSerializable(typeof(JagTokenExchangeResponse))]
+    [JsonSerializable(typeof(JwtBearerAccessTokenResponse))]
+    [JsonSerializable(typeof(OAuthErrorResponse))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

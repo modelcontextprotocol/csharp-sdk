@@ -25,4 +25,4 @@ public sealed record McpTaskInfo(
     string? StatusMessage = null,
     JsonElement? Result = null,
     JsonElement? Error = null,
-    IReadOnlyDictionary<string, JsonElement>? InputRequests = null);
+    IReadOnlyDictionary<string, InputRequest>? InputRequests = null);

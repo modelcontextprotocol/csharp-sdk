@@ -53,7 +53,7 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
                     CreatedAt = DateTimeOffset.UtcNow,
                     LastUpdatedAt = DateTimeOffset.UtcNow,
                     PollIntervalMs = 5,
-                    InputRequests = new Dictionary<string, System.Text.Json.JsonElement>(),
+                    InputRequests = new Dictionary<string, InputRequest>(),
                     ResultType = "complete",
                 });
             };

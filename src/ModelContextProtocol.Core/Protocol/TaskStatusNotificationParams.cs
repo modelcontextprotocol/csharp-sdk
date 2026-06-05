@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -103,7 +104,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
             JsonObject? meta = null;
             JsonElement? result = null;
             JsonElement? error = null;
-            Dictionary<string, JsonElement>? inputRequests = null;
+            Dictionary<string, InputRequest>? inputRequests = null;
 
             while (reader.Read())
             {
@@ -157,7 +158,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                         {
                             throw new JsonException("'inputRequests' must be a JSON object.");
                         }
-                        inputRequests = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                        inputRequests = new Dictionary<string, InputRequest>(StringComparer.Ordinal);
                         while (reader.Read())
                         {
                             if (reader.TokenType == JsonTokenType.EndObject)
@@ -170,7 +171,9 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                             }
                             string requestKey = reader.GetString()!;
                             reader.Read();
-                            inputRequests[requestKey] = JsonElement.ParseValue(ref reader);
+                            var inputRequest = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.InputRequest)
+                                ?? throw new JsonException($"Failed to deserialize InputRequest for key '{requestKey}'.");
+                            inputRequests[requestKey] = inputRequest;
                         }
                         break;
                     default:
@@ -303,10 +306,13 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                 case InputRequiredTaskNotificationParams inputRequired:
                     writer.WritePropertyName("inputRequests");
                     writer.WriteStartObject();
-                    foreach (var kvp in inputRequired.InputRequests)
+                    if (inputRequired.InputRequests is { } reqs)
                     {
-                        writer.WritePropertyName(kvp.Key);
-                        kvp.Value.WriteTo(writer);
+                        foreach (var kvp in reqs)
+                        {
+                            writer.WritePropertyName(kvp.Key);
+                            JsonSerializer.Serialize(writer, kvp.Value, McpJsonUtilities.JsonContext.Default.InputRequest);
+                        }
                     }
                     writer.WriteEndObject();
                     break;
@@ -376,7 +382,12 @@ public sealed class InputRequiredTaskNotificationParams : TaskStatusNotification
     /// <summary>
     /// Gets or sets the server-to-client requests that need to be fulfilled.
     /// </summary>
+    /// <remarks>
+    /// Keys are arbitrary identifiers for matching requests to responses. Each value is an
+    /// <see cref="InputRequest"/> wrapping the server-to-client request payload, matching
+    /// the typed format defined by the Multi Round-Trip Requests (MRTR) extension (SEP-2322).
+    /// </remarks>
     [JsonPropertyName("inputRequests")]
-    public required IDictionary<string, JsonElement> InputRequests { get; set; }
+    public IDictionary<string, InputRequest>? InputRequests { get; set; }
 }
 

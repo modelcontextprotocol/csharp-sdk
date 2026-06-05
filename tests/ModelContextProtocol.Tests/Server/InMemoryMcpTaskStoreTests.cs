@@ -13,6 +13,12 @@ public class InMemoryMcpTaskStoreTests
 {
     private CancellationToken CT => TestContext.Current.CancellationToken;
 
+    private static InputRequest MakeRequest(string payload) =>
+        new() { Method = "test/method", Params = JsonSerializer.SerializeToElement(payload, McpJsonUtilities.DefaultOptions) };
+
+    private static InputResponse MakeResponse(string payload) =>
+        new() { RawValue = JsonSerializer.SerializeToElement(payload, McpJsonUtilities.DefaultOptions) };
+
     [Fact]
     public async Task CreateTaskAsync_ReturnsWorkingTaskWithUniqueId()
     {
@@ -156,9 +162,13 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        var requests = new Dictionary<string, JsonElement>
+        var requests = new Dictionary<string, InputRequest>
         {
-            ["req1"] = JsonDocument.Parse("""{"method":"elicitation/create","params":{"message":"hello"}}""").RootElement.Clone()
+            ["req1"] = new InputRequest
+            {
+                Method = "elicitation/create",
+                Params = JsonSerializer.SerializeToElement(new { message = "hello" }, McpJsonUtilities.DefaultOptions),
+            },
         };
         await store.SetInputRequestsAsync(created.TaskId, requests, CT);
 
@@ -176,13 +186,13 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("first", McpJsonUtilities.DefaultOptions)
+            ["req1"] = MakeRequest("first")
         }, CT);
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["req2"] = JsonSerializer.SerializeToElement("second", McpJsonUtilities.DefaultOptions)
+            ["req2"] = MakeRequest("second")
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
@@ -200,15 +210,15 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("request1", McpJsonUtilities.DefaultOptions),
-            ["req2"] = JsonSerializer.SerializeToElement("request2", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeRequest("request1"),
+            ["req2"] = MakeRequest("request2"),
         }, CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("response1", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeResponse("response1"),
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
@@ -225,14 +235,14 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("request1", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeRequest("request1"),
         }, CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("response1", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeResponse("response1"),
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
@@ -256,9 +266,9 @@ public class InMemoryMcpTaskStoreTests
         var created = await store.CreateTaskAsync(CT);
 
         var tasks = Enumerable.Range(0, 50).Select(i =>
-            store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+            store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
             {
-                [$"req{i}"] = JsonSerializer.SerializeToElement($"value{i}", McpJsonUtilities.DefaultOptions)
+                [$"req{i}"] = MakeRequest($"value{i}")
             }, CT));
 
         await Task.WhenAll(tasks);
@@ -276,9 +286,9 @@ public class InMemoryMcpTaskStoreTests
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["unknown-key"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+            ["unknown-key"] = MakeResponse("response"),
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
@@ -293,16 +303,16 @@ public class InMemoryMcpTaskStoreTests
         // servers should tolerate clients re-sending an inputResponse for an already-resolved key.
         var store = new InMemoryMcpTaskStore();
         var created = await store.CreateTaskAsync(CT);
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["a"] = JsonSerializer.SerializeToElement("ask-a", McpJsonUtilities.DefaultOptions),
-            ["b"] = JsonSerializer.SerializeToElement("ask-b", McpJsonUtilities.DefaultOptions),
+            ["a"] = MakeRequest("ask-a"),
+            ["b"] = MakeRequest("ask-b"),
         }, CT);
 
         // First resolve "a" — task should still be InputRequired because "b" remains.
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["a"] = JsonSerializer.SerializeToElement("answer-a", McpJsonUtilities.DefaultOptions),
+            ["a"] = MakeResponse("answer-a"),
         }, CT);
 
         var afterFirst = await store.GetTaskAsync(created.TaskId, CT);
@@ -313,9 +323,9 @@ public class InMemoryMcpTaskStoreTests
         Assert.Contains("b", afterFirst.InputRequests.Keys);
 
         // Re-send "a" — should be a no-op (no exception, no state change).
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["a"] = JsonSerializer.SerializeToElement("answer-a-again", McpJsonUtilities.DefaultOptions),
+            ["a"] = MakeResponse("answer-a-again"),
         }, CT);
 
         var afterDup = await store.GetTaskAsync(created.TaskId, CT);
@@ -326,9 +336,9 @@ public class InMemoryMcpTaskStoreTests
         Assert.Contains("b", afterDup.InputRequests.Keys);
 
         // Resolve the remaining "b" — task should transition back to Working with an empty inputRequests.
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["b"] = JsonSerializer.SerializeToElement("answer-b", McpJsonUtilities.DefaultOptions),
+            ["b"] = MakeResponse("answer-b"),
         }, CT);
 
         var final = await store.GetTaskAsync(created.TaskId, CT);
@@ -347,13 +357,13 @@ public class InMemoryMcpTaskStoreTests
 
         var seed = Enumerable.Range(0, 20).ToDictionary(
             i => $"req{i}",
-            i => JsonSerializer.SerializeToElement($"ask{i}", McpJsonUtilities.DefaultOptions));
+            i => MakeRequest($"ask{i}"));
         await store.SetInputRequestsAsync(created.TaskId, seed, CT);
 
         var resolveTasks = Enumerable.Range(0, 20).Select(i =>
-            store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+            store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
             {
-                [$"req{i}"] = JsonSerializer.SerializeToElement($"answer{i}", McpJsonUtilities.DefaultOptions),
+                [$"req{i}"] = MakeResponse($"answer{i}"),
             }, CT));
 
         await Task.WhenAll(resolveTasks);
@@ -435,9 +445,9 @@ public class InMemoryMcpTaskStoreTests
             CT);
 
         // A client tasks/update against a Completed task must not flip it back to Working.
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeResponse("response"),
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);
@@ -456,9 +466,9 @@ public class InMemoryMcpTaskStoreTests
         int eventCount = 0;
         store.InputResponseReceived += _ => Interlocked.Increment(ref eventCount);
 
-        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("response", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeResponse("response"),
         }, CT);
 
         Assert.Equal(0, eventCount);
@@ -472,9 +482,9 @@ public class InMemoryMcpTaskStoreTests
 
         await store.SetCancelledAsync(created.TaskId, CT);
 
-        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, JsonElement>
+        await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
-            ["req1"] = JsonSerializer.SerializeToElement("payload", McpJsonUtilities.DefaultOptions),
+            ["req1"] = MakeRequest("payload"),
         }, CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);

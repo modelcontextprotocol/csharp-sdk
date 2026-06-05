@@ -77,13 +77,13 @@ public abstract partial class McpClient : McpSession
     /// each request to the appropriate registered handler.
     /// </summary>
     /// <param name="inputRequests">
-    /// The input requests from the task, keyed by request identifier. Each value is a JSON object
-    /// with <c>method</c> and <c>params</c> fields representing a server-to-client request.
+    /// The input requests from the task, keyed by request identifier. Each value is an
+    /// <see cref="InputRequest"/> wrapping the server-to-client request payload.
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
-    private protected abstract ValueTask<IDictionary<string, JsonElement>> ResolveInputRequestsAsync(
-        IDictionary<string, JsonElement> inputRequests, CancellationToken cancellationToken);
+    private protected abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
 
     /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport

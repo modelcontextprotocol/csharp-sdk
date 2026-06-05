@@ -106,7 +106,7 @@ public interface IMcpTaskStore
     /// </remarks>
     Task ResolveInputRequestsAsync(
         string taskId,
-        IDictionary<string, JsonElement> inputResponses,
+        IDictionary<string, InputResponse> inputResponses,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -126,13 +126,13 @@ public interface IMcpTaskStore
     /// <param name="taskId">The unique identifier of the task.</param>
     /// <param name="inputRequests">
     /// The input requests to add. Keys are arbitrary identifiers for matching requests to responses.
-    /// Each value is a JSON object representing the server-to-client request.
+    /// Each value is an <see cref="InputRequest"/> wrapping the server-to-client request payload.
     /// New requests are merged with any existing pending requests.
     /// </param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task SetInputRequestsAsync(
         string taskId,
-        IDictionary<string, JsonElement> inputRequests,
+        IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken = default);
 }

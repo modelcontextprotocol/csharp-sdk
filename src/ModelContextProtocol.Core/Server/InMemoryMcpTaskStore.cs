@@ -114,7 +114,7 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task ResolveInputRequestsAsync(
         string taskId,
-        IDictionary<string, JsonElement> inputResponses,
+        IDictionary<string, InputResponse> inputResponses,
         CancellationToken cancellationToken = default)
     {
         bool wasTerminal = false;
@@ -126,9 +126,9 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
                 return entry;
             }
 
-            var requests = entry.InputRequests as ImmutableDictionary<string, JsonElement>
+            var requests = entry.InputRequests as ImmutableDictionary<string, InputRequest>
                 ?? entry.InputRequests?.ToImmutableDictionary()
-                ?? ImmutableDictionary<string, JsonElement>.Empty;
+                ?? ImmutableDictionary<string, InputRequest>.Empty;
 
             foreach (var key in inputResponses.Keys)
             {
@@ -167,7 +167,7 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task SetInputRequestsAsync(
         string taskId,
-        IDictionary<string, JsonElement> inputRequests,
+        IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken = default)
     {
         Update(taskId, entry =>
@@ -177,9 +177,9 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
                 return entry;
             }
 
-            var requests = entry.InputRequests as ImmutableDictionary<string, JsonElement>
+            var requests = entry.InputRequests as ImmutableDictionary<string, InputRequest>
                 ?? entry.InputRequests?.ToImmutableDictionary()
-                ?? ImmutableDictionary<string, JsonElement>.Empty;
+                ?? ImmutableDictionary<string, InputRequest>.Empty;
 
             foreach (var kvp in inputRequests)
             {

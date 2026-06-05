@@ -179,9 +179,13 @@ public static class TaskSerializationTests
     [Fact]
     public static void GetTaskResult_InputRequired_RoundTrip_IncludesInputRequests()
     {
-        var inputRequests = new Dictionary<string, JsonElement>
+        var inputRequests = new Dictionary<string, InputRequest>
         {
-            ["req-1"] = JsonSerializer.SerializeToElement(new { method = "elicitation/create", @params = new { message = "Confirm?" } })
+            ["req-1"] = new InputRequest
+            {
+                Method = "elicitation/create",
+                Params = JsonSerializer.SerializeToElement(new { message = "Confirm?" }),
+            }
         };
         var original = new InputRequiredTaskResult
         {
@@ -197,6 +201,7 @@ public static class TaskSerializationTests
         var inputRequired = Assert.IsType<InputRequiredTaskResult>(deserialized);
         Assert.Equal("i1", inputRequired.TaskId);
         Assert.Equal(McpTaskStatus.InputRequired, inputRequired.Status);
+        Assert.NotNull(inputRequired.InputRequests);
         Assert.Single(inputRequired.InputRequests);
         Assert.True(inputRequired.InputRequests.ContainsKey("req-1"));
     }
@@ -293,9 +298,13 @@ public static class TaskSerializationTests
                 CreatedAt = created,
                 LastUpdatedAt = created,
                 ResultType = "complete",
-                InputRequests = new Dictionary<string, JsonElement>
+                InputRequests = new Dictionary<string, InputRequest>
                 {
-                    ["k"] = JsonSerializer.SerializeToElement("ask", McpJsonUtilities.DefaultOptions),
+                    ["k"] = new InputRequest
+                    {
+                        Method = "test/method",
+                        Params = JsonSerializer.SerializeToElement("ask", McpJsonUtilities.DefaultOptions),
+                    },
                 },
             },
             _ => throw new InvalidOperationException()
@@ -408,9 +417,9 @@ public static class TaskSerializationTests
     [Fact]
     public static void TaskStatusNotificationParams_InputRequired_RoundTrip()
     {
-        var inputRequests = new Dictionary<string, JsonElement>
+        var inputRequests = new Dictionary<string, InputRequest>
         {
-            ["r1"] = JsonSerializer.SerializeToElement(new { method = "sampling/createMessage" })
+            ["r1"] = new InputRequest { Method = "sampling/createMessage" }
         };
         var original = new InputRequiredTaskNotificationParams
         {
@@ -424,6 +433,7 @@ public static class TaskSerializationTests
         var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
 
         var inputRequired = Assert.IsType<InputRequiredTaskNotificationParams>(deserialized);
+        Assert.NotNull(inputRequired.InputRequests);
         Assert.Single(inputRequired.InputRequests);
     }
 

@@ -592,15 +592,13 @@ public abstract partial class McpServer : McpSession
         var requestId = Guid.NewGuid().ToString("N");
         var paramsJson = JsonSerializer.SerializeToElement(request, requestTypeInfo);
 
-        // Wrap in a {method, params} envelope so the client can dispatch by method name.
-        var envelope = new JsonObject
+        var inputRequest = new InputRequest
         {
-            ["method"] = method,
-            ["params"] = JsonNode.Parse(paramsJson.GetRawText()),
+            Method = method,
+            Params = paramsJson,
         };
-        var requestJson = JsonSerializer.SerializeToElement(envelope, McpJsonUtilities.JsonContext.Default.JsonObject);
 
-        var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void handler(InputResponseReceivedEventArgs args)
         {
@@ -615,12 +613,12 @@ public abstract partial class McpServer : McpSession
         {
             await taskContext.Store.SetInputRequestsAsync(
                 taskContext.TaskId,
-                new Dictionary<string, JsonElement> { [requestId] = requestJson },
+                new Dictionary<string, InputRequest> { [requestId] = inputRequest },
                 cancellationToken).ConfigureAwait(false);
 
-            var responseJson = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-            return JsonSerializer.Deserialize(responseJson, responseTypeInfo)!;
+            return response.Deserialize(responseTypeInfo)!;
         }
         finally
         {

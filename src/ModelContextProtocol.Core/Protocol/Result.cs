@@ -23,20 +23,18 @@ public abstract class Result
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets the result type discriminator used to distinguish polymorphic results.
+    /// Gets or sets the type of the result, which allows the client to determine how to parse the result object.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Standard results use <c>"complete"</c> (or omit this field). When a server returns a task
-    /// in lieu of a standard result, it sets this to <c>"task"</c>.
-    /// </para>
-    /// <para>
-    /// See <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2322-MRTR.md">SEP-2322</see>
-    /// for the introduction of this field, and
-    /// <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-    /// for the <c>"task"</c> discriminator value.
+    /// When absent or set to <c>"complete"</c>, the result is a normal completed response.
+    /// When set to <c>"input_required"</c>, the result is an <see cref="InputRequiredResult"/> indicating
+    /// that additional input is needed before the request can be completed.
+    /// When set to <c>"task"</c>, the result is a <see cref="CreateTaskResult"/> indicating that the server
+    /// has created a long-running task in lieu of returning the result directly.
     /// </para>
     /// </remarks>
+    /// <value>Defaults to <see langword="null"/>, which is equivalent to <c>"complete"</c>.</value>
     [JsonPropertyName("resultType")]
     public string? ResultType { get; set; }
 }

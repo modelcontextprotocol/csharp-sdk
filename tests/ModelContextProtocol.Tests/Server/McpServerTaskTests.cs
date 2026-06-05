@@ -85,7 +85,7 @@ public class McpServerTaskTests : ClientServerTestBase
             {
                 var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
                 var taskId = context.Params!.TaskId;
-                store.ProvideInput(taskId, context.Params.InputResponses);
+                store.ProvideInput(taskId, context.Params.InputResponses ?? new Dictionary<string, InputResponse>());
                 return new UpdateTaskResult();
             };
 
@@ -340,9 +340,9 @@ public class McpServerTaskTests : ClientServerTestBase
         Assert.IsType<InputRequiredTaskResult>(taskResult);
 
         // Provide input
-        var inputResponses = new Dictionary<string, JsonElement>
+        var inputResponses = new Dictionary<string, InputResponse>
         {
-            ["resp-1"] = JsonSerializer.SerializeToElement(new { answer = "yes" })
+            ["resp-1"] = new InputResponse { RawValue = JsonSerializer.SerializeToElement(new { answer = "yes" }) }
         };
         await client.UpdateTaskAsync(new UpdateTaskRequestParams
         {
@@ -531,7 +531,7 @@ public class McpServerTaskTests : ClientServerTestBase
                     TaskId = taskId,
                     CreatedAt = entry.CreatedAt,
                     LastUpdatedAt = entry.LastUpdatedAt,
-                    InputRequests = entry.InputRequests ?? new Dictionary<string, JsonElement>(),
+                    InputRequests = entry.InputRequests ?? new Dictionary<string, InputRequest>(),
                 },
                 _ => throw new InvalidOperationException($"Unexpected status: {entry.Status}")
             };
@@ -566,7 +566,7 @@ public class McpServerTaskTests : ClientServerTestBase
             }
         }
 
-        public void ProvideInput(string taskId, IDictionary<string, JsonElement> inputResponses)
+        public void ProvideInput(string taskId, IDictionary<string, InputResponse> inputResponses)
         {
             if (_tasks.TryGetValue(taskId, out var entry))
             {
@@ -584,8 +584,8 @@ public class McpServerTaskTests : ClientServerTestBase
             public DateTimeOffset LastUpdatedAt { get; set; }
             public CallToolResult? Result { get; set; }
             public object? Error { get; set; }
-            public IDictionary<string, JsonElement>? InputRequests { get; set; }
-            public IDictionary<string, JsonElement>? InputResponses { get; set; }
+            public IDictionary<string, InputRequest>? InputRequests { get; set; }
+            public IDictionary<string, InputResponse>? InputResponses { get; set; }
         }
     }
 }

@@ -1036,12 +1036,15 @@ public abstract partial class McpClient : McpSession
 
                 case InputRequiredTaskResult inputRequired:
                     // Dedup: only resolve input requests we haven't already responded to.
-                    var newRequests = new Dictionary<string, JsonElement>();
-                    foreach (var kvp in inputRequired.InputRequests)
+                    var newRequests = new Dictionary<string, InputRequest>();
+                    if (inputRequired.InputRequests is { } incomingRequests)
                     {
-                        if (resolvedRequestKeys is null || !resolvedRequestKeys.Contains(kvp.Key))
+                        foreach (var kvp in incomingRequests)
                         {
-                            newRequests[kvp.Key] = kvp.Value;
+                            if (resolvedRequestKeys is null || !resolvedRequestKeys.Contains(kvp.Key))
+                            {
+                                newRequests[kvp.Key] = kvp.Value;
+                            }
                         }
                     }
 
@@ -1049,7 +1052,7 @@ public abstract partial class McpClient : McpSession
                     {
                         consecutiveStuckPolls = 0;
 
-                        IDictionary<string, JsonElement> inputResponses;
+                        IDictionary<string, InputResponse> inputResponses;
                         try
                         {
                             inputResponses = await ResolveInputRequestsAsync(newRequests, cancellationToken).ConfigureAwait(false);
