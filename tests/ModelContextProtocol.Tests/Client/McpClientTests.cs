@@ -588,6 +588,14 @@ public class McpClientTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task ReturnsNegotiatedProtocolVersion_WithExperimentalProtocol()
+    {
+        Server.ServerOptions.ProtocolVersion = "DRAFT-2026-v1";
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "DRAFT-2026-v1" });
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
     public async Task EndToEnd_SamplingWithTools_ServerUsesIChatClientWithFunctionInvocation_ClientHandlesSamplingWithIChatClient()
     {
         int getWeatherToolCallCount = 0;

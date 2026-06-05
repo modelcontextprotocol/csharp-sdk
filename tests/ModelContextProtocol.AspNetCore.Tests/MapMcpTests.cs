@@ -14,7 +14,7 @@ using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
+public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
     protected abstract bool UseStreamableHttp { get; }
     protected abstract bool Stateless { get; }
@@ -27,9 +27,8 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     protected async Task<McpClient> ConnectAsync(
         string? path = null,
         HttpClientTransportOptions? transportOptions = null,
-        McpClientOptions? clientOptions = null)
+        Action<McpClientOptions>? configureClient = null)
     {
-        // Default behavior when no options are provided
         path ??= UseStreamableHttp ? "/" : "/sse";
 
         await using var transport = new HttpClientTransport(transportOptions ?? new HttpClientTransportOptions
@@ -38,6 +37,8 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
+        var clientOptions = new McpClientOptions();
+        configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
 
@@ -156,29 +157,24 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         var sampleCount = 0;
-        var clientOptions = new McpClientOptions()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            Handlers = new()
+            options.Handlers.SamplingHandler = async (parameters, _, _) =>
             {
-                SamplingHandler = async (parameters, _, _) =>
+                Assert.NotNull(parameters?.Messages);
+                var message = Assert.Single(parameters.Messages);
+                Assert.Equal(Role.User, message.Role);
+                Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(Assert.Single(message.Content)).Text);
+
+                sampleCount++;
+                return new CreateMessageResult
                 {
-                    Assert.NotNull(parameters?.Messages);
-                    var message = Assert.Single(parameters.Messages);
-                    Assert.Equal(Role.User, message.Role);
-                    Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(Assert.Single(message.Content)).Text);
-
-                    sampleCount++;
-                    return new CreateMessageResult
-                    {
-                        Model = "test-model",
-                        Role = Role.Assistant,
-                        Content = [new TextContentBlock { Text = "Sampling response from client" }],
-                    };
-                }
-            }
-        };
-
-        await using var mcpClient = await ConnectAsync(clientOptions: clientOptions);
+                    Model = "test-model",
+                    Role = Role.Assistant,
+                    Content = [new TextContentBlock { Text = "Sampling response from client" }],
+                };
+            };
+        });
 
         var result = await mcpClient.CallToolAsync("sampling-tool", new Dictionary<string, object?>
         {
@@ -375,7 +371,11 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             },
         };
 
-        await using var client = await ConnectAsync(clientOptions: clientOptions);
+        await using var client = await ConnectAsync(configureClient: opts =>
+        {
+            opts.Capabilities = clientOptions.Capabilities;
+            opts.Handlers = clientOptions.Handlers;
+        });
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         await client.CallToolAsync("echo_claims_principal",
@@ -385,10 +385,12 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             new Dictionary<string, object?> { ["prompt"] = "Hello" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains("initialize-response", observedMessageTypes);
-        Assert.Contains("tools-list-response", observedMessageTypes);
-        Assert.Contains("tool-call-response", observedMessageTypes);
-        Assert.Contains($"request:{RequestMethods.SamplingCreateMessage}", observedMessageTypes);
+        // Exact counts catch regressions where the outgoing filter pipeline gets applied more than once
+        // per outbound message (e.g., SendRequestAsync double-wrapping SendToRelatedTransportAsync).
+        Assert.Equal(1, observedMessageTypes.Count(m => m == "initialize-response"));
+        Assert.Equal(1, observedMessageTypes.Count(m => m == "tools-list-response"));
+        Assert.Equal(2, observedMessageTypes.Count(m => m == "tool-call-response")); // one per CallToolAsync
+        Assert.Equal(2, observedMessageTypes.Count(m => m == $"request:{RequestMethods.SamplingCreateMessage}")); // sampling-tool makes two SampleAsync calls
     }
 
     [Fact]
@@ -496,6 +498,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.Equal("injected", extraMessage);
     }
 
+
     private ClaimsPrincipal CreateUser(string name)
         => new(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
@@ -566,4 +569,5 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             return $"Operation completed after {durationMs}ms";
         }
     }
+
 }

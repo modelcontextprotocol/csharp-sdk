@@ -549,6 +549,229 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         return message;
     }
 
+    #region SEP-2243 Client Header Tests
+
+    [Fact]
+    public async Task ListTools_FiltersToolsWithInvalidHeaderAnnotations()
+    {
+        // Start a mock server that returns tools with both valid and invalid x-mcp-header annotations
+        await StartHeaderToolServer();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The server returns 3 tools: valid_tool, invalid_space_tool, invalid_duplicate_tool
+        // The client should filter out tools with invalid x-mcp-header annotations
+        var toolNames = tools.Select(t => t.Name).ToList();
+        Assert.Contains("valid_tool", toolNames);
+        Assert.DoesNotContain("invalid_space_tool", toolNames);
+        Assert.DoesNotContain("invalid_duplicate_tool", toolNames);
+    }
+
+    [Fact]
+    public async Task Client_SendsCorrectHeaders_EndToEnd()
+    {
+        // Start a server that captures request headers for verification
+        var capturedHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await StartHeaderCapturingServer(capturedHeaders);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var tool = Assert.Single(tools);
+        Assert.Equal("header_tool", tool.Name);
+
+        // Call the tool — client should send Mcp-Param-* headers automatically
+        capturedHeaders.Clear();
+        await tool.CallAsync(new Dictionary<string, object?> { ["region"] = "us-west-2" }, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Verify the client sent the correct headers
+        Assert.True(capturedHeaders.ContainsKey("Mcp-Method"), "Expected Mcp-Method header");
+        Assert.Equal("tools/call", capturedHeaders["Mcp-Method"]);
+        Assert.True(capturedHeaders.ContainsKey("Mcp-Name"), "Expected Mcp-Name header");
+        Assert.Equal("header_tool", capturedHeaders["Mcp-Name"]);
+        Assert.True(capturedHeaders.ContainsKey("Mcp-Param-Region"), "Expected Mcp-Param-Region header");
+        Assert.Equal("us-west-2", capturedHeaders["Mcp-Param-Region"]);
+    }
+
+    private async Task StartHeaderToolServer()
+    {
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+        _app = Builder.Build();
+
+        _app.MapPost("/mcp", (JsonRpcMessage message) =>
+        {
+            if (message is not JsonRpcRequest request)
+            {
+                return Results.Accepted();
+            }
+
+            if (request.Method == "initialize")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new InitializeResult
+                    {
+                        ProtocolVersion = "DRAFT-2026-v1",
+                        Capabilities = new() { Tools = new() },
+                        ServerInfo = new Implementation { Name = "header-test-server", Version = "1.0" },
+                    }, McpJsonUtilities.DefaultOptions)
+                });
+            }
+
+            if (request.Method == "tools/list")
+            {
+                // Return tools with various x-mcp-header annotations — some valid, some invalid
+                var toolsJson = JsonSerializer.SerializeToNode(new ListToolsResult
+                {
+                    Tools =
+                    [
+                        CreateToolWithSchema("valid_tool", """
+                            {
+                              "type": "object",
+                              "properties": {
+                                "region": { "type": "string", "x-mcp-header": "Region" }
+                              }
+                            }
+                            """),
+                        CreateToolWithSchema("invalid_space_tool", """
+                            {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string", "x-mcp-header": "Invalid Name" }
+                              }
+                            }
+                            """),
+                        CreateToolWithSchema("invalid_duplicate_tool", """
+                            {
+                              "type": "object",
+                              "properties": {
+                                "a": { "type": "string", "x-mcp-header": "Same" },
+                                "b": { "type": "string", "x-mcp-header": "Same" }
+                              }
+                            }
+                            """),
+                    ]
+                }, McpJsonUtilities.DefaultOptions);
+
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = toolsJson,
+                });
+            }
+
+            return Results.Accepted();
+        });
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task StartHeaderCapturingServer(Dictionary<string, string> capturedHeaders)
+    {
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+        _app = Builder.Build();
+
+        _app.MapPost("/mcp", (JsonRpcMessage message, HttpContext context) =>
+        {
+            if (message is not JsonRpcRequest request)
+            {
+                return Results.Accepted();
+            }
+
+            if (request.Method == "initialize")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new InitializeResult
+                    {
+                        ProtocolVersion = "DRAFT-2026-v1",
+                        Capabilities = new() { Tools = new() },
+                        ServerInfo = new Implementation { Name = "header-capture", Version = "1.0" },
+                    }, McpJsonUtilities.DefaultOptions)
+                });
+            }
+
+            if (request.Method == "tools/list")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new ListToolsResult
+                    {
+                        Tools = [CreateToolWithSchema("header_tool", """
+                            {
+                              "type": "object",
+                              "properties": {
+                                "region": { "type": "string", "x-mcp-header": "Region" }
+                              },
+                              "required": ["region"]
+                            }
+                            """)]
+                    }, McpJsonUtilities.DefaultOptions),
+                });
+            }
+
+            if (request.Method == "tools/call")
+            {
+                // Capture all MCP headers for verification
+                foreach (var header in context.Request.Headers)
+                {
+                    if (header.Key.StartsWith("Mcp-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        capturedHeaders[header.Key] = header.Value.ToString();
+                    }
+                }
+
+                var parameters = JsonSerializer.Deserialize(request.Params, GetJsonTypeInfo<CallToolRequestParams>());
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "ok" }],
+                    }, McpJsonUtilities.DefaultOptions),
+                });
+            }
+
+            return Results.Accepted();
+        });
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static Tool CreateToolWithSchema(string name, string schemaJson)
+    {
+        using var doc = JsonDocument.Parse(schemaJson);
+        return new Tool
+        {
+            Name = name,
+            InputSchema = doc.RootElement.Clone(),
+        };
+    }
+
+    #endregion
+
     private sealed class ResumeTestServer
     {
         private static readonly Tool ResumeTool = new()

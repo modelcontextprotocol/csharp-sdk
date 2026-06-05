@@ -730,6 +730,98 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(NotificationMethods.ResourceUpdatedNotification, notification.Method);
     }
 
+    #region SEP-2243 Header Validation Tests
+
+    [Fact]
+    public async Task DraftVersion_RejectsMissingMcpMethodHeader()
+    {
+        await StartAsync();
+
+        // Initialize with draft version to enable header validation
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request without Mcp-Method header — should be rejected
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        // Deliberately omit Mcp-Method header
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request but set Mcp-Method to wrong value
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "echo");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NonDraftVersion_DoesNotRequireMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // With non-draft version, Mcp-Method header is not required
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
+        // No Mcp-Method header — should still work
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private async Task CallInitializeWithDraftVersionAndValidateAsync()
+    {
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(InitializeRequestDraft);
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "initialize");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        AssertServerInfo(rpcResponse);
+
+        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
+        SetSessionId(sessionId);
+    }
+
+    private static string InitializeRequestDraft => """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        """;
+
+    #endregion
+
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 

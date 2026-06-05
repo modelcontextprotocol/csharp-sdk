@@ -768,7 +768,7 @@ public class AuthTests : OAuthTestBase
         //
         // https://datatracker.ietf.org/doc/html/rfc9728/#section-3.3
         //
-        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fall back to root in this case.
+        // CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates that a root-level resource is accepted in this case.
         // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fall back to root when resource_metadata is missing.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
@@ -807,8 +807,14 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("does not match", ex.Message);
     }
 
+    /// <summary>
+    /// Verifies that OAuth authentication succeeds when the protected resource metadata URI
+    /// matches the root server URL, even when the actual MCP endpoint is at a subpath.
+    /// This tests the flexible URI matching behavior where the resource URI can be less specific
+    /// than the actual endpoint being accessed.
+    /// </summary>
     [Fact]
-    public async Task CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
+    public async Task CanAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
     {
         const string requestedResourcePath = "/mcp/tools";
 
@@ -839,11 +845,98 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Verifies that OAuth authentication fails when the protected resource metadata URI
+    /// does not match the requested MCP server endpoint. This ensures that clients cannot
+    /// use OAuth tokens intended for one server to access a different server.
+    /// </summary>
+    [Fact]
+    public async Task CannotAuthenticate_WhenResourceMetadataUriDoesNotMatch()
+    {
+        const string requestedResourcePath = "/mcp/tools";
+        const string differentResourceUri = "http://different-server.example.com";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            await McpClient.CreateAsync(
-                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = differentResourceUri,
+                AuthorizationServers = { OAuthServerUrl },
+            };
         });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should fail because the resource URI doesn't match
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match", ex.Message);
+    }
+
+    /// <summary>
+    /// Verifies that OAuth authentication fails when the protected resource metadata URI is an
+    /// unrelated path on the same host as the requested endpoint (e.g. resource=.../service-a vs
+    /// endpoint .../service-b). This ensures the authority-level fallback only accepts an exact match
+    /// or an authority-only resource, and not arbitrary sibling paths on the same host.
+    /// </summary>
+    [Fact]
+    public async Task CannotAuthenticate_WhenResourceMetadataResourceIsDifferentPathOnSameAuthority()
+    {
+        const string requestedResourcePath = "/service-b";
+        const string differentResourcePath = "/service-a";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = $"{McpServerUrl}{differentResourcePath}",
+                AuthorizationServers = { OAuthServerUrl },
+            };
+        });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // This should fail because the resource URI is a different path on the same host,
+        // which is neither an exact match nor the authority-only base URL.
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match", ex.Message);
     }
@@ -853,7 +946,7 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that automatically derived resource URIs don't have trailing slashes
         // and that the client doesn't add them during authentication
-        
+
         // Don't explicitly set Resource - let it be derived from the request
         await using var app = await StartMcpServerAsync();
 
@@ -993,10 +1086,10 @@ public class AuthTests : OAuthTestBase
     {
         // This test verifies that explicitly configured trailing slashes are preserved
         const string resourceWithTrailingSlash = "http://localhost:5000/";
-        
+
         // Configure ValidResources to accept the trailing slash version for this test
         TestOAuthServer.ValidResources = [resourceWithTrailingSlash, "http://localhost:5000/mcp"];
-        
+
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
             options.ResourceMetadata = new ProtectedResourceMetadata
@@ -1260,5 +1353,301 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_AppendsOfflineAccess_WhenServerAdvertisesIt()
+    {
+        TestOAuthServer.IncludeOfflineAccessInMetadata = true;
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.Contains("offline_access", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_DoesNotAppendOfflineAccess_WhenServerDoesNotAdvertiseIt()
+    {
+        // IncludeOfflineAccessInMetadata defaults to false, so the AS will not advertise offline_access.
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.DoesNotContain("offline_access", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_DoesNotDuplicateOfflineAccess_WhenAlreadyPresent()
+    {
+        TestOAuthServer.IncludeOfflineAccessInMetadata = true;
+
+        // Configure the PRM to already include offline_access in its scopes.
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "offline_access"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        var scopeTokens = requestedScope!.Split(' ');
+        Assert.Single(scopeTokens, t => t == "offline_access");
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_CanFilterServerProposedScopes()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_CanAddCustomScope()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = scopes => scopes?.Append("custom:scope") ?? ["custom:scope"],
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedScope);
+        Assert.Contains("custom:scope", requestedScope!.Split(' '));
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReceivesNull_WhenServerProvidesNoScopes()
+    {
+        // No ScopesSupported on PRM, no Scopes fallback on client, no offline_access on AS (default).
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = [];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        IEnumerable<string>? capturedInput = ["sentinel"];
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ScopeSelector = scopes =>
+                {
+                    capturedInput = scopes;
+                    return scopes;
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Null(capturedInput);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReturningNull_OmitsScopeParameter()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        bool? scopePresent = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = _ => null,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(scopePresent);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ScopeSelector_ReturningEmpty_OmitsScopeParameter()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        bool? scopePresent = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+                ScopeSelector = _ => [],
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(scopePresent);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_ScopeSelector_AppliesToDcrScope()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", TestOAuthServer.LastRegistrationScope);
     }
 }

@@ -1,10 +1,10 @@
 {
 	"name": "C# (.NET SDK)",
-	"image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0-jammy",
+	"image": "mcr.microsoft.com/devcontainers/dotnet:2-10.0",
 	"features": {
 		"ghcr.io/devcontainers/features/dotnet:2": {
-			"version": "10.0",
-			"additionalVersions": "9.0"
+			"version": "9.0",
+			"additionalVersions": "8.0"
 		},
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
