@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Buffers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Hosting;
@@ -8,6 +9,7 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization.Metadata;
@@ -23,9 +25,9 @@ internal sealed class StreamableHttpHandler(
     IServiceProvider applicationServices,
     ILoggerFactory loggerFactory)
 {
-    private const string McpSessionIdHeaderName = "Mcp-Session-Id";
-    private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
-    private const string LastEventIdHeaderName = "Last-Event-ID";
+    private const string McpSessionIdHeaderName = McpHttpHeaders.SessionId;
+    private const string McpProtocolVersionHeaderName = McpHttpHeaders.ProtocolVersion;
+    private const string LastEventIdHeaderName = McpHttpHeaders.LastEventId;
 
     /// <summary>
     /// All protocol versions supported by this implementation.
@@ -37,6 +39,7 @@ internal sealed class StreamableHttpHandler(
         "2025-03-26",
         "2025-06-18",
         "2025-11-25",
+        "DRAFT-2026-v1",
     ];
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
@@ -76,6 +79,12 @@ internal sealed class StreamableHttpHandler(
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: The POST body did not contain a valid JSON-RPC message.",
                 StatusCodes.Status400BadRequest);
+            return;
+        }
+
+        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
             return;
         }
 
@@ -209,7 +218,20 @@ internal sealed class StreamableHttpHandler(
         }
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (sessionManager.TryRemove(sessionId, out var session))
+        if (string.IsNullOrEmpty(sessionId) || !sessionManager.TryGetValue(sessionId, out var session))
+        {
+            return;
+        }
+
+        if (!session.HasSameUserId(context.User))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: The currently authenticated user does not match the user who initiated the session.",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
+        if (sessionManager.TryRemove(sessionId, out session))
         {
             await session.DisposeAsync();
         }
@@ -486,12 +508,25 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is not null)
         {
-            message.Context = new()
+            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+            var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+
+            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
             {
-                User = context.User,
-            };
+                message.Context ??= new();
+
+                if (isAuthenticated)
+                {
+                    message.Context.User = context.User;
+                }
+
+                if (!string.IsNullOrEmpty(protocolVersion))
+                {
+                    message.Context.ProtocolVersion = protocolVersion;
+                }
+            }
         }
 
         return message;
@@ -538,6 +573,428 @@ internal sealed class StreamableHttpHandler(
 
         errorMessage = null;
         return true;
+    }
+
+    /// <summary>
+    /// Validates standard MCP request headers (Mcp-Method, Mcp-Name) and custom parameter headers
+    /// (Mcp-Param-*) against the JSON-RPC request body.
+    /// Validation is only performed for protocol versions that include the HTTP Standardization feature.
+    /// </summary>
+    /// <param name="context">The HTTP context containing the request headers.</param>
+    /// <param name="message">The JSON-RPC message to validate against.</param>
+    /// <param name="toolCollection">The tool collection to look up tool schemas for parameter header validation.</param>
+    /// <param name="errorMessage">Set to the error message if validation fails; null otherwise.</param>
+    /// <returns>True if validation passes; false otherwise.</returns>
+    internal static bool ValidateMcpHeaders(HttpContext context, JsonRpcMessage message, McpServerPrimitiveCollection<McpServerTool>? toolCollection, [NotNullWhen(false)] out string? errorMessage)
+    {
+        // Only validate for protocol versions that support standard headers.
+        var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+        if (!McpHttpHeaders.SupportsStandardHeaders(protocolVersion))
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        // Only validate for JSON-RPC requests and notifications, not responses.
+        if (!(message is JsonRpcRequest || message is JsonRpcNotification))
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        // For requests that support standard headers, the Mcp-Method header must be present
+        // and match the method in the JSON-RPC body.
+        if (!context.Request.Headers.ContainsKey(McpHttpHeaders.Method))
+        {
+            errorMessage = "Missing required Mcp-Method header.";
+            return false;
+        }
+
+        var mcpMethodInHeader = context.Request.Headers[McpHttpHeaders.Method].ToString().Trim();
+        var mcpMethodInBody = message switch
+        {
+            JsonRpcRequest request => request.Method,
+            JsonRpcNotification notification => notification.Method,
+            _ => null, // This case is already ruled out by the earlier check, but we need it to satisfy the compiler.
+        };
+
+        if (!string.Equals(mcpMethodInHeader, mcpMethodInBody, StringComparison.Ordinal))
+        {
+            errorMessage = $"Header mismatch: Mcp-Method header value '{mcpMethodInHeader}' does not match body value '{mcpMethodInBody}'.";
+            return false;
+        }
+
+        // From here on, only validate resources/read, tools/call, and prompts/get requests
+        if (mcpMethodInBody is not (RequestMethods.ToolsCall or RequestMethods.ResourcesRead or RequestMethods.PromptsGet))
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        // For these requests, the Mcp-Name header must be present and match the name or uri in the JSON-RPC body.
+        if (!context.Request.Headers.ContainsKey(McpHttpHeaders.Name))
+        {
+            errorMessage = "Missing required Mcp-Name header.";
+            return false;
+        }
+
+        var mcpNameInHeader = context.Request.Headers[McpHttpHeaders.Name].ToString().Trim();
+
+        // Extract the params and name value from the body based on the method, if present.
+        var bodyParams = message switch
+        {
+            JsonRpcRequest request => request.Params,
+            JsonRpcNotification notification => notification.Params,
+            _ => null,
+        };
+        var mcpNameInBody = mcpMethodInBody switch
+        {
+            RequestMethods.ToolsCall => GetJsonNodeStringProperty(bodyParams, "name"),
+            RequestMethods.ResourcesRead => GetJsonNodeStringProperty(bodyParams, "uri"),
+            RequestMethods.PromptsGet => GetJsonNodeStringProperty(bodyParams, "name"),
+            _ => null,
+        };
+
+        // Check that the header value matches the body value if the body value is present.
+        if (!string.Equals(mcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
+        {
+            errorMessage = $"Header mismatch: Mcp-Name header value '{mcpNameInHeader}' does not match body value '{mcpNameInBody}'.";
+            return false;
+        }
+
+        // Validate Mcp-Param-* custom headers against tool schema
+        if (!ValidateCustomParamHeaders(context, message, toolCollection, out errorMessage))
+        {
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Validates that all parameters annotated with <c>x-mcp-header</c> in the tool's input schema
+    /// have corresponding <c>Mcp-Param-*</c> headers present in the request, and that any present
+    /// <c>Mcp-Param-*</c> headers have valid encoding.
+    /// </summary>
+    private static bool ValidateCustomParamHeaders(
+        HttpContext context,
+        JsonRpcMessage message,
+        McpServerPrimitiveCollection<McpServerTool>? toolCollection,
+        [NotNullWhen(false)] out string? errorMessage)
+    {
+        // Custom param headers are only relevant for tools/call requests
+        if (message is not JsonRpcRequest { Method: RequestMethods.ToolsCall, Params: { } bodyParams })
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        // Look up the tool to check for x-mcp-header annotations in the schema
+        var toolName = GetJsonNodeStringProperty(bodyParams, "name");
+        if (toolName is null || toolCollection is null || !toolCollection.TryGetPrimitive(toolName, out var tool))
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        var inputSchema = tool.ProtocolTool.InputSchema;
+        if (inputSchema.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !inputSchema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        // Get the arguments from the body for value comparison
+        System.Text.Json.Nodes.JsonNode? arguments = null;
+        if (bodyParams is System.Text.Json.Nodes.JsonObject paramsObj)
+        {
+            paramsObj.TryGetPropertyValue("arguments", out arguments);
+        }
+
+        // Check that every x-mcp-header annotated parameter has a corresponding header,
+        // that the header value is validly encoded, and that it matches the body value.
+        return ValidateCustomParamHeadersFromProperties(context, properties, arguments, out errorMessage);
+    }
+
+    /// <summary>
+    /// Recursively validates x-mcp-header annotated properties at any nesting depth.
+    /// </summary>
+    private static bool ValidateCustomParamHeadersFromProperties(
+        HttpContext context,
+        System.Text.Json.JsonElement properties,
+        System.Text.Json.Nodes.JsonNode? arguments,
+        [NotNullWhen(false)] out string? errorMessage)
+    {
+        foreach (var property in properties.EnumerateObject())
+        {
+            if (property.Value.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            // Recurse into nested object properties
+            if (property.Value.TryGetProperty("properties", out var nestedProperties) &&
+                nestedProperties.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                System.Text.Json.Nodes.JsonNode? nestedArgs = null;
+                if (arguments is System.Text.Json.Nodes.JsonObject parentObj)
+                {
+                    parentObj.TryGetPropertyValue(property.Name, out nestedArgs);
+                }
+
+                if (!ValidateCustomParamHeadersFromProperties(context, nestedProperties, nestedArgs, out errorMessage))
+                {
+                    return false;
+                }
+            }
+
+            if (!property.Value.TryGetProperty("x-mcp-header", out var headerNameElement))
+            {
+                continue;
+            }
+
+            var headerName = headerNameElement.GetString();
+            if (string.IsNullOrEmpty(headerName))
+            {
+                continue;
+            }
+
+            var fullHeaderName = $"{McpHttpHeaders.ParamPrefix}{headerName}";
+            if (!context.Request.Headers.ContainsKey(fullHeaderName))
+            {
+                // Per the SEP: if the parameter value is null or not provided in
+                // the arguments, the client MUST omit the header and the server
+                // MUST NOT expect it. Only reject when a non-null value is present
+                // in the body but the header is missing.
+                bool hasNonNullBodyValue = arguments is System.Text.Json.Nodes.JsonObject argsForMissing &&
+                    argsForMissing.TryGetPropertyValue(property.Name, out var argForMissing) &&
+                    argForMissing is not null &&
+                    argForMissing.GetValueKind() != System.Text.Json.JsonValueKind.Null;
+
+                if (hasNonNullBodyValue)
+                {
+                    errorMessage = $"Missing required {fullHeaderName} header for parameter '{property.Name}' annotated with x-mcp-header.";
+                    return false;
+                }
+
+                continue;
+            }
+
+            var actualHeaderValue = context.Request.Headers[fullHeaderName].ToString().Trim();
+
+            // Validate the raw header value for invalid characters per SEP.
+            // Servers MUST reject headers containing characters outside the valid HTTP header value range.
+            if (!IsValidHeaderValue(actualHeaderValue))
+            {
+                errorMessage = $"Header mismatch: {fullHeaderName} header contains invalid characters.";
+                return false;
+            }
+
+            var decodedActual = McpHeaderEncoder.DecodeValue(actualHeaderValue);
+            if (decodedActual is null)
+            {
+                errorMessage = $"Header mismatch: {fullHeaderName} header contains invalid Base64 encoding.";
+                return false;
+            }
+
+            // Verify the header value matches the argument value in the body
+            if (arguments is System.Text.Json.Nodes.JsonObject argsObj &&
+                argsObj.TryGetPropertyValue(property.Name, out var argNode) &&
+                argNode is not null)
+            {
+                var expectedHeaderValue = McpHeaderEncoder.ConvertToHeaderValue(argNode);
+                if (expectedHeaderValue is not null)
+                {
+                    var decodedExpected = McpHeaderEncoder.DecodeValue(expectedHeaderValue);
+                    switch (ValuesMatch(decodedActual, decodedExpected, property.Value))
+                    {
+                        case HeaderValueComparison.IntegerOutOfRange:
+                            errorMessage = $"Header mismatch: {fullHeaderName} integer value for parameter '{property.Name}' is outside the JavaScript safe integer range (-{MaxSafeInteger} to {MaxSafeInteger}).";
+                            return false;
+                        case HeaderValueComparison.Mismatch:
+                            errorMessage = $"Header mismatch: {fullHeaderName} header value does not match body argument '{property.Name}'.";
+                            return false;
+                    }
+                }
+            }
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
+    private static string? GetJsonNodeStringProperty(System.Text.Json.Nodes.JsonNode? node, string propertyName)
+    {
+        if (node is System.Text.Json.Nodes.JsonObject obj && obj.TryGetPropertyValue(propertyName, out var value))
+        {
+            return value?.GetValue<string>();
+        }
+
+        return null;
+    }
+
+    // Valid HTTP header field-value characters per RFC 9110: horizontal tab (0x09),
+    // space (0x20), and visible ASCII (0x21-0x7E).
+    private static readonly SearchValues<char> s_validHeaderValueChars =
+        SearchValues.Create("\t !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~");
+
+    /// <summary>
+    /// Validates that a header value contains only characters allowed in HTTP header field values
+    /// per RFC 9110: visible ASCII (0x21-0x7E), space (0x20), and horizontal tab (0x09).
+    /// </summary>
+    private static bool IsValidHeaderValue(string value) =>
+        value.AsSpan().IndexOfAnyExcept(s_validHeaderValueChars) < 0;
+
+    /// <summary>
+    /// The maximum magnitude for an integer that can be represented exactly by an IEEE 754
+    /// double-precision value (2^53 - 1). Per SEP-2243 integer x-mcp-header values MUST be within
+    /// the JavaScript safe integer range (-2^53+1 to 2^53-1).
+    /// </summary>
+    private const long MaxSafeInteger = 9007199254740991L;
+
+    private enum HeaderValueComparison
+    {
+        Match,
+        Mismatch,
+        IntegerOutOfRange,
+    }
+
+    /// <summary>
+    /// Compares two decoded header values. For <c>integer</c>-typed parameters the values are
+    /// compared numerically (so cross-SDK forms such as <c>"42"</c> and <c>"42.0"</c> are treated
+    /// as equal) and validated against the JavaScript safe integer range per SEP-2243.
+    /// </summary>
+    private static HeaderValueComparison ValuesMatch(string? actual, string? expected, System.Text.Json.JsonElement propertySchema)
+    {
+        // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters.
+        // For "integer" the spec recommends numeric comparison so that representations like "42" and
+        // "42.0" are considered equal, while still requiring values to stay within the safe range.
+        // This must run before the ordinal comparison below so that an invalid integer value is
+        // rejected even when the header and body strings are byte-for-byte identical.
+        if (actual is not null && expected is not null && SchemaTypeIsInteger(propertySchema))
+        {
+            var actualResult = ParseSafeInteger(actual, out long actualValue);
+            var expectedResult = ParseSafeInteger(expected, out long expectedValue);
+
+            // A numeric value outside the safe integer range is always rejected.
+            if (actualResult == SafeIntegerParse.OutOfRange || expectedResult == SafeIntegerParse.OutOfRange)
+            {
+                return HeaderValueComparison.IntegerOutOfRange;
+            }
+
+            if (actualResult == SafeIntegerParse.SafeInteger && expectedResult == SafeIntegerParse.SafeInteger)
+            {
+                return actualValue == expectedValue ? HeaderValueComparison.Match : HeaderValueComparison.Mismatch;
+            }
+
+            // A numeric-but-non-integer value (e.g. "42.5") for an integer-typed parameter is invalid
+            // and must not be allowed to slip through the ordinal comparison just because the header
+            // and body strings happen to be identical.
+            if (actualResult == SafeIntegerParse.NonInteger || expectedResult == SafeIntegerParse.NonInteger)
+            {
+                return HeaderValueComparison.Mismatch;
+            }
+
+            // Otherwise at least one side is not numeric at all (NotNumeric); fall through to the
+            // ordinal comparison below.
+        }
+
+        return string.Equals(actual, expected, StringComparison.Ordinal)
+            ? HeaderValueComparison.Match
+            : HeaderValueComparison.Mismatch;
+    }
+
+    /// <summary>
+    /// Determines whether the property schema's <c>type</c> keyword declares an <c>integer</c> type,
+    /// either directly or as a member of a JSON Schema union array (e.g. <c>["integer", "null"]</c>).
+    /// </summary>
+    private static bool SchemaTypeIsInteger(System.Text.Json.JsonElement propertySchema)
+    {
+        if (!propertySchema.TryGetProperty("type", out var typeElement))
+        {
+            return false;
+        }
+
+        switch (typeElement.ValueKind)
+        {
+            case System.Text.Json.JsonValueKind.String:
+                return typeElement.ValueEquals("integer");
+
+            case System.Text.Json.JsonValueKind.Array:
+                foreach (var entry in typeElement.EnumerateArray())
+                {
+                    if (entry.ValueKind == System.Text.Json.JsonValueKind.String && entry.ValueEquals("integer"))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Classifies how a header/body string parses as a SEP-2243 integer value.
+    /// </summary>
+    private enum SafeIntegerParse
+    {
+        /// <summary>A whole number within the JavaScript safe integer range.</summary>
+        SafeInteger,
+
+        /// <summary>A numeric value whose magnitude is outside the safe integer range.</summary>
+        OutOfRange,
+
+        /// <summary>A numeric value that is not a whole number (e.g. <c>"42.5"</c>).</summary>
+        NonInteger,
+
+        /// <summary>The value is not a numeric literal at all.</summary>
+        NotNumeric,
+    }
+
+    /// <summary>
+    /// Parses a header/body value as a whole integer within the JavaScript safe integer range.
+    /// Decimal and exponent forms whose fractional part is zero (e.g. <c>"42.0"</c>, <c>"4.2e1"</c>)
+    /// are accepted. <see cref="long.TryParse(string, System.Globalization.NumberStyles, IFormatProvider, out long)"/>
+    /// inspects the actual digits (so it rejects non-integers such as <c>"42.5"</c> without rounding)
+    /// and fails fast on overflow (so a huge literal such as <c>"1e1000000"</c> cannot allocate a
+    /// large number).
+    /// </summary>
+    private static SafeIntegerParse ParseSafeInteger(string text, out long value)
+    {
+        value = 0;
+
+        const System.Globalization.NumberStyles Styles =
+            System.Globalization.NumberStyles.AllowLeadingSign |
+            System.Globalization.NumberStyles.AllowDecimalPoint |
+            System.Globalization.NumberStyles.AllowExponent;
+
+        if (long.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out long parsed))
+        {
+            if (parsed < -MaxSafeInteger || parsed > MaxSafeInteger)
+            {
+                return SafeIntegerParse.OutOfRange;
+            }
+
+            value = parsed;
+            return SafeIntegerParse.SafeInteger;
+        }
+
+        // The value is not representable as a 64-bit integer. Use double only as an order-of-magnitude
+        // gate to distinguish a numeric literal beyond the safe range (e.g. "1e100") from a numeric but
+        // non-integer value (e.g. "42.5"). double's loss of precision is irrelevant for this magnitude
+        // comparison because every in-range value was already handled exactly by long.TryParse above.
+        if (double.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out double d))
+        {
+            return System.Math.Abs(d) > MaxSafeInteger ? SafeIntegerParse.OutOfRange : SafeIntegerParse.NonInteger;
+        }
+
+        return SafeIntegerParse.NotNumeric;
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)

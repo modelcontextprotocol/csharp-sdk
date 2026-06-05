@@ -8,6 +8,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -95,6 +96,138 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         });
 
         Assert.Equal("AutoDetectTestServer", mcpClient.ServerInfo.Name);
+    }
+
+    [Fact]
+    public async Task BrowserPreflight_AllowsConfiguredOrigin_AndRequiredHeaders()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("GET", "POST", "DELETE")
+                    .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version", "Mcp-Session-Id")
+                    .WithExposedHeaders("Mcp-Session-Id");
+            });
+        });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Options, "http://localhost:5000/");
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type,authorization,mcp-protocol-version,mcp-session-id");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("http://localhost:5173", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+
+        var allowHeaders = string.Join(",", response.Headers.GetValues("Access-Control-Allow-Headers"));
+        Assert.Contains("content-type", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("authorization", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcp-protocol-version", allowHeaders, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mcp-session-id", allowHeaders, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BrowserPreflight_DoesNotCorsApprove_DisallowedOrigin()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("POST")
+                    .WithHeaders("Content-Type", "MCP-Protocol-Version");
+            });
+        });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Options, "http://localhost:5000/");
+        // CORS matches the browser Origin exactly. "localhost" and "127.0.0.1" both
+        // resolve to loopback, but they are different origins and do not match.
+        request.Headers.Add("Origin", "http://127.0.0.1:5173");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type,mcp-protocol-version");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // ASP.NET Core's CORS middleware commonly answers the preflight with 204 even when
+        // the origin is not approved. The browser treats the request as disallowed because
+        // the Access-Control-Allow-* approval headers are omitted from the response.
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Headers"));
+    }
+
+    [Fact]
+    public async Task InitializeResponse_ExposesMcpSessionId_ForBrowserClients()
+    {
+        Builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("BrowserClient", policy =>
+            {
+                policy.WithOrigins("http://localhost:5173")
+                    .WithMethods("POST")
+                    .WithHeaders("Content-Type", "MCP-Protocol-Version")
+                    .WithExposedHeaders("Mcp-Session-Id");
+            });
+        });
+
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new()
+            {
+                Name = "CorsSessionServer",
+                Version = "1.0.0",
+            };
+        }).WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.UseCors();
+        app.MapMcp().RequireCors("BrowserClient");
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"browser-client","version":"1.0.0"}}}
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.True(response.IsSuccessStatusCode);
+        Assert.Equal("http://localhost:5173", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+
+        var exposedHeaders = string.Join(",", response.Headers.GetValues("Access-Control-Expose-Headers"));
+        Assert.Contains("Mcp-Session-Id", exposedHeaders, StringComparison.OrdinalIgnoreCase);
+
+        if (!Stateless)
+        {
+            Assert.True(response.Headers.Contains("Mcp-Session-Id"));
+        }
     }
 
     [Fact]
@@ -215,9 +348,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            ProtocolVersion = "2025-06-18",
+            options.ProtocolVersion = "2025-06-18";
         });
 
         Assert.Equal("2025-06-18", mcpClient.NegotiatedProtocolVersion);
@@ -323,41 +456,6 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         }
 
         Assert.Equal(1, runSessionCount);
-    }
-
-    [Fact]
-    public async Task EnablePollingAsync_ThrowsInvalidOperationException_InStatelessMode()
-    {
-        Assert.SkipUnless(Stateless, "This test only applies to stateless mode.");
-
-        InvalidOperationException? capturedException = null;
-        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
-        {
-            try
-            {
-                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
-            }
-            catch (InvalidOperationException ex)
-            {
-                capturedException = ex;
-            }
-
-            return "Complete";
-        }, options: new() { Name = "polling_tool" });
-
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools([pollingTool]);
-
-        await using var app = Builder.Build();
-        app.MapMcp();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var mcpClient = await ConnectAsync();
-
-        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedException);
-        Assert.Contains("stateless", capturedException.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -660,13 +758,13 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var app = Builder.Build();
 
-        // This is the pattern documented in sessions.md — verify it actually works.
+        // This is the pattern documented in sessions.md - verify it actually works.
         // Tag before next() so child spans inherit the value.
         app.MapMcp().AddEndpointFilter(async (context, next) =>
         {
             var httpContext = context.HttpContext;
 
-            // Read from request headers — available on all non-initialize requests in stateful mode.
+            // Read from request headers - available on all non-initialize requests in stateful mode.
             string? beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"];
 
             // Tag before next() so child activities created during the handler inherit it.
@@ -695,7 +793,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The filter must have observed at least one MCP request. Don't assert an exact
-        // minimum — the initialized notification or GET stream may not have completed yet.
+        // minimum - the initialized notification or GET stream may not have completed yet.
         Assert.NotEmpty(capturedSessionIds);
 
         if (Stateless)
@@ -722,7 +820,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             });
 
             // At least one POST should have the session ID in the request header too
-            // (the initialized notification or list_tools — but not the initial initialize request).
+            // (the initialized notification or list_tools - but not the initial initialize request).
             Assert.Contains(postCaptures, c => c.BeforeNext == client.SessionId);
 
             // Verify Activity.Current was available and the AddTag pattern works before next().
@@ -735,5 +833,77 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Assert.Equal(client.SessionId, c.TagValue);
             });
         }
+    }
+
+    [Fact]
+    public async Task DeleteRequest_FromDifferentUser_IsRejected_AndSessionSurvives()
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        // Pick the user from a test header so different HttpClient requests can act as different users.
+        app.Use(next => async context =>
+        {
+            var name = context.Request.Headers["X-Test-User"].ToString();
+            if (!string.IsNullOrEmpty(name))
+            {
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
+                    "TestAuthType", "name", "role"));
+            }
+            await next(context);
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        initRequest.Headers.Add("X-Test-User", "Alice");
+        initRequest.Headers.Accept.ParseAdd("application/json");
+        initRequest.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken);
+        Assert.True(initResponse.IsSuccessStatusCode);
+        var sessionId = Assert.Single(initResponse.Headers.GetValues("Mcp-Session-Id"));
+
+        // A DELETE from a different authenticated user must not be able to tear down Alice's session.
+        using var bobDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        bobDelete.Headers.Add("X-Test-User", "Bob");
+        bobDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var bobDeleteResponse = await HttpClient.SendAsync(bobDelete, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, bobDeleteResponse.StatusCode);
+
+        // Alice should still be able to use the session.
+        const string toolCallRequest = """
+            {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+            """;
+        using var aliceCall = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(toolCallRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        aliceCall.Headers.Add("X-Test-User", "Alice");
+        aliceCall.Headers.Add("Mcp-Session-Id", sessionId);
+        aliceCall.Headers.Accept.ParseAdd("application/json");
+        aliceCall.Headers.Accept.ParseAdd("text/event-stream");
+        using var aliceCallResponse = await HttpClient.SendAsync(aliceCall, TestContext.Current.CancellationToken);
+        Assert.True(aliceCallResponse.IsSuccessStatusCode);
+
+        // Alice can still terminate her own session.
+        using var aliceDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        aliceDelete.Headers.Add("X-Test-User", "Alice");
+        aliceDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var aliceDeleteResponse = await HttpClient.SendAsync(aliceDelete, TestContext.Current.CancellationToken);
+        Assert.True(aliceDeleteResponse.IsSuccessStatusCode);
     }
 }

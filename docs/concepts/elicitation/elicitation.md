@@ -170,6 +170,61 @@ Here's an example implementation of how a console application might handle elici
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
 
+### Multi Round-Trip Requests (MRTR)
+
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `DRAFT-2026-v1`. Under the draft protocol, the server-to-client `elicitation/create` request method is removed; the recommended way to ask the user for input from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
+
+> [!IMPORTANT]
+> `ElicitAsync` throws `InvalidOperationException("Elicitation is not supported in stateless mode.")` whenever the server is running stateless — which includes every Streamable HTTP server under `DRAFT-2026-v1` once that revision is forced to stateless-only in a future PR. Stdio servers and current-protocol stateful Streamable HTTP servers continue to work via the legacy server-to-client `elicitation/create` request flow. For code that needs to run on stateless servers — including all `DRAFT-2026-v1` Streamable HTTP servers going forward — throw `InputRequiredException` from your handler instead. It works under both protocols and both session modes.
+
+For example:
+
+```csharp
+[McpServerTool, Description("Tool that elicits via MRTR")]
+public static string ElicitWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's elicitation response
+    if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
+    {
+        var elicitResult = response.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+        return elicitResult?.Action == "accept"
+            ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
+            : "User declined.";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support (DRAFT-2026-v1, or a stateful current-protocol session).";
+    }
+
+    // First call — request user input
+    throw new InputRequiredException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+            {
+                Message = "Please confirm the action",
+                RequestedSchema = new()
+                {
+                    Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                    {
+                        ["confirm"] = new ElicitRequestParams.BooleanSchema
+                        {
+                            Description = "Confirm the action"
+                        }
+                    }
+                }
+            })
+        },
+        requestState: "awaiting-confirmation");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix.
+
 ### URL Elicitation Required Error
 
 When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in [stateless](xref:stateless) mode where server-to-client requests are disabled), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
