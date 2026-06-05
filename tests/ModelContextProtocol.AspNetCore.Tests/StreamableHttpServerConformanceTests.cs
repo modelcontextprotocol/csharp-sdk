@@ -487,7 +487,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var response = new JsonRpcResponse
         {
             Id = new RequestId(7),
-            Result = JsonSerializer.SerializeToNode(new { }, GetJsonTypeInfo<object>()),
+            Result = new JsonObject(),
         };
 
         var exception = await Record.ExceptionAsync(() =>
