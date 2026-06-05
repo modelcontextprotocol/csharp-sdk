@@ -169,6 +169,78 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         Assert.Equal("42", headers["Mcp-Param-Priority"]);
     }
 
+    [Theory]
+    [InlineData("42.0", "42")]                                 // decimal body form canonicalized
+    [InlineData("-7.00", "-7")]                                // trailing zeros canonicalized
+    [InlineData("-0.0", "0")]                                  // negative zero canonicalized
+    [InlineData("4.2e1", "42")]                                // exponent body form canonicalized
+    [InlineData("9007199254740991", "9007199254740991")]      // max safe integer preserved exactly
+    [InlineData("-9007199254740991", "-9007199254740991")]    // min safe integer preserved exactly
+    public async Task CallTool_EmitsCanonicalIntegerHeader(string bodyValue, string expectedHeader)
+    {
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        client.AddKnownTools([CreateToolWithHeaders()]);
+
+        // Pass the raw JSON number so the body retains the exact form under test.
+        var result = await client.CallToolAsync(
+            "my_tool",
+            new Dictionary<string, object?>
+            {
+                ["region"] = "us-west-2",
+                ["priority"] = JsonDocument.Parse(bodyValue).RootElement,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var headers = _capturedHeaders.Values.First();
+        Assert.Equal(expectedHeader, headers["Mcp-Param-Priority"]);
+    }
+
+    [Theory]
+    [InlineData("9007199254740993")]    // 2^53 + 1, above the safe range
+    [InlineData("-9007199254740993")]   // -(2^53 + 1), below the safe range
+    [InlineData("42.5")]                // not a whole number
+    [InlineData("12e-1")]               // 1.2 in exponent form, not a whole number
+    [InlineData("42.0000000000000000000000000001")] // high-precision fraction (decimal would round this to 42)
+    public async Task CallTool_ThrowsForInvalidIntegerHeaderValue(string bodyValue)
+    {
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        client.AddKnownTools([CreateToolWithHeaders()]);
+
+        // Values outside the JavaScript safe integer range (or non-integral) must be rejected
+        // before the request is sent.
+        await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync(
+            "my_tool",
+            new Dictionary<string, object?>
+            {
+                ["region"] = "us-west-2",
+                ["priority"] = JsonDocument.Parse(bodyValue).RootElement,
+            },
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Empty(_capturedHeaders);
+    }
+
     [Fact]
     public async Task CallToolWithoutRegisterOrList_DoesNotSendMcpParamHeaders()
     {
