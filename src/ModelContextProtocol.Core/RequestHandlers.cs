@@ -29,7 +29,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
     /// </remarks>
     public void Set<TParams, TResult>(
         string method,
-        Func<TParams?, JsonRpcRequest, CancellationToken, ValueTask<TResult>> handler,
+        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<TResult>> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
@@ -40,7 +40,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
         this[method] = async (request, cancellationToken) =>
         {
-            TParams? typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo);
+            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
             object? result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToNode(result, responseTypeInfo);
         };

@@ -26,17 +26,6 @@ public static class McpServerServiceCollectionExtensions
             services.Configure(configureOptions);
         }
 
-        // Register IMcpTaskStore from options if not already registered.
-        // This allows users to either:
-        // 1. Register IMcpTaskStore directly in DI (takes precedence)
-        // 2. Set options.TaskStore in the configuration callback (used as fallback)
-        // If neither is done, resolving IMcpTaskStore will throw.
-        services.TryAddSingleton<IMcpTaskStore>(sp =>
-        {
-            var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
-            return options.TaskStore ?? throw new InvalidOperationException("No IMcpTaskStore has been configured. Either register an IMcpTaskStore in the service collection or set McpServerOptions.TaskStore when configuring the MCP server.");
-        });
-
         return new DefaultMcpServerBuilder(services);
     }
 }

@@ -99,8 +99,18 @@ public sealed class ElicitRequestParams : RequestParams
     /// When present, indicates that the requestor wants this operation executed as a task.
     /// The receiver must support task augmentation for this specific request type.
     /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public McpTaskMetadata? Task
+    {
+        get => TaskCore;
+        set => TaskCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("task")]
-    public McpTaskMetadata? Task { get; set; }
+    internal McpTaskMetadata? TaskCore { get; set; }
 
     /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
     public sealed class RequestSchema
@@ -143,6 +153,22 @@ public sealed class ElicitRequestParams : RequestParams
         {
         }
 
+        /// <summary>Gets the default value for this schema as a <see cref="JsonElement"/>, if one is defined.</summary>
+        internal JsonElement? GetDefaultAsJsonElement() => this switch
+        {
+            StringSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            NumberSchema { Default: { } n } => JsonSerializer.SerializeToElement(n, McpJsonUtilities.JsonContext.Default.Double),
+            BooleanSchema { Default: { } b } => JsonSerializer.SerializeToElement(b, McpJsonUtilities.JsonContext.Default.Boolean),
+            UntitledSingleSelectEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            TitledSingleSelectEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            UntitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
+            TitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
+#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+            LegacyTitledEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+#pragma warning restore MCP9001
+            _ => null,
+        };
+
         /// <summary>Gets or sets the type of the schema.</summary>
         [JsonPropertyName("type")]
         public abstract string Type { get; set; }
@@ -156,10 +182,12 @@ public sealed class ElicitRequestParams : RequestParams
         public string? Description { get; set; }
 
         /// <summary>
-        /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
+        /// Provides a <see cref="JsonConverter"/> for <see cref="PrimitiveSchemaDefinition"/>.
         /// </summary>
+        /// <remarks>
         /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't require
         /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+        /// </remarks>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public sealed class Converter : JsonConverter<PrimitiveSchemaDefinition>
         {

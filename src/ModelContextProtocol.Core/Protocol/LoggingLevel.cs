@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 /// Indicates the severity of a log message.
 /// </summary>
 /// <remarks>
-/// These value map to syslog message severities, as specified in <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1">RFC-5424</see>.
+/// These values map to syslog message severities, as specified in <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1">RFC-5424</see>.
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<LoggingLevel>))]
 public enum LoggingLevel

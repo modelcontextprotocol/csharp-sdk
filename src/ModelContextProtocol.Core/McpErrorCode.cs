@@ -6,11 +6,40 @@ namespace ModelContextProtocol;
 public enum McpErrorCode
 {
     /// <summary>
+    /// Indicates that HTTP headers do not match the corresponding values in the request body,
+    /// or that required headers are missing or malformed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This error is returned when a Streamable HTTP request fails header validation. Validation failures include:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>A required standard header (<c>Mcp-Method</c>, <c>Mcp-Name</c>) is missing.</description></item>
+    /// <item><description>A header value does not match the corresponding request body value.</description></item>
+    /// <item><description>A Base64-encoded header value cannot be decoded.</description></item>
+    /// <item><description>A header value contains invalid characters.</description></item>
+    /// </list>
+    /// <para>
+    /// This error code is in the JSON-RPC implementation-defined server error range (<c>-32000</c> to <c>-32099</c>).
+    /// </para>
+    /// </remarks>
+    HeaderMismatch = -32001,
+
+    /// <summary>
     /// Indicates that the requested resource could not be found.
     /// </summary>
     /// <remarks>
-    /// This error should be used when a resource URI does not match any available resource on the server.
-    /// It allows clients to distinguish between missing resources and other types of errors.
+    /// <para>
+    /// Legacy error code for unresolvable resource URIs. Newer protocol versions report this
+    /// condition with the standard JSON-RPC <see cref="InvalidParams"/> (-32602) instead. The SDK
+    /// selects between the two automatically based on the negotiated protocol version, so older
+    /// clients still see <see cref="ResourceNotFound"/> (-32002) and newer ones see
+    /// <see cref="InvalidParams"/>.
+    /// </para>
+    /// <para>
+    /// New user code throwing <see cref="McpProtocolException"/> directly for unknown-resource conditions
+    /// should prefer <see cref="InvalidParams"/>; the SDK will pass the value through unchanged.
+    /// </para>
     /// </remarks>
     ResourceNotFound = -32002,
 
@@ -39,10 +68,19 @@ public enum McpErrorCode
     InvalidRequest = -32600,
 
     /// <summary>
-    /// Indicates that the requested method does not exist or is not available on the server.
+    /// Indicates that the requested method does not exist or is not available.
     /// </summary>
     /// <remarks>
-    /// This error is returned when the method name specified in the request cannot be found.
+    /// <para>
+    /// In MCP, this error is returned when a request is made for a method that requires a capability
+    /// that has not been declared. This can occur in either direction:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>A server returning this error when the client requests a capability it doesn't support
+    /// (for example, requesting completions when the <c>completions</c> capability was not advertised).</description></item>
+    /// <item><description>A client returning this error when the server requests a capability it doesn't support
+    /// (for example, requesting roots when the client did not declare the <c>roots</c> capability).</description></item>
+    /// </list>
     /// </remarks>
     MethodNotFound = -32601,
 
@@ -51,15 +89,20 @@ public enum McpErrorCode
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This error is returned for protocol-level parameter issues, such as:
+    /// In MCP, this error is returned for protocol-level parameter validation failures in various contexts:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>Malformed requests that fail to satisfy the request schema (for example, CallToolRequest)</description></item>
-    /// <item><description>Unknown or unrecognized primitive names (for example, tool, prompt, or resource names)</description></item>
-    /// <item><description>Missing required protocol-level parameters</description></item>
+    /// <item><description><b>Tools</b>: Unknown tool name or invalid protocol-level tool arguments.</description></item>
+    /// <item><description><b>Prompts</b>: Unknown prompt name or missing required protocol-level arguments.</description></item>
+    /// <item><description><b>Resources</b>: Unknown or unresolvable resource URI.</description></item>
+    /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
+    /// <item><description><b>Logging</b>: Invalid log level.</description></item>
+    /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
+    /// <item><description><b>Elicitation</b>: Server requests an elicitation mode not declared in client capabilities.</description></item>
+    /// <item><description><b>Sampling</b>: Missing tool result or tool results mixed with other content.</description></item>
     /// </list>
     /// <para>
-    /// Note: Input validation errors within tool/prompt/resource arguments should be reported as execution errors
+    /// Note: Application-layer validation errors within tool/prompt/resource arguments should be reported as execution errors
     /// (for example, via <see cref="Protocol.CallToolResult.IsError"/>) rather than as protocol errors, allowing language
     /// models to receive error feedback and self-correct.
     /// </para>

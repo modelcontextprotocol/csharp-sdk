@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text;
 
 namespace EverythingServer.Resources;
 
@@ -18,7 +19,7 @@ public class SimpleResourceType
         int index = id - 1;
         if ((uint)index >= ResourceGenerator.Resources.Count)
         {
-            throw new NotSupportedException($"Unknown resource: {requestContext.Params?.Uri}");
+            throw new NotSupportedException($"Unknown resource: {requestContext.Params.Uri}");
         }
 
         var resource = ResourceGenerator.Resources[index];
@@ -31,7 +32,7 @@ public class SimpleResourceType
             } :
             new BlobResourceContents
             {
-                Blob = resource.Description!,
+                Blob = Encoding.UTF8.GetBytes(resource.Description!),
                 MimeType = resource.MimeType,
                 Uri = resource.Uri,
             };

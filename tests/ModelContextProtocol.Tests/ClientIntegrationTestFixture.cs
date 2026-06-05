@@ -15,7 +15,7 @@ public class ClientIntegrationTestFixture
 
     public ClientIntegrationTestFixture()
     {
-        const string ServerEverythingVersion = "2025.12.18";
+        const string ServerEverythingVersion = "2026.1.26";
 
         EverythingServerTransportOptions = new()
         {

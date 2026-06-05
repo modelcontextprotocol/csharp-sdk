@@ -70,7 +70,9 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
             {
                 Name = "long-running-tool",
                 Arguments = EmptyArguments(),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMilliseconds(200) }
+                // Use a TTL long enough that thread pool scheduling delays on loaded CI machines
+                // don't cause the CTS to fire before the tool lambda begins executing.
+                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromSeconds(5) }
             },
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -333,13 +335,16 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
         RegisterMarker("short-ttl");
         RegisterMarker("long-ttl");
 
-        // Start task with short TTL (200ms)
+        // Start task with short TTL. Use a TTL long enough that thread pool scheduling
+        // delays on loaded CI machines don't cause the CTS to fire before the tool
+        // lambda begins executing (CancelAfter starts counting at task creation, not
+        // when the tool's Task.Run is scheduled).
         var shortTtlResult = await client.CallToolAsync(
             new CallToolRequestParams
             {
                 Name = "trackable-tool",
                 Arguments = CreateMarkerArgs("short-ttl"),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMilliseconds(200) }
+                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromSeconds(5) }
             },
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -455,7 +460,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
 
-        // Act - Try to cancel a completed task
+        // Act - Try to cancel a completed task (should be idempotent)
         var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Status should still be completed (not cancelled)
@@ -495,7 +500,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
         Assert.Equal(McpTaskStatus.Failed, taskStatus.Status);
 
-        // Act - Try to cancel a failed task
+        // Act - Try to cancel a failed task (should be idempotent)
         var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Status should still be failed

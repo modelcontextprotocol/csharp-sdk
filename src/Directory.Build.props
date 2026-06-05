@@ -2,13 +2,13 @@
   <Import Project="..\Directory.Build.props" />
 
   <PropertyGroup>
-    <PackageProjectUrl>https://modelcontextprotocol.github.io/csharp-sdk</PackageProjectUrl>
+    <PackageProjectUrl>https://csharp.sdk.modelcontextprotocol.io</PackageProjectUrl>
     <RepositoryUrl>https://github.com/modelcontextprotocol/csharp-sdk</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <VersionPrefix>0.8.0</VersionPrefix>
+    <VersionPrefix>2.0.0</VersionPrefix>
     <VersionSuffix>preview.1</VersionSuffix>
     <Authors>ModelContextProtocol</Authors>
-    <Copyright>© Anthropic and Contributors.</Copyright>
+    <Copyright>© Model Context Protocol a Series of LF Projects, LLC.</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageIcon>logo.png</PackageIcon>
@@ -17,6 +17,8 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <AssemblyOriginatorKeyFile>$(RepoRoot)\Open.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>1.3.0</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -35,7 +35,11 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly TimeSpan? _defaultTtl;
     private readonly TimeSpan? _maxTtl;
     private readonly TimeSpan _pollInterval;
+#if MCP_TEST_TIME_PROVIDER
+    private readonly ITimer? _cleanupTimer;
+#else
     private readonly Timer? _cleanupTimer;
+#endif
     private readonly int _pageSize;
     private readonly int? _maxTasks;
     private readonly int? _maxTasksPerSession;
@@ -134,7 +138,11 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         cleanupInterval ??= TimeSpan.FromMinutes(1);
         if (cleanupInterval.Value != Timeout.InfiniteTimeSpan)
         {
+#if MCP_TEST_TIME_PROVIDER
+            _cleanupTimer = _timeProvider.CreateTimer(CleanupExpiredTasks, null, cleanupInterval.Value, cleanupInterval.Value);
+#else
             _cleanupTimer = new Timer(CleanupExpiredTasks, null, cleanupInterval.Value, cleanupInterval.Value);
+#endif
         }
     }
 

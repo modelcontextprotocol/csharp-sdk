@@ -180,7 +180,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.Single(result.Contents);
 
         BlobResourceContents blobContent = Assert.IsType<BlobResourceContents>(result.Contents[0]);
-        Assert.NotNull(blobContent.Blob);
+        Assert.False(blobContent.Blob.IsEmpty);
     }
 
     [Fact]
@@ -302,5 +302,20 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
+    }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_ReturnsCompletionDetails()
+    {
+        var client = await GetClientAsync();
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.Exception);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 }

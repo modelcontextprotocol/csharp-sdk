@@ -526,9 +526,132 @@ public class ToolTaskSupportTests : LoggedTest
                 arguments: new Dictionary<string, object?> { ["input"] = "test" },
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
-        // The server returns MethodNotFound because direct invocation is not allowed for required-task tools
-        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        // The server returns InvalidParams because direct invocation is not allowed for required-task tools
+        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
         Assert.Contains("task", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TaskPath_Logs_Tool_Name_On_Successful_Call()
+    {
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    (string input) => $"Result: {input}",
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "task-success-tool",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        var mcpTask = await fixture.Client.CallToolAsTaskAsync(
+            "task-success-tool",
+            arguments: new Dictionary<string, object?> { ["input"] = "test" },
+            taskMetadata: new McpTaskMetadata(),
+            progress: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(mcpTask);
+
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"task-success-tool\" completed. IsError = False.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task TaskPath_Logs_Tool_Name_With_IsError_When_Tool_Returns_Error()
+    {
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    () => new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = "Task tool error" }],
+                    },
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "task-error-result-tool",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        var mcpTask = await fixture.Client.CallToolAsTaskAsync(
+            "task-error-result-tool",
+            taskMetadata: new McpTaskMetadata(),
+            progress: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(mcpTask);
+
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "\"task-error-result-tool\" completed. IsError = True.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task TaskPath_Logs_Error_When_Tool_Throws()
+    {
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    string () => throw new InvalidOperationException("Task tool error"),
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "task-throw-tool",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        var mcpTask = await fixture.Client.CallToolAsTaskAsync(
+            "task-throw-tool",
+            taskMetadata: new McpTaskMetadata(),
+            progress: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(mcpTask);
+
+        // Wait for the async task execution to complete
+        await fixture.Client.GetTaskResultAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
+
+        var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal("\"task-throw-tool\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<InvalidOperationException>(errorLog.Exception);
     }
 #pragma warning restore MCPEXP001
 

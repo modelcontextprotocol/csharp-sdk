@@ -52,7 +52,7 @@ internal sealed partial class StreamableHttpPostTransport(
             if (request.Method == RequestMethods.Initialize)
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                await parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
+                await parentTransport.HandleInitializeRequestAsync(initializeRequest).ConfigureAwait(false);
             }
         }
 
@@ -73,6 +73,13 @@ internal sealed partial class StreamableHttpPostTransport(
             if (primingItem.HasValue)
             {
                 await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // If there's no priming write, flush the stream to ensure HTTP response headers are
+                // sent to the client now that the server is ready to process the request.
+                // This prevents HttpClient timeout for long-running requests.
+                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.

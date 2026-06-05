@@ -38,7 +38,7 @@ updates:
       - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
       - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
       - dependency-name: "Microsoft.Extensions.AI.OpenAI"
-      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing" 
+      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing"
       - dependency-name: "Microsoft.AspNetCore.*"
       - dependency-name: "Microsoft.IdentityModel.*"
       - dependency-name: "Microsoft.Bcl.*"
@@ -56,7 +56,6 @@ updates:
     # Add labels to dependency update PRs
     labels:
       - "dependencies"
-      - "testing"
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
@@ -70,4 +69,3 @@ updates:
     # Add labels to GitHub Actions update PRs
     labels:
       - "dependencies"
-      - "github-actions"

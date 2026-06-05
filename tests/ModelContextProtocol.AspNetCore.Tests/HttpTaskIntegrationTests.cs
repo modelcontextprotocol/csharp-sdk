@@ -11,14 +11,14 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
 /// Integration tests for MCP Tasks feature over HTTP transports.
-/// Tests task creation, polling, cancellation, and result retrieval across SSE streams.
+/// Tests task creation, polling, cancellation, and result retrieval.
 /// </summary>
 public class HttpTaskIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
     private readonly HttpClientTransportOptions DefaultTransportOptions = new()
     {
-        Endpoint = new("http://localhost:5000/sse"),
-        Name = "In-memory SSE Client",
+        Endpoint = new("http://localhost:5000/"),
+        Name = "In-memory Streamable HTTP Client",
     };
 
     private Task<McpClient> ConnectMcpClientAsync(

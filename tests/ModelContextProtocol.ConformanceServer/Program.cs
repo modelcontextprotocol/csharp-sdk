@@ -2,6 +2,7 @@ using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Text.Json;
 
@@ -24,11 +25,30 @@ public class Program
         // because .NET does not have a built-in concurrent HashSet
         ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
+        builder.Services.AddDistributedMemoryCache();
         builder.Services
             .AddMcpServer()
             .WithHttpTransport()
+            .WithDistributedCacheEventStreamStore()
             .WithTools<ConformanceTools>()
+            .WithTools<IncompleteResultTools>()
+            .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
+            .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
+            {
+                var result = await next(request, cancellationToken);
+
+                // For the test_reconnection tool, enable polling mode after the tool runs.
+                // This stores the result and closes the SSE stream, so the client
+                // must reconnect via GET with Last-Event-ID to retrieve the result.
+                if (request.Params.Name == "test_reconnection")
+                {
+                    await request.EnablePollingAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
+                }
+
+                return result;
+            }))
             .WithPrompts<ConformancePrompts>()
+            .WithPrompts<IncompleteResultPrompts>()
             .WithResources<ConformanceResources>()
             .WithSubscribeToResourcesHandler(async (ctx, ct) =>
             {
@@ -36,7 +56,7 @@ public class Program
                 {
                     throw new McpException("Cannot add subscription for server with null SessionId");
                 }
-                if (ctx.Params?.Uri is { } uri)
+                if (ctx.Params.Uri is { } uri)
                 {
                     var sessionSubscriptions = subscriptions.GetOrAdd(ctx.Server.SessionId, _ => new());
                     sessionSubscriptions.TryAdd(uri, 0);
@@ -50,7 +70,7 @@ public class Program
                 {
                     throw new McpException("Cannot remove subscription for server with null SessionId");
                 }
-                if (ctx.Params?.Uri is { } uri)
+                if (ctx.Params.Uri is { } uri)
                 {
                     subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
                 }
@@ -73,11 +93,6 @@ public class Program
             })
             .WithSetLoggingLevelHandler(async (ctx, ct) =>
             {
-                if (ctx.Params?.Level is null)
-                {
-                    throw new McpProtocolException("Missing required argument 'level'", McpErrorCode.InvalidParams);
-                }
-
                 // The SDK updates the LoggingLevel field of the McpServer
                 // Send a log notification to confirm the level was set
                 await ctx.Server.SendNotificationAsync("notifications/message", new LoggingMessageNotificationParams

@@ -93,6 +93,17 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task SseResponse_Includes_XAccelBufferingHeader()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("no", Assert.Single(response.Headers.GetValues("X-Accel-Buffering")));
+    }
+
+    [Fact]
     public async Task PostRequest_IsUnsupportedMediaType_WithoutJsonContentType()
     {
         await StartAsync();
@@ -158,6 +169,54 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("invalid-version")]
+    [InlineData("9999-01-01")]
+    [InlineData("not-a-date")]
+    public async Task PostRequest_IsBadRequest_WithInvalidProtocolVersionHeader(string invalidVersion)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", invalidVersion);
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithoutProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        // No MCP-Protocol-Version header is set - this should be accepted for backwards compatibility
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRequest_Succeeds_WithValidProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2025-03-26");
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRequest_IsBadRequest_WithInvalidProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "invalid-version");
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task PostRequest_IsNotFound_WithUnrecognizedSessionId()
     {
@@ -173,6 +232,38 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         };
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostWithoutSessionId_NonInitializeRequest_Returns400()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent(ListToolsRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Mcp-Session-Id", body);
+        Assert.Contains("Stateless", body);
+    }
+
+    [Fact]
+    public async Task GetWithoutSessionId_Returns400_WithStatelessGuidance()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // Clear session ID and send GET without it.
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Mcp-Session-Id", body);
+        Assert.Contains("Stateless", body);
     }
 
     [Fact]
@@ -249,7 +340,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await Task.WhenAll(echoTasks);
     }
 
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/1211")]
+    [Fact]
     public async Task GetRequest_Receives_UnsolicitedNotifications()
     {
         McpServer? server = null;
@@ -257,11 +348,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
                     server = mcpServer;
                     return mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP002
             });
 
         await StartAsync();
@@ -297,11 +390,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
                     server = mcpServer;
                     return mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP002
             });
 
         await StartAsync();
@@ -350,7 +445,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await CallInitializeAndValidateAsync();
 
         Task<HttpResponseMessage> CallLongRunningToolAsync() =>
-            HttpClient.PostAsync("", JsonContent(CallTool("long-running")), TestContext.Current.CancellationToken);
+            HttpClient.SendAsync(
+                new HttpRequestMessage(HttpMethod.Post, "")
+                {
+                    Content = JsonContent(CallTool("long-running"))
+                },
+                HttpCompletionOption.ResponseHeadersRead,
+                TestContext.Current.CancellationToken);
 
         var longRunningToolTasks = new Task<HttpResponseMessage>[10];
         for (int i = 0; i < longRunningToolTasks.Length; i++)
@@ -360,25 +461,28 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
 
-        for (int i = 0; i < longRunningToolTasks.Length; i++)
+        // Wait for all long-running tool calls to receive 200 response headers before sending DELETE
+        var responseHeaders = await Task.WhenAll(longRunningToolTasks);
+        foreach (var response in responseHeaders)
         {
-            Assert.False(longRunningToolTasks[i].IsCompleted);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
+        // Now send DELETE to cancel the session
         await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
         // Get request should complete gracefully.
         var sseResponseBody = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Empty(sseResponseBody);
 
-        // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
+        // Currently, responses are flushed immediately to prevent HttpClient timeouts for long-running requests.
+        // This means the response starts with a 200 status code. When the session is canceled, Kestrel closes
+        // the connection without writing the chunk terminator, causing an HttpRequestException when reading the response body.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
-        // For now, the important thing is that request completes without indicating success.
-        await Task.WhenAll(longRunningToolTasks);
-        foreach (var task in longRunningToolTasks)
+        // For now, the important thing is that reading the response body fails.
+        foreach (var response in responseHeaders)
         {
-            var response = await task;
-            Assert.False(response.IsSuccessStatusCode);
+            await Assert.ThrowsAsync<HttpRequestException>(async () => await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
         }
     }
 
@@ -425,11 +529,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             .WithHttpTransport(options =>
             {
                 options.PerSessionExecutionContext = true;
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 options.RunSessionHandler = async (httpContext, mcpServer, cancellationToken) =>
                 {
                     asyncLocal.Value = $"RunSessionHandler ({totalSessionCount++})";
                     await mcpServer.RunAsync(cancellationToken);
                 };
+#pragma warning restore MCPEXP002
             });
 
         Builder.Services.AddSingleton(McpServerTool.Create([McpServerTool(Name = "async-local-session")] () => asyncLocal.Value));
@@ -470,11 +576,23 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         await CallInitializeAndValidateAsync();
         await CallEchoAndValidateAsync();
 
-        // Add 5 seconds to idle timeout to account for the interval of the PeriodicTimer.
-        fakeTimeProvider.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(5));
+        // The background IdleTrackingBackgroundService prunes sessions asynchronously after
+        // the PeriodicTimer (5s interval) tick fires. We advance past the 2-hour idle timeout
+        // then poll until the session returns NotFound. Each HTTP POST also refreshes the
+        // session's LastActivityTicks via AcquireReferenceAsync, so we must re-advance time
+        // each iteration to ensure the session appears idle again for the next prune pass.
+        var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
+        HttpStatusCode statusCode;
+        do
+        {
+            fakeTimeProvider.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(5));
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
+            statusCode = response.StatusCode;
+        }
+        while (statusCode != HttpStatusCode.NotFound && DateTime.UtcNow < deadline);
 
-        using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, statusCode);
     }
 
     [Fact]
@@ -612,6 +730,98 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(NotificationMethods.ResourceUpdatedNotification, notification.Method);
     }
 
+    #region SEP-2243 Header Validation Tests
+
+    [Fact]
+    public async Task DraftVersion_RejectsMissingMcpMethodHeader()
+    {
+        await StartAsync();
+
+        // Initialize with draft version to enable header validation
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request without Mcp-Method header — should be rejected
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        // Deliberately omit Mcp-Method header
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request but set Mcp-Method to wrong value
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "echo");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NonDraftVersion_DoesNotRequireMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // With non-draft version, Mcp-Method header is not required
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
+        // No Mcp-Method header — should still work
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private async Task CallInitializeWithDraftVersionAndValidateAsync()
+    {
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(InitializeRequestDraft);
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "initialize");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        AssertServerInfo(rpcResponse);
+
+        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
+        SetSessionId(sessionId);
+    }
+
+    private static string InitializeRequestDraft => """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        """;
+
+    #endregion
+
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
@@ -646,6 +856,10 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
     private static string InitializeRequest => """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        """;
+
+    private static string ListToolsRequest => """
+        {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
         """;
 
     private long _lastRequestId = 1;

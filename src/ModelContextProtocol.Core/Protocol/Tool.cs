@@ -1,4 +1,3 @@
-using ModelContextProtocol.Server;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -15,7 +14,7 @@ public sealed class Tool : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    public required string Name { get; set; }
 
     /// <inheritdoc />
     [JsonPropertyName("title")]
@@ -31,7 +30,15 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// <para>
     /// The description is typically presented to AI models to help them determine when
-    /// and how to use the tool based on user requests.
+    /// and how to use the tool based on user requests. A well-written description significantly
+    /// reduces incorrect tool invocations. Include information about what the tool does, any
+    /// constraints or prerequisites, and what it returns.
+    /// </para>
+    /// <para>
+    /// Similarly, individual parameter descriptions (provided via <see cref="System.ComponentModel.DescriptionAttribute"/>
+    /// on tool method parameters) are important for guiding the model to supply correct argument values.
+    /// Descriptions should document expected formats, valid value ranges, and any other constraints
+    /// the model should be aware of.
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
@@ -120,8 +127,17 @@ public sealed class Tool : IBaseMetadata
     /// regarding task augmentation support. See <see cref="ToolExecution"/> for details.
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public ToolExecution? Execution
+    {
+        get => ExecutionCore;
+        set => ExecutionCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("execution")]
-    public ToolExecution? Execution { get; set; }
+    internal ToolExecution? ExecutionCore { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this tool.
@@ -140,12 +156,6 @@ public sealed class Tool : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
-
-    /// <summary>
-    /// Gets or sets the callable server tool corresponding to this metadata if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerTool? McpServerTool { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay

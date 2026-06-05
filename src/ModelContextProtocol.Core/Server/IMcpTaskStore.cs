@@ -69,7 +69,7 @@ public interface IMcpTaskStore
     /// <param name="result">The operation result to store as a JSON element.</param>
     /// <param name="sessionId">Optional session identifier for access control.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <returns>The updated <see cref="McpTask"/> with the new status and result stored.</returns>
     /// <remarks>
     /// <para>
     /// The <paramref name="status"/> must be either <see cref="McpTaskStatus.Completed"/> or
@@ -81,7 +81,6 @@ public interface IMcpTaskStore
     /// that is already in a terminal state, to prevent result overwrites.
     /// </para>
     /// </remarks>
-    /// <returns>The updated <see cref="McpTask"/> with the new status and result stored.</returns>
     Task<McpTask> StoreTaskResultAsync(
         string taskId,
         McpTaskStatus status,
@@ -111,14 +110,13 @@ public interface IMcpTaskStore
     /// <param name="statusMessage">Optional diagnostic message describing the status change.</param>
     /// <param name="sessionId">Optional session identifier for access control.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <returns>The updated <see cref="McpTask"/> with the new status applied.</returns>
     /// <remarks>
     /// This method updates the task's <see cref="McpTask.Status"/>, <see cref="McpTask.StatusMessage"/>,
     /// and <see cref="McpTask.LastUpdatedAt"/> properties. Common uses include transitioning to
     /// <see cref="McpTaskStatus.Cancelled"/>, <see cref="McpTaskStatus.InputRequired"/>, or updating
     /// progress messages while in <see cref="McpTaskStatus.Working"/> status.
     /// </remarks>
-    /// <returns>The updated <see cref="McpTask"/> with the new status applied.</returns>
     Task<McpTask> UpdateTaskStatusAsync(
         string taskId,
         McpTaskStatus status,

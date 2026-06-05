@@ -116,11 +116,7 @@ public class CreateMessageResultTests
             Model = "test-model",
             Content =
             [
-                new ImageContentBlock
-                {
-                    Data = Convert.ToBase64String([1, 2, 3, 4, 5]),
-                    MimeType = "image/png"
-                }
+                ImageContentBlock.FromBytes((byte[])[1, 2, 3, 4, 5], "image/png")
             ],
             StopReason = "endTurn"
         };
@@ -164,6 +160,7 @@ public class CreateMessageResultTests
         Assert.Equal(2, deserialized.Content.Count);
         Assert.Equal("toolUse", deserialized.StopReason);
         Assert.NotNull(deserialized.Meta);
+        Assert.Equal("metadata", (string)deserialized.Meta["custom"]!);
     }
 
     [Fact]

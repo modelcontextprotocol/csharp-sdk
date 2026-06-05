@@ -55,7 +55,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
             {
                 options.ResourceMetadata = new ProtectedResourceMetadata
                 {
-                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    AuthorizationServers = { OAuthServerUrl },
                     ScopesSupported = ["mcp:tools"]
                 };
             }
@@ -81,7 +81,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         }
     }
 
-    protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null)
+    protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null, Action<WebApplication>? configureMiddleware = null)
     {
         // Wait for the OAuth server to be ready before starting the MCP server.
         // This prevents race conditions in CI where the OAuth server may not be
@@ -94,6 +94,10 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         });
 
         var app = Builder.Build();
+        
+        // Allow tests to add custom middleware before MapMcp
+        configureMiddleware?.Invoke(app);
+        
         app.MapMcp(path).RequireAuthorization(new AuthorizeAttribute
         {
             AuthenticationSchemes = authScheme

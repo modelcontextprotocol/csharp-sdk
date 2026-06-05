@@ -14,7 +14,8 @@ namespace ModelContextProtocol.Server;
 /// </para>
 /// <para>
 /// This type is typically received as a parameter in message filter delegates registered via
-/// <see cref="McpServerFilters.IncomingMessageFilters"/> or <see cref="McpServerFilters.OutgoingMessageFilters"/>.
+/// <see cref="McpServerFilters.Message"/>'s <see cref="McpMessageFilters.IncomingFilters"/> or
+/// <see cref="McpMessageFilters.OutgoingFilters"/> collections.
 /// </para>
 /// </remarks>
 public class MessageContext

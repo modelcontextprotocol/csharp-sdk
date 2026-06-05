@@ -90,6 +90,26 @@ namespace ModelContextProtocol.Server;
 /// to provide data to the method.
 /// </para>
 /// <para>
+/// The tool method is responsible for validating its own input arguments (e.g., checking required fields, value ranges, string lengths, or
+/// any other business rules). Data annotations such as <c>RequiredAttribute</c> and
+/// <c>MaxLengthAttribute</c> on parameter types influence the generated JSON schema exposed
+/// to clients, but they are not enforced at runtime by the SDK. Validation should be performed explicitly within the tool method.
+/// </para>
+/// <para>
+/// To signal an error (including validation failures) back to the client, either throw an <see cref="McpException"/>
+/// or return a <see cref="CallToolResult"/> with <see cref="CallToolResult.IsError"/> set to <see langword="true"/>.
+/// When a tool throws an <see cref="McpException"/>, its <see cref="Exception.Message"/> is included in the error result
+/// sent to the client. Throwing any other exception type also results in an error <see cref="CallToolResult"/>, but with
+/// a generic error message (to avoid leaking sensitive information). Alternatively, a tool can declare a return type of
+/// <see cref="CallToolResult"/> to have full control over both success and error responses.
+/// </para>
+/// <para>
+/// It is important to provide clear <see cref="System.ComponentModel.DescriptionAttribute"/> values on tool methods and their parameters.
+/// These descriptions are surfaced to AI models and help them determine when and how to use the tool, what values to pass for each parameter,
+/// and what constraints the parameters have. Well-written descriptions reduce incorrect tool invocations and improve the quality of
+/// model interactions.
+/// </para>
+/// <para>
 /// Return values from a method are used to create the <see cref="CallToolResult"/> that is sent back to the client:
 /// </para>
 /// <list type="table">
@@ -168,7 +188,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
         AIFunctionMcpServerTool.Create(method, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="McpServerTool"/>.</param>
     /// <param name="target">The instance if <paramref name="method"/> is an instance method; otherwise, <see langword="null"/>.</param>
@@ -183,18 +203,18 @@ public abstract class McpServerTool : IMcpServerPrimitive
         AIFunctionMcpServerTool.Create(method, target, options);
 
     /// <summary>
-    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via an <see cref="MethodInfo"/> for
+    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> for
     /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
-    /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
+    /// <param name="method">The instance method to be represented via the created <see cref="McpServerTool"/>.</param>
     /// <param name="createTargetFunc">
     /// Callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
     /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
     /// be disposed of after method completes its invocation.
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerTool"/> to control its behavior.</param>
-    /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
+    /// <returns>The created <see cref="McpServerTool"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerTool Create(
         MethodInfo method,

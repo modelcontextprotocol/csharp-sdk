@@ -25,8 +25,8 @@ public class AuthEventTests : OAuthTestBase
                 // Dynamically provide the resource metadata
                 context.ResourceMetadata = new ProtectedResourceMetadata
                 {
-                    Resource = new Uri(McpServerUrl),
-                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    Resource = McpServerUrl,
+                    AuthorizationServers = { OAuthServerUrl },
                     ScopesSupported = ["mcp:tools"],
                 };
                 await Task.CompletedTask;
@@ -124,8 +124,8 @@ public class AuthEventTests : OAuthTestBase
         );
 
         Assert.NotNull(metadata);
-        Assert.Equal(new Uri(McpServerUrl), metadata.Resource);
-        Assert.Contains(new Uri(OAuthServerUrl), metadata.AuthorizationServers);
+        Assert.Equal(McpServerUrl, metadata.Resource);
+        Assert.Contains(OAuthServerUrl, metadata.AuthorizationServers);
         Assert.Contains("mcp:tools", metadata.ScopesSupported);
     }
 
@@ -140,8 +140,8 @@ public class AuthEventTests : OAuthTestBase
                 // Set initial metadata
                 options.ResourceMetadata = new ProtectedResourceMetadata
                 {
-                    Resource = new Uri(McpServerUrl),
-                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    Resource = McpServerUrl,
+                    AuthorizationServers = { OAuthServerUrl },
                     ScopesSupported = ["mcp:basic"],
                 };
 
@@ -175,8 +175,8 @@ public class AuthEventTests : OAuthTestBase
         );
 
         Assert.NotNull(metadata);
-        Assert.Equal(new Uri(McpServerUrl), metadata.Resource);
-        Assert.Contains(new Uri(OAuthServerUrl), metadata.AuthorizationServers);
+        Assert.Equal(McpServerUrl, metadata.Resource);
+        Assert.Contains(OAuthServerUrl, metadata.AuthorizationServers);
         Assert.Contains("mcp:basic", metadata.ScopesSupported);
         Assert.Contains("mcp:tools", metadata.ScopesSupported);
         Assert.Equal("Dynamic Test Resource", metadata.ResourceName);

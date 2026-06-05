@@ -35,8 +35,10 @@ public class DiagnosticTests
 
             // Wait for server-side activities to be exported. The server processes messages
             // via fire-and-forget tasks, so activities may not be immediately available
-            // after the client operation completes.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
+            // after the client operation completes. Wait for the specific activity we need
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() => activities.Any(a =>
+                a.DisplayName == "tools/call DoubleValue" && a.Kind == ActivityKind.Server));
         }
 
         Assert.NotEmpty(activities);
@@ -85,6 +87,17 @@ public class DiagnosticTests
         using var listToolsJson = JsonDocument.Parse(clientToServerLog.First(s => s.Contains("\"method\":\"tools/list\"")));
         var metaJson = listToolsJson.RootElement.GetProperty("params").GetProperty("_meta").GetRawText();
         Assert.Equal($$"""{"traceparent":"00-{{clientListToolsCall.TraceId}}-{{clientListToolsCall.SpanId}}-01"}""", metaJson);
+
+        // Validate that mcp.session.id is set on both client and server activities and that
+        // all client activities share one session ID while all server activities share another.
+        var clientSessionId = Assert.Single(clientToolCall.Tags, t => t.Key == "mcp.session.id").Value;
+        var serverSessionId = Assert.Single(serverToolCall.Tags, t => t.Key == "mcp.session.id").Value;
+        Assert.NotNull(clientSessionId);
+        Assert.NotNull(serverSessionId);
+        Assert.NotEqual(clientSessionId, serverSessionId);
+
+        Assert.Equal(clientSessionId, clientListToolsCall.Tags.Single(t => t.Key == "mcp.session.id").Value);
+        Assert.Equal(serverSessionId, serverListToolsCall.Tags.Single(t => t.Key == "mcp.session.id").Value);
     }
 
     [Fact]
@@ -103,8 +116,11 @@ public class DiagnosticTests
                 await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
             }, []);
 
-            // Wait for server-side activities to be exported.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 4);
+            // Wait for server-side activities to be exported. Wait for specific activities
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() =>
+                activities.Any(a => a.DisplayName == "tools/call Throw" && a.Kind == ActivityKind.Server) &&
+                activities.Any(a => a.DisplayName == "tools/call does-not-exist" && a.Kind == ActivityKind.Server));
         }
 
         Assert.NotEmpty(activities);
@@ -173,8 +189,10 @@ public class DiagnosticTests
                 await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             }, []);
 
-            // Wait for server-side activities to be exported.
-            await WaitForAsync(() => activities.Count(a => a.Kind == ActivityKind.Server) >= 3);
+            // Wait for server-side activities to be exported. Wait for specific activities
+            // rather than a count, as other server activities may be exported first.
+            await WaitForAsync(() => activities.Any(a =>
+                a.DisplayName == "tools/call DoubleValue" && a.Kind == ActivityKind.Server));
         }
 
         // The outer activity should have MCP-specific attributes added to it

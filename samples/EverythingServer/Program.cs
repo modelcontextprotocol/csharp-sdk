@@ -15,6 +15,13 @@ using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Note: This sample requires stateful (session-based) mode because it uses:
+// - SampleLlmTool: server-to-client sampling via SampleAsync
+// - Resource subscriptions: unsolicited notifications via SendNotificationAsync
+// - Per-session state: subscription tracking keyed by SessionId
+// See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions for details
+// on when to prefer stateless mode instead.
+
 // Dictionary of session IDs to a set of resource URIs they are subscribed to
 // The value is a ConcurrentDictionary used as a thread-safe HashSet
 // because .NET does not have a built-in concurrent HashSet
@@ -50,7 +57,12 @@ builder.Services
     })
     .WithHttpTransport(options =>
     {
+        // This sample uses subscriptions, SampleLlmTool (sampling), and RunSessionHandler.
+        // Set Stateless = false explicitly for forward compatibility in case the default changes.
+        options.Stateless = false;
+
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
         options.RunSessionHandler = async (httpContext, mcpServer, token) =>
         {
             if (mcpServer.SessionId == null)
@@ -76,6 +88,7 @@ builder.Services
                 subscriptions.TryRemove(mcpServer.SessionId, out _);
             }
         };
+#pragma warning restore MCPEXP002
     })
     .WithTools<AddTool>()
     .WithTools<AnnotatedMessageTool>()
@@ -128,7 +141,7 @@ builder.Services
         {
             throw new McpException("Cannot add subscription for server with null SessionId");
         }
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
 
@@ -152,7 +165,7 @@ builder.Services
         {
             throw new McpException("Cannot remove subscription for server with null SessionId");
         }
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
         }
@@ -210,11 +223,6 @@ builder.Services
     })
     .WithSetLoggingLevelHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Level is null)
-        {
-            throw new McpProtocolException("Missing required argument 'level'", McpErrorCode.InvalidParams);
-        }
-
         // The SDK updates the LoggingLevel field of the IMcpServer
 
         await ctx.Server.SendNotificationAsync("notifications/message", new

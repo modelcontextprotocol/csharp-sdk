@@ -160,11 +160,7 @@ public class McpClientTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = [new ImageContentBlock
-                    {
-                        MimeType = "image/png",
-                        Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
-                    }],
+                    Content = [ImageContentBlock.FromBytes((byte[])[1, 2, 3], "image/png")],
                 }
             ],
             MaxTokens = 100
@@ -196,7 +192,8 @@ public class McpClientTests : ClientServerTestBase
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(expectedData, result.Content.OfType<ImageContentBlock>().FirstOrDefault()?.Data);
+        var imageData = result.Content.OfType<ImageContentBlock>().FirstOrDefault()?.Data.ToArray() ?? [];
+        Assert.Equal(expectedData, System.Text.Encoding.UTF8.GetString(imageData));
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -211,7 +208,7 @@ public class McpClientTests : ClientServerTestBase
         var mockChatClient = new Mock<IChatClient>();
         var resource = new BlobResourceContents
         {
-            Blob = data,
+            Blob = System.Text.Encoding.UTF8.GetBytes(data),
             MimeType = "application/octet-stream",
             Uri = "data:application/octet-stream"
         };
@@ -542,11 +539,9 @@ public class McpClientTests : ClientServerTestBase
             {
                 var m = await channel.Reader.ReadAsync(TestContext.Current.CancellationToken);
                 Assert.NotNull(m);
-                Assert.NotNull(m.Data);
-
                 Assert.Equal("TestLogger", m.Logger);
 
-                string? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
+                string? s = JsonSerializer.Deserialize<string>(m.Data, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(s);
 
                 if (s.Contains("Information"))
@@ -590,6 +585,14 @@ public class McpClientTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = protocolVersion });
         Assert.Equal(protocolVersion ?? "2025-11-25", client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task ReturnsNegotiatedProtocolVersion_WithExperimentalProtocol()
+    {
+        Server.ServerOptions.ProtocolVersion = "DRAFT-2026-v1";
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "DRAFT-2026-v1" });
+        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -786,5 +789,30 @@ public class McpClientTests : ClientServerTestBase
 
         await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
             () => client.SetLoggingLevelAsync((SetLevelRequestParams)null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ServerCanPingClient()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var pingRequest = new JsonRpcRequest { Method = RequestMethods.Ping };
+        var response = await Server.SendRequestAsync(pingRequest, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(response);
+        Assert.NotNull(response.Result);
+    }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_CompletesWithNoException()
+    {
+        var client = await CreateMcpClientForServer();
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        Assert.Null(details.Exception);
     }
 }

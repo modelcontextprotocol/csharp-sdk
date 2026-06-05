@@ -31,20 +31,31 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
     internal const string LatestProtocolVersion = "2025-11-25";
 
-    /// <summary>All protocol versions supported by this implementation.</summary>
+    /// <summary>
+    /// The draft protocol version that enables MRTR (Multi Round-Trip Requests) per SEP-2322.
+    /// Clients and servers opt in by setting <see cref="McpClientOptions.ProtocolVersion"/>
+    /// or <see cref="McpServerOptions.ProtocolVersion"/> to this value.
+    /// </summary>
+    internal const string DraftProtocolVersion = "DRAFT-2026-v1";
+
+    /// <summary>
+    /// All protocol versions supported by this implementation.
+    /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
+    /// </summary>
     internal static readonly string[] SupportedProtocolVersions =
     [
         "2024-11-05",
         "2025-03-26",
         "2025-06-18",
         LatestProtocolVersion,
+        DraftProtocolVersion,
     ];
 
     /// <summary>
     /// Checks if the given protocol version supports priming events.
     /// </summary>
     /// <param name="protocolVersion">The protocol version to check.</param>
-    /// <returns>True if the protocol version supports resumability.</returns>
+    /// <returns>True if the protocol version supports priming events.</returns>
     /// <remarks>
     /// Priming events are only supported in protocol version &gt;= 2025-11-25.
     /// Older clients may crash when receiving SSE events with empty data.
@@ -129,6 +140,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         _incomingMessageFilter = incomingMessageFilter ?? (next => next);
         _outgoingMessageFilter = outgoingMessageFilter ?? (next => next);
         _logger = logger;
+
+        // Per the MCP spec, ping may be initiated by either party and must always be handled.
+        _requestHandlers.Set(
+            RequestMethods.Ping,
+            (request, _, cancellationToken) => new ValueTask<PingResult>(new PingResult()),
+            McpJsonUtilities.JsonContext.Default.JsonNode,
+            McpJsonUtilities.JsonContext.Default.PingResult);
+
         LogSessionCreated(EndpointName, _sessionId, _transportKind);
     }
 
@@ -141,6 +160,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Gets or sets the negotiated MCP protocol version for telemetry.
     /// </summary>
     public string? NegotiatedProtocolVersion { get; set; }
+
+    /// <summary>
+    /// Gets a task that completes when the client session has completed, providing details about the closure.
+    /// Completion details are resolved from the transport's channel completion exception: if a transport
+    /// completes its channel with a <see cref="ClientTransportClosedException"/>, the wrapped
+    /// <see cref="ClientCompletionDetails"/> is unwrapped. Otherwise, a default instance is returned.
+    /// </summary>
+    internal Task<ClientCompletionDetails> CompletionTask =>
+        field ??= GetCompletionDetailsAsync(_transport.MessageReader.Completion);
 
     /// <summary>
     /// Starts processing messages from the transport. This method will block until the transport is disconnected.
@@ -162,11 +190,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task ProcessMessagesCoreAsync(CancellationToken cancellationToken)
     {
+        // Track in-flight message handlers so we can wait for them to complete before returning.
+        // Start at 1 to represent ProcessMessagesCoreAsync itself; it's decremented after the loop exits.
+        int inFlightCount = 1;
+        var allHandlersCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 LogMessageRead(EndpointName, message.GetType().Name);
+
+                Interlocked.Increment(ref inFlightCount);
 
                 // Fire and forget the message handling to avoid blocking the transport.
                 if (message.Context?.ExecutionContext is null)
@@ -187,11 +222,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     {
                         // Register before we yield, so that the tracking is guaranteed to be there
                         // when subsequent messages arrive, even if the asynchronous processing happens
-                        // out of order.
+                        // out of order. Per spec, "The initialize request MUST NOT be cancelled by clients",
+                        // so we don't track it in _handlingRequests to prevent cancellation notifications from
+                        // canceling it.
                         if (messageWithId is not null)
                         {
                             combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            _handlingRequests[messageWithId.Id] = combinedCts;
+                            if (message is not JsonRpcRequest { Method: RequestMethods.Initialize })
+                            {
+                                _handlingRequests[messageWithId.Id] = combinedCts;
+                            }
                         }
 
                         // If we await the handler without yielding first, the transport may not be able to read more messages,
@@ -270,6 +310,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                             _handlingRequests.TryRemove(messageWithId.Id, out _);
                             combinedCts!.Dispose();
                         }
+
+                        if (Interlocked.Decrement(ref inFlightCount) == 0)
+                        {
+                            allHandlersCompleted.TrySetResult(true);
+                        }
                     }
                 }
             }
@@ -281,11 +326,46 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
+            // Decrement our own count. If all handlers have already completed, this will signal completion.
+            if (Interlocked.Decrement(ref inFlightCount) != 0)
+            {
+                await allHandlersCompleted.Task.ConfigureAwait(false);
+            }
+
             // Fail any pending requests, as they'll never be satisfied.
+            // If the transport's channel was completed with a ClientTransportClosedException,
+            // propagate it so callers can access the structured completion details.
+            Exception pendingException =
+                _transport.MessageReader.Completion is { IsCompleted: true, IsFaulted: true } completion &&
+                    completion.Exception?.InnerException is { } innerException
+                    ? innerException
+                    : new IOException("The server shut down unexpectedly.");
             foreach (var entry in _pendingRequests)
             {
-                entry.Value.TrySetException(new IOException("The server shut down unexpectedly."));
+                entry.Value.TrySetException(pendingException);
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves <see cref="ClientCompletionDetails"/> from the transport's channel completion.
+    /// If the channel was completed with a <see cref="ClientTransportClosedException"/>, the wrapped
+    /// details are returned. Otherwise a default instance is created from the completion state.
+    /// </summary>
+    private static async Task<ClientCompletionDetails> GetCompletionDetailsAsync(Task channelCompletion)
+    {
+        try
+        {
+            await channelCompletion.ConfigureAwait(false);
+            return new ClientCompletionDetails();
+        }
+        catch (ClientTransportClosedException tce)
+        {
+            return tce.Details;
+        }
+        catch (Exception ex)
+        {
+            return new ClientCompletionDetails { Exception = ex };
         }
     }
 
@@ -455,7 +535,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Sends a JSON-RPC request to the server.
-    /// It is strongly recommended use the capability-specific methods instead of this one.
+    /// It is strongly recommended to use the capability-specific methods instead of this one.
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
@@ -511,23 +591,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, request, method, target);
             }
 
-            if (_logger.IsEnabled(LogLevel.Trace))
-            {
-                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-            }
-            else
-            {
-                LogSendingRequest(EndpointName, request.Method);
-            }
-
             await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
+            // Per spec, "The initialize request MUST NOT be cancelled by clients", so skip registration for initialize.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             JsonRpcMessage? response;
-            using (var registration = RegisterCancellation(cancellationToken, request))
+            using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(cancellationToken, request) : default)
             {
                 response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -577,6 +649,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Throw.IfNull(message);
 
+        if (message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' request via {nameof(SendMessageAsync)}. " +
+                $"Use {nameof(SendRequestAsync)} instead to get a correlated response.");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
@@ -605,29 +684,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            await _outgoingMessageFilter(async (msg, ct) =>
+            await SendToRelatedTransportAsync(message, cancellationToken).ConfigureAwait(false);
+
+            // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
+            // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
+            // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
+            if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
+                GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
+                _pendingRequests.TryRemove(cn.RequestId, out var tcs))
             {
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-                }
-                else
-                {
-                    LogSendingMessage(EndpointName);
-                }
-
-                await SendToRelatedTransportAsync(msg, ct).ConfigureAwait(false);
-
-                // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
-                // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
-                // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
-                if (msg is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-                    GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
-                    _pendingRequests.TryRemove(cn.RequestId, out var tcs))
-                {
-                    tcs.TrySetCanceled(default);
-                }
-            })(message, cancellationToken).ConfigureAwait(false);
+                tcs.TrySetCanceled(default);
+            }
         }
         catch (Exception ex) when (addTags)
         {
@@ -644,7 +711,33 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     // Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
     // the HTTP response body for the POST request containing the corresponding JSON-RPC request.
     private Task SendToRelatedTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
-        => (message.Context?.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
+        => _outgoingMessageFilter((msg, ct) =>
+        {
+            if (msg is JsonRpcRequest request)
+            {
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+                }
+                else
+                {
+                    LogSendingRequest(EndpointName, request.Method);
+                }
+            }
+            else
+            {
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+                }
+                else
+                {
+                    LogSendingMessage(EndpointName);
+                }
+            }
+
+            return (msg.Context?.RelatedTransport ?? _transport).SendMessageAsync(msg, ct);
+        })(message, cancellationToken);
 
     private static CancelledNotificationParams? GetCancelledNotificationParams(JsonNode? notificationParams)
     {
@@ -868,9 +961,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 await _messageProcessingTask.ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                // Ignore cancellation
+                // Ignore exceptions from the message processing loop. It may fault with
+                // OperationCanceledException on normal shutdown or ClientTransportClosedException
+                // when the transport's channel completes with an error.
             }
         }
 

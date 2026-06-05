@@ -30,6 +30,10 @@ test: build
 		-- \
 		RunConfiguration.CollectSourceInformation=true
 
+test-aot:
+	dotnet publish tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj --configuration $(CONFIGURATION) -o $(ARTIFACT_PATH)/aot-publish
+	$(ARTIFACT_PATH)/aot-publish/ModelContextProtocol.AotCompatibility.TestApp
+
 pack: restore
 	dotnet pack --no-restore --configuration $(CONFIGURATION)
 

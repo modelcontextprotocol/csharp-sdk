@@ -105,7 +105,7 @@ public sealed class HttpClientTransportOptions
     public bool OwnsSession { get; set; } = true;
 
     /// <summary>
-    /// Gets sor sets the authorization provider to use for authentication.
+    /// Gets or sets the authorization provider to use for authentication.
     /// </summary>
     public ClientOAuthOptions? OAuth { get; set; }
 
@@ -113,26 +113,27 @@ public sealed class HttpClientTransportOptions
     /// Gets or sets the maximum number of consecutive reconnection attempts when an SSE stream is disconnected.
     /// </summary>
     /// <value>
-    /// The maximum number of reconnection attempts. The default is 2.
+    /// The maximum number of reconnection attempts. The default is 5.
     /// </value>
     /// <remarks>
     /// When an SSE stream is disconnected (e.g., due to a network issue), the client will attempt to
     /// reconnect using the Last-Event-ID header to resume from where it left off. This property controls
-    /// how many reconnection attempts are made before giving up.
+    /// how many consecutive reconnection attempts are made before giving up. The counter resets to zero
+    /// on each successful stream read, so this value only limits consecutive failures.
     /// </remarks>
-    public int MaxReconnectionAttempts { get; set; } = 2;
+    public int MaxReconnectionAttempts { get; set; } = 5;
 
     /// <summary>
     /// Gets or sets the default interval at which the client attempts reconnection after an SSE stream is disconnected.
     /// </summary>
     /// <remarks>
-    /// <p>
+    /// <para>
     /// The default value is 1 second.
-    /// </p>
-    /// <p>
+    /// </para>
+    /// <para>
     /// If the server sends a message specifying a different reconnection interval, that new value will be used for all
     /// subsequent reconnection attempts for that stream.
-    /// </p>
+    /// </para>
     /// </remarks>
     public TimeSpan DefaultReconnectionInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -52,18 +53,47 @@ public abstract partial class McpClient : McpSession
         {
             await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException and not ClientTransportClosedException)
         {
-            try
+            // ConnectAsync already disposed the session (which includes awaiting Completion).
+            // Check if the transport provided structured completion details indicating
+            // why the transport closed that aren't already in the original exception chain.
+            Debug.Assert(clientSession.Completion.IsCompleted, "Completion should already be finished after ConnectAsync's DisposeAsync.");
+            var completionDetails = await clientSession.Completion.ConfigureAwait(false);
+
+            // If the transport closed with a non-graceful error (e.g., server process exited)
+            // and the completion details carry an exception that's NOT already in the original
+            // exception chain, throw a ClientTransportClosedException with the structured details so
+            // callers can programmatically inspect the closure reason (exit code, stderr, etc.).
+            // When the same exception is already in the chain (e.g., HttpRequestException from
+            // an HTTP transport), the original exception is more appropriate to re-throw.
+            if (completionDetails.Exception is { } detailsException &&
+                !ExceptionChainContains(ex, detailsException))
             {
-                await clientSession.DisposeAsync().ConfigureAwait(false);
+                throw new ClientTransportClosedException(completionDetails);
             }
-            catch { } // allow the original exception to propagate
 
             throw;
         }
 
         return clientSession;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> if <paramref name="target"/> is the same object as
+    /// <paramref name="exception"/> or any exception in its <see cref="Exception.InnerException"/> chain.
+    /// </summary>
+    private static bool ExceptionChainContains(Exception exception, Exception target)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (ReferenceEquals(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -146,6 +176,8 @@ public abstract partial class McpClient : McpSession
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        ToolCacheClearing?.Invoke();
+
         List<McpClientTool>? tools = null;
         ListToolsRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
@@ -154,6 +186,17 @@ public abstract partial class McpClient : McpSession
             tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
+                // Validate x-mcp-header annotations per SEP-2243. The spec requires Streamable HTTP
+                // clients to exclude tools with invalid annotations and permits other transports
+                // (e.g., stdio) to ignore the annotations entirely. This client validates on all
+                // transports so a malformed definition is rejected consistently regardless of transport.
+                if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+                {
+                    ToolRejected?.Invoke(tool, rejectionReason!);
+                    continue;
+                }
+
+                ToolDiscovered?.Invoke(tool);
                 tools.Add(new(this, tool, options?.JsonSerializerOptions));
             }
 
@@ -163,6 +206,21 @@ public abstract partial class McpClient : McpSession
 
         return tools;
     }
+
+    /// <summary>
+    /// Invoked when a tool definition is discovered from a <c>tools/list</c> response.
+    /// </summary>
+    internal Action<Tool>? ToolDiscovered;
+
+    /// <summary>
+    /// Invoked when a tool definition is rejected due to invalid <c>x-mcp-header</c> annotations.
+    /// </summary>
+    internal Action<Tool, string>? ToolRejected;
+
+    /// <summary>
+    /// Invoked before enumerating tools to clear any previously cached tool definitions.
+    /// </summary>
+    internal Action? ToolCacheClearing;
 
     /// <summary>
     /// Retrieves a list of available tools from the server.
@@ -280,7 +338,7 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Retrieves a list of available prompts from the server.
+    /// Retrieves a specific prompt from the MCP server.
     /// </summary>
     /// <param name="requestParams">The request parameters to send in the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -549,9 +607,9 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// Subscribes to a resource on the server to receive notifications when it changes.
     /// </summary>
-    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="uri">The URI of the resource to subscribe to.</param>
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
@@ -877,7 +935,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             return await CallToolAsync(
@@ -1007,7 +1065,7 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
+            JsonObject metaWithProgress = meta is not null ? (JsonObject)meta.DeepClone() : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
             var result = await SendRequestAsync(
@@ -1036,6 +1094,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The current state of the task.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public async ValueTask<McpTask> GetTaskAsync(
         string taskId,
@@ -1073,6 +1132,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The raw JSON result of the task.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// This method sends a tasks/result request to the server, which will block until the task completes if it hasn't already.
     /// The server handles all polling logic internally.
@@ -1099,6 +1159,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all tasks.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public async ValueTask<IList<McpTask>> ListTasksAsync(
         RequestOptions? options = null,
@@ -1124,6 +1185,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListTasksAsync(RequestOptions?, CancellationToken)"/> overload retrieves all tasks by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListTasksRequestParams"/> and <see cref="ListTasksResult"/>, returning the raw result from the server.
@@ -1153,6 +1215,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The updated state of the task after cancellation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// Cancelling a task requests that the server stop execution. The server may not immediately cancel the task,
     /// and may choose to allow the task to complete if it's close to finishing.

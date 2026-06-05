@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -79,6 +80,43 @@ public sealed class ServerCapabilities
     /// See <see cref="McpTasksCapability"/> for details on configuring which operations support tasks.
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonIgnore]
+    public McpTasksCapability? Tasks
+    {
+        get => TasksCore;
+        set => TasksCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
     [JsonPropertyName("tasks")]
-    public McpTasksCapability? Tasks { get; set; }
+    internal McpTasksCapability? TasksCore { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional MCP extensions that the server supports.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keys are extension identifiers in reverse domain notation with an extension name
+    /// (e.g., <c>"io.modelcontextprotocol/apps"</c>), and values are per-extension settings
+    /// objects. An empty object indicates support with no additional settings.
+    /// </para>
+    /// <para>
+    /// Extensions provide a framework for extending the Model Context Protocol while maintaining
+    /// interoperability. Servers advertise extension support via this field during the initialization handshake.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
+    [JsonIgnore]
+    public IDictionary<string, object>? Extensions
+    {
+        get => ExtensionsCore;
+        set => ExtensionsCore = value;
+    }
+
+    // See ExperimentalInternalPropertyTests.cs before modifying this property.
+    [JsonInclude]
+    [JsonPropertyName("extensions")]
+    internal IDictionary<string, object>? ExtensionsCore { get; set; }
 }

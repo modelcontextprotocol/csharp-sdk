@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol;
+﻿using System.Diagnostics.CodeAnalysis;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
 
@@ -7,6 +8,14 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 public abstract partial class McpClient : McpSession
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClient"/> class.
+    /// </summary>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    protected McpClient()
+    {
+    }
+
     /// <summary>
     /// Gets the capabilities supported by the connected server.
     /// </summary>
@@ -35,13 +44,110 @@ public abstract partial class McpClient : McpSession
     /// <remarks>
     /// <para>
     /// This property contains instructions provided by the server during initialization that explain
-    /// how to effectively use its capabilities. These instructions can include details about available
-    /// tools, expected input formats, limitations, or any other helpful information.
+    /// how to effectively use its capabilities. They should focus on guidance that helps a model
+    /// use the server effectively and should avoid duplicating tool, prompt, or resource descriptions.
     /// </para>
     /// <para>
-    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources.
+    /// This can be used by clients to improve an LLM's understanding of how to use the server.
     /// It can be thought of like a "hint" to the model and can be added to a system prompt.
     /// </para>
     /// </remarks>
     public abstract string? ServerInstructions { get; }
+
+    /// <summary>
+    /// Gets a <see cref="Task{TResult}"/> that completes when the client session has completed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The task always completes successfully. The result provides details about why the session
+    /// completed. Transport implementations may return derived types with additional strongly-typed
+    /// information, such as <see cref="StdioClientCompletionDetails"/>.
+    /// </para>
+    /// <para>
+    /// For graceful closure (e.g., explicit disposal), <see cref="ClientCompletionDetails.Exception"/>
+    /// will be <see langword="null"/>. For unexpected closure (e.g., process crash, network failure),
+    /// it may contain an exception that caused or that represents the failure.
+    /// </para>
+    /// </remarks>
+    public abstract Task<ClientCompletionDetails> Completion { get; }
+
+    /// <summary>
+    /// Registers one or more tool definitions in the client's tool cache, enabling the transport
+    /// to send <c>Mcp-Param-*</c> headers for those tools without requiring a prior <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
+    /// </summary>
+    /// <param name="tools">The tool definitions to register.</param>
+    /// <remarks>
+    /// <para>
+    /// This method allows callers who already have tool schema information (e.g., from a previous session,
+    /// hardcoded configuration, or an out-of-band source) to provide it directly to the client. Once registered,
+    /// any <see cref="McpClient.CallToolAsync(string, IReadOnlyDictionary{string, object?}?, IProgress{ProgressNotificationValue}?, RequestOptions?, CancellationToken)"/>
+    /// call for a registered tool will automatically include <c>Mcp-Param-*</c> HTTP headers based on
+    /// the tool's <c>x-mcp-header</c> schema annotations, exactly as if the tool had been discovered
+    /// via <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// <para>
+    /// <b>Cache interaction behavior:</b>
+    /// <list type="bullet">
+    ///   <item>Registered tools are added to the same internal tool cache used by <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.</item>
+    ///   <item>Calling <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> after <see cref="AddKnownTools"/> preserves
+    ///     manually registered tools — only server-discovered tools are cleared and repopulated.</item>
+    ///   <item>If the server returns a tool with the same name as a manually registered tool, the server's
+    ///     definition overwrites the registered one in the cache, but the tool retains its known status
+    ///     and will survive subsequent cache clears. This registration is sticky for the lifetime of the
+    ///     <see cref="McpClient"/>; use <see cref="RemoveKnownTools"/> or <see cref="ClearKnownTools"/> to
+    ///     explicitly drop known tools that are no longer needed.</item>
+    ///   <item>Tools can be registered at any time — before or after <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>,
+    ///     and across multiple calls.</item>
+    ///   <item>Re-registering a tool with the same name overwrites the previous definition in the cache (last write wins).</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Tools with invalid <c>x-mcp-header</c> annotations cause an <see cref="ArgumentException"/> to be thrown.
+    /// No tools are added to the cache if any tool in the batch fails validation (all-or-nothing).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">One or more tools have invalid <c>x-mcp-header</c> annotations.</exception>
+    public virtual void AddKnownTools(IEnumerable<Tool> tools)
+    {
+        Throw.IfNull(tools);
+        throw new NotSupportedException($"{GetType().Name} does not support adding known tools.");
+    }
+
+    /// <summary>
+    /// Removes one or more previously registered tool definitions from the client's tool cache by name.
+    /// </summary>
+    /// <param name="toolNames">The names of the tools to remove.</param>
+    /// <remarks>
+    /// <para>
+    /// This removes the specified tools from both the known-tools set and the internal tool cache.
+    /// After removal, those tools will no longer survive <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>
+    /// cache clears, and <c>Mcp-Param-*</c> headers will no longer be sent for them unless the server
+    /// re-discovers them via <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// <para>
+    /// Removing a tool name that was not previously added via <see cref="AddKnownTools"/> is a no-op.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="toolNames"/> is <see langword="null"/>.</exception>
+    public virtual void RemoveKnownTools(IEnumerable<string> toolNames)
+    {
+        Throw.IfNull(toolNames);
+        throw new NotSupportedException($"{GetType().Name} does not support removing known tools.");
+    }
+
+    /// <summary>
+    /// Removes all previously registered tool definitions from the client's tool cache.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This clears all tools that were added via <see cref="AddKnownTools"/> from both the known-tools
+    /// set and the internal tool cache. Server-discovered tools that are not also known tools are not affected
+    /// and will remain in the cache until the next <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
+    /// </para>
+    /// </remarks>
+    public virtual void ClearKnownTools()
+    {
+        throw new NotSupportedException($"{GetType().Name} does not support clearing known tools.");
+    }
 }

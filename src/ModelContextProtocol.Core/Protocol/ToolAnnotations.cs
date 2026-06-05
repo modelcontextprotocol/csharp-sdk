@@ -33,11 +33,11 @@ public sealed class ToolAnnotations
     /// Gets or sets a value that indicates whether the tool can perform destructive updates to its environment.
     /// </summary>
     /// <value>
-    /// The default is <see langword="true"/>.
+    /// <see langword="true"/> if the tool can perform destructive updates to its environment;
+    /// <see langword="false"/> if the tool performs only additive updates;
+    /// <see langword="null"/> if unspecified, in which case clients should assume <see langword="true"/>.
     /// </value>
     /// <remarks>
-    /// If <see langword="true"/>, the tool can perform destructive updates to its environment.
-    /// If <see langword="false"/>, the tool performs only additive updates.
     /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
     [JsonPropertyName("destructiveHint")]
@@ -49,8 +49,8 @@ public sealed class ToolAnnotations
     /// </summary>
     /// <value>
     /// <see langword="true"/> if calling the tool repeatedly with the same arguments
-    /// has no additional effect on the environment; <see langword="false"/> if it does.
-    /// The default is <see langword="false"/>.
+    /// has no additional effect on the environment; <see langword="false"/> if it does;
+    /// <see langword="null"/> if unspecified, in which case clients should assume <see langword="false"/>.
     /// </value>
     /// <remarks>
     /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
@@ -62,9 +62,9 @@ public sealed class ToolAnnotations
     /// Gets or sets a value that indicates whether this tool can interact with an "open world" of external entities.
     /// </summary>
     /// <value>
-    /// <see langword="true"/> if the tool can interact with an unpredictable or dynamic set of entities (like web search).
-    /// <see langword="false"/> if the tool's domain of interaction is closed and well-defined (like memory access).
-    /// The default is <see langword="true"/>.
+    /// <see langword="true"/> if the tool can interact with an unpredictable or dynamic set of entities (like web search);
+    /// <see langword="false"/> if the tool's domain of interaction is closed and well-defined (like memory access);
+    /// <see langword="null"/> if unspecified, in which case clients should assume <see langword="true"/>.
     /// </value>
     [JsonPropertyName("openWorldHint")]
     public bool? OpenWorldHint { get; set; }
@@ -73,9 +73,9 @@ public sealed class ToolAnnotations
     /// Gets or sets a value that indicates whether this tool modifies its environment.
     /// </summary>
     /// <value>
-    /// <see langword="true"/> if the tool only performs read operations without changing state.
-    /// <see langword="false"/> if the tool can make modifications to its environment.
-    /// The default is <see langword="false"/>.
+    /// <see langword="true"/> if the tool only performs read operations without changing state;
+    /// <see langword="false"/> if the tool can make modifications to its environment;
+    /// <see langword="null"/> if unspecified, in which case clients should assume <see langword="false"/>.
     /// </value>
     /// <remarks>
     /// <para>

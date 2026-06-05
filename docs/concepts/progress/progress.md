@@ -15,6 +15,9 @@ Typically progress tracking is supported by server tools that perform operations
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
+> [!NOTE]
+> Progress notifications are sent inline as part of the response to a request — they are not unsolicited. Progress tracking works in both [stateless and stateful](xref:stateless) modes as well as stdio.
+
 ### Server Implementation
 
 When processing a request, the server can use the <xref:ModelContextProtocol.McpSession.SendNotificationAsync*> extension method of <xref:ModelContextProtocol.Server.McpServer> to send progress updates,
@@ -37,7 +40,7 @@ The client should also provide a notification handler to process "notifications/
 There are two ways to do this. The first is to register a notification handler using the <xref:ModelContextProtocol.McpSession.RegisterNotificationHandler*> method on the <xref:ModelContextProtocol.Client.McpClient> instance. A handler registered this way will receive all progress notifications sent by the server.
 
 ```csharp
-mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
+await using var handler = mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
     (notification, cancellationToken) =>
     {
         if (JsonSerializer.Deserialize<ProgressNotificationParams>(notification.Params) is { } pn &&
@@ -47,7 +50,7 @@ mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
             Console.WriteLine($"Tool progress: {pn.Progress.Progress} of {pn.Progress.Total} - {pn.Progress.Message}");
         }
         return ValueTask.CompletedTask;
-    }).ConfigureAwait(false);
+    });
 ```
 
 The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress<T>` is a standard .NET type that provides a way to receive progress updates.

@@ -235,14 +235,24 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     [Fact]
     public async Task UpdateTaskStatusAsync_UpdatesLastUpdatedAt()
     {
-        // Arrange
-        using var store = new InMemoryMcpTaskStore();
+        // Arrange - Use FakeTimeProvider for deterministic testing
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: null,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: Timeout.InfiniteTimeSpan,
+            pageSize: 100,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
+            
         var metadata = new McpTaskMetadata();
         var task = await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
         var originalTimestamp = task.LastUpdatedAt;
 
-        // Wait a bit to ensure timestamp changes
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        // Advance time to ensure timestamp changes
+        fakeTime.Advance(TimeSpan.FromMilliseconds(10));
 
         // Act
         await store.UpdateTaskStatusAsync(task.TaskId, McpTaskStatus.Working, null, null, TestContext.Current.CancellationToken);
@@ -343,7 +353,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(2, result.Tasks.Length);
+        Assert.Equal(2, result.Tasks.Count);
         Assert.Contains(result.Tasks, t => t.TaskId == task1.TaskId);
         Assert.Contains(result.Tasks, t => t.TaskId == task2.TaskId);
         Assert.Null(result.NextCursor);
@@ -387,9 +397,9 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var secondPageResult = await store.ListTasksAsync(cursor: firstPageResult.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(100, firstPageResult.Tasks.Length);
+        Assert.Equal(100, firstPageResult.Tasks.Count);
         Assert.NotNull(firstPageResult.NextCursor);
-        Assert.Equal(50, secondPageResult.Tasks.Length);
+        Assert.Equal(50, secondPageResult.Tasks.Count);
         Assert.Null(secondPageResult.NextCursor);
     }
 
@@ -460,16 +470,28 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     [Fact]
     public async Task Dispose_StopsCleanupTimer()
     {
-        // Arrange
-        var store = new InMemoryMcpTaskStore(cleanupInterval: TimeSpan.FromMilliseconds(100));
-        var metadata = new McpTaskMetadata { TimeToLive = TimeSpan.FromMilliseconds(100) }; // Very short TTL
+        // Arrange - Use FakeTimeProvider for deterministic testing
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var cleanupInterval = TimeSpan.FromMilliseconds(100);
+        
+        var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: null,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: cleanupInterval,
+            pageSize: 100,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
+            
+        var metadata = new McpTaskMetadata { TimeToLive = TimeSpan.FromMilliseconds(100) };
         await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
 
         // Act
         store.Dispose();
 
-        // Wait longer than cleanup interval
-        await Task.Delay(300, TestContext.Current.CancellationToken);
+        // Advance time - timer should not fire after dispose
+        fakeTime.Advance(TimeSpan.FromTicks(cleanupInterval.Ticks * 3));
 
         // Assert - Store should still be accessible after dispose (no exceptions)
         // The cleanup timer should have stopped
@@ -479,17 +501,33 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     [Fact]
     public async Task CleanupExpiredTasks_RemovesExpiredTasks()
     {
-        // Arrange
-        using var store = new InMemoryMcpTaskStore(cleanupInterval: TimeSpan.FromMilliseconds(50));
-        var metadata = new McpTaskMetadata { TimeToLive = TimeSpan.FromMilliseconds(100) }; // 100ms TTL
+        // Arrange - Use FakeTimeProvider for deterministic testing
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var cleanupInterval = TimeSpan.FromMilliseconds(50);
+        var ttl = TimeSpan.FromMilliseconds(100);
+        
+        using var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: null,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: cleanupInterval,
+            pageSize: 100,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
+            
+        var metadata = new McpTaskMetadata { TimeToLive = ttl };
         var task = await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
 
         // Verify task exists initially
         var resultBefore = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(resultBefore.Tasks);
 
-        // Wait for task to expire and cleanup timer to run (wait for at least 3 cleanup cycles)
-        await Task.Delay(250, TestContext.Current.CancellationToken);
+        // Advance time past the TTL to make task expired
+        fakeTime.Advance(ttl + TimeSpan.FromMilliseconds(1));
+        
+        // Trigger cleanup by advancing time past cleanup interval
+        fakeTime.Advance(cleanupInterval);
 
         // Act - List tasks to verify cleanup happened
         var resultAfter = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -741,11 +779,11 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result3 = await store.ListTasksAsync(cursor: result2.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(10, result1.Tasks.Length);
+        Assert.Equal(10, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
-        Assert.Equal(10, result2.Tasks.Length);
+        Assert.Equal(10, result2.Tasks.Count);
         Assert.NotNull(result2.NextCursor);
-        Assert.Equal(5, result3.Tasks.Length);
+        Assert.Equal(5, result3.Tasks.Count);
         Assert.Null(result3.NextCursor);
 
         // Verify no duplicates across pages
@@ -787,8 +825,18 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     [Fact]
     public async Task ListTasksAsync_ConsistentWithExpiredTasksRemovedBetweenPages()
     {
-        // Arrange - Use TTL of 1 second
-        using var store = new InMemoryMcpTaskStore(defaultTtl: TimeSpan.FromSeconds(1), pageSize: 5, cleanupInterval: Timeout.InfiniteTimeSpan);
+        // Arrange - Use FakeTimeProvider for deterministic testing
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var ttl = TimeSpan.FromSeconds(1);
+        using var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: ttl,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: Timeout.InfiniteTimeSpan,
+            pageSize: 5,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
 
         // Create 15 tasks
         for (int i = 0; i < 15; i++)
@@ -799,14 +847,14 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         // Act - Get first page immediately
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // Wait for tasks to expire
-        await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+        // Advance time past TTL to make tasks expire
+        fakeTime.Advance(ttl + TimeSpan.FromMilliseconds(500));
 
         // Get second page after expiration
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - First page should have 5 tasks, second page should have 0 (all expired)
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
         Assert.Empty(result2.Tasks);
         Assert.Null(result2.NextCursor);
@@ -826,7 +874,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
         // Get first page
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
 
         // Add more tasks between pages (these should appear in later queries, not retroactively in page 2)
         for (int i = 10; i < 15; i++)
@@ -838,7 +886,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Second page should have 5 tasks from original set
-        Assert.Equal(5, result2.Tasks.Length);
+        Assert.Equal(5, result2.Tasks.Count);
         Assert.NotNull(result2.NextCursor);
 
         // Verify no overlap between pages
@@ -1016,16 +1064,26 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     [Fact]
     public async Task CreateTaskAsync_MaxTasksPerSession_ExcludesExpiredTasks()
     {
-        // Arrange - Short TTL and per-session limit of 1
+        // Arrange - Use FakeTimeProvider for deterministic testing
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var shortTtl = TimeSpan.FromMilliseconds(50);
-        using var store = new InMemoryMcpTaskStore(defaultTtl: shortTtl, maxTasksPerSession: 1);
+        using var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: shortTtl,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: Timeout.InfiniteTimeSpan,
+            pageSize: 100,
+            maxTasks: null,
+            maxTasksPerSession: 1,
+            timeProvider: fakeTime);
+            
         var metadata = new McpTaskMetadata();
 
         // Create first task
         await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
 
-        // Wait for it to expire
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Advance time past TTL to make the first task expire
+        fakeTime.Advance(shortTtl + TimeSpan.FromMilliseconds(1));
 
         // Should be able to create another task since the first one expired
         var task2 = await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
@@ -1070,14 +1128,14 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - First page should have 5 tasks
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
 
         // Get second page using cursor
         var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Second page should have 5 tasks
-        Assert.Equal(5, result2.Tasks.Length);
+        Assert.Equal(5, result2.Tasks.Count);
         Assert.Null(result2.NextCursor); // No more pages
 
         // Verify no overlap between pages
@@ -1122,7 +1180,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
         // Get first page - should have 5 tasks with a cursor
         var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(5, result1.Tasks.Length);
+        Assert.Equal(5, result1.Tasks.Count);
         Assert.NotNull(result1.NextCursor);
 
         // Now create 5 more tasks AFTER we got the first page cursor

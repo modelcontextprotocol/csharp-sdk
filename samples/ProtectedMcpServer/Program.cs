@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ProtectedMcpServer.Tools;
 using System.Net.Http.Headers;
@@ -9,6 +10,26 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
+var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
+
+// This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
+// companion web app running on a different host (localhost:5173), while preventing requests from
+// other origins. This scenario requires enabling CORS and enabling a restrictive CORS policy.
+//
+// If your server is not meant for cross-origin browser access, leave CORS disabled.
+//
+// Only apply a lenient CORS policy if your server is intended to be callable from any browser.
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("McpBrowserClient", policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .WithMethods("POST")
+            .WithHeaders(HeaderNames.ContentType, HeaderNames.Authorization, "MCP-Protocol-Version")
+            .WithExposedHeaders(HeaderNames.WWWAuthenticate);
+    });
+});
 
 builder.Services.AddAuthentication(options =>
 {
@@ -56,8 +77,8 @@ builder.Services.AddAuthentication(options =>
 {
     options.ResourceMetadata = new()
     {
-        ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
-        AuthorizationServers = { new Uri(inMemoryOAuthServerUrl) },
+        ResourceDocumentation = "https://docs.example.com/api/weather",
+        AuthorizationServers = { inMemoryOAuthServerUrl },
         ScopesSupported = ["mcp:tools"],
     };
 });
@@ -67,7 +88,13 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
     .WithTools<WeatherTools>()
-    .WithHttpTransport();
+    .WithHttpTransport(options =>
+    {
+        // Stateless mode is recommended for servers that don't need server-to-client
+        // requests like sampling or elicitation. It enables horizontal scaling without
+        // session affinity and works with clients that don't send Mcp-Session-Id.
+        options.Stateless = true;
+    });
 
 // Configure HttpClientFactory for weather.gov API
 builder.Services.AddHttpClient("WeatherApi", client =>
@@ -78,11 +105,12 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
 // Use the default MCP policy name that we've configured
-app.MapMcp().RequireAuthorization();
+app.MapMcp().RequireAuthorization().RequireCors("McpBrowserClient");
 
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
 Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");

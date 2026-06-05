@@ -33,8 +33,8 @@ public sealed class McpServerOptions
     /// <remarks>
     /// The protocol version defines which features and message formats this server supports.
     /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertize to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertize the latest
+    /// If <see langword="null"/>, the server will advertise to the client the version requested
+    /// by the client if that version is known to be supported, and otherwise will advertise the latest
     /// version supported by the server.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
@@ -54,8 +54,9 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// These instructions are sent to clients during the initialization handshake and provide
-    /// guidance on how to effectively use the server's capabilities. They can include details
-    /// about available tools, expected input formats, limitations, or other helpful information.
+    /// guidance on how to effectively use the server's capabilities. They should focus on
+    /// information that helps models use the server effectively and should not duplicate
+    /// tool, prompt, or resource descriptions already exposed elsewhere.
     /// Client applications typically use these instructions as system messages for LLM interactions
     /// to provide context about available functionality.
     /// </remarks>
@@ -82,19 +83,39 @@ public sealed class McpServerOptions
     public Implementation? KnownClientInfo { get; set; }
 
     /// <summary>
-    /// Gets the filter collections for MCP server handlers.
+    /// Gets or sets preexisting knowledge about the client's capabilities to support session migration
+    /// scenarios where the client will not re-send the initialize request.
     /// </summary>
     /// <remarks>
-    /// This property provides access to filter collections that can be used to modify the behavior
-    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter
-    /// added will be the outermost (first to execute).
+    /// <para>
+    /// When not specified, this information is sourced from the client's initialize request.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientInfo"/>.
+    /// </para>
     /// </remarks>
-    public McpServerFilters Filters { get; } = new();
+    public ClientCapabilities? KnownClientCapabilities { get; set; }
 
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
     public McpServerHandlers Handlers
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the filter collections for MCP server handlers.
+    /// </summary>
+    /// <remarks>
+    /// This property provides access to filter collections that can be used to modify the behavior
+    /// of various MCP server handlers. The first filter added is the outermost (first to execute),
+    /// and each subsequent filter wraps closer to the handler.
+    /// </remarks>
+    public McpServerFilters Filters
     {
         get => field ??= new();
         set

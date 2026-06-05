@@ -1,10 +1,10 @@
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Defines diagnostic IDs, Messages, and Urls for APIs annotated with <see cref="ObsoleteAttribute"/>.
+/// Defines diagnostic IDs, messages, and URLs for APIs annotated with <see cref="ObsoleteAttribute"/>.
 /// </summary>
 /// <remarks>
-/// When a deprecated API is associated with an specification change, the message
+/// When a deprecated API is associated with a specification change, the message
 /// should refer to the specification version that introduces the change and the SEP
 /// when available. If there is a SEP associated with the experimental API, the Url should
 /// point to the SEP issue.
@@ -22,4 +22,15 @@ internal static class Obsoletions
     public const string LegacyTitledEnumSchema_DiagnosticId = "MCP9001";
     public const string LegacyTitledEnumSchema_Message = "The EnumSchema and LegacyTitledEnumSchema APIs are deprecated as of specification version 2025-11-25 and will be removed in a future major version. See SEP-1330 for more information.";
     public const string LegacyTitledEnumSchema_Url = "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1330";
+
+    // MCP9002 was used for the AddXxxFilter extension methods on IMcpServerBuilder that were superseded by
+    // WithMessageFilters() and WithRequestFilters(). The APIs were removed; do not reuse this diagnostic ID.
+
+    public const string RequestContextParamsConstructor_DiagnosticId = "MCP9003";
+    public const string RequestContextParamsConstructor_Message = "Use the constructor overload that accepts a parameters argument.";
+    public const string RequestContextParamsConstructor_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcp9003";
+
+    public const string EnableLegacySse_DiagnosticId = "MCP9004";
+    public const string EnableLegacySse_Message = "Legacy SSE transport has no built-in request backpressure and should only be used with completely trusted clients in isolated processes. Use Streamable HTTP instead.";
+    public const string EnableLegacySse_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

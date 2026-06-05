@@ -7,12 +7,13 @@ uid: tasks
 
 # MCP Tasks
 
+<!-- mlc-disable-next-line -->
 > [!WARNING]
-> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases.
+> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
 The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
 
-[task-based execution]: https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks
+[task-based execution]: https://modelcontextprotocol.io/seps/1686-tasks
 
 ## Overview
 
@@ -63,7 +64,7 @@ builder.Services.AddMcpServer(options =>
     // Enable tasks by providing a task store
     options.TaskStore = taskStore;
 })
-.WithHttpTransport()
+.WithHttpTransport(o => o.Stateless = true)
 .WithTools<MyTools>();
 ```
 
@@ -75,11 +76,13 @@ The `InMemoryMcpTaskStore` constructor accepts several optional parameters:
 
 ```csharp
 var taskStore = new InMemoryMcpTaskStore(
-    defaultTtl: TimeSpan.FromHours(1),      // Default task retention time
-    maxTtl: TimeSpan.FromHours(24),         // Maximum allowed TTL
-    pollInterval: TimeSpan.FromSeconds(1),  // Suggested client poll interval
+    defaultTtl: TimeSpan.FromHours(1),        // Default task retention time
+    maxTtl: TimeSpan.FromHours(24),           // Maximum allowed TTL
+    pollInterval: TimeSpan.FromSeconds(1),    // Suggested client poll interval
     cleanupInterval: TimeSpan.FromMinutes(5), // Background cleanup frequency
-    pageSize: 100                           // Tasks per page for listing
+    pageSize: 100,                            // Tasks per page for listing
+    maxTasks: 1000,                           // Maximum total tasks allowed
+    maxTasksPerSession: 100                   // Maximum tasks per session
 );
 ```
 
@@ -205,6 +208,7 @@ public class MyTools(IMcpTaskStore taskStore)
 
 When a tool returns `McpTask`, the SDK bypasses automatic task wrapping and returns the task directly to the client.
 
+<!-- mlc-disable-next-line -->
 > [!IMPORTANT]
 > **No Fault Tolerance Guarantees**: Both `InMemoryMcpTaskStore` and the automatic task support for `Task`-returning tool methods do **not** provide fault tolerance. Task state and execution are bounded by the memory of the server process. If the server crashes or restarts:
 > - All in-memory task metadata is lost
@@ -357,6 +361,7 @@ var options = new McpClientOptions
 var client = await McpClient.CreateAsync(transport, options);
 ```
 
+<!-- mlc-disable-next-line -->
 > [!NOTE]
 > Clients should not rely on receiving status notifications. Notifications are optional and may not be sent in all scenarios. Always use polling as the primary mechanism for tracking task status.
 
@@ -424,8 +429,8 @@ Task operations may throw <xref:ModelContextProtocol.McpException> with these er
 
 | Error Code | Scenario |
 |------------|----------|
-| `InvalidParams` | Invalid or nonexistent task ID |
-| `InvalidRequest` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
+| `InvalidParams` | Invalid or nonexistent task ID or invalid cursor |
+| `InvalidParams` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
 | `InternalError` | Task execution failure or result unavailable |
 
 Example error handling:
@@ -435,7 +440,7 @@ try
 {
     var task = await client.GetTaskAsync(taskId, cancellationToken: ct);
 }
-catch (McpException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
+catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
 {
     Console.WriteLine($"Task not found: {taskId}");
 }
@@ -561,7 +566,7 @@ builder.Services.AddMcpServer(options =>
 {
     options.TaskStore = taskStore;
 })
-.WithHttpTransport()
+.WithHttpTransport(o => o.Stateless = true)
 .WithTools<TaskTools>();
 ```
 
@@ -596,4 +601,4 @@ While this file-based approach demonstrates the pattern, production systems shou
 - <xref:ModelContextProtocol.InMemoryMcpTaskStore>
 - <xref:ModelContextProtocol.Protocol.McpTask>
 - <xref:ModelContextProtocol.Protocol.McpTaskStatus>
-- [MCP Tasks Specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)
+- [MCP Tasks Specification](https://modelcontextprotocol.io/seps/1686-tasks)

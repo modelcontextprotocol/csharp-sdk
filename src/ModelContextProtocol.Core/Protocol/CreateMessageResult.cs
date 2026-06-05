@@ -41,7 +41,7 @@ public sealed class CreateMessageResult : Result
     /// <remarks>
     /// Standard values include:
     /// <list type="bullet">
-    ///   <item><term>endTurn</term><description>The model naturally completed its response.</description></item>
+    ///   <item><term>endTurn</term><description>The participant is yielding the conversation to the other party.</description></item>
     ///   <item><term>maxTokens</term><description>The response was truncated due to reaching token limits.</description></item>
     ///   <item><term>stopSequence</term><description>A specific stop sequence was encountered during generation.</description></item>
     ///   <item><term>toolUse</term><description>The model wants to use one or more tools.</description></item>

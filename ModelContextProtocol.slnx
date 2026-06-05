@@ -1,11 +1,12 @@
 <Solution>
-  <Folder Name="/.github/" />
+  <Folder Name="/.github/">
+    <File Path=".github/release-process.md" />
+  </Folder>
   <Folder Name="/.github/workflows/">
     <File Path=".github/workflows/ci-build-test.yml" />
     <File Path=".github/workflows/ci-code-coverage.yml" />
     <File Path=".github/workflows/docs.yml" />
     <File Path=".github/workflows/markdown-link-check.yml" />
-    <File Path=".github/workflows/release.md" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/docs/" />
@@ -70,6 +71,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.ConformanceClient/ModelContextProtocol.ConformanceClient.csproj" />
     <Project Path="tests/ModelContextProtocol.ConformanceServer/ModelContextProtocol.ConformanceServer.csproj" />
@@ -77,5 +79,6 @@
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestSseServer/ModelContextProtocol.TestSseServer.csproj" />
+    <Project Path="tests/ModelContextProtocol.ExperimentalApiRegressionTest/ModelContextProtocol.ExperimentalApiRegressionTest.csproj" />
   </Folder>
 </Solution>
