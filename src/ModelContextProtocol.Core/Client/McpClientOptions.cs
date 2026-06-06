@@ -65,6 +65,37 @@ public sealed class McpClientOptions
     public string? ProtocolVersion { get; set; }
 
     /// <summary>
+    /// Gets or sets the minimum protocol version the client will accept during version negotiation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When negotiating with a server that advertises multiple supported versions, or when falling back
+    /// to a legacy server, the client will refuse any version older than this minimum and surface an
+    /// <see cref="McpException"/> instead.
+    /// </para>
+    /// <para>
+    /// This is useful when the client requires features (such as the draft revision's removal of the
+    /// <c>initialize</c> handshake or <c>Mcp-Session-Id</c>) that are not available in older protocol
+    /// revisions. Setting this to <see cref="McpSession.DraftProtocolVersion"/> disables the
+    /// automatic legacy-server fallback that otherwise switches to the <c>initialize</c> handshake.
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/> (the default), the client falls back to any version the server
+    /// advertises, including legacy versions such as 2025-11-25.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// var clientOptions = new McpClientOptions
+    /// {
+    ///     ProtocolVersion = McpSession.DraftProtocolVersion,
+    ///     MinProtocolVersion = McpSession.DraftProtocolVersion,
+    /// };
+    /// </code>
+    /// </example>
+    /// </remarks>
+    public string? MinProtocolVersion { get; set; }
+
+    /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.
     /// </summary>
     /// <value>

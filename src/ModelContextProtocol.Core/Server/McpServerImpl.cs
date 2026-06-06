@@ -166,7 +166,8 @@ internal sealed partial class McpServerImpl : McpServer
     /// <summary>
     /// Builds an incoming message filter that, for every JSON-RPC request, synchronizes server-side state
     /// (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>)
-    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/>.
+    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/> and
+    /// validates the per-request protocol version.
     /// </summary>
     /// <remarks>
     /// Under the draft protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
@@ -181,11 +182,23 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 bool endpointNameNeedsRefresh = false;
 
-                if (context.ProtocolVersion is { } protocolVersion &&
-                    !string.Equals(_negotiatedProtocolVersion, protocolVersion, StringComparison.Ordinal))
+                if (context.ProtocolVersion is { } protocolVersion)
                 {
-                    _negotiatedProtocolVersion = protocolVersion;
-                    _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+                    // Per SEP-2575, the server MUST reject any request whose per-request
+                    // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
+                    // with an UnsupportedProtocolVersionError (-32004) carrying the supported list.
+                    if (!McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersion))
+                    {
+                        throw new UnsupportedProtocolVersionException(
+                            requested: protocolVersion,
+                            supported: McpSessionHandler.SupportedProtocolVersions);
+                    }
+
+                    if (!string.Equals(_negotiatedProtocolVersion, protocolVersion, StringComparison.Ordinal))
+                    {
+                        _negotiatedProtocolVersion = protocolVersion;
+                        _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+                    }
                 }
 
                 if (context.ClientCapabilities is { } clientCapabilities)
