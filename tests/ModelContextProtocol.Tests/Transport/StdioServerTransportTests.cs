@@ -310,7 +310,11 @@ public class StdioServerTransportTests : LoggedTest
 
         // Read the single response line the transport writes back to the output stream.
         using var responseReader = new StreamReader(outputPipe.Reader.AsStream(), Encoding.UTF8);
-        var responseLine = await responseReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var responseLine = await responseReader.ReadLineAsync(
+#if NET
+            TestContext.Current.CancellationToken
+#endif
+        );
 
         Assert.NotNull(responseLine);
 
