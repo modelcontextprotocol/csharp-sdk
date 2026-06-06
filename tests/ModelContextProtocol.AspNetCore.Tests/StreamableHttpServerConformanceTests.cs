@@ -419,11 +419,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task SendMessageAsync_Throws_OnRequest_WhenNoGetRequestHasBeenMade()
+    public async Task SendRequestAsync_Throws_WhenNoGetRequestHasBeenMade()
     {
         // A server-to-client request sent before any GET SSE stream is opened can never
-        // receive a response, so SendMessageAsync should fail fast with InvalidOperationException
-        // instead of silently dropping the message and leaving the caller hanging.
+        // receive a response, so the transport should fail fast with InvalidOperationException
+        // instead of silently dropping the message and leaving the caller hanging on the TCS
+        // registered by SendRequestAsync.
         McpServer? server = null;
 
         Builder.Services.AddMcpServer()
@@ -450,7 +451,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         };
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            server.SendMessageAsync(request, TestContext.Current.CancellationToken));
+            server.SendRequestAsync(request, TestContext.Current.CancellationToken));
 
         Assert.Contains("roots/list", ex.Message);
         Assert.Contains("no GET SSE stream", ex.Message);
@@ -502,7 +503,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task SendMessageAsync_LogsWarning_OnRequest_WhenGetRequestIsOpen()
+    public async Task SendRequestAsync_LogsWarning_WhenGetRequestIsOpen()
     {
         // Even when the GET SSE stream is open and the request is delivered, server-to-client
         // requests sent via the GET path are fragile (no per-request correlation, depend on a
@@ -531,13 +532,16 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
         // Send a request via the GET stream and assert it lands on the wire (proving behavior is unchanged).
+        // SendRequestAsync awaits a response that the test never produces, so use a CTS to cancel after
+        // confirming wire delivery.
         var request = new JsonRpcRequest
         {
             Method = "roots/list",
             Id = new RequestId(99),
         };
 
-        var sendTask = server.SendMessageAsync(request, TestContext.Current.CancellationToken);
+        using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var sendTask = server.SendRequestAsync(request, requestCts.Token);
 
         await foreach (var sseEvent in ReadSseAsync(getResponse.Content))
         {
@@ -547,7 +551,9 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             break;
         }
 
-        await sendTask;
+        // Cancel the awaited response so SendRequestAsync completes — the wire delivery has already happened.
+        requestCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sendTask);
 
         Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.Category == typeof(StreamableHttpServerTransport).FullName &&
