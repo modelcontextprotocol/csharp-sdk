@@ -279,6 +279,51 @@ public class StdioServerTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task ReadMessagesAsync_Should_Respond_With_ParseError_For_Request_Exceeding_MaxDepth()
+    {
+        // Build a ping request whose params nest more deeply than System.Text.Json's default
+        // reader MaxDepth of 64, which is what makes full deserialization throw. The request still
+        // carries an id, so the transport should reply with a JSON-RPC parse error for that id rather
+        // than dropping the request and leaving the caller pending.
+        var nested = new StringBuilder();
+        const int depth = 100;
+        for (int i = 0; i < depth; i++)
+        {
+            nested.Append("{\"p").Append(i).Append("\":");
+        }
+        nested.Append("{\"leaf\":true}");
+        nested.Append('}', depth);
+
+        var requestLine = $"{{\"jsonrpc\":\"2.0\",\"id\":900100,\"method\":\"ping\",\"params\":{nested}}}";
+
+        Pipe inputPipe = new();
+        Pipe outputPipe = new();
+        using var input = inputPipe.Reader.AsStream();
+        using var output = outputPipe.Writer.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            output,
+            loggerFactory: LoggerFactory);
+
+        await inputPipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{requestLine}\n"), TestContext.Current.CancellationToken);
+
+        // Read the single response line the transport writes back to the output stream.
+        using var responseReader = new StreamReader(outputPipe.Reader.AsStream(), Encoding.UTF8);
+        var responseLine = await responseReader.ReadLineAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(responseLine);
+
+        var response = JsonSerializer.Deserialize<JsonRpcMessage>(responseLine!, McpJsonUtilities.DefaultOptions);
+        var error = Assert.IsType<JsonRpcError>(response);
+        Assert.Equal("900100", error.Id.ToString());
+        Assert.Equal((int)McpErrorCode.ParseError, error.Error.Code);
+
+        // The transport should still be reading further messages after recovering from the bad one.
+        Assert.True(transport.IsConnected);
+    }
+
+    [Fact]
     public async Task ReadMessagesAsync_Should_Log_Received_At_Trace_Level()
     {
         // Arrange

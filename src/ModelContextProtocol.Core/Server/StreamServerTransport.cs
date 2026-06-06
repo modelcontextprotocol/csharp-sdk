@@ -137,7 +137,32 @@ public class StreamServerTransport : TransportBase
                         LogTransportMessageParseFailed(Name, ex);
                     }
 
-                    // Continue reading even if we fail to parse a message
+                    // Deserializing the full message failed, for example because the params object was nested
+                    // more deeply than the JSON reader's MaxDepth allows. If the message still carried a request
+                    // id, reply with a JSON-RPC parse error using that id so the caller's pending request
+                    // completes instead of hanging until it times out. If no id can be recovered, the message
+                    // was either a notification or too malformed to correlate, so we just continue reading.
+                    if (TryRecoverRequestId(line, out RequestId id))
+                    {
+                        var errorResponse = new JsonRpcError
+                        {
+                            Id = id,
+                            Error = new JsonRpcErrorDetail
+                            {
+                                Code = (int)McpErrorCode.ParseError,
+                                Message = "Failed to parse the JSON-RPC request.",
+                            },
+                        };
+
+                        try
+                        {
+                            await SendMessageAsync(errorResponse, shutdownToken).ConfigureAwait(false);
+                        }
+                        catch (Exception sendEx) when (sendEx is not OperationCanceledException)
+                        {
+                            LogTransportSendFailed(Name, id.ToString(), sendEx);
+                        }
+                    }
                 }
             }
         }
@@ -154,6 +179,82 @@ public class StreamServerTransport : TransportBase
         {
             SetDisconnected(error);
         }
+    }
+
+    /// <summary>
+    /// Attempts to recover the JSON-RPC request id from a line that failed full deserialization.
+    /// </summary>
+    /// <remarks>
+    /// This walks only the top-level object looking for an "id" property and skips every other value,
+    /// using a large reader depth so a deeply nested "params" value cannot make recovery itself fail.
+    /// </remarks>
+    private static bool TryRecoverRequestId(string line, out RequestId id)
+    {
+        id = default;
+
+        try
+        {
+            byte[] utf8 = Encoding.UTF8.GetBytes(line);
+            var reader = new Utf8JsonReader(utf8, new JsonReaderOptions
+            {
+                // Use the maximum reader depth so that an over-nested "params" value cannot make id
+                // recovery throw for the same reason the original parse did.
+                MaxDepth = int.MaxValue,
+            });
+
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                return false;
+            }
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject)
+                {
+                    break;
+                }
+
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    continue;
+                }
+
+                bool isId = reader.ValueTextEquals("id"u8);
+
+                if (!reader.Read())
+                {
+                    break;
+                }
+
+                if (isId)
+                {
+                    switch (reader.TokenType)
+                    {
+                        case JsonTokenType.String:
+                            id = new RequestId(reader.GetString()!);
+                            return true;
+
+                        case JsonTokenType.Number when reader.TryGetInt64(out long longId):
+                            id = new RequestId(longId);
+                            return true;
+
+                        default:
+                            // An id that is neither a string nor an integer cannot be correlated, so
+                            // there is no point sending an error response for it.
+                            return false;
+                    }
+                }
+
+                // Skip the value of any property other than id, including a deeply nested params object.
+                reader.Skip();
+            }
+        }
+        catch (JsonException)
+        {
+            // The line was too malformed to even locate a top-level id; nothing to correlate.
+        }
+
+        return false;
     }
 
     /// <inheritdoc />
