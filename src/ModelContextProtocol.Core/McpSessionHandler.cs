@@ -141,10 +141,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         _outgoingMessageFilter = outgoingMessageFilter ?? (next => next);
         _logger = logger;
 
-        // Per the MCP spec, ping may be initiated by either party and must always be handled.
+        // ping was removed in the draft protocol revision (SEP-2575). Under draft, return
+        // MethodNotFound; under legacy, the per-spec behavior is to always answer with PingResult.
+        // Liveness on draft sessions belongs to transport- and request-level timeouts, not a
+        // dedicated MCP RPC.
         _requestHandlers.Set(
             RequestMethods.Ping,
-            (request, _, cancellationToken) => new ValueTask<PingResult>(new PingResult()),
+            (request, jsonRpcRequest, cancellationToken) =>
+            {
+                string? perRequestVersion = jsonRpcRequest?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion;
+                if (perRequestVersion is not null &&
+                    StringComparer.Ordinal.Compare(perRequestVersion, DraftProtocolVersion) >= 0)
+                {
+                    throw new McpProtocolException(
+                        $"Method '{RequestMethods.Ping}' is not available on protocol version '{perRequestVersion}'.",
+                        McpErrorCode.MethodNotFound);
+                }
+
+                return new ValueTask<PingResult>(new PingResult());
+            },
             McpJsonUtilities.JsonContext.Default.JsonNode,
             McpJsonUtilities.JsonContext.Default.PingResult);
 

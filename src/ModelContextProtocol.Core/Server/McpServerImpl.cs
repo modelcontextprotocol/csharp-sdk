@@ -201,9 +201,22 @@ internal sealed partial class McpServerImpl : McpServer
                     }
                 }
 
-                if (context.ClientCapabilities is { } clientCapabilities)
+                if (context.ClientCapabilities is { } clientCapabilities && IsStatefulSession())
                 {
-                    _clientCapabilities = clientCapabilities;
+                    // Defensive merge instead of overwrite. SEP-2575 says the per-request envelope is
+                    // the client's full capabilities, but PR #1579's GetMetaWithTaskCapability emits a
+                    // partial envelope (only extensions.io.modelcontextprotocol/tasks) on every
+                    // tools/call regardless of the negotiated protocol version. If we overwrote here,
+                    // a legacy client that called initialize with { Elicitation = new() } would lose
+                    // its elicitation capability the moment it issued a tools/call. Merging non-null
+                    // fields preserves whatever the initialize handshake (or a prior, more complete
+                    // envelope) established.
+                    //
+                    // The IsStatefulSession() gate prevents leaking per-request capability state into
+                    // _clientCapabilities under StreamableHttpServerTransport { Stateless = true }
+                    // (where _clientCapabilities is otherwise null and StatelessServerTests rely on
+                    // that invariant to surface the "X is not supported in stateless mode" errors).
+                    _clientCapabilities = MergeClientCapabilities(_clientCapabilities, clientCapabilities);
                 }
 
                 if (context.ClientInfo is { } clientInfo &&
@@ -222,6 +235,51 @@ internal sealed partial class McpServerImpl : McpServer
             }
 
             await next(message, cancellationToken).ConfigureAwait(false);
+        };
+    }
+
+    /// <summary>
+    /// Merges per-request <see cref="ClientCapabilities"/> envelope values onto the existing
+    /// session-scoped capabilities, preserving fields that the envelope leaves unset.
+    /// </summary>
+    /// <remarks>
+    /// SEP-2575 treats the per-request envelope as the client's full capabilities for the request, but
+    /// at least one extension (SEP-2663 Tasks) emits a partial envelope advertising only
+    /// <c>extensions.io.modelcontextprotocol/tasks = {}</c> on every <c>tools/call</c>. Overwriting the
+    /// captured initialize-time capabilities with that partial envelope would silently drop other
+    /// declared capabilities (e.g., <c>elicitation</c>), so we merge per-field instead.
+    /// </remarks>
+    private static ClientCapabilities MergeClientCapabilities(ClientCapabilities? existing, ClientCapabilities envelope)
+    {
+        if (existing is null)
+        {
+            return envelope;
+        }
+
+        IDictionary<string, object>? mergedExtensions = existing.ExtensionsCore;
+        if (envelope.ExtensionsCore is { Count: > 0 } envelopeExtensions)
+        {
+            if (mergedExtensions is null)
+            {
+                mergedExtensions = new Dictionary<string, object>(envelopeExtensions);
+            }
+            else
+            {
+                // Per-request extensions are additive; don't strip ones declared at initialize.
+                foreach (var kvp in envelopeExtensions)
+                {
+                    mergedExtensions[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        return new ClientCapabilities
+        {
+            Roots = envelope.Roots ?? existing.Roots,
+            Sampling = envelope.Sampling ?? existing.Sampling,
+            Elicitation = envelope.Elicitation ?? existing.Elicitation,
+            Experimental = envelope.Experimental ?? existing.Experimental,
+            ExtensionsCore = mergedExtensions,
         };
     }
 
