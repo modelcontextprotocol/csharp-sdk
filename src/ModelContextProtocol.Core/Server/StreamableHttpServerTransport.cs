@@ -221,6 +221,34 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// This method sends server-to-client messages via the standalone SSE stream opened by an
+    /// optional HTTP GET request (see <see cref="HandleGetRequestAsync(Stream, CancellationToken)"/>).
+    /// </para>
+    /// <para>
+    /// <strong>This is generally the wrong channel for server-to-client requests.</strong> Requests
+    /// sent via the GET stream depend on the client keeping a long-lived GET open, have no per-request
+    /// correlation to a caller, and race with GET startup and teardown. When called from inside a
+    /// tool, prompt, or resource handler, use the <see cref="McpServer"/> instance available via
+    /// <c>RequestContext</c> instead — it routes through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request. A <see cref="LogLevel.Warning"/> diagnostic is emitted whenever a
+    /// <see cref="JsonRpcRequest"/> is sent through this method.
+    /// </para>
+    /// <para>
+    /// If no GET SSE stream has yet been opened on this session, behavior depends on the message kind:
+    /// <see cref="JsonRpcRequest"/> messages throw <see cref="InvalidOperationException"/> because the
+    /// awaiting caller has no way to receive a response; <see cref="JsonRpcNotification"/> messages are
+    /// dropped (notifications are best-effort and the spec does not require clients to issue a GET)
+    /// and a <see cref="LogLevel.Debug"/> diagnostic is logged; other messages are dropped and a
+    /// <see cref="LogLevel.Warning"/> diagnostic is logged.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="Stateless"/> is <see langword="true"/>, or <paramref name="message"/> is a
+    /// <see cref="JsonRpcRequest"/> and no GET SSE stream has been opened on this session.
+    /// </exception>
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
@@ -234,9 +262,32 @@ public sealed partial class StreamableHttpServerTransport : ITransport
 
         if (!_getHttpRequestStarted)
         {
-            // Clients are not required to make a GET request for unsolicited messages.
-            // If no GET request has been made, drop the message.
-            return;
+            switch (message)
+            {
+                case JsonRpcRequest request:
+                    throw new InvalidOperationException(
+                        $"Cannot send server-to-client JSON-RPC request '{request.Method}' because no GET SSE stream has been opened on this session " +
+                        $"(SessionId: '{SessionId}'). " +
+                        "Inside a tool, prompt, or resource handler, use the IMcpServer instance from RequestContext (or any IMcpServer obtained via DI from a request-scoped service provider) so the request is routed through the originating POST response stream via JsonRpcMessageContext.RelatedTransport. " +
+                        "The standalone GET SSE stream is optional for clients and is not a reliable channel for server-to-client requests.");
+
+                case JsonRpcNotification notification:
+                    // Clients are not required to make a GET request for unsolicited messages.
+                    // If no GET request has been made, drop the notification (best-effort).
+                    LogNotificationDroppedNoGetStream(notification.Method, SessionId ?? string.Empty);
+                    return;
+
+                default:
+                    // JsonRpcResponse / JsonRpcError generally flow through the originating POST response
+                    // stream, so receiving one here without a GET is unexpected. Log loudly and drop.
+                    LogMessageDroppedNoGetStream(message.GetType().Name, GetMessageId(message), SessionId ?? string.Empty);
+                    return;
+            }
+        }
+
+        if (message is JsonRpcRequest openRequest)
+        {
+            LogServerRequestOverGetStream(openRequest.Method, SessionId ?? string.Empty);
         }
 
         Debug.Assert(_httpResponseTcs is not null);
@@ -262,6 +313,9 @@ public sealed partial class StreamableHttpServerTransport : ITransport
             }
         }
     }
+
+    private static string GetMessageId(JsonRpcMessage message) =>
+        message is JsonRpcMessageWithId withId ? withId.Id.ToString() : string.Empty;
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
@@ -323,4 +377,18 @@ public sealed partial class StreamableHttpServerTransport : ITransport
 
         return sseEventStreamWriter;
     }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Sending server-to-client JSON-RPC request '{Method}' over the standalone GET SSE stream (SessionId: '{SessionId}'). " +
+            "Consider using the IMcpServer instance from RequestContext inside a tool, prompt, or resource handler so the request is routed through the originating POST response stream via JsonRpcMessageContext.RelatedTransport, which is more reliable than the optional GET SSE stream.")]
+    private partial void LogServerRequestOverGetStream(string method, string sessionId);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Dropping server-to-client JSON-RPC notification '{Method}' because no GET SSE stream has been opened on this session (SessionId: '{SessionId}').")]
+    private partial void LogNotificationDroppedNoGetStream(string method, string sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Dropping unexpected server-to-client {MessageType} (Id: '{MessageId}') because no GET SSE stream has been opened on this session (SessionId: '{SessionId}'). " +
+            "Responses normally flow through the originating POST response stream via JsonRpcMessageContext.RelatedTransport.")]
+    private partial void LogMessageDroppedNoGetStream(string messageType, string messageId, string sessionId);
 }
