@@ -170,7 +170,7 @@ See the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-app
 
 ## Single-file HTML bundling
 
-The default Content Security Policy restricts external script and style loads. For production apps, bundle all JavaScript and CSS into a single HTML file using tools like [vite-plugin-singlefile](https://github.com/niccolodipi/vite-plugin-singlefile). For simple apps, inline `<script>` and `<style>` tags work directly.
+The default Content Security Policy restricts external script and style loads. For production apps, bundle all JavaScript and CSS into a single HTML file using tools like [vite-plugin-singlefile](https://github.com/richardtallent/vite-plugin-singlefile). For simple apps, inline `<script>` and `<style>` tags work directly.
 
 ## Constants
 
