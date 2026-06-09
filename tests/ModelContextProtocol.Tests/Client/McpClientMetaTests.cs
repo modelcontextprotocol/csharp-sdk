@@ -8,6 +8,8 @@ namespace ModelContextProtocol.Tests.Client;
 
 public class McpClientMetaTests : ClientServerTestBase
 {
+    private readonly TaskCompletionSource<JsonNode?> _initializeMeta = new();
+
     public McpClientMetaTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
@@ -28,6 +30,48 @@ public class McpClientMetaTests : ClientServerTestBase
             o.ResourceCollection = new ();
             o.PromptCollection = new ();
         });
+
+        // Capture the _meta the server receives on the initialize request so tests can
+        // assert that McpClientOptions.InitializeMeta is threaded through the handshake.
+        mcpServerBuilder.WithMessageFilters(filters =>
+            filters.AddIncomingFilter(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.Initialize } request)
+                {
+                    _initializeMeta.TrySetResult(request.Params?["_meta"]);
+                }
+
+                await next(context, cancellationToken);
+            }));
+    }
+
+    [Fact]
+    public async Task InitializeMeta_IsSentToServer_WhenSet()
+    {
+        var clientOptions = new McpClientOptions
+        {
+            InitializeMeta = new JsonObject
+            {
+                { "foo", "bar baz" }
+            }
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        var meta = await _initializeMeta.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(meta);
+        Assert.Equal("bar baz", meta["foo"]?.ToString());
+    }
+
+    [Fact]
+    public async Task InitializeMeta_IsOmitted_WhenNotSet()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var meta = await _initializeMeta.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(meta);
     }
 
     [Fact]

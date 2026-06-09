@@ -1400,6 +1400,15 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public void Create_WithMcpHeaderOnUInt64Type_ThrowsInvalidOperationException()
+    {
+        // ulong is excluded per SEP-2243 because its domain extends beyond the JavaScript safe
+        // integer range (and beyond long), so it cannot be represented as a signed integer header.
+        Assert.Throws<InvalidOperationException>(() =>
+            McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithUInt64Header))!));
+    }
+
+    [Fact]
     public void Create_WithMcpHeaderOnNumericType_AddsExtension()
     {
         var tool = McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNumericHeader))!);
@@ -1485,6 +1494,11 @@ public partial class McpServerToolTests
 
         [McpServerTool]
         public static string ToolWithoutHeaders(string region, string query)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithUInt64Header(
+            [McpHeader("Count")] ulong count)
             => "result";
     }
 }

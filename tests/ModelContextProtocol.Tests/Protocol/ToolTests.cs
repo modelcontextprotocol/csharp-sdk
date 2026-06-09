@@ -105,6 +105,14 @@ public static class ToolTests
         Assert.Equal("object", typeElement.GetString());
     }
 
+    [Fact]
+    public static void ToolInputSchema_DeserializationRejectsMissingInputSchema()
+    {
+        const string json = """{"name":"test"}""";
+
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Tool>(json, McpJsonUtilities.DefaultOptions));
+    }
+
     [Theory]
     [InlineData("null")]
     [InlineData("false")]

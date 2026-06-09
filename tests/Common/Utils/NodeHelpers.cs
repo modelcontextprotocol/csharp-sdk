@@ -205,6 +205,44 @@ public static class NodeHelpers
         }
     }
 
+    /// <summary>
+    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / IncompleteResult)
+    /// conformance scenarios are available by reading the conformance package version
+    /// from the repo's package.json. MRTR scenarios require a conformance package version
+    /// that includes SEP-2322 support (see
+    /// https://github.com/modelcontextprotocol/conformance/pull/188).
+    /// </summary>
+    public static bool HasMrtrScenarios()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var packageJsonPath = Path.Combine(repoRoot, "package.json");
+            if (!File.Exists(packageJsonPath))
+            {
+                return false;
+            }
+
+            var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (json.RootElement.TryGetProperty("dependencies", out var deps) &&
+                deps.TryGetProperty("@modelcontextprotocol/conformance", out var versionElement))
+            {
+                var versionStr = versionElement.GetString();
+                if (versionStr is not null && Version.TryParse(versionStr, out var version))
+                {
+                    // SEP-2322 scenarios are expected in conformance package >= 0.2.0
+                    return version >= new Version(0, 2, 0);
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

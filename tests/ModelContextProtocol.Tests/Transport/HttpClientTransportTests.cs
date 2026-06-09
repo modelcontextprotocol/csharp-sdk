@@ -248,6 +248,57 @@ public class HttpClientTransportTests : LoggedTest
         Assert.False(transportBase.IsConnected);
     }
 
+    // Strict server mock used in Content-Type tests below.
+    // Returns 200 only for bare "application/json", otherwise 415.
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> StrictJsonContentTypeHandler =>
+        (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var contentType = request.Content?.Headers.ContentType;
+                if (contentType?.CharSet is not null)
+                {
+                    return Task.FromResult(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.UnsupportedMediaType,
+                        Content = new StringContent("Content-Type must be 'application/json'"),
+                    });
+                }
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"Test","version":"1.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                });
+            }
+
+            throw new IOException("Abort");
+        };
+
+    [Fact]
+    public async Task SendMessageAsync_StrictServer_Returns200_WhenContentTypeIsApplicationJson()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1527
+        // SDK must send bare "application/json" — no charset parameter.
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        mockHttpHandler.RequestHandler = StrictJsonContentTypeHandler;
+
+        // Succeeds only if the SDK sends Content-Type: application/json (no charset)
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+    }
+
     [Fact]
     public async Task StreamableHttp_InitialGetSseConnection_DoesNotCountAgainstMaxReconnectionAttempts()
     {

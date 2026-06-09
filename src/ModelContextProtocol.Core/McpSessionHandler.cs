@@ -32,6 +32,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>
+    /// The draft protocol version that enables MRTR (Multi Round-Trip Requests) per SEP-2322.
+    /// Clients and servers opt in by setting <see cref="McpClientOptions.ProtocolVersion"/>
+    /// or <see cref="McpServerOptions.ProtocolVersion"/> to this value.
+    /// </summary>
+    internal const string DraftProtocolVersion = "DRAFT-2026-v1";
+
+    /// <summary>
     /// All protocol versions supported by this implementation.
     /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
     /// </summary>
@@ -41,7 +48,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         "2025-03-26",
         "2025-06-18",
         LatestProtocolVersion,
-        "DRAFT-2026-v1",
+        DraftProtocolVersion,
     ];
 
     /// <summary>
@@ -665,6 +672,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
+
+        if (message is JsonRpcRequest request)
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{request.Method}' request via {nameof(SendMessageAsync)}. " +
+                $"Use {nameof(SendRequestAsync)} instead to get a correlated response.");
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
 

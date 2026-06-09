@@ -218,7 +218,20 @@ internal sealed class StreamableHttpHandler(
         }
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (sessionManager.TryRemove(sessionId, out var session))
+        if (string.IsNullOrEmpty(sessionId) || !sessionManager.TryGetValue(sessionId, out var session))
+        {
+            return;
+        }
+
+        if (!session.HasSameUserId(context.User))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: The currently authenticated user does not match the user who initiated the session.",
+                StatusCodes.Status403Forbidden);
+            return;
+        }
+
+        if (sessionManager.TryRemove(sessionId, out session))
         {
             await session.DisposeAsync();
         }
@@ -495,12 +508,25 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (message is not null)
         {
-            message.Context = new()
+            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+            var isAuthenticated = context.User?.Identity?.IsAuthenticated == true;
+
+            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
             {
-                User = context.User,
-            };
+                message.Context ??= new();
+
+                if (isAuthenticated)
+                {
+                    message.Context.User = context.User;
+                }
+
+                if (!string.IsNullOrEmpty(protocolVersion))
+                {
+                    message.Context.ProtocolVersion = protocolVersion;
+                }
+            }
         }
 
         return message;
@@ -690,8 +716,41 @@ internal sealed class StreamableHttpHandler(
 
         // Check that every x-mcp-header annotated parameter has a corresponding header,
         // that the header value is validly encoded, and that it matches the body value.
+        return ValidateCustomParamHeadersFromProperties(context, properties, arguments, out errorMessage);
+    }
+
+    /// <summary>
+    /// Recursively validates x-mcp-header annotated properties at any nesting depth.
+    /// </summary>
+    private static bool ValidateCustomParamHeadersFromProperties(
+        HttpContext context,
+        System.Text.Json.JsonElement properties,
+        System.Text.Json.Nodes.JsonNode? arguments,
+        [NotNullWhen(false)] out string? errorMessage)
+    {
         foreach (var property in properties.EnumerateObject())
         {
+            if (property.Value.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            // Recurse into nested object properties
+            if (property.Value.TryGetProperty("properties", out var nestedProperties) &&
+                nestedProperties.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                System.Text.Json.Nodes.JsonNode? nestedArgs = null;
+                if (arguments is System.Text.Json.Nodes.JsonObject parentObj)
+                {
+                    parentObj.TryGetPropertyValue(property.Name, out nestedArgs);
+                }
+
+                if (!ValidateCustomParamHeadersFromProperties(context, nestedProperties, nestedArgs, out errorMessage))
+                {
+                    return false;
+                }
+            }
+
             if (!property.Value.TryGetProperty("x-mcp-header", out var headerNameElement))
             {
                 continue;
@@ -750,10 +809,14 @@ internal sealed class StreamableHttpHandler(
                 if (expectedHeaderValue is not null)
                 {
                     var decodedExpected = McpHeaderEncoder.DecodeValue(expectedHeaderValue);
-                    if (!ValuesMatch(decodedActual, decodedExpected, property.Value))
+                    switch (ValuesMatch(decodedActual, decodedExpected, property.Value))
                     {
-                        errorMessage = $"Header mismatch: {fullHeaderName} header value does not match body argument '{property.Name}'.";
-                        return false;
+                        case HeaderValueComparison.IntegerOutOfRange:
+                            errorMessage = $"Header mismatch: {fullHeaderName} integer value for parameter '{property.Name}' is outside the JavaScript safe integer range (-{MaxSafeInteger} to {MaxSafeInteger}).";
+                            return false;
+                        case HeaderValueComparison.Mismatch:
+                            errorMessage = $"Header mismatch: {fullHeaderName} header value does not match body argument '{property.Name}'.";
+                            return false;
                     }
                 }
             }
@@ -786,50 +849,152 @@ internal sealed class StreamableHttpHandler(
         value.AsSpan().IndexOfAnyExcept(s_validHeaderValueChars) < 0;
 
     /// <summary>
-    /// Compares two decoded header values, using numeric comparison for number-typed
-    /// parameters to handle cross-SDK representation differences (e.g., "42" vs "42.0").
+    /// The maximum magnitude for an integer that can be represented exactly by an IEEE 754
+    /// double-precision value (2^53 - 1). Per SEP-2243 integer x-mcp-header values MUST be within
+    /// the JavaScript safe integer range (-2^53+1 to 2^53-1).
     /// </summary>
-    private static bool ValuesMatch(string? actual, string? expected, System.Text.Json.JsonElement propertySchema)
+    private const long MaxSafeInteger = 9007199254740991L;
+
+    private enum HeaderValueComparison
     {
-        if (string.Equals(actual, expected, StringComparison.Ordinal))
-        {
-            return true;
-        }
+        Match,
+        Mismatch,
+        IntegerOutOfRange,
+    }
 
-        // JSON Schema defines two numeric types: "number" (any numeric value including
-        // decimals like 3.14) and "integer" (whole numbers only like 42). Both produce
-        // JsonValueKind.Number in the JSON body and are sent as numeric strings in headers.
-        // We check for both because different SDKs may serialize them differently —
-        // e.g., a client might send header "42.0" for an "integer" body value of 42,
-        // or header "42" for a "number" body value of 42.0. Without handling both types,
-        // valid cross-SDK requests would be incorrectly rejected.
-        if (propertySchema.TryGetProperty("type", out var typeElement) &&
-            typeElement.ValueKind == System.Text.Json.JsonValueKind.String &&
-            actual is not null && expected is not null)
+    /// <summary>
+    /// Compares two decoded header values. For <c>integer</c>-typed parameters the values are
+    /// compared numerically (so cross-SDK forms such as <c>"42"</c> and <c>"42.0"</c> are treated
+    /// as equal) and validated against the JavaScript safe integer range per SEP-2243.
+    /// </summary>
+    private static HeaderValueComparison ValuesMatch(string? actual, string? expected, System.Text.Json.JsonElement propertySchema)
+    {
+        // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters.
+        // For "integer" the spec recommends numeric comparison so that representations like "42" and
+        // "42.0" are considered equal, while still requiring values to stay within the safe range.
+        // This must run before the ordinal comparison below so that an invalid integer value is
+        // rejected even when the header and body strings are byte-for-byte identical.
+        if (actual is not null && expected is not null && SchemaTypeIsInteger(propertySchema))
         {
-            var schemaType = typeElement.GetString();
+            var actualResult = ParseSafeInteger(actual, out long actualValue);
+            var expectedResult = ParseSafeInteger(expected, out long expectedValue);
 
-            // For "integer" type, prefer exact long comparison to preserve full precision
-            // for values beyond double's ~15-17 significant digit limit.
-            if (schemaType == "integer" &&
-                long.TryParse(actual, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var actualLong) &&
-                long.TryParse(expected, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var expectedLong))
+            // A numeric value outside the safe integer range is always rejected.
+            if (actualResult == SafeIntegerParse.OutOfRange || expectedResult == SafeIntegerParse.OutOfRange)
             {
-                return actualLong == expectedLong;
+                return HeaderValueComparison.IntegerOutOfRange;
             }
 
-            // For "number" type, or "integer" values in decimal format (e.g., cross-SDK "42.0" vs "42"),
-            // use double comparison with tolerance.
-            if (schemaType is "number" or "integer" &&
-                double.TryParse(actual, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var actualNum) &&
-                double.TryParse(expected, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var expectedNum) &&
-                Math.Abs(actualNum - expectedNum) < 1e-9)
+            if (actualResult == SafeIntegerParse.SafeInteger && expectedResult == SafeIntegerParse.SafeInteger)
             {
-                return true;
+                return actualValue == expectedValue ? HeaderValueComparison.Match : HeaderValueComparison.Mismatch;
             }
+
+            // A numeric-but-non-integer value (e.g. "42.5") for an integer-typed parameter is invalid
+            // and must not be allowed to slip through the ordinal comparison just because the header
+            // and body strings happen to be identical.
+            if (actualResult == SafeIntegerParse.NonInteger || expectedResult == SafeIntegerParse.NonInteger)
+            {
+                return HeaderValueComparison.Mismatch;
+            }
+
+            // Otherwise at least one side is not numeric at all (NotNumeric); fall through to the
+            // ordinal comparison below.
         }
 
-        return false;
+        return string.Equals(actual, expected, StringComparison.Ordinal)
+            ? HeaderValueComparison.Match
+            : HeaderValueComparison.Mismatch;
+    }
+
+    /// <summary>
+    /// Determines whether the property schema's <c>type</c> keyword declares an <c>integer</c> type,
+    /// either directly or as a member of a JSON Schema union array (e.g. <c>["integer", "null"]</c>).
+    /// </summary>
+    private static bool SchemaTypeIsInteger(System.Text.Json.JsonElement propertySchema)
+    {
+        if (!propertySchema.TryGetProperty("type", out var typeElement))
+        {
+            return false;
+        }
+
+        switch (typeElement.ValueKind)
+        {
+            case System.Text.Json.JsonValueKind.String:
+                return typeElement.ValueEquals("integer");
+
+            case System.Text.Json.JsonValueKind.Array:
+                foreach (var entry in typeElement.EnumerateArray())
+                {
+                    if (entry.ValueKind == System.Text.Json.JsonValueKind.String && entry.ValueEquals("integer"))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Classifies how a header/body string parses as a SEP-2243 integer value.
+    /// </summary>
+    private enum SafeIntegerParse
+    {
+        /// <summary>A whole number within the JavaScript safe integer range.</summary>
+        SafeInteger,
+
+        /// <summary>A numeric value whose magnitude is outside the safe integer range.</summary>
+        OutOfRange,
+
+        /// <summary>A numeric value that is not a whole number (e.g. <c>"42.5"</c>).</summary>
+        NonInteger,
+
+        /// <summary>The value is not a numeric literal at all.</summary>
+        NotNumeric,
+    }
+
+    /// <summary>
+    /// Parses a header/body value as a whole integer within the JavaScript safe integer range.
+    /// Decimal and exponent forms whose fractional part is zero (e.g. <c>"42.0"</c>, <c>"4.2e1"</c>)
+    /// are accepted. <see cref="long.TryParse(string, System.Globalization.NumberStyles, IFormatProvider, out long)"/>
+    /// inspects the actual digits (so it rejects non-integers such as <c>"42.5"</c> without rounding)
+    /// and fails fast on overflow (so a huge literal such as <c>"1e1000000"</c> cannot allocate a
+    /// large number).
+    /// </summary>
+    private static SafeIntegerParse ParseSafeInteger(string text, out long value)
+    {
+        value = 0;
+
+        const System.Globalization.NumberStyles Styles =
+            System.Globalization.NumberStyles.AllowLeadingSign |
+            System.Globalization.NumberStyles.AllowDecimalPoint |
+            System.Globalization.NumberStyles.AllowExponent;
+
+        if (long.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out long parsed))
+        {
+            if (parsed < -MaxSafeInteger || parsed > MaxSafeInteger)
+            {
+                return SafeIntegerParse.OutOfRange;
+            }
+
+            value = parsed;
+            return SafeIntegerParse.SafeInteger;
+        }
+
+        // The value is not representable as a 64-bit integer. Use double only as an order-of-magnitude
+        // gate to distinguish a numeric literal beyond the safe range (e.g. "1e100") from a numeric but
+        // non-integer value (e.g. "42.5"). double's loss of precision is irrelevant for this magnitude
+        // comparison because every in-range value was already handled exactly by long.TryParse above.
+        if (double.TryParse(text, Styles, System.Globalization.CultureInfo.InvariantCulture, out double d))
+        {
+            return System.Math.Abs(d) > MaxSafeInteger ? SafeIntegerParse.OutOfRange : SafeIntegerParse.NonInteger;
+        }
+
+        return SafeIntegerParse.NotNumeric;
     }
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
