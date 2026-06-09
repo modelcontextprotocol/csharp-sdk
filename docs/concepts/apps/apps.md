@@ -9,7 +9,7 @@ uid: apps
 
 [MCP Apps] is an extension to the Model Context Protocol that enables MCP servers to deliver interactive user interfaces — dashboards, forms, visualizations, and more — directly inside conversational AI clients.
 
-[MCP Apps]: https://modelcontextprotocol.io/specification/draft/extensions/apps
+[MCP Apps]: https://modelcontextprotocol.io/extensions/apps/overview
 
 > [!IMPORTANT]
 > MCP Apps support is experimental. All types are marked with `[Experimental("MCPEXP003")]` and require suppressing that diagnostic to use.
@@ -166,7 +166,7 @@ The MCP Apps spec defines display modes (`inline`, `fullscreen`, `pip`) that con
 
 Hosts pass standardized CSS custom properties (e.g., `--color-background-primary`, `--color-text-primary`) to app iframes. Your HTML can reference these variables to automatically match the host's theme without any server-side configuration.
 
-See the [MCP Apps specification](https://modelcontextprotocol.io/specification/draft/extensions/apps) for the full list of CSS variables.
+See the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/draft/apps.mdx) for the full list of CSS variables.
 
 ## Single-file HTML bundling
 
@@ -178,7 +178,7 @@ The <xref:ModelContextProtocol.Extensions.Apps.McpApps> class provides constants
 
 | Constant | Value | Usage |
 | - | - | - |
-| `McpApps.ResourceMimeType` | `text/html;profile=mcp-app` | MIME type for UI resources |
+| `McpApps.HtmlMimeType` | `text/html;profile=mcp-app` | MIME type for UI resources |
 | `McpApps.ExtensionId` | `io.modelcontextprotocol/ui` | Key in `extensions` capability dictionary |
 
 ## Serialization

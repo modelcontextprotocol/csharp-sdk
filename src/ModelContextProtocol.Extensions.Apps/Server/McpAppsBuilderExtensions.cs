@@ -56,7 +56,7 @@ public static class McpAppsBuilderExtensions
             options.Capabilities.Extensions ??= new Dictionary<string, object>();
             if (!options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId))
             {
-                options.Capabilities.Extensions[McpApps.ExtensionId] = new { };
+                options.Capabilities.Extensions[McpApps.ExtensionId] = new System.Text.Json.Nodes.JsonObject();
             }
 
             if (options.ToolCollection is { IsEmpty: false } tools)
