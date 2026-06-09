@@ -680,7 +680,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (!httpResponse.IsSuccessStatusCode)
         {
             var errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            ThrowFailedToHandleUnauthorizedResponse($"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent}");
+            ThrowFailedToHandleUnauthorizedResponse(
+                $"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent} " +
+                $"(application_type: '{_dcrApplicationType ?? "<null>"}', redirect_uri: '{_redirectUri}').");
         }
 
         using var responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
