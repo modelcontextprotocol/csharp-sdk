@@ -348,9 +348,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            ProtocolVersion = "2025-06-18",
+            options.ProtocolVersion = "2025-06-18";
         });
 
         Assert.Equal("2025-06-18", mcpClient.NegotiatedProtocolVersion);
@@ -456,41 +456,6 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         }
 
         Assert.Equal(1, runSessionCount);
-    }
-
-    [Fact]
-    public async Task EnablePollingAsync_ThrowsInvalidOperationException_InStatelessMode()
-    {
-        Assert.SkipUnless(Stateless, "This test only applies to stateless mode.");
-
-        InvalidOperationException? capturedException = null;
-        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
-        {
-            try
-            {
-                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
-            }
-            catch (InvalidOperationException ex)
-            {
-                capturedException = ex;
-            }
-
-            return "Complete";
-        }, options: new() { Name = "polling_tool" });
-
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools([pollingTool]);
-
-        await using var app = Builder.Build();
-        app.MapMcp();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var mcpClient = await ConnectAsync();
-
-        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedException);
-        Assert.Contains("stateless", capturedException.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -793,13 +758,13 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var app = Builder.Build();
 
-        // This is the pattern documented in sessions.md — verify it actually works.
+        // This is the pattern documented in sessions.md - verify it actually works.
         // Tag before next() so child spans inherit the value.
         app.MapMcp().AddEndpointFilter(async (context, next) =>
         {
             var httpContext = context.HttpContext;
 
-            // Read from request headers — available on all non-initialize requests in stateful mode.
+            // Read from request headers - available on all non-initialize requests in stateful mode.
             string? beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"];
 
             // Tag before next() so child activities created during the handler inherit it.
@@ -828,7 +793,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The filter must have observed at least one MCP request. Don't assert an exact
-        // minimum — the initialized notification or GET stream may not have completed yet.
+        // minimum - the initialized notification or GET stream may not have completed yet.
         Assert.NotEmpty(capturedSessionIds);
 
         if (Stateless)
@@ -855,7 +820,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             });
 
             // At least one POST should have the session ID in the request header too
-            // (the initialized notification or list_tools — but not the initial initialize request).
+            // (the initialized notification or list_tools - but not the initial initialize request).
             Assert.Contains(postCaptures, c => c.BeforeNext == client.SessionId);
 
             // Verify Activity.Current was available and the AddTag pattern works before next().

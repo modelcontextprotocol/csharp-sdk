@@ -807,15 +807,19 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     }
 
     /// <summary>
-    /// Verifies that the resource URI in the metadata exactly matches the original request URL as required by the RFC.
-    /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
+    /// Verifies that the resource URI in the metadata matches the original request URL.
+    /// Accepts either an exact match with the full request URL, or a match with the base URL
+    /// (authority only, path discarded) as allowed by the MCP spec, which derives the authorization
+    /// base URL by discarding the path component from the MCP server URL.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
     /// <param name="resourceLocation">
     /// The original URL the client used to make the request to the resource server or the root Uri for the resource server
     /// if the metadata was automatically requested from the root well-known location.
     /// </param>
-    /// <returns>True if the resource URI exactly matches the original request URL, otherwise false.</returns>
+    /// <returns>
+    /// True if the resource URI exactly matches the original request URL or its authority-level base URL, otherwise false.
+    /// </returns>
     private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
     {
         if (protectedResourceMetadata.Resource is null)
@@ -823,14 +827,22 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return false;
         }
 
-        // Per RFC: The resource value must be identical to the URL that the client used
-        // to make the request to the resource server. Compare entire URIs, not just the host.
-
         // Normalize the URIs to ensure consistent comparison
         string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
 
-        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+        // Accept exact match with the full MCP endpoint URI
+        if (string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Per the MCP spec's "Canonical Server URI" section, both the path-specific URI (e.g. https://mcp.example.com/mcp)
+        // and the authority-only URI (e.g. https://mcp.example.com) are valid canonical URIs for identifying an MCP server.
+        // Accept a match with the base URL (authority only, path discarded) to support servers that use the less specific form.
+
+        string normalizedBaseUrl = NormalizeUri(new Uri(resourceLocation.GetLeftPart(UriPartial.Authority)));
+        return string.Equals(normalizedMetadataResource, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -949,7 +961,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
         metadata.WwwAuthenticateScope = wwwAuthenticateScope;
 
-        // Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server
+        // Validate that the resource URI in metadata corresponds to the server we're connecting to.
+        // VerifyResourceMatch accepts both an exact URI match and an authority-level (base URL) match per the MCP spec.
         LogValidatingResourceMetadata(resourceUri);
 
         if (!isLegacyFallback && !VerifyResourceMatch(metadata, resourceUri))
