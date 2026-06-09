@@ -101,6 +101,20 @@ public static class EchoTool
 }
 ```
 
+#### Host name validation
+
+For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`.
+
+For production servers, configure the exact public host names for the deployment, and validate the host name at the proxy or load balancer when one is responsible for forwarding client requests. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
+
+#### Browser cross-origin access
+
+**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). 
+
+For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#browser-cross-origin-access).
+
 ### Building an MCP client
 
 Create a new console app, add the package, and replace `Program.cs` with the code below. This client connects to the MCP "everything" reference server, lists its tools, and calls one:

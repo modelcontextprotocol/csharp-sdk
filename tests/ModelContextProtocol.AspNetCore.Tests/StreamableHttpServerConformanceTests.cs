@@ -384,7 +384,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     public async Task SendNotificationAsync_DoesNotThrow_WhenNoGetRequestHasBeenMade()
     {
         // Clients are not required to make a GET request for unsolicited messages.
-        // If no GET request has been made, the messages should be dropped rather than throwing.
+        // If no GET request has been made, the messages should be dropped rather than throwing,
+        // and the drop should be visible as a Debug-level log so it can be diagnosed.
         McpServer? server = null;
 
         Builder.Services.AddMcpServer()
@@ -409,6 +410,156 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var exception = await Record.ExceptionAsync(() =>
             server.SendNotificationAsync("test-method", TestContext.Current.CancellationToken));
         Assert.Null(exception);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Debug &&
+            log.Message.Contains("test-method") &&
+            log.Message.Contains("no GET SSE stream"));
+    }
+
+    [Fact]
+    public async Task SendRequestAsync_Throws_WhenNoGetRequestHasBeenMade()
+    {
+        // A server-to-client request sent before any GET SSE stream is opened can never
+        // receive a response, so the transport should fail fast with InvalidOperationException
+        // instead of silently dropping the message and leaving the caller hanging on the TCS
+        // registered by SendRequestAsync.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        var request = new JsonRpcRequest
+        {
+            Method = "roots/list",
+            Id = new RequestId(42),
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            server.SendRequestAsync(request, TestContext.Current.CancellationToken));
+
+        Assert.Contains("roots/list", ex.Message);
+        Assert.Contains("no GET SSE stream", ex.Message);
+        Assert.Contains("RequestContext", ex.Message);
+        Assert.Contains("RelatedTransport", ex.Message);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_LogsWarning_OnUnexpectedResponse_WhenNoGetRequestHasBeenMade()
+    {
+        // Responses normally ride the originating POST response stream via RelatedTransport, so
+        // receiving one through the GET path without an open GET is unexpected. The message is
+        // dropped (preserving best-effort semantics) but a warning is logged so the situation is
+        // visible.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        var response = new JsonRpcResponse
+        {
+            Id = new RequestId(7),
+            Result = new JsonObject(),
+        };
+
+        var exception = await Record.ExceptionAsync(() =>
+            server.SendMessageAsync(response, TestContext.Current.CancellationToken));
+        Assert.Null(exception);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Warning &&
+            log.Message.Contains(nameof(JsonRpcResponse)) &&
+            log.Message.Contains("no GET SSE stream"));
+    }
+
+    [Fact]
+    public async Task SendRequestAsync_LogsWarning_WhenGetRequestIsOpen()
+    {
+        // Even when the GET SSE stream is open and the request is delivered, server-to-client
+        // requests sent via the GET path are fragile (no per-request correlation, depend on a
+        // long-lived GET, race with startup/teardown). A warning is logged to direct callers at
+        // the RequestContext.RelatedTransport channel instead, without changing behavior.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+#pragma warning restore MCPEXP002
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        // Send a request via the GET stream and assert it lands on the wire (proving behavior is unchanged).
+        // SendRequestAsync awaits a response that the test never produces, so use a CTS to cancel after
+        // confirming wire delivery.
+        var request = new JsonRpcRequest
+        {
+            Method = "roots/list",
+            Id = new RequestId(99),
+        };
+
+        using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var sendTask = server.SendRequestAsync(request, requestCts.Token);
+
+        await foreach (var sseEvent in ReadSseAsync(getResponse.Content))
+        {
+            var received = JsonSerializer.Deserialize(sseEvent, GetJsonTypeInfo<JsonRpcRequest>());
+            Assert.NotNull(received);
+            Assert.Equal("roots/list", received.Method);
+            break;
+        }
+
+        // Cancel the awaited response so SendRequestAsync completes — the wire delivery has already happened.
+        requestCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sendTask);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.Category == typeof(StreamableHttpServerTransport).FullName &&
+            log.LogLevel == LogLevel.Warning &&
+            log.Message.Contains("roots/list") &&
+            log.Message.Contains("RequestContext"));
     }
 
     [Fact]
@@ -729,6 +880,98 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var notification = Assert.IsType<JsonRpcNotification>(firstSseMessage);
         Assert.Equal(NotificationMethods.ResourceUpdatedNotification, notification.Method);
     }
+
+    #region SEP-2243 Header Validation Tests
+
+    [Fact]
+    public async Task DraftVersion_RejectsMissingMcpMethodHeader()
+    {
+        await StartAsync();
+
+        // Initialize with draft version to enable header validation
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request without Mcp-Method header — should be rejected
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        // Deliberately omit Mcp-Method header
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request but set Mcp-Method to wrong value
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeWithDraftVersionAndValidateAsync();
+
+        // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "echo");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NonDraftVersion_DoesNotRequireMcpMethodHeader()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // With non-draft version, Mcp-Method header is not required
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
+        // No Mcp-Method header — should still work
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private async Task CallInitializeWithDraftVersionAndValidateAsync()
+    {
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent(InitializeRequestDraft);
+        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("Mcp-Method", "initialize");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        AssertServerInfo(rpcResponse);
+
+        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
+        SetSessionId(sessionId);
+    }
+
+    private static string InitializeRequestDraft => """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+        """;
+
+    #endregion
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));

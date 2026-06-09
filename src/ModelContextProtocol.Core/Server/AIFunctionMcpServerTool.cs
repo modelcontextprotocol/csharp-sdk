@@ -124,6 +124,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Icons = options?.Icons,
         };
 
+        // Add x-mcp-header extensions to the input schema based on McpHeaderAttribute on parameters
+        if (function.UnderlyingMethod is { } method)
+        {
+            tool.InputSchema = AddMcpHeaderExtensions(tool.InputSchema, method);
+        }
+
         if (options is not null)
         {
             if (options.Title is not null ||
@@ -537,6 +543,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ["required"] = new JsonArray { (JsonNode)"result" }
                 };
 
+                // After wrapping, any internal $ref pointers that used absolute JSON Pointer
+                // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
+                // has moved under "#/properties/result". Rewrite them to account for the new location.
+                RewriteRefPointers(schemaNode["properties"]!["result"]);
+
                 structuredOutputRequiresWrapping = true;
             }
 
@@ -544,6 +555,52 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return outputSchema;
+    }
+
+    /// <summary>
+    /// Recursively rewrites all <c>$ref</c> JSON Pointer values in the given node
+    /// to account for the schema having been wrapped under <c>properties.result</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>System.Text.Json</c>'s <see cref="System.Text.Json.Schema.JsonSchemaExporter"/> uses absolute
+    /// JSON Pointer paths (e.g., <c>#/items/properties/foo</c>) to deduplicate types that appear at
+    /// multiple locations in the schema. When the original schema is moved under
+    /// <c>#/properties/result</c> by the wrapping logic above, these pointers become unresolvable.
+    /// This method prepends <c>/properties/result</c> to every <c>$ref</c> that starts with <c>#/</c>,
+    /// and rewrites bare <c>#</c> (root self-references from recursive types) to <c>#/properties/result</c>,
+    /// so the pointers remain valid after wrapping.
+    /// </remarks>
+    private static void RewriteRefPointers(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue)
+            {
+                if (refValue == "#")
+                {
+                    obj["$ref"] = "#/properties/result";
+                }
+                else if (refValue.StartsWith("#/", StringComparison.Ordinal))
+                {
+                    obj["$ref"] = "#/properties/result" + refValue.Substring(1);
+                }
+            }
+
+            // Safe to iterate without snapshot: the $ref assignment above completes before
+            // this enumerator is created, and recursive calls only mutate descendant objects.
+            foreach (var property in obj)
+            {
+                RewriteRefPointers(property.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                RewriteRefPointers(item);
+            }
+        }
     }
 
     private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
@@ -599,5 +656,88 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    /// <summary>
+    /// Post-processes the input schema to add <c>x-mcp-header</c> extensions based on
+    /// <see cref="McpHeaderAttribute"/> on method parameters.
+    /// </summary>
+    private static JsonElement AddMcpHeaderExtensions(JsonElement inputSchema, MethodInfo method)
+    {
+        // Collect parameters with McpHeaderAttribute
+        var headerParams = new List<(string ParameterName, string HeaderName, ParameterInfo Parameter)>();
+        var headerNamesSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var param in method.GetParameters())
+        {
+            var attr = param.GetCustomAttribute<McpHeaderAttribute>();
+            if (attr is null)
+            {
+                continue;
+            }
+
+            // Validate primitive type only
+            var paramType = Nullable.GetUnderlyingType(param.ParameterType) ?? param.ParameterType;
+            if (!IsPrimitiveHeaderType(paramType))
+            {
+                throw new InvalidOperationException(
+                    $"Parameter '{param.Name}' on method '{method.Name}' has [McpHeader] but is not a supported type. " +
+                    "Only string, integer, and boolean types may be annotated with [McpHeader].");
+            }
+
+            // Validate case-insensitive uniqueness
+            if (!headerNamesSet.Add(attr.Name))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate x-mcp-header name '{attr.Name}' (case-insensitive) found on method '{method.Name}'. " +
+                    "Header names must be case-insensitively unique within a tool's input schema.");
+            }
+
+            headerParams.Add((param.Name!, attr.Name, param));
+        }
+
+        if (headerParams.Count == 0)
+        {
+            return inputSchema;
+        }
+
+        // Parse the schema to a mutable JsonNode, add extensions, and convert back
+        var schemaNode = JsonNode.Parse(inputSchema.GetRawText());
+        if (schemaNode is not JsonObject schemaObj ||
+            !schemaObj.TryGetPropertyValue("properties", out var propertiesNode) ||
+            propertiesNode is not JsonObject propertiesObj)
+        {
+            return inputSchema;
+        }
+
+        foreach (var (parameterName, headerName, _) in headerParams)
+        {
+            if (propertiesObj.TryGetPropertyValue(parameterName, out var propNode) &&
+                propNode is JsonObject propObj)
+            {
+                propObj["x-mcp-header"] = headerName;
+            }
+        }
+
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+    }
+
+    private static bool IsPrimitiveHeaderType(Type type)
+    {
+        // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters,
+        // and integer values must stay within the JavaScript safe integer range (-2^53+1 to 2^53-1).
+        // ulong is excluded because its upper range (above long.MaxValue) cannot be represented as a
+        // signed integer and the bulk of its domain falls outside the safe range. Remaining integer
+        // types are allowed here; long values are additionally range-checked per value when emitted
+        // (client) and validated (server).
+        return type == typeof(string) ||
+               type == typeof(bool) ||
+               type == typeof(byte) ||
+               type == typeof(sbyte) ||
+               type == typeof(short) ||
+               type == typeof(ushort) ||
+               type == typeof(int) ||
+               type == typeof(uint) ||
+               type == typeof(long);
     }
 }

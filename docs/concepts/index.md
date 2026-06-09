@@ -18,6 +18,7 @@ Install the SDK and build your first MCP client and server.
 | [Progress tracking](progress/progress.md) | Learn how to track progress for long-running operations through notification messages. |
 | [Cancellation](cancellation/cancellation.md) | Learn how to cancel in-flight MCP requests using cancellation tokens and notifications. |
 | [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
+| [Multi Round-Trip Requests (MRTR)](mrtr/mrtr.md) | Learn how servers request client input during tool execution using input-required results and retries. |
 
 ### Client Features
 
