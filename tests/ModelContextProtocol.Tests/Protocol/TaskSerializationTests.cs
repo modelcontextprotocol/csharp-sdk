@@ -123,7 +123,7 @@ public static class TaskSerializationTests
             TaskId = "c1",
             CreatedAt = DateTimeOffset.UtcNow,
             LastUpdatedAt = DateTimeOffset.UtcNow,
-            TaskResult = resultPayload,
+            Result = resultPayload,
         };
 
         string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
@@ -132,7 +132,7 @@ public static class TaskSerializationTests
         var completed = Assert.IsType<CompletedTaskResult>(deserialized);
         Assert.Equal("c1", completed.TaskId);
         Assert.Equal(McpTaskStatus.Completed, completed.Status);
-        Assert.Equal(JsonValueKind.Object, completed.TaskResult.ValueKind);
+        Assert.Equal(JsonValueKind.Object, completed.Result.ValueKind);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public static class TaskSerializationTests
         GetTaskResult value = subType switch
         {
             Type t when t == typeof(WorkingTaskResult) => new WorkingTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
-            Type t when t == typeof(CompletedTaskResult) => new CompletedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, TaskResult = JsonSerializer.SerializeToElement(new { ok = true }), ResultType = "complete" },
+            Type t when t == typeof(CompletedTaskResult) => new CompletedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Result = JsonSerializer.SerializeToElement(new { ok = true }), ResultType = "complete" },
             Type t when t == typeof(FailedTaskResult) => new FailedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Error = JsonSerializer.SerializeToElement(new { code = -32603, message = "boom" }), ResultType = "complete" },
             Type t when t == typeof(CancelledTaskResult) => new CancelledTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
             Type t when t == typeof(InputRequiredTaskResult) => new InputRequiredTaskResult
@@ -367,7 +367,7 @@ public static class TaskSerializationTests
             TaskId = "n2",
             CreatedAt = DateTimeOffset.UtcNow,
             LastUpdatedAt = DateTimeOffset.UtcNow,
-            TaskResult = resultPayload,
+            Result = resultPayload,
         };
 
         string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
@@ -375,7 +375,7 @@ public static class TaskSerializationTests
 
         var completed = Assert.IsType<CompletedTaskNotificationParams>(deserialized);
         Assert.Equal("n2", completed.TaskId);
-        Assert.Equal("done", completed.TaskResult.GetProperty("text").GetString());
+        Assert.Equal("done", completed.Result.GetProperty("text").GetString());
     }
 
     [Fact]

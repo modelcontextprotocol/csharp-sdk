@@ -575,7 +575,7 @@ public class McpServerTaskTests : ClientServerTestBase
                     TaskId = taskId,
                     CreatedAt = entry.CreatedAt,
                     LastUpdatedAt = entry.LastUpdatedAt,
-                    TaskResult = JsonSerializer.SerializeToElement(entry.Result, McpJsonUtilities.DefaultOptions),
+                    Result = JsonSerializer.SerializeToElement(entry.Result, McpJsonUtilities.DefaultOptions),
                 },
                 McpTaskStatus.Failed => new FailedTaskResult
                 {

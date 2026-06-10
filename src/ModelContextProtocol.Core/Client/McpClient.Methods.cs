@@ -1025,7 +1025,7 @@ public abstract partial class McpClient : McpSession
             switch (taskResult)
             {
                 case CompletedTaskResult completed:
-                    return JsonSerializer.Deserialize(completed.TaskResult, McpJsonUtilities.JsonContext.Default.CallToolResult)
+                    return JsonSerializer.Deserialize(completed.Result, McpJsonUtilities.JsonContext.Default.CallToolResult)
                         ?? throw new JsonException("Failed to deserialize CallToolResult from completed task.");
 
                 case FailedTaskResult failed:

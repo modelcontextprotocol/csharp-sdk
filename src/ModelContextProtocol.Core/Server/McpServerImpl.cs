@@ -1035,7 +1035,7 @@ internal sealed partial class McpServerImpl : McpServer
             TtlMs = info.TtlMs,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
-            TaskResult = info.Result ?? throw new InvalidOperationException($"Task '{info.TaskId}' is completed but has no result."),
+            Result = info.Result ?? throw new InvalidOperationException($"Task '{info.TaskId}' is completed but has no result."),
             ResultType = "complete",
         },
         McpTaskStatus.Failed => new FailedTaskResult

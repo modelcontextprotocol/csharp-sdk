@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading.Channels;
 
 #pragma warning disable MCPEXP001
 
@@ -163,7 +164,7 @@ public class McpTaskStoreTests : ClientServerTestBase
 
         var completed = Assert.IsType<CompletedTaskResult>(taskResult);
         // The tool result has isError: true
-        Assert.True(completed.TaskResult.GetProperty("isError").GetBoolean());
+        Assert.True(completed.Result.GetProperty("isError").GetBoolean());
     }
 
     [Fact]
@@ -286,6 +287,121 @@ public class McpTaskStoreTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task RootsTool_ViaTask_RedirectsThroughStore()
+    {
+        // Verifies that server-initiated roots/list calls issued from inside a [McpServerTool]
+        // running under the task wrapper are redirected through the task store as input requests
+        // (rather than being sent as direct JSON-RPC requests to the client).
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Roots = new RootsCapability(),
+            },
+            Handlers = new McpClientHandlers
+            {
+                RootsHandler = (request, ct) =>
+                    new ValueTask<ListRootsResult>(new ListRootsResult
+                    {
+                        Roots = [new Root { Uri = "file:///workspace" }, new Root { Uri = "file:///other" }],
+                    }),
+            },
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams { Name = "roots-tool" }, ct);
+
+        Assert.NotNull(result);
+        Assert.Equal("file:///workspace,file:///other", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task SendTaskStatusNotificationAsync_FromTool_DeliversTypedNotificationE2E()
+    {
+        // E2E coverage for SendTaskStatusNotificationAsync: the tool emits a Working then a
+        // Completed notification with a fixed test taskId, and the client receives them via
+        // its notifications/tasks subscription, deserialized to the right concrete subtype.
+        var notifications = Channel.CreateUnbounded<TaskStatusNotificationParams>();
+
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var registration = client.RegisterNotificationHandler(
+            NotificationMethods.TaskStatusNotification,
+            (notification, _) =>
+            {
+                var typed = JsonSerializer.Deserialize<TaskStatusNotificationParams>(
+                    notification.Params,
+                    McpJsonUtilities.DefaultOptions);
+                if (typed is not null)
+                {
+                    notifications.Writer.TryWrite(typed);
+                }
+
+                return default;
+            });
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams { Name = "notifying-tool" }, ct);
+
+        Assert.Equal("notified", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+        // Read both notifications and verify they round-trip to the right typed subtype + payload.
+        var working = await notifications.Reader.ReadAsync(ct);
+        var completed = await notifications.Reader.ReadAsync(ct);
+
+        var workingTyped = Assert.IsType<WorkingTaskNotificationParams>(working);
+        Assert.Equal("notify-test-task-id", workingTyped.TaskId);
+        Assert.Equal(McpTaskStatus.Working, workingTyped.Status);
+
+        var completedTyped = Assert.IsType<CompletedTaskNotificationParams>(completed);
+        Assert.Equal("notify-test-task-id", completedTyped.TaskId);
+        Assert.Equal(McpTaskStatus.Completed, completedTyped.Status);
+        Assert.Equal("notify-result", completedTyped.Result.GetString());
+    }
+
+    [Fact]
+    public async Task SendTaskStatusNotificationAsync_Failed_DeliversTypedNotificationE2E()
+    {
+        // Companion to the Working/Completed test above, covering the Failed branch which
+        // carries the required JsonElement Error payload.
+        var notifications = Channel.CreateUnbounded<TaskStatusNotificationParams>();
+
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var registration = client.RegisterNotificationHandler(
+            NotificationMethods.TaskStatusNotification,
+            (notification, _) =>
+            {
+                var typed = JsonSerializer.Deserialize<TaskStatusNotificationParams>(
+                    notification.Params,
+                    McpJsonUtilities.DefaultOptions);
+                if (typed is FailedTaskNotificationParams)
+                {
+                    notifications.Writer.TryWrite(typed);
+                }
+
+                return default;
+            });
+
+        // The tool emits a Failed notification then returns a normal result, so we isolate the
+        // notification round-trip from the task-store's own failure handling.
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams { Name = "failing-notify-tool" }, ct);
+
+        Assert.Equal("emitted-failed", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+        var failed = await notifications.Reader.ReadAsync(ct);
+        var typed = Assert.IsType<FailedTaskNotificationParams>(failed);
+        Assert.Equal("failing-notify-task-id", typed.TaskId);
+        Assert.Equal(McpTaskStatus.Failed, typed.Status);
+        Assert.Equal(-32000, typed.Error.GetProperty("code").GetInt32());
+        Assert.Equal("boom", typed.Error.GetProperty("message").GetString());
+    }
+
+    [Fact]
     public async Task ElicitTool_ViaTask_ClientDedups_InputRequests()
     {
         // This test verifies that the client doesn't re-resolve an input request
@@ -374,7 +490,7 @@ public class McpTaskStoreTests : ClientServerTestBase
         // The task must remain Completed and the result must not be lost.
         var verifyResult = await client.GetTaskAsync(taskId, ct);
         var stillCompleted = Assert.IsType<CompletedTaskResult>(verifyResult);
-        Assert.NotEqual(default(JsonElement), stillCompleted.TaskResult);
+        Assert.NotEqual(default(JsonElement), stillCompleted.Result);
     }
 
     [Fact]
@@ -454,7 +570,7 @@ public class McpTaskStoreTests : ClientServerTestBase
 
         var completed = Assert.IsType<CompletedTaskResult>(taskResult);
         Assert.Equal(McpTaskStatus.Completed, completed.Status);
-        Assert.True(completed.TaskResult.GetProperty("isError").GetBoolean());
+        Assert.True(completed.Result.GetProperty("isError").GetBoolean());
     }
 
     [Fact]
@@ -537,6 +653,55 @@ public class McpTaskStoreTests : ClientServerTestBase
             }, cancellationToken);
 
             return result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "no response";
+        }
+
+        [McpServerTool(Name = "roots-tool"), System.ComponentModel.Description("A tool that lists roots")]
+        public static async Task<string> RootsTool(McpServer server, CancellationToken cancellationToken)
+        {
+            var result = await server.RequestRootsAsync(new ListRootsRequestParams(), cancellationToken);
+            return string.Join(",", result.Roots.Select(r => r.Uri));
+        }
+
+        [McpServerTool(Name = "notifying-tool"), System.ComponentModel.Description("A tool that emits SendTaskStatusNotificationAsync from inside the task wrapper")]
+        public static async Task<string> NotifyingTool(McpServer server, CancellationToken cancellationToken)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            // Emit working then completed notifications using the public SendTaskStatusNotificationAsync API,
+            // so the test asserts the wire round-trip end-to-end (server → transport → client handler).
+            await server.SendTaskStatusNotificationAsync(new WorkingTaskNotificationParams
+            {
+                TaskId = "notify-test-task-id",
+                CreatedAt = now,
+                LastUpdatedAt = now,
+            }, cancellationToken);
+
+            await server.SendTaskStatusNotificationAsync(new CompletedTaskNotificationParams
+            {
+                TaskId = "notify-test-task-id",
+                CreatedAt = now,
+                LastUpdatedAt = now,
+                Result = JsonSerializer.SerializeToElement("notify-result"),
+            }, cancellationToken);
+
+            return "notified";
+        }
+
+        [McpServerTool(Name = "failing-notify-tool"), System.ComponentModel.Description("A tool that emits a FailedTaskNotificationParams via SendTaskStatusNotificationAsync")]
+        public static async Task<string> FailingNotifyTool(McpServer server, CancellationToken cancellationToken)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var errorJson = JsonSerializer.SerializeToElement(new { code = -32000, message = "boom" });
+
+            await server.SendTaskStatusNotificationAsync(new FailedTaskNotificationParams
+            {
+                TaskId = "failing-notify-task-id",
+                CreatedAt = now,
+                LastUpdatedAt = now,
+                Error = errorJson,
+            }, cancellationToken);
+
+            return "emitted-failed";
         }
 
         [McpServerTool(Name = "iserror-tool"), System.ComponentModel.Description("A tool that returns IsError=true without throwing")]

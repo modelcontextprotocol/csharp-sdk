@@ -218,7 +218,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         var completed = Assert.IsType<CompletedTaskResult>(taskResult);
 
         // Deserialize the stored result
-        var toolResult = JsonSerializer.Deserialize<CallToolResult>(completed.TaskResult, McpJsonUtilities.DefaultOptions);
+        var toolResult = JsonSerializer.Deserialize<CallToolResult>(completed.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(toolResult);
         Assert.NotEmpty(toolResult.Content);
         var textContent = Assert.IsType<TextContentBlock>(toolResult.Content[0]);

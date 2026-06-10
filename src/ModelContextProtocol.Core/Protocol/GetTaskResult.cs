@@ -214,7 +214,7 @@ public abstract class GetTaskResult : Result
                         TaskId = taskId,
                         CreatedAt = createdAt.Value,
                         LastUpdatedAt = lastUpdatedAt.Value,
-                        TaskResult = result.Value,
+                        Result = result.Value,
                     }
                     : throw new JsonException("Completed task is missing required 'result' property."),
                 "failed" => error is not null
@@ -301,7 +301,7 @@ public abstract class GetTaskResult : Result
             {
                 case CompletedTaskResult completed:
                     writer.WritePropertyName("result");
-                    completed.TaskResult.WriteTo(writer);
+                    completed.Result.WriteTo(writer);
                     break;
                 case FailedTaskResult failed:
                     writer.WritePropertyName("error");
@@ -346,7 +346,7 @@ public sealed class WorkingTaskResult : GetTaskResult
 /// </summary>
 /// <remarks>
 /// <para>
-/// The <see cref="TaskResult"/> field contains the result structure matching the original request type.
+/// The <see cref="Result"/> field contains the result structure matching the original request type.
 /// For example, a <c>tools/call</c> task would contain the <see cref="CallToolResult"/> structure.
 /// This includes tool calls that returned results with <c>isError: true</c>.
 /// </para>
@@ -368,7 +368,7 @@ public sealed class CompletedTaskResult : GetTaskResult
     /// The structure matches the result type of the original request.
     /// </remarks>
     [JsonPropertyName("result")]
-    public required JsonElement TaskResult { get; set; }
+    public required JsonElement Result { get; set; }
 }
 
 /// <summary>

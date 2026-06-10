@@ -216,7 +216,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                         TaskId = taskId,
                         CreatedAt = createdAt.Value,
                         LastUpdatedAt = lastUpdatedAt.Value,
-                        TaskResult = result.Value,
+                        Result = result.Value,
                     }
                     : throw new JsonException("Completed task notification is missing required 'result' property."),
                 "failed" => error is not null
@@ -297,7 +297,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
             {
                 case CompletedTaskNotificationParams completed:
                     writer.WritePropertyName("result");
-                    completed.TaskResult.WriteTo(writer);
+                    completed.Result.WriteTo(writer);
                     break;
                 case FailedTaskNotificationParams failed:
                     writer.WritePropertyName("error");
@@ -344,7 +344,7 @@ public sealed class CompletedTaskNotificationParams : TaskStatusNotificationPara
     /// Gets or sets the final result of the task.
     /// </summary>
     [JsonPropertyName("result")]
-    public required JsonElement TaskResult { get; set; }
+    public required JsonElement Result { get; set; }
 }
 
 /// <summary>

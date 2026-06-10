@@ -19,6 +19,14 @@ namespace ModelContextProtocol.Server;
 /// <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> protocol methods.
 /// </para>
 /// <para>
+/// <b>Lifetime under stateless HTTP:</b> when the server is configured for stateless HTTP
+/// (each request creates a fresh server instance), the same <see cref="IMcpTaskStore"/> instance
+/// MUST be shared across requests — either by registering the store as a singleton in the DI
+/// container, or by backing it with external storage (database, distributed cache, etc.) that
+/// every server instance can reach. Otherwise <c>tasks/get</c> polls issued on subsequent
+/// requests will see an empty in-memory store and never find the task they are polling for.
+/// </para>
+/// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
 /// specification for details on the tasks extension.
 /// </para>
@@ -35,9 +43,19 @@ public interface IMcpTaskStore
     /// and timing metadata (TTL, poll interval).
     /// </returns>
     /// <remarks>
+    /// <para>
     /// Implementations must generate a unique task ID and set appropriate timestamps.
     /// The server infrastructure maps the returned <see cref="McpTaskInfo"/> to the appropriate
     /// protocol response type when communicating with clients.
+    /// </para>
+    /// <para>
+    /// Per the MCP specification (SEP-2663 §306), the returned task MUST be durably created
+    /// before this method completes: a subsequent <see cref="GetTaskAsync"/> with the returned
+    /// <see cref="McpTaskInfo.TaskId"/> MUST resolve, even if it runs on a different process or
+    /// node. Implementations backed by eventually-consistent storage must therefore wait for the
+    /// write to be visible (e.g., quorum acknowledgement, write-through, or an equivalent
+    /// barrier) before returning.
+    /// </para>
     /// </remarks>
     Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default);
 

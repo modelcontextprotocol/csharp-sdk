@@ -258,6 +258,18 @@ requirements drawn from the SEP and the SDK contract:
    deployments where a different server instance receives the `tasks/update`, the event must
    be propagated to the originating server (for example via Redis pub/sub, SignalR, or a custom
    transport).
+4. **Strong-consistency on `CreateTaskAsync`** —
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.CreateTaskAsync*> must not return until the
+   task is durably persisted, so that a subsequent
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.GetTaskAsync*> with the returned task ID
+   resolves immediately — even from a different process or node. Stores backed by
+   eventually-consistent storage must wait for the write to become visible (quorum
+   acknowledgement, write-through, etc.) before returning. Required by SEP-2663 §306.
+5. **Singleton under stateless HTTP** — when the server runs in stateless mode (each request
+   spins up a fresh server instance), the same `IMcpTaskStore` instance must be shared across
+   requests — either by registering it as a singleton in DI, or by backing it with external
+   storage that every instance can reach. Otherwise `tasks/get` polls from subsequent requests
+   will see an empty in-memory store and never find the task.
 
 ```csharp
 public sealed class MyTaskStore : IMcpTaskStore
