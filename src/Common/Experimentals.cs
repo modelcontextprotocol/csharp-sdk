@@ -110,4 +110,23 @@ internal static class Experimentals
     /// URL for the experimental <c>RunSessionHandler</c> API.
     /// </summary>
     public const string RunSessionHandler_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental Multi Round-Trip Requests (MRTR) feature.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Tasks_DiagnosticId"/> because MRTR
+    /// is an experimental feature in the MCP specification (SEP-2322).
+    /// </remarks>
+    public const string Mrtr_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental MRTR feature.
+    /// </summary>
+    public const string Mrtr_Message = "The Multi Round-Trip Requests (MRTR) feature is experimental per the MCP specification (SEP-2322) and is subject to change.";
+
+    /// <summary>
+    /// URL for the experimental MRTR feature.
+    /// </summary>
+    public const string Mrtr_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 }
