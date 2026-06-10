@@ -98,7 +98,7 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// <para>
     /// The schema describes the shape of the value placed in <see cref="CallToolResult.StructuredContent"/>.
-    /// Unlike <see cref="InputSchema"/>, the top-level <c>type</c> is no longer required to be <c>"object"</c>.
+    /// Unlike <see cref="InputSchema"/>, the top-level <c>type</c> is not required to be <c>"object"</c>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("outputSchema")]
