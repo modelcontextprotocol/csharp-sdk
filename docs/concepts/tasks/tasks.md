@@ -199,7 +199,7 @@ if (raw.IsTask)
         await Task.Delay(TimeSpan.FromMilliseconds(raw.TaskCreated.PollIntervalMs ?? 1000), cancellationToken);
         var state = await client.GetTaskAsync(taskId, cancellationToken);
         // Handle InputRequiredTaskResult by calling UpdateTaskAsync,
-        // CompletedTaskResult by deserializing TaskResult, etc.
+        // CompletedTaskResult by deserializing its Result property, etc.
     }
 }
 ```
@@ -285,7 +285,7 @@ public sealed class MyTaskStore : IMcpTaskStore
 
     public async Task ResolveInputRequestsAsync(
         string taskId,
-        IDictionary<string, JsonElement> inputResponses,
+        IDictionary<string, InputResponse> inputResponses,
         CancellationToken cancellationToken = default)
     {
         // 1. Atomically persist the resolved requests, ignoring keys that are no longer
