@@ -995,8 +995,9 @@ public abstract partial class McpClient : McpSession
         // If the server claims InputRequired but never publishes new input requests after we have
         // already responded to everything it asked for, treat that as a stuck task. The client
         // can still cancel earlier via cancellationToken; this guard prevents an unbounded poll
-        // loop when the server is misbehaving.
-        const int MaxConsecutiveStuckPolls = 60;
+        // loop when the server is misbehaving. The threshold is configurable via
+        // McpClientOptions.MaxConsecutiveStuckPolls.
+        int maxConsecutiveStuckPolls = MaxConsecutiveStuckPolls;
 
         string taskId = taskCreated.TaskId;
         long pollIntervalMs = taskCreated.PollIntervalMs ?? 1000;
@@ -1090,7 +1091,7 @@ public abstract partial class McpClient : McpSession
                             resolvedRequestKeys.Add(key);
                         }
                     }
-                    else if (++consecutiveStuckPolls >= MaxConsecutiveStuckPolls)
+                    else if (++consecutiveStuckPolls >= maxConsecutiveStuckPolls)
                     {
                         // Best-effort cancel of the server-side task so it doesn't leak until TTL expires.
                         try
@@ -1103,7 +1104,7 @@ public abstract partial class McpClient : McpSession
                         }
 
                         throw new McpException(
-                            $"Task '{taskId}' has remained in '{McpTaskStatus.InputRequired}' for {MaxConsecutiveStuckPolls} consecutive polls " +
+                            $"Task '{taskId}' has remained in '{McpTaskStatus.InputRequired}' for {maxConsecutiveStuckPolls} consecutive polls " +
                             "without publishing new input requests after all previously requested inputs were resolved.");
                     }
 

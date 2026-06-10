@@ -86,6 +86,13 @@ public abstract partial class McpClient : McpSession
         IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the maximum number of consecutive stuck-in-<see cref="McpTaskStatus.InputRequired"/> polls
+    /// allowed by <see cref="PollTaskToCompletionAsync"/> before the client cancels and throws.
+    /// Sourced from <see cref="McpClientOptions.MaxConsecutiveStuckPolls"/>.
+    /// </summary>
+    private protected abstract int MaxConsecutiveStuckPolls { get; }
+
+    /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport
     /// to send <c>Mcp-Param-*</c> headers for those tools without requiring a prior <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
     /// </summary>

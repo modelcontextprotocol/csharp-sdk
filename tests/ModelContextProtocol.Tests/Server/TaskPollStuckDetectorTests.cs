@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
@@ -89,5 +90,42 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         // 60 polls × 5ms ≈ 300ms; allow generous slack for CI.
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10),
             $"Stuck-detector should give up promptly but took {sw.Elapsed}.");
+    }
+
+    [Fact]
+    public async Task CallToolAsync_StuckDetector_HonorsConfiguredThreshold()
+    {
+        // Verifies McpClientOptions.MaxConsecutiveStuckPolls is plumbed into PollTaskToCompletionAsync:
+        // a smaller configured threshold is surfaced verbatim in the McpException message.
+        const int CustomThreshold = 3;
+
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            MaxConsecutiveStuckPolls = CustomThreshold,
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync(new CallToolRequestParams { Name = "any-tool" }, ct));
+
+        // The message embeds the configured threshold, which is the strongest signal that the
+        // option value (not the 60-default constant) is what governed the loop.
+        Assert.Contains($"{CustomThreshold} consecutive polls", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void McpClientOptions_MaxConsecutiveStuckPolls_RejectsNonPositive(int value)
+    {
+        var options = new McpClientOptions();
+        Assert.Throws<ArgumentOutOfRangeException>(() => options.MaxConsecutiveStuckPolls = value);
+    }
+
+    [Fact]
+    public void McpClientOptions_MaxConsecutiveStuckPolls_DefaultsTo60()
+    {
+        Assert.Equal(60, new McpClientOptions().MaxConsecutiveStuckPolls);
     }
 }

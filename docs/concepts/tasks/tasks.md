@@ -210,9 +210,16 @@ if (raw.IsTask)
 <xref:ModelContextProtocol.Protocol.McpTaskStatus.InputRequired> across many consecutive polls
 without exposing any new input request keys (i.e. every previously requested input has already
 been resolved by the client and yet the server keeps returning `InputRequired`), the client
-gives up after 60 consecutive such polls, issues a best-effort `tasks/cancel`, and throws
+gives up, issues a best-effort `tasks/cancel`, and throws
 <xref:ModelContextProtocol.McpException>. This guards against a server that never transitions
 out of `InputRequired` and prevents an unbounded poll loop.
+
+The threshold defaults to `60` consecutive stuck polls and is configurable via
+<xref:ModelContextProtocol.Client.McpClientOptions.MaxConsecutiveStuckPolls>. The effective
+wall-clock timeout is roughly `MaxConsecutiveStuckPolls * pollIntervalMs`, so tune the option
+with the server-side poll cadence in mind. Setting it too low risks false positives for servers
+that are slow to surface follow-up input requests; setting it too high can mask misbehaving
+servers.
 
 ### Input requests (multi-round-trip)
 
