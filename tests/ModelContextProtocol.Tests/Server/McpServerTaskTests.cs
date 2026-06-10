@@ -14,6 +14,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class McpServerTaskTests : ClientServerTestBase
 {
     private readonly InMemoryTaskStore _taskStore = new();
+    private JsonObject? _capturedMeta;
 
     public McpServerTaskTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
@@ -32,6 +33,7 @@ public class McpServerTaskTests : ClientServerTestBase
 
             options.Handlers.CallToolWithTaskHandler = async (context, cancellationToken) =>
             {
+                _capturedMeta = context.Params?.Meta;
                 var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
                 var toolName = context.Params!.Name;
 
@@ -370,6 +372,68 @@ public class McpServerTaskTests : ClientServerTestBase
 
         // If the capability wasn't injected, the server couldn't have returned a task
         Assert.True(augmented.IsTask);
+    }
+
+    [Fact]
+    public async Task CallToolRawAsync_OptIn_UsesSep2575CapabilitiesEnvelope()
+    {
+        // SEP-2663 §51: the per-request opt-in is the SEP-2575 capabilities envelope:
+        //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
+        // This test pins the literal wire path so future refactors can't regress.
+        await using var client = await CreateMcpClientForServer();
+
+        await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "immediate-tool" },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(_capturedMeta);
+
+        var caps = Assert.IsType<JsonObject>(_capturedMeta!["io.modelcontextprotocol/clientCapabilities"]);
+        var extensions = Assert.IsType<JsonObject>(caps["extensions"]);
+        Assert.True(extensions.ContainsKey("io.modelcontextprotocol/tasks"),
+            "Expected _meta to contain io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks (SEP-2575 envelope).");
+
+        // The opt-in value is an empty object per SEP-2575.
+        Assert.IsType<JsonObject>(extensions["io.modelcontextprotocol/tasks"]);
+    }
+
+    [Fact]
+    public async Task CallToolRawAsync_OptIn_PreservesExistingMetaSiblings()
+    {
+        // User-supplied _meta entries at the root must not be clobbered, and the SEP-2575
+        // envelope must be added alongside them, not in place of them.
+        await using var client = await CreateMcpClientForServer();
+
+        var userMeta = new JsonObject
+        {
+            ["customKey"] = "customValue",
+            ["io.modelcontextprotocol/clientCapabilities"] = new JsonObject
+            {
+                ["extensions"] = new JsonObject
+                {
+                    ["some.other/extension"] = new JsonObject(),
+                },
+            },
+        };
+
+        await client.CallToolRawAsync(
+            new CallToolRequestParams
+            {
+                Name = "immediate-tool",
+                Meta = userMeta,
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(_capturedMeta);
+
+        // User's sibling root entry is preserved.
+        Assert.Equal("customValue", (string?)_capturedMeta!["customKey"]);
+
+        // User's pre-existing nested extension is preserved next to the tasks opt-in.
+        var caps = Assert.IsType<JsonObject>(_capturedMeta["io.modelcontextprotocol/clientCapabilities"]);
+        var extensions = Assert.IsType<JsonObject>(caps["extensions"]);
+        Assert.True(extensions.ContainsKey("some.other/extension"));
+        Assert.True(extensions.ContainsKey("io.modelcontextprotocol/tasks"));
     }
 
     [Fact]

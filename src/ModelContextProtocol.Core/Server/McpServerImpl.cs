@@ -897,7 +897,7 @@ internal sealed partial class McpServerImpl : McpServer
             var innerTaskHandler = callToolWithTaskHandler;
             callToolWithTaskHandler = async (request, cancellationToken) =>
             {
-                if (request.Params?.Meta?.ContainsKey(McpExtensions.Tasks) is true)
+                if (HasTaskExtensionOptIn(request.Params?.Meta))
                 {
                     var taskInfo = await taskStore.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
                     var taskId = taskInfo.TaskId;
@@ -1282,6 +1282,20 @@ internal sealed partial class McpServerImpl : McpServer
 
         return current;
     }
+
+    // Per SEP-2663 §51, the client opts in to the tasks extension on a per-request basis
+    // via the SEP-2575 capabilities envelope:
+    //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
+    // TODO: swap the literals for a shared NotificationMethods.ClientCapabilitiesMetaKey once
+    // the SEP-2575 plumbing lands.
+    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
+    private const string ExtensionsKey = "extensions";
+
+    private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
+        meta is not null &&
+        meta[ClientCapabilitiesMetaKey] is JsonObject caps &&
+        caps[ExtensionsKey] is JsonObject exts &&
+        exts.ContainsKey(McpExtensions.Tasks);
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {
