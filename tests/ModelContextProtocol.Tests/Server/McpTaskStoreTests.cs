@@ -167,6 +167,75 @@ public class McpTaskStoreTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task McpProtocolException_FromTool_StoresAsFailedWithJsonRpcErrorShape()
+    {
+        // SEP-2663 §186: failed.error MUST be a JSON-RPC error object {code, message, data?}.
+        // When a tool throws McpProtocolException, the task-store wrapper must serialize the error
+        // payload with the exception's ErrorCode and Message preserved on the wire.
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "throws-mcp-protocol" }, ct);
+
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 20; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+            if (taskResult is FailedTaskResult)
+            {
+                break;
+            }
+        }
+
+        var failed = Assert.IsType<FailedTaskResult>(taskResult);
+
+        // The error MUST be a JSON-RPC error object with at least 'code' and 'message'.
+        Assert.Equal(JsonValueKind.Object, failed.Error.ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidParams, failed.Error.GetProperty("code").GetInt32());
+        Assert.Equal("custom-protocol-message", failed.Error.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task InputRequiredException_FromTool_FailsTaskWithActionableMessage()
+    {
+        // [McpServerTool] methods that throw InputRequiredException can't compose with the task-store
+        // wrapper today: the taskId was already returned synchronously and there's no way to surface
+        // InputRequiredResult retroactively. The wrapper must fail the task with a clear, actionable
+        // message instead of leaking the raw exception through the generic catch.
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "mrtr-tool" }, ct);
+
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 20; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+            if (taskResult is FailedTaskResult)
+            {
+                break;
+            }
+        }
+
+        var failed = Assert.IsType<FailedTaskResult>(taskResult);
+        Assert.Equal(JsonValueKind.Object, failed.Error.ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, failed.Error.GetProperty("code").GetInt32());
+
+        var message = failed.Error.GetProperty("message").GetString();
+        Assert.NotNull(message);
+        Assert.Contains("MRTR", message);
+        Assert.Contains(nameof(McpServerHandlers.CallToolWithTaskHandler), message);
+    }
+
+    [Fact]
     public async Task ElicitTool_ViaTask_RedirectsThroughStore()
     {
         await using var client = await CreateMcpClientForServer(new McpClientOptions
@@ -437,6 +506,14 @@ public class McpTaskStoreTests : ClientServerTestBase
 
         [McpServerTool(Name = "failing-tool"), System.ComponentModel.Description("A tool that fails")]
         public static string FailingTool() => throw new InvalidOperationException("intentional failure");
+
+        [McpServerTool(Name = "throws-mcp-protocol"), System.ComponentModel.Description("A tool that throws McpProtocolException")]
+        public static string ThrowsMcpProtocol() =>
+            throw new McpProtocolException("custom-protocol-message", McpErrorCode.InvalidParams);
+
+        [McpServerTool(Name = "mrtr-tool"), System.ComponentModel.Description("A tool that throws InputRequiredException (MRTR)")]
+        public static string MrtrTool() =>
+            throw new InputRequiredException(requestState: "test-state");
 
         [McpServerTool(Name = "elicit-tool"), System.ComponentModel.Description("A tool that elicits")]
         public static async Task<string> ElicitTool(McpServer server, CancellationToken cancellationToken)

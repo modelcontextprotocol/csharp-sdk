@@ -920,6 +920,16 @@ internal sealed partial class McpServerImpl : McpServer
                                 var augmented = await innerTaskHandler(request, taskCancellationToken).ConfigureAwait(false);
                                 if (augmented.IsTask)
                                 {
+                                    // The handler created its own task externally, but the client already holds
+                                    // the store's taskId from the synchronous return below — we can't redirect.
+                                    // Fail the store's task so the client sees a clear error instead of polling forever.
+                                    var error = new JsonRpcErrorDetail
+                                    {
+                                        Code = (int)McpErrorCode.InternalError,
+                                        Message = $"{nameof(McpServerOptions.TaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithTaskHandler)} returned IsTask = true. Use only one mechanism to create the task.",
+                                    };
+                                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
+                                    await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
                                     return;
                                 }
 
@@ -930,10 +940,32 @@ internal sealed partial class McpServerImpl : McpServer
                             {
                                 await taskStore.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
                             }
+                            catch (InputRequiredException)
+                            {
+                                // MRTR (input requests) cannot be composed with the task-store wrapper for
+                                // [McpServerTool] methods today: the task ID was already returned synchronously,
+                                // so we have no way to surface InputRequiredResult to the client retroactively.
+                                // Fail the task with a clear, actionable error instead of leaking the raw
+                                // InputRequiredException through the generic catch below.
+                                var error = new JsonRpcErrorDetail
+                                {
+                                    Code = (int)McpErrorCode.InvalidRequest,
+                                    Message = "MRTR (input requests) and tasks cannot be composed via [McpServerTool] yet; " +
+                                              $"use {nameof(McpServerHandlers.CallToolWithTaskHandler)} to manage the input-request loop manually within the task body.",
+                                };
+                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
+                                await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
+                            }
                             catch (Exception ex)
                             {
-                                var escapedMessage = JsonSerializer.Serialize(ex.Message, McpJsonUtilities.JsonContext.Default.String);
-                                var errorJson = JsonDocument.Parse($$$"""{{"message": {{{escapedMessage}}}}}""").RootElement;
+                                // SEP-2663 §186: failed.error MUST be a JSON-RPC error object {code, message, data?}.
+                                // McpProtocolException carries a JSON-RPC ErrorCode and is documented as safe to
+                                // propagate (Message + ErrorCode). For any other exception type, redact the message
+                                // and use InternalError (mirrors the redaction in BuildInitialCallToolFilter).
+                                var error = ex is McpProtocolException mcpEx
+                                    ? new JsonRpcErrorDetail { Code = (int)mcpEx.ErrorCode, Message = mcpEx.Message }
+                                    : new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = "An error occurred while executing the task." };
+                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
                                 await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
                             }
                             finally

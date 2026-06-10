@@ -96,6 +96,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
+    [JsonSerializable(typeof(JsonRpcErrorDetail))]
 
     // MCP Notification Params
     [JsonSerializable(typeof(CancelledNotificationParams))]
