@@ -343,18 +343,13 @@ public class McpServerTests : LoggedTest
             Resources = new ResourcesCapability(),
             Tools = new ToolsCapability(),
             Completions = new CompletionsCapability(),
-            Tasks = new McpTasksCapability(),
             Extensions = new Dictionary<string, object> { ["io.test"] = new JsonObject() },
         };
 
         await Can_Handle_Requests(
             serverCapabilities: inputCapabilities,
             method: RequestMethods.Initialize,
-            configureOptions: options =>
-            {
-                // Tasks capability requires a TaskStore
-                options.TaskStore = new InMemoryMcpTaskStore();
-            },
+            configureOptions: _ => { },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);

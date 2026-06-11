@@ -1,32 +1,38 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+
+#pragma warning disable MCPEXP001
 
 namespace ModelContextProtocol.Tests.Client;
 
+/// <summary>
+/// Integration tests for the client-side task API methods: GetTaskAsync, CancelTaskAsync,
+/// UpdateTaskAsync, CallToolRawAsync, and the automatic polling in CallToolAsync.
+/// </summary>
 public class McpClientTaskMethodsTests : ClientServerTestBase
 {
     public McpClientTaskMethodsTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
     }
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        // Add task store for server-side task support
-        var taskStore = new InMemoryMcpTaskStore();
-        services.AddSingleton<IMcpTaskStore>(taskStore);
-
-        // Configure server to use the task store directly
-        services.Configure<McpServerOptions>(options =>
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
-            options.TaskStore = taskStore;
+            options.TaskStore = new InMemoryMcpTaskStore
+            {
+                DefaultPollIntervalMs = 50,
+            };
         });
 
-        // Add a simple tool for testing
         mcpServerBuilder.WithTools([McpServerTool.Create(
             async (string input, CancellationToken ct) =>
             {
@@ -40,9 +46,8 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
             })]);
     }
 
-    private static IDictionary<string, JsonElement> CreateArguments(string key, object? value)
+    private static IDictionary<string, JsonElement> CreateArguments(string key, string value)
     {
-        // For simple strings, just create a JsonElement from a string value
         return new Dictionary<string, JsonElement>
         {
             [key] = JsonDocument.Parse($"\"{value}\"").RootElement.Clone()
@@ -52,210 +57,196 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
     [Fact]
     public async Task GetTaskAsync_ReturnsTaskStatus()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        // Create a task by calling a tool with task metadata
-        var callResult = await client.CallToolAsync(
+        var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "test"),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+            }, ct);
 
-        // The response should contain task metadata
-        Assert.NotNull(callResult.Task);
-        
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
-        // Now get the task status
-        var task = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(taskId, task.TaskId);
+        // Get the task status
+        var task = await client.GetTaskAsync(taskId, ct);
+        Assert.NotNull(task);
     }
 
     [Fact]
-    public async Task GetTaskAsync_ThrowsForInvalidTaskId()
+    public async Task GetTaskAsync_UnknownTaskId_Throws()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await client.GetTaskAsync("", cancellationToken: TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.GetTaskAsync("nonexistent-id", ct));
+
+        Assert.Contains("Unknown task", ex.Message);
     }
 
     [Fact]
-    public async Task GetTaskResultAsync_ReturnsDeserializedResult()
+    public async Task GetTaskAsync_NullTaskId_Throws()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
 
-        // Create a task
-        var callResult = await client.CallToolAsync(
+        await Assert.ThrowsAsync<ArgumentNullException>(async () =>
+            await client.GetTaskAsync((string)null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CallToolRawAsync_WithTaskStore_ReturnsCreatedTask()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "hello"),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+            }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        Assert.NotNull(augmented.TaskCreated);
+        Assert.Equal(McpTaskStatus.Working, augmented.TaskCreated.Status);
+        Assert.NotNull(augmented.TaskCreated.TaskId);
+        Assert.True(augmented.TaskCreated.PollIntervalMs > 0);
+    }
 
-        // Wait for task to complete and get the result
-        JsonElement result = await client.GetTaskResultAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+    [Fact]
+    public async Task CallToolAsync_PollsUntilCompletion_ReturnsResult()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        // Verify the result has the expected CallToolResult shape
-        CallToolResult? toolResult = result.Deserialize<CallToolResult>(McpJsonUtilities.DefaultOptions);
-        Assert.NotNull(toolResult);
-        Assert.NotEmpty(toolResult.Content);
-        
-        TextContentBlock? textContent = toolResult.Content[0] as TextContentBlock;
-        Assert.NotNull(textContent);
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "test-tool",
+                Arguments = CreateArguments("input", "hello"),
+            }, ct);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Content);
+        var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
         Assert.Equal("Processed: hello", textContent.Text);
     }
 
     [Fact]
-    public async Task GetTaskResultAsync_ThrowsForInvalidTaskId()
+    public async Task CancelTaskAsync_ForWorkingTask_Succeeds()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await client.GetTaskResultAsync("", cancellationToken: TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task ListTasksAsync_ReturnsTasks()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // Create a task
-        var callResult = await client.CallToolAsync(
+        var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "test"),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+            }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
-        // List all tasks
-        var tasks = await client.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
+        // Cancel immediately (may succeed or fail depending on timing)
+        try
+        {
+            await client.CancelTaskAsync(taskId, ct);
 
-        Assert.NotNull(tasks);
-        Assert.Contains(tasks, t => t.TaskId == taskId);
+            // If cancel succeeded, verify the task is cancelled
+            var taskResult = await client.GetTaskAsync(taskId, ct);
+            Assert.IsType<CancelledTaskResult>(taskResult);
+        }
+        catch (McpProtocolException)
+        {
+            // Task may have already completed before we could cancel — that's fine
+        }
     }
 
     [Fact]
-    public async Task ListTasksAsync_HandlesEmptyResult()
+    public async Task CancelTaskAsync_NullTaskId_Throws()
     {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // List tasks (may or may not be empty depending on state)
-        var tasks = await client.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(tasks);
-    }
-
-    [Fact]
-    public async Task ListTasksAsync_LowLevel_ReturnsRawResult()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // Create a task first
-        await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "test-tool",
-                Arguments = CreateArguments("input", "task1"),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Use low-level API
-        var result = await client.ListTasksAsync(new ListTasksRequestParams(), TestContext.Current.CancellationToken);
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Tasks);
-    }
-
-    [Fact]
-    public async Task ListTasksAsync_LowLevel_ThrowsForNullParams()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
-            await client.ListTasksAsync((ListTasksRequestParams)null!, TestContext.Current.CancellationToken));
+            await client.CancelTaskAsync((string)null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public async Task CancelTaskAsync_CancelsRunningTask()
+    public async Task CancelTaskAsync_UnknownTaskId_AcknowledgesIdempotently()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        // Create a task
-        var callResult = await client.CallToolAsync(
+        // SEP-2663 requires servers to always acknowledge tasks/cancel, even when the task is
+        // unknown (e.g., has been garbage collected). The default handler must not throw.
+        var result = await client.CancelTaskAsync("nonexistent-id", ct);
+
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_AfterCompletion_ReturnsCompletedResult()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
-                Arguments = CreateArguments("input", "test"),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+                Arguments = CreateArguments("input", "hello"),
+            }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        var taskId = augmented.TaskCreated!.TaskId;
 
-        // Cancel the task
-        var canceledTask = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(taskId, canceledTask.TaskId);
-    }
-
-    [Fact]
-    public async Task CancelTaskAsync_ThrowsForInvalidTaskId()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await client.CancelTaskAsync("", cancellationToken: TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task ListTasksAsync_HandlesPagination()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // Create multiple tasks
-        var taskIds = new List<string>();
-        for (int i = 0; i < 3; i++)
+        // Poll until completed
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 40; i++)
         {
-            var result = await client.CallToolAsync(
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+            if (taskResult is CompletedTaskResult)
+            {
+                break;
+            }
+        }
+
+        var completed = Assert.IsType<CompletedTaskResult>(taskResult);
+
+        // Deserialize the stored result
+        var toolResult = JsonSerializer.Deserialize<CallToolResult>(completed.Result, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(toolResult);
+        Assert.NotEmpty(toolResult.Content);
+        var textContent = Assert.IsType<TextContentBlock>(toolResult.Content[0]);
+        Assert.Equal("Processed: hello", textContent.Text);
+    }
+
+    [Fact]
+    public async Task MultipleTasks_CreatedConcurrently_HaveUniqueIds()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var taskIds = new HashSet<string>();
+
+        for (int i = 0; i < 5; i++)
+        {
+            var augmented = await client.CallToolRawAsync(
                 new CallToolRequestParams
                 {
                     Name = "test-tool",
                     Arguments = CreateArguments("input", $"task-{i}"),
-                    Task = new McpTaskMetadata()
-                },
-                cancellationToken: TestContext.Current.CancellationToken);
-            
-            Assert.NotNull(result.Task);
-            taskIds.Add(result.Task.TaskId);
+                }, ct);
+
+            Assert.True(augmented.IsTask);
+            taskIds.Add(augmented.TaskCreated!.TaskId);
         }
 
-        // List all tasks (should handle pagination automatically if needed)
-        var tasks = await client.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(tasks);
-        Assert.True(tasks.Count >= taskIds.Count, "Should retrieve at least the tasks we created");
-
-        // Verify all our tasks are in the result
-        foreach (var taskId in taskIds)
-        {
-            Assert.Contains(tasks, t => t.TaskId == taskId);
-        }
+        // All task IDs should be unique
+        Assert.Equal(5, taskIds.Count);
     }
 }
