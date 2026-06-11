@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -20,7 +19,6 @@ namespace ModelContextProtocol.Protocol;
 /// parameters can be accessed via the typed accessor properties.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
 [JsonConverter(typeof(Converter))]
 public sealed class InputRequest
 {
