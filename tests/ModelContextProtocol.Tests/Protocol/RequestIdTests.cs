@@ -35,4 +35,15 @@ public class RequestIdTests
 
         Assert.Equal(id, JsonSerializer.Deserialize<RequestId>(JsonSerializer.Serialize(id, McpJsonUtilities.DefaultOptions), McpJsonUtilities.DefaultOptions));
     }
+
+    [Fact]
+    public void Null_DeserializesAsDefault()
+    {
+        // Per JSON-RPC 2.0 §5.1, error responses produced before the request id can be determined
+        // MUST carry id=null. Deserialization needs to tolerate that shape so callers can handle
+        // such error envelopes (instead of throwing on the bare RequestId conversion).
+        var id = JsonSerializer.Deserialize<RequestId>("null", McpJsonUtilities.DefaultOptions);
+        Assert.Equal(default(RequestId), id);
+        Assert.Null(id.Id);
+    }
 }

@@ -200,6 +200,19 @@ public abstract class JsonRpcMessage
                 throw new JsonException("Response must have either result or error");
             }
 
+            if (error is not null)
+            {
+                // Per JSON-RPC 2.0, when an error occurs before the request id can be determined
+                // (e.g. parse error or invalid request), the server MUST respond with id=null.
+                // Accept null-id error responses so callers can recognize the structured signal
+                // (e.g. an HTTP 400 body whose JSON-RPC envelope carries a non-modern error code).
+                return new JsonRpcError
+                {
+                    Id = id,
+                    Error = error
+                };
+            }
+
             // Error: Messages with neither id nor method are invalid
             throw new JsonException("Invalid JSON-RPC message format");
         }

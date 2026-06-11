@@ -760,4 +760,36 @@ public static class JsonRpcMessageConverterTests
         var error = (JsonRpcError)message;
         Assert.NotNull(error.Error.Data);
     }
+
+    [Fact]
+    public static void Deserialize_ErrorWithNullId_IsValid()
+    {
+        // Per JSON-RPC 2.0 §5.1, when an error occurs before the request id can be determined
+        // (parse error or invalid request), the server MUST respond with id=null. This shape is
+        // produced by some peers (e.g. Python's simple-streamablehttp-stateless on a draft probe)
+        // and must be accepted so the HTTP-fallback path can recognize the structured signal.
+        string json = """{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Bad Request"}}""";
+
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(message);
+        var error = Assert.IsType<JsonRpcError>(message);
+        Assert.Equal(default(RequestId), error.Id);
+        Assert.Equal(-32600, error.Error.Code);
+        Assert.Equal("Bad Request", error.Error.Message);
+    }
+
+    [Fact]
+    public static void Deserialize_ErrorWithMissingId_IsValid()
+    {
+        // Some peers omit `id` entirely on pre-routing errors; treat as null per JSON-RPC 2.0 §5.1.
+        string json = """{"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"}}""";
+
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(message);
+        var error = Assert.IsType<JsonRpcError>(message);
+        Assert.Equal(default(RequestId), error.Id);
+        Assert.Equal(-32700, error.Error.Code);
+    }
 }

@@ -96,6 +96,30 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
         Assert.Contains("mismatch", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task DraftClient_OnHeaderMismatch_Surfaces_NoFallback()
+    {
+        // The peer is modern (returns the spec-defined -32001 HeaderMismatch on the probe).
+        // Falling back to legacy initialize would just produce another malformed envelope.
+        // Verify the connect-time logic surfaces the error to the caller instead of falling back.
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new LegacyServerTestTransport(
+            serverNegotiatedVersion: "2025-11-25",
+            probeErrorCode: (int)McpErrorCode.HeaderMismatch);
+
+        var exception = await Assert.ThrowsAnyAsync<McpException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+            {
+                ProtocolVersion = McpSession.DraftProtocolVersion,
+            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.True(transport.ServerDiscoverProbed);
+        Assert.False(transport.LegacyInitializeReceived);
+        Assert.Equal(McpErrorCode.HeaderMismatch, ((McpProtocolException)exception).ErrorCode);
+    }
+
     /// <summary>
     /// Minimal in-memory transport that simulates a legacy server: rejects
     /// <c>server/discover</c> (with a configurable JSON-RPC error code) and

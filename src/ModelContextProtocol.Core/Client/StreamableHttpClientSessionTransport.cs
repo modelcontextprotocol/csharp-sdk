@@ -64,12 +64,18 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // Immediately dispose the response. SendHttpRequestAsync only returns the response so the auto transport can look at it.
         using var response = await SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
 
-        // For unsuccessful responses, surface structured JSON-RPC errors with codes introduced by the
-        // draft protocol revision (SEP-2575) — UnsupportedProtocolVersion (-32004) and
-        // MissingRequiredClientCapability (-32003) — as typed McpProtocolException so the client's
-        // connection logic can react (e.g., fall back to legacy initialize on version mismatch).
-        // Other JSON-RPC errors carried in 4xx/5xx bodies (e.g., 403 forbidden, 404 session-not-found)
-        // continue to surface as HttpRequestException to preserve back-compat with existing behavior.
+        // Per spec PR #2844 (HTTP backwards compatibility), a 400 Bad Request that carries a
+        // JSON-RPC error envelope means the peer is signalling something application-level about
+        // our request. Surface ANY JSON-RPC error on a 400 as McpProtocolException so the
+        // connect-time logic can react — for example, the three modern draft-protocol error codes
+        // (-32004 UnsupportedProtocolVersion, -32003 MissingRequiredClientCapability,
+        // -32001 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
+        // legacy servers that don't understand the draft _meta envelope) become generic
+        // McpProtocolException instances and trigger the fallback-to-legacy-initialize path.
+        // Other status codes (401 auth, 403 forbidden, 404 session-not-found, 5xx server) continue
+        // to surface as HttpRequestException to preserve back-compat with transport-layer behaviors.
+        // The three modern draft-protocol error codes are also surfaced for non-400 status codes
+        // for robustness — servers occasionally emit them with 4xx codes other than 400.
         if (!response.IsSuccessStatusCode &&
             response.Content.Headers.ContentType?.MediaType == "application/json")
         {
@@ -85,7 +91,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             if (!string.IsNullOrEmpty(body) &&
                 TryParseJsonRpcError(body, out var parsedError) &&
-                ShouldSurfaceAsStructuredException((McpErrorCode)parsedError.Error.Code))
+                (response.StatusCode == HttpStatusCode.BadRequest ||
+                 IsModernDraftErrorCode((McpErrorCode)parsedError.Error.Code)))
             {
                 throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
             }
@@ -94,8 +101,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool ShouldSurfaceAsStructuredException(McpErrorCode code) =>
-        code is McpErrorCode.UnsupportedProtocolVersion or McpErrorCode.MissingRequiredClientCapability;
+    private static bool IsModernDraftErrorCode(McpErrorCode code) =>
+        code is McpErrorCode.UnsupportedProtocolVersion
+             or McpErrorCode.MissingRequiredClientCapability
+             or McpErrorCode.HeaderMismatch;
 
     private static bool TryParseJsonRpcError(string body, out JsonRpcError parsedError)
     {

@@ -66,7 +66,8 @@ public readonly struct RequestId : IEquatable<RequestId>
             {
                 JsonTokenType.String => new(reader.GetString()!),
                 JsonTokenType.Number => new(reader.GetInt64()),
-                _ => throw new JsonException("requestId must be a string or an integer"),
+                JsonTokenType.Null => default,
+                _ => throw new JsonException("requestId must be a string, integer, or null"),
             };
         }
 

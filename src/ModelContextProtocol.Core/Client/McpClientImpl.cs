@@ -340,6 +340,14 @@ internal sealed partial class McpClientImpl : McpClient
                         // our capability set. Surface as-is (no fallback): the user must add capabilities.
                         throw;
                     }
+                    catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.HeaderMismatch)
+                    {
+                        // Spec-recognized modern-server signal: -32001. The server is modern but rejected
+                        // our request envelope (e.g., the MCP-Protocol-Version HTTP header didn't match
+                        // the body _meta.io.modelcontextprotocol/protocolVersion). Surface as-is (no
+                        // fallback): falling back to legacy initialize wouldn't fix a malformed envelope.
+                        throw;
+                    }
                     catch (McpProtocolException)
                     {
                         // Per spec PR #2844, the fallback MUST NOT be keyed to a single error code —
@@ -347,9 +355,10 @@ internal sealed partial class McpClientImpl : McpClient
                         // Common causes include MethodNotFound from a server that has no
                         // server/discover handler, InvalidParams from a server confused by the
                         // SEP-2575 _meta envelope, ParseError from a server that can't handle our
-                        // payload shape, or any other transport-defined error. The two modern-server
+                        // payload shape, or any other transport-defined error. The three modern-server
                         // signals (-32004 UnsupportedProtocolVersion, -32003
-                        // MissingRequiredClientCapability) are caught above and never reach here.
+                        // MissingRequiredClientCapability, -32001 HeaderMismatch) are caught above and
+                        // never reach here.
                         fallbackToLegacy = true;
                     }
                     catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
