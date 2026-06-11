@@ -23,7 +23,7 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 
 | Diagnostic ID | Description |
 | :------------ | :---------- |
-| `MCPEXP001` | Reserved diagnostic ID for APIs that were previously experimental and tied to MCP specification features (including Tasks, Extensions, and MRTR). This ID is intentionally kept and not reused for future diagnostics. |
+| `MCPEXP001` | Experimental APIs tied to MCP specification features. Reuse this ID for newly introduced experimental spec features, and add feature-specific messages/URLs in `Experimentals`. |
 | `MCPEXP002` | Experimental SDK APIs unrelated to the MCP specification itself, including subclassing `McpClient`/`McpServer` (see [#1363](https://github.com/modelcontextprotocol/csharp-sdk/pull/1363)) and `RunSessionHandler`, which may be removed or change signatures in a future release (consider using `ConfigureSessionOptions` instead). |
 
 ## Obsolete APIs
