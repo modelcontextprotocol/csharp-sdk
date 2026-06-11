@@ -343,8 +343,7 @@ In the built-in SDK pipeline, when a task is wrapped by a configured `TaskStore`
 
 <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> uses immutable record snapshots with
 compare-and-swap updates for lock-free thread safety. `InputRequests` and `InputResponses` are
-exposed as <xref:System.Collections.Immutable.ImmutableDictionary`2> so observers cannot mutate
-internal state.
+exposed as `ImmutableDictionary<,>` so observers cannot mutate internal state.
 
 #### Capability bypass inside a task scope
 
