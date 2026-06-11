@@ -1024,6 +1024,27 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
+        // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
+        // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
+        // When a handler leaves them unset, fill in conservative defaults (immediately stale and not
+        // shareable) so the wire form always carries the fields while preserving today's "don't cache"
+        // behavior. Any value supplied by the handler or a filter is left untouched.
+        if (typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
+        {
+            var innerHandler = handler;
+            handler = async (request, cancellationToken) =>
+            {
+                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+                if (result is ICacheableResult cacheable)
+                {
+                    cacheable.TimeToLive ??= TimeSpan.Zero;
+                    cacheable.CacheScope ??= CacheScope.Private;
+                }
+
+                return result;
+            };
+        }
+
         _requestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),

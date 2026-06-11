@@ -21,6 +21,14 @@ public class CacheableResultClientServerTests(ITestOutputHelper testOutputHelper
                 TimeToLive = TimeSpan.FromMinutes(5),
                 CacheScope = CacheScope.Public,
             }))
+            .WithListPromptsHandler((_, _) => new ValueTask<ListPromptsResult>(new ListPromptsResult
+            {
+                Prompts = [new Prompt { Name = "greet" }],
+            }))
+            .WithListResourcesHandler((_, _) => new ValueTask<ListResourcesResult>(new ListResourcesResult
+            {
+                Resources = [new Resource { Uri = "test://resource", Name = "resource" }],
+            }))
             .WithReadResourceHandler((request, _) => new ValueTask<ReadResourceResult>(new ReadResourceResult
             {
                 Contents = [new TextResourceContents { Uri = request.Params!.Uri!, Text = "hi" }],
@@ -52,6 +60,34 @@ public class CacheableResultClientServerTests(ITestOutputHelper testOutputHelper
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(TimeSpan.FromSeconds(30), result.TimeToLive);
+        Assert.Equal(CacheScope.Private, result.CacheScope);
+    }
+
+    [Fact]
+    public async Task ListPrompts_WhenHandlerOmitsHints_ServerInjectsConservativeDefaults()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.ListPromptsAsync(
+            new ListPromptsRequestParams(),
+            TestContext.Current.CancellationToken);
+
+        // SEP-2549: the handler left the hints unset, so the server fills in conservative defaults
+        // (immediately stale, not shareable) rather than omitting the now-required fields.
+        Assert.Equal(TimeSpan.Zero, result.TimeToLive);
+        Assert.Equal(CacheScope.Private, result.CacheScope);
+    }
+
+    [Fact]
+    public async Task ListResources_WhenHandlerOmitsHints_ServerInjectsConservativeDefaults()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.ListResourcesAsync(
+            new ListResourcesRequestParams(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(TimeSpan.Zero, result.TimeToLive);
         Assert.Equal(CacheScope.Private, result.CacheScope);
     }
 }
