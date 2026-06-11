@@ -53,6 +53,20 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </para>
+    /// <para>
+    /// When called during task-augmented tool execution, this method automatically updates the task
+    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for the client response,
+    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
+    /// </para>
+    /// </remarks>
     public ValueTask<CreateMessageResult> SampleAsync(
         CreateMessageRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -222,6 +236,13 @@ public abstract partial class McpServer : McpSession
     /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <remarks>
+    /// When the server is using the Streamable HTTP transport, prefer obtaining this chat client from the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes sampling requests through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </remarks>
     public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
@@ -243,6 +264,13 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </remarks>
     public ValueTask<ListRootsResult> RequestRootsAsync(
         ListRootsRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -281,6 +309,20 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </para>
+    /// <para>
+    /// When called during task-augmented tool execution, this method automatically updates the task
+    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for user input,
+    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
+    /// </para>
+    /// </remarks>
     public async ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams requestParams, 
         CancellationToken cancellationToken = default)

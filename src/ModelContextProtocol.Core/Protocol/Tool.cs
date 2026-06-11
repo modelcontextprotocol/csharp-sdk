@@ -64,6 +64,7 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("inputSchema")]
+    [JsonRequired]
     public JsonElement InputSchema
     {
         get => field;
