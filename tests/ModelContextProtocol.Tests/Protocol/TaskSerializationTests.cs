@@ -117,7 +117,7 @@ public static class TaskSerializationTests
     [Fact]
     public static void GetTaskResult_Completed_RoundTrip_IncludesResult()
     {
-        var resultPayload = JsonSerializer.SerializeToElement(new { content = new[] { new { type = "text", text = "done" } } });
+        var resultPayload = JsonElement.Parse("""{"content":[{"type":"text","text":"done"}]}""");
         var original = new CompletedTaskResult
         {
             TaskId = "c1",
@@ -138,7 +138,7 @@ public static class TaskSerializationTests
     [Fact]
     public static void GetTaskResult_Failed_RoundTrip_IncludesError()
     {
-        var errorPayload = JsonSerializer.SerializeToElement(new { code = -32000, message = "internal error" });
+        var errorPayload = JsonElement.Parse("""{"code":-32000,"message":"internal error"}""");
         var original = new FailedTaskResult
         {
             TaskId = "f1",
@@ -184,7 +184,7 @@ public static class TaskSerializationTests
             ["req-1"] = new InputRequest
             {
                 Method = "elicitation/create",
-                Params = JsonSerializer.SerializeToElement(new { message = "Confirm?" }),
+                Params = JsonElement.Parse("""{"message":"Confirm?"}"""),
             }
         };
         var original = new InputRequiredTaskResult
@@ -289,8 +289,8 @@ public static class TaskSerializationTests
         GetTaskResult value = subType switch
         {
             Type t when t == typeof(WorkingTaskResult) => new WorkingTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
-            Type t when t == typeof(CompletedTaskResult) => new CompletedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Result = JsonSerializer.SerializeToElement(new { ok = true }), ResultType = "complete" },
-            Type t when t == typeof(FailedTaskResult) => new FailedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Error = JsonSerializer.SerializeToElement(new { code = -32603, message = "boom" }), ResultType = "complete" },
+            Type t when t == typeof(CompletedTaskResult) => new CompletedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Result = JsonElement.Parse("""{"ok":true}"""), ResultType = "complete" },
+            Type t when t == typeof(FailedTaskResult) => new FailedTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, Error = JsonElement.Parse("""{"code":-32603,"message":"boom"}"""), ResultType = "complete" },
             Type t when t == typeof(CancelledTaskResult) => new CancelledTaskResult { TaskId = "t", CreatedAt = created, LastUpdatedAt = created, ResultType = "complete" },
             Type t when t == typeof(InputRequiredTaskResult) => new InputRequiredTaskResult
             {
@@ -361,7 +361,7 @@ public static class TaskSerializationTests
     [Fact]
     public static void TaskStatusNotificationParams_Completed_RoundTrip()
     {
-        var resultPayload = JsonSerializer.SerializeToElement(new { text = "done" });
+        var resultPayload = JsonElement.Parse("""{"text":"done"}""");
         var original = new CompletedTaskNotificationParams
         {
             TaskId = "n2",
@@ -381,7 +381,7 @@ public static class TaskSerializationTests
     [Fact]
     public static void TaskStatusNotificationParams_Failed_RoundTrip()
     {
-        var errorPayload = JsonSerializer.SerializeToElement(new { code = -1, message = "boom" });
+        var errorPayload = JsonElement.Parse("""{"code":-1,"message":"boom"}""");
         var original = new FailedTaskNotificationParams
         {
             TaskId = "n3",

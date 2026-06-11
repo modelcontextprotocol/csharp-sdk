@@ -167,7 +167,7 @@ public class InMemoryMcpTaskStoreTests
             ["req1"] = new InputRequest
             {
                 Method = "elicitation/create",
-                Params = JsonSerializer.SerializeToElement(new { message = "hello" }, McpJsonUtilities.DefaultOptions),
+                Params = JsonElement.Parse("""{"message":"hello"}"""),
             },
         };
         await store.SetInputRequestsAsync(created.TaskId, requests, CT);
@@ -405,7 +405,7 @@ public class InMemoryMcpTaskStoreTests
 
         await store.SetFailedAsync(
             created.TaskId,
-            JsonSerializer.SerializeToElement(new { message = "boom" }, McpJsonUtilities.DefaultOptions),
+            JsonElement.Parse("""{"message":"boom"}"""),
             CT);
 
         var task = await store.GetTaskAsync(created.TaskId, CT);

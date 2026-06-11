@@ -183,7 +183,7 @@ public class McpServerTaskTests : ClientServerTestBase
         {
             await Task.Delay(100, ct);
             var taskId = _taskStore.GetAllTaskIds().Single();
-            _taskStore.FailTask(taskId, new { code = -32000, message = "something went wrong" });
+            _taskStore.FailTask(taskId, JsonElement.Parse("""{"code":-32000,"message":"something went wrong"}"""));
         }, ct);
 
         await Assert.ThrowsAsync<McpException>(async () =>
@@ -344,7 +344,7 @@ public class McpServerTaskTests : ClientServerTestBase
         // Provide input
         var inputResponses = new Dictionary<string, InputResponse>
         {
-            ["resp-1"] = new InputResponse { RawValue = JsonSerializer.SerializeToElement(new { answer = "yes" }) }
+            ["resp-1"] = new InputResponse { RawValue = JsonElement.Parse("""{"answer":"yes"}""") }
         };
         await client.UpdateTaskAsync(new UpdateTaskRequestParams
         {
@@ -582,7 +582,7 @@ public class McpServerTaskTests : ClientServerTestBase
                     TaskId = taskId,
                     CreatedAt = entry.CreatedAt,
                     LastUpdatedAt = entry.LastUpdatedAt,
-                    Error = JsonSerializer.SerializeToElement(entry.Error),
+                    Error = entry.Error!.Value,
                 },
                 McpTaskStatus.Cancelled => new CancelledTaskResult
                 {
@@ -611,7 +611,7 @@ public class McpServerTaskTests : ClientServerTestBase
             }
         }
 
-        public void FailTask(string taskId, object error)
+        public void FailTask(string taskId, JsonElement error)
         {
             if (_tasks.TryGetValue(taskId, out var entry))
             {
@@ -647,7 +647,7 @@ public class McpServerTaskTests : ClientServerTestBase
             public DateTimeOffset CreatedAt { get; set; }
             public DateTimeOffset LastUpdatedAt { get; set; }
             public CallToolResult? Result { get; set; }
-            public object? Error { get; set; }
+            public JsonElement? Error { get; set; }
             public IDictionary<string, InputRequest>? InputRequests { get; set; }
             public IDictionary<string, InputResponse>? InputResponses { get; set; }
         }

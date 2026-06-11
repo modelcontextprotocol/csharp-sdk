@@ -681,7 +681,7 @@ public class McpTaskStoreTests : ClientServerTestBase
                 TaskId = "notify-test-task-id",
                 CreatedAt = now,
                 LastUpdatedAt = now,
-                Result = JsonSerializer.SerializeToElement("notify-result"),
+                Result = JsonElement.Parse("\"notify-result\""),
             }, cancellationToken);
 
             return "notified";
@@ -691,7 +691,7 @@ public class McpTaskStoreTests : ClientServerTestBase
         public static async Task<string> FailingNotifyTool(McpServer server, CancellationToken cancellationToken)
         {
             var now = DateTimeOffset.UtcNow;
-            var errorJson = JsonSerializer.SerializeToElement(new { code = -32000, message = "boom" });
+            var errorJson = JsonElement.Parse("""{"code":-32000,"message":"boom"}""");
 
             await server.SendTaskStatusNotificationAsync(new FailedTaskNotificationParams
             {
