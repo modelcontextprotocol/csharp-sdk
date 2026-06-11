@@ -6,6 +6,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -126,6 +127,12 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
         Assert.Contains(DraftVersion, supported);
+
+        // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
+        // safest defaults (immediately stale, not shareable) when the application hasn't customized.
+        Assert.Equal(JsonValueKind.Number, json["result"]!["ttlMs"]!.GetValueKind());
+        Assert.Equal(0, json["result"]!["ttlMs"]!.GetValue<long>());
+        Assert.Equal("private", json["result"]!["cacheScope"]!.GetValue<string>());
     }
 
     [Fact]

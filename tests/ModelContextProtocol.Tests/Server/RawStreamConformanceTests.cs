@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -101,6 +102,12 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.NotNull(result["capabilities"]);
         Assert.NotNull(result["serverInfo"]);
         Assert.Equal("raw-conformance-server", result["serverInfo"]!["name"]!.GetValue<string>());
+
+        // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
+        // safest defaults (immediately stale, not shareable) when the application hasn't customized.
+        Assert.Equal(JsonValueKind.Number, result["ttlMs"]!.GetValueKind());
+        Assert.Equal(0, result["ttlMs"]!.GetValue<long>());
+        Assert.Equal("private", result["cacheScope"]!.GetValue<string>());
     }
 
     [Fact]

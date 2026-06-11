@@ -444,6 +444,11 @@ internal sealed partial class McpServerImpl : McpServer
                     Capabilities = ServerCapabilities ?? new(),
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
+                    // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
+                    // the safest values (immediately stale, not shareable) so existing servers keep
+                    // their "do not cache" behavior while satisfying the wire requirement.
+                    TimeToLive = TimeSpan.Zero,
+                    CacheScope = CacheScope.Private,
                 });
             },
             McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
