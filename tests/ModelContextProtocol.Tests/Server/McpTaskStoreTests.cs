@@ -347,15 +347,20 @@ public class McpTaskStoreTests : ClientServerTestBase
 
         Assert.Equal("notified", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
 
-        // Read both notifications and verify they round-trip to the right typed subtype + payload.
-        var working = await notifications.Reader.ReadAsync(ct);
-        var completed = await notifications.Reader.ReadAsync(ct);
+        // Read both notifications. The server emits them in strict order (each
+        // SendTaskStatusNotificationAsync awaits the transport write before the next), but client-side
+        // dispatch (McpSessionHandler.ProcessMessageAsync) is fire-and-forget per message, so user
+        // handlers may observe them out of order. Reconstruct send order via the server-set
+        // LastUpdatedAt timestamp.
+        var first = await notifications.Reader.ReadAsync(ct);
+        var second = await notifications.Reader.ReadAsync(ct);
+        var ordered = new[] { first, second }.OrderBy(n => n.LastUpdatedAt).ToArray();
 
-        var workingTyped = Assert.IsType<WorkingTaskNotificationParams>(working);
+        var workingTyped = Assert.IsType<WorkingTaskNotificationParams>(ordered[0]);
         Assert.Equal("notify-test-task-id", workingTyped.TaskId);
         Assert.Equal(McpTaskStatus.Working, workingTyped.Status);
 
-        var completedTyped = Assert.IsType<CompletedTaskNotificationParams>(completed);
+        var completedTyped = Assert.IsType<CompletedTaskNotificationParams>(ordered[1]);
         Assert.Equal("notify-test-task-id", completedTyped.TaskId);
         Assert.Equal(McpTaskStatus.Completed, completedTyped.Status);
         Assert.Equal("notify-result", completedTyped.Result.GetString());
@@ -665,22 +670,25 @@ public class McpTaskStoreTests : ClientServerTestBase
         [McpServerTool(Name = "notifying-tool"), System.ComponentModel.Description("A tool that emits SendTaskStatusNotificationAsync from inside the task wrapper")]
         public static async Task<string> NotifyingTool(McpServer server, CancellationToken cancellationToken)
         {
-            var now = DateTimeOffset.UtcNow;
+            var createdAt = DateTimeOffset.UtcNow;
 
             // Emit working then completed notifications using the public SendTaskStatusNotificationAsync API,
             // so the test asserts the wire round-trip end-to-end (server → transport → client handler).
+            // Use distinct LastUpdatedAt values so the test can reconstruct send order on the receive side
+            // (client-side dispatch via McpSessionHandler.ProcessMessageAsync is fire-and-forget per message
+            // and may surface notifications to user handlers out of receipt order).
             await server.SendTaskStatusNotificationAsync(new WorkingTaskNotificationParams
             {
                 TaskId = "notify-test-task-id",
-                CreatedAt = now,
-                LastUpdatedAt = now,
+                CreatedAt = createdAt,
+                LastUpdatedAt = createdAt,
             }, cancellationToken);
 
             await server.SendTaskStatusNotificationAsync(new CompletedTaskNotificationParams
             {
                 TaskId = "notify-test-task-id",
-                CreatedAt = now,
-                LastUpdatedAt = now,
+                CreatedAt = createdAt,
+                LastUpdatedAt = createdAt.AddTicks(1),
                 Result = JsonElement.Parse("\"notify-result\""),
             }, cancellationToken);
 
