@@ -10,7 +10,8 @@ namespace ModelContextProtocol.Tests.Client;
 /// <summary>
 /// Tests for SEP-2243 x-mcp-header validation changes:
 /// - RFC 9110 tchar validation for header names
-/// - "number" type rejection (only integer/string/boolean allowed)
+/// - "number" type acceptance (along with integer/string/boolean) per the SEP's
+///   "primitive types (number, string, boolean)" rule
 /// - Nested property support for x-mcp-header annotations
 /// </summary>
 public class McpHeaderExtractorValidationTests : ClientServerTestBase
@@ -27,7 +28,7 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
             (string input) => $"echo {input}",
             new() { Name = "ValidTool" })]);
 
-        // Tool with "number" type (should be rejected per updated SEP-2243)
+        // Tool with "number" type (should be accepted per SEP-2243 "number, string, boolean" rule)
         var numberTool = McpServerTool.Create((string x) => x, new() { Name = "NumberTypeTool" });
         numberTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
             { "type": "object", "properties": { "value": { "type": "number", "x-mcp-header": "Value" } } }
@@ -40,6 +41,13 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
             { "type": "object", "properties": { "count": { "type": "integer", "x-mcp-header": "Count" } } }
             """).RootElement.Clone();
         mcpServerBuilder.WithTools([integerTool]);
+
+        // Tool with "array" type (should be rejected - not a primitive type)
+        var arrayTool = McpServerTool.Create((string x) => x, new() { Name = "ArrayTypeTool" });
+        arrayTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
+            { "type": "object", "properties": { "value": { "type": "array", "items": { "type": "string" }, "x-mcp-header": "Value" } } }
+            """).RootElement.Clone();
+        mcpServerBuilder.WithTools([arrayTool]);
 
         // Tool with non-tchar header name (should be rejected)
         var nonTcharTool = McpServerTool.Create((string x) => x, new() { Name = "BadTcharTool" });
@@ -69,7 +77,7 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
             """).RootElement.Clone();
         mcpServerBuilder.WithTools([duplicateTool]);
 
-        // Tool with nested "number" type (should be rejected)
+        // Tool with nested "number" type (should be accepted per SEP-2243)
         var nestedNumberTool = McpServerTool.Create((string x) => x, new() { Name = "NestedNumberTool" });
         nestedNumberTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
             { "type": "object", "properties": { "config": { "type": "object", "properties": { "threshold": { "type": "number", "x-mcp-header": "Threshold" } } } } }
@@ -83,7 +91,7 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
             """).RootElement.Clone();
         mcpServerBuilder.WithTools([nullableUnionTool]);
 
-        // Tool with a union type containing a disallowed type ["number", "null"] (should be rejected)
+        // Tool with a union type containing "number" and "null" (should be accepted)
         var numberUnionTool = McpServerTool.Create((string x) => x, new() { Name = "NumberUnionTool" });
         numberUnionTool.ProtocolTool.InputSchema = JsonDocument.Parse("""
             { "type": "object", "properties": { "value": { "type": ["number", "null"], "x-mcp-header": "Value" } } }
@@ -106,18 +114,13 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task ListToolsAsync_NumberType_ExcludesTool()
+    public async Task ListToolsAsync_NumberType_AcceptsTool()
     {
         await using var client = await CreateMcpClientForServer();
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(tools, t => t.Name == "ValidTool");
-        Assert.DoesNotContain(tools, t => t.Name == "NumberTypeTool");
-
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
-            log.Message.Contains("NumberTypeTool") &&
-            log.Message.Contains("excluded"));
+        Assert.Contains(tools, t => t.Name == "NumberTypeTool");
     }
 
     [Fact]
@@ -127,6 +130,21 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(tools, t => t.Name == "IntegerTypeTool");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_ArrayType_ExcludesTool()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains(tools, t => t.Name == "ValidTool");
+        Assert.DoesNotContain(tools, t => t.Name == "ArrayTypeTool");
+
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Message.Contains("ArrayTypeTool") &&
+            log.Message.Contains("excluded"));
     }
 
     [Fact]
@@ -169,13 +187,12 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task ListToolsAsync_NestedNumberType_ExcludesTool()
+    public async Task ListToolsAsync_NestedNumberType_AcceptsTool()
     {
         await using var client = await CreateMcpClientForServer();
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains(tools, t => t.Name == "ValidTool");
-        Assert.DoesNotContain(tools, t => t.Name == "NestedNumberTool");
+        Assert.Contains(tools, t => t.Name == "NestedNumberTool");
     }
 
     [Fact]
@@ -188,13 +205,12 @@ public class McpHeaderExtractorValidationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task ListToolsAsync_NumberUnionType_ExcludesTool()
+    public async Task ListToolsAsync_NumberUnionType_AcceptsTool()
     {
         await using var client = await CreateMcpClientForServer();
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains(tools, t => t.Name == "ValidTool");
-        Assert.DoesNotContain(tools, t => t.Name == "NumberUnionTool");
+        Assert.Contains(tools, t => t.Name == "NumberUnionTool");
     }
 
     [Fact]

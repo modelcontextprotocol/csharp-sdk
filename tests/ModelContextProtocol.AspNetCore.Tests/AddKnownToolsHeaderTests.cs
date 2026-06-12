@@ -342,6 +342,74 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
         Assert.Empty(headers);
     }
 
+    private static Tool CreateToolWithNumberHeaders()
+    {
+        // Schema using "type": "number" for both an integer-valued and a fractional-valued
+        // header parameter. Per SEP-2243 the "number" primitive type is permitted alongside
+        // "string" and "boolean"; unlike "integer", values aren't canonicalized — they are
+        // emitted using their raw JSON representation.
+        var schemaJson = """
+            {
+                "type": "object",
+                "properties": {
+                    "priority": {
+                        "type": "number",
+                        "x-mcp-header": "Priority"
+                    },
+                    "ratio": {
+                        "type": "number",
+                        "x-mcp-header": "Ratio"
+                    }
+                },
+                "required": ["priority", "ratio"]
+            }
+            """;
+
+        return new Tool
+        {
+            Name = "number_tool",
+            InputSchema = JsonDocument.Parse(schemaJson).RootElement.Clone(),
+        };
+    }
+
+    [Theory]
+    [InlineData("2", "0.5", "2", "0.5")]
+    [InlineData("42", "3.14", "42", "3.14")]
+    [InlineData("-7", "-0.25", "-7", "-0.25")]
+    public async Task CallTool_NumberType_EmitsRawJsonNumberHeader(
+        string priorityValue,
+        string ratioValue,
+        string expectedPriorityHeader,
+        string expectedRatioHeader)
+    {
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        client.AddKnownTools([CreateToolWithNumberHeaders()]);
+
+        var result = await client.CallToolAsync(
+            "number_tool",
+            new Dictionary<string, object?>
+            {
+                ["priority"] = JsonDocument.Parse(priorityValue).RootElement,
+                ["ratio"] = JsonDocument.Parse(ratioValue).RootElement,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        var headers = _capturedHeaders.Values.First();
+        Assert.Equal(expectedPriorityHeader, headers["Mcp-Param-Priority"]);
+        Assert.Equal(expectedRatioHeader, headers["Mcp-Param-Ratio"]);
+    }
+
     private static Tool CreateToolWithSingleHeader(string toolName, string headerName)
     {
         var schemaJson = $$"""
