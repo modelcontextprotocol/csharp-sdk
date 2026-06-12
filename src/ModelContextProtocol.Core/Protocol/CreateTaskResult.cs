@@ -58,7 +58,7 @@ public sealed class CreateTaskResult : Result
     /// Gets or sets the time-to-live duration from creation in milliseconds, or <see langword="null"/> for unlimited.
     /// </summary>
     [JsonPropertyName("ttlMs")]
-    public long? TtlMs { get; set; }
+    public long? TimeToLiveMs { get; set; }
 
     /// <summary>
     /// Gets or sets the suggested polling interval in milliseconds.

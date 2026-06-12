@@ -20,7 +20,7 @@ public sealed record McpTaskInfo(
     McpTaskStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastUpdatedAt,
-    long? TtlMs = null,
+    long? TimeToLiveMs = null,
     long? PollIntervalMs = null,
     string? StatusMessage = null,
     JsonElement? Result = null,

@@ -34,7 +34,7 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <summary>
     /// Gets or sets the default time-to-live in milliseconds for new tasks, or <see langword="null"/> for unlimited.
     /// </summary>
-    public long? DefaultTtlMs { get; set; }
+    public long? DefaultTimeToLiveMs { get; set; }
 
     /// <inheritdoc/>
     public Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default)
@@ -42,7 +42,7 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
         var taskId = Guid.NewGuid().ToString("N");
         var now = DateTimeOffset.UtcNow;
 
-        var info = new McpTaskInfo(taskId, McpTaskStatus.Working, now, now, DefaultTtlMs, DefaultPollIntervalMs);
+        var info = new McpTaskInfo(taskId, McpTaskStatus.Working, now, now, DefaultTimeToLiveMs, DefaultPollIntervalMs);
         _tasks[taskId] = info;
 
         return Task.FromResult(info);
