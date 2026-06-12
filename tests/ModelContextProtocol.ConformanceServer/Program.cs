@@ -46,6 +46,7 @@ public class Program
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
             .WithTools<ConformanceTools>()
+            .WithTools<IncompleteResultTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
             .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
             {
@@ -100,6 +101,7 @@ public class Program
                 return result;
             }))
             .WithPrompts<ConformancePrompts>()
+            .WithPrompts<IncompleteResultPrompts>()
             .WithResources<ConformanceResources>()
             .WithSubscribeToResourcesHandler(async (ctx, ct) =>
             {

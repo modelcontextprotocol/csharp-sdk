@@ -153,24 +153,4 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </remarks>
     [JsonPropertyName("toolChoice")]
     public ToolChoice? ToolChoice { get; set; }
-
-    /// <summary>
-    /// Gets or sets optional task metadata to augment this request with task execution.
-    /// </summary>
-    /// <remarks>
-    /// When present, indicates that the requestor wants this operation executed as a task.
-    /// The receiver must support task augmentation for this specific request type.
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    [JsonIgnore]
-    public McpTaskMetadata? Task
-    {
-        get => TaskCore;
-        set => TaskCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
-    [JsonPropertyName("task")]
-    internal McpTaskMetadata? TaskCore { get; set; }
 }

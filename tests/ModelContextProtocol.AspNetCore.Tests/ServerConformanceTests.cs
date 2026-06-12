@@ -175,6 +175,34 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    // SEP-2322 (Multi Round-Trip Requests / IncompleteResult) conformance scenarios.
+    // The csharp-sdk ConformanceServer surfaces the matching tools/prompts via
+    // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts.
+    // Each scenario uses the conformance harness's RawMcpSession, which negotiates DRAFT-2026-v1
+    // so the csharp-sdk emits InputRequiredResult on the wire. These tests skip until the
+    // upstream conformance package ships with SEP-2322 scenarios
+    // (https://github.com/modelcontextprotocol/conformance/pull/188).
+    [Theory]
+    [InlineData("incomplete-result-basic-elicitation")]
+    [InlineData("incomplete-result-basic-sampling")]
+    [InlineData("incomplete-result-basic-list-roots")]
+    [InlineData("incomplete-result-request-state")]
+    [InlineData("incomplete-result-multiple-input-requests")]
+    [InlineData("incomplete-result-multi-round")]
+    [InlineData("incomplete-result-missing-input-response")]
+    [InlineData("incomplete-result-non-tool-request")]
+    public async Task RunMrtrConformanceTest(string scenario)
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package.");
+
+        var result = await RunConformanceTestsAsync(
+            $"server --url {fixture.ServerUrl} --scenario {scenario}");
+
+        Assert.True(result.Success,
+            $"MRTR conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
         return await NodeHelpers.RunServerConformanceAsync(

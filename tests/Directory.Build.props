@@ -3,7 +3,7 @@
 
   <PropertyGroup>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <!-- Suppress the experimental tasks warning in test projects -->
+    <!-- Suppress the experimental extensions warning in test projects -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
     <!-- Suppress the obsolete SSE warning in test projects that need to test legacy SSE -->
     <NoWarn>$(NoWarn);MCP9004</NoWarn>

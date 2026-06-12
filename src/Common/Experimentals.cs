@@ -10,7 +10,7 @@ namespace ModelContextProtocol;
 /// <list type="bullet">
 /// <item><description>
 /// <c>MCPEXP001</c> covers APIs related to experimental features in the MCP specification itself,
-/// such as Tasks and Extensions. These APIs may change as the specification evolves.
+/// such as Extensions. These APIs may change as the specification evolves.
 /// </description></item>
 /// <item><description>
 /// <c>MCPEXP002</c> covers experimental SDK APIs that are unrelated to the MCP specification,
@@ -36,29 +36,8 @@ namespace ModelContextProtocol;
 internal static class Experimentals
 {
     /// <summary>
-    /// Diagnostic ID for the experimental MCP Tasks feature.
-    /// </summary>
-    public const string Tasks_DiagnosticId = "MCPEXP001";
-
-    /// <summary>
-    /// Message for the experimental MCP Tasks feature.
-    /// </summary>
-    public const string Tasks_Message = "The Tasks feature is experimental per the MCP specification and is subject to change.";
-
-    /// <summary>
-    /// URL for the experimental MCP Tasks feature.
-    /// </summary>
-    public const string Tasks_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
-
-    /// <summary>
     /// Diagnostic ID for the experimental MCP Extensions feature.
     /// </summary>
-    /// <remarks>
-    /// This uses the same diagnostic ID as <see cref="Tasks_DiagnosticId"/> because both
-    /// Tasks and Extensions are covered by the same MCPEXP001 diagnostic for experimental
-    /// MCP features. Having separate constants improves code clarity while maintaining a
-    /// single diagnostic suppression point.
-    /// </remarks>
     public const string Extensions_DiagnosticId = "MCPEXP001";
 
     /// <summary>
@@ -110,4 +89,23 @@ internal static class Experimentals
     /// URL for the experimental <c>RunSessionHandler</c> API.
     /// </summary>
     public const string RunSessionHandler_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
+
+    /// <summary>
+    /// Diagnostic ID for the experimental Multi Round-Trip Requests (MRTR) feature.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Extensions_DiagnosticId"/> because MRTR
+    /// is an experimental feature in the MCP specification (SEP-2322).
+    /// </remarks>
+    public const string Mrtr_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental MRTR feature.
+    /// </summary>
+    public const string Mrtr_Message = "The Multi Round-Trip Requests (MRTR) feature is experimental per the MCP specification (SEP-2322) and is subject to change.";
+
+    /// <summary>
+    /// URL for the experimental MRTR feature.
+    /// </summary>
+    public const string Mrtr_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 }

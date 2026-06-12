@@ -794,6 +794,186 @@ public partial class McpServerToolTests
         Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
     }
 
+    [Fact]
+    public async Task StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers()
+    {
+        // When a non-object return type contains the same type at multiple locations,
+        // System.Text.Json's schema exporter emits $ref pointers for deduplication.
+        // After wrapping the schema under properties.result, those $ref pointers must
+        // be rewritten to remain valid. This test verifies that fix.
+        var data = new List<ContactInfo>
+        {
+            new()
+            {
+                WorkPhones = [new() { Number = "555-0100", Type = "work" }],
+                HomePhones = [new() { Number = "555-0200", Type = "home" }],
+            }
+        };
+
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+        var mockServer = new Mock<McpServer>();
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.NotNull(result.StructuredContent);
+
+        // Verify $ref pointers in the schema point to valid locations after wrapping.
+        // Without the fix, $ref values like "#/items/..." would be unresolvable because
+        // the original schema was moved under "#/properties/result".
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+
+        // Also verify that any $ref in the schema starts with #/properties/result
+        // (confirming the rewrite happened).
+        string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
+        var schemaNode = JsonNode.Parse(schemaJson)!;
+        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
+        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
+        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
+        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
+    }
+
+    [Fact]
+    public async Task StructuredOutput_WithRecursiveTypeRefs_RewritesRefPointers()
+    {
+        // When a non-object return type contains a recursive type, System.Text.Json's
+        // schema exporter emits $ref pointers (including potentially bare "#") for the
+        // recursive reference. After wrapping, these must be rewritten. For List<TreeNode>,
+        // Children's items emit "$ref": "#/items" which must become "#/properties/result/items".
+        var data = new List<TreeNode>
+        {
+            new()
+            {
+                Name = "root",
+                Children = [new() { Name = "child" }],
+            }
+        };
+
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+        var mockServer = new Mock<McpServer>();
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.NotNull(result.StructuredContent);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+
+        string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
+        var schemaNode = JsonNode.Parse(schemaJson)!;
+        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
+        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
+        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
+        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
+    }
+
+    private static int AssertAllRefsStartWith(JsonNode? node, string expectedPrefix)
+    {
+        int count = 0;
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue)
+            {
+                Assert.StartsWith(expectedPrefix, refValue);
+                count++;
+            }
+
+            foreach (var property in obj)
+            {
+                count += AssertAllRefsStartWith(property.Value, expectedPrefix);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                count += AssertAllRefsStartWith(item, expectedPrefix);
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Walks the JSON tree and verifies that every <c>$ref</c> pointer resolves to a valid node.
+    /// </summary>
+    private static int AssertAllRefsResolvable(JsonNode root, JsonNode? node)
+    {
+        int count = 0;
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue &&
+                refValue.StartsWith("#", StringComparison.Ordinal))
+            {
+                var resolved = ResolveJsonPointer(root, refValue);
+                Assert.True(resolved is not null, $"$ref \"{refValue}\" does not resolve to a valid node in the schema.");
+                count++;
+            }
+
+            foreach (var property in obj)
+            {
+                count += AssertAllRefsResolvable(root, property.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                count += AssertAllRefsResolvable(root, item);
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Resolves a JSON Pointer (e.g., <c>#/properties/result/items</c>) against a root node.
+    /// Returns <c>null</c> if the pointer cannot be resolved.
+    /// </summary>
+    private static JsonNode? ResolveJsonPointer(JsonNode root, string pointer)
+    {
+        if (pointer == "#")
+        {
+            return root;
+        }
+
+        if (!pointer.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        JsonNode? current = root;
+        string[] segments = pointer.Substring(2).Split('/');
+        foreach (string segment in segments)
+        {
+            if (current is JsonObject obj)
+            {
+                if (!obj.TryGetPropertyValue(segment, out current))
+                {
+                    return null;
+                }
+            }
+            else if (current is JsonArray arr && int.TryParse(segment, out int index) && index >= 0 && index < arr.Count)
+            {
+                current = arr[index];
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        return current;
+    }
+
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
     {
         yield return new object[] { "string" };
@@ -924,6 +1104,30 @@ public partial class McpServerToolTests
         JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions);
         options.TypeInfoResolverChain.Add(JsonContext2.Default);
         return options;
+    }
+
+    // Types used by StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers.
+    // ContactInfo has two properties of the same type (PhoneNumber) which causes
+    // System.Text.Json's schema exporter to emit $ref pointers for deduplication.
+    private sealed class PhoneNumber
+    {
+        public string? Number { get; set; }
+        public string? Type { get; set; }
+    }
+
+    private sealed class ContactInfo
+    {
+        public List<PhoneNumber>? WorkPhones { get; set; }
+        public List<PhoneNumber>? HomePhones { get; set; }
+    }
+
+    // Recursive type used by StructuredOutput_WithRecursiveTypeRefs_RewritesRefPointers.
+    // When List<TreeNode> is the return type, Children's items emit "$ref": "#/items"
+    // pointing back to the first TreeNode definition, which must be rewritten after wrapping.
+    private sealed class TreeNode
+    {
+        public string? Name { get; set; }
+        public List<TreeNode>? Children { get; set; }
     }
 
     [Fact]
@@ -1079,82 +1283,6 @@ public partial class McpServerToolTests
         Assert.Contains("Streamable HTTP", exception.Message);
     }
 
-    [Fact]
-    public void AsyncTool_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools should automatically get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTask);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_ValueTask_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning ValueTask should also get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTask);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_TaskOfT_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning Task<T> should get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTaskOfT);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_ValueTaskOfT_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning ValueTask<T> should get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTaskOfT);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void SyncTool_NotMarkedWithTaskSupport()
-    {
-        // Synchronous tools should not have TaskSupport set
-        McpServerTool tool = McpServerTool.Create(SyncTool);
-
-        Assert.Null(tool.ProtocolTool.Execution);
-    }
-
-    private static async Task AsyncToolReturningTask()
-    {
-        await Task.Yield();
-    }
-
-    private static async ValueTask AsyncToolReturningValueTask()
-    {
-        await Task.Yield();
-    }
-
-    private static async Task<string> AsyncToolReturningTaskOfT()
-    {
-        await Task.Yield();
-        return "result";
-    }
-
-    private static async ValueTask<string> AsyncToolReturningValueTaskOfT()
-    {
-        await Task.Yield();
-        return "result";
-    }
-
-    private static string SyncTool()
-    {
-        return "sync result";
-    }
-
     [Description("Tool that returns data.")]
     [return: Description("The computed result")]
     private static string ToolWithReturnDescription() => "result";
@@ -1219,6 +1347,15 @@ public partial class McpServerToolTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNonPrimitiveHeader))!));
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnUInt64Type_ThrowsInvalidOperationException()
+    {
+        // ulong is excluded per SEP-2243 because its domain extends beyond the JavaScript safe
+        // integer range (and beyond long), so it cannot be represented as a signed integer header.
+        Assert.Throws<InvalidOperationException>(() =>
+            McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithUInt64Header))!));
     }
 
     [Fact]
@@ -1307,6 +1444,11 @@ public partial class McpServerToolTests
 
         [McpServerTool]
         public static string ToolWithoutHeaders(string region, string query)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithUInt64Header(
+            [McpHeader("Count")] ulong count)
             => "result";
     }
 }
