@@ -57,11 +57,11 @@ public class InMemoryMcpTaskStoreTests
     [Fact]
     public async Task CreateTaskAsync_UsesDefaultTimeToLive()
     {
-        var store = new InMemoryMcpTaskStore { DefaultTimeToLiveMs = 30000 };
+        var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromSeconds(30) };
 
         var result = await store.CreateTaskAsync(CT);
 
-        Assert.Equal(30000, result.TimeToLiveMs);
+        Assert.Equal(TimeSpan.FromSeconds(30), result.TimeToLive);
     }
 
     [Fact]

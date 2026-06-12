@@ -21,7 +21,7 @@ public static class TaskSerializationTests
             StatusMessage = "Processing...",
             CreatedAt = new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero),
             LastUpdatedAt = new DateTimeOffset(2025, 6, 1, 12, 5, 0, TimeSpan.Zero),
-            TimeToLiveMs = 3600000,
+            TimeToLive = TimeSpan.FromHours(1),
             PollIntervalMs = 5000,
             ResultType = "task",
             Meta = new JsonObject { ["key"] = "value" }
@@ -36,7 +36,7 @@ public static class TaskSerializationTests
         Assert.Equal("Processing...", deserialized.StatusMessage);
         Assert.Equal(original.CreatedAt, deserialized.CreatedAt);
         Assert.Equal(original.LastUpdatedAt, deserialized.LastUpdatedAt);
-        Assert.Equal(3600000, deserialized.TimeToLiveMs);
+        Assert.Equal(TimeSpan.FromHours(1), deserialized.TimeToLive);
         Assert.Equal(5000, deserialized.PollIntervalMs);
         Assert.Equal("task", deserialized.ResultType);
         Assert.NotNull(deserialized.Meta);
@@ -52,7 +52,7 @@ public static class TaskSerializationTests
             Status = McpTaskStatus.Working,
             CreatedAt = DateTimeOffset.UtcNow,
             LastUpdatedAt = DateTimeOffset.UtcNow,
-            TimeToLiveMs = 60000,
+            TimeToLive = TimeSpan.FromMinutes(1),
             PollIntervalMs = 1000,
             ResultType = "task",
         };

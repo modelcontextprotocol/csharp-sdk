@@ -64,10 +64,10 @@ public abstract class GetTaskResult : Result
     public required DateTimeOffset LastUpdatedAt { get; set; }
 
     /// <summary>
-    /// Gets or sets the time-to-live duration from creation in milliseconds, or <see langword="null"/> for unlimited.
+    /// Gets or sets the time-to-live duration from creation, or <see langword="null"/> for unlimited.
     /// </summary>
     [JsonPropertyName("ttlMs")]
-    public long? TimeToLiveMs { get; set; }
+    public TimeSpan? TimeToLive { get; set; }
 
     /// <summary>
     /// Gets or sets the suggested polling interval in milliseconds.
@@ -245,7 +245,7 @@ public abstract class GetTaskResult : Result
             };
 
             taskResult.StatusMessage = statusMessage;
-            taskResult.TimeToLiveMs = ttlMs;
+            taskResult.TimeToLive = ttlMs is null ? null : TimeSpan.FromMilliseconds(ttlMs.Value);
             taskResult.PollIntervalMs = pollIntervalMs;
             taskResult.ResultType = resultType;
             taskResult.Meta = meta;
@@ -287,9 +287,9 @@ public abstract class GetTaskResult : Result
             writer.WriteString("createdAt", value.CreatedAt);
             writer.WriteString("lastUpdatedAt", value.LastUpdatedAt);
 
-            if (value.TimeToLiveMs is not null)
+            if (value.TimeToLive is not null)
             {
-                writer.WriteNumber("ttlMs", value.TimeToLiveMs.Value);
+                writer.WriteNumber("ttlMs", (long)value.TimeToLive.Value.TotalMilliseconds);
             }
 
             if (value.PollIntervalMs is not null)

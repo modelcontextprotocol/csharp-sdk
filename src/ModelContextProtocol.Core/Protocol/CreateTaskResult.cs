@@ -55,10 +55,11 @@ public sealed class CreateTaskResult : Result
     public required DateTimeOffset LastUpdatedAt { get; set; }
 
     /// <summary>
-    /// Gets or sets the time-to-live duration from creation in milliseconds, or <see langword="null"/> for unlimited.
+    /// Gets or sets the time-to-live duration from creation, or <see langword="null"/> for unlimited.
     /// </summary>
     [JsonPropertyName("ttlMs")]
-    public long? TimeToLiveMs { get; set; }
+    [JsonConverter(typeof(TimeSpanMillisecondsConverter))]
+    public TimeSpan? TimeToLive { get; set; }
 
     /// <summary>
     /// Gets or sets the suggested polling interval in milliseconds.
