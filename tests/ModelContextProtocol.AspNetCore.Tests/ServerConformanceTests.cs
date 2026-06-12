@@ -143,7 +143,7 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             !NodeHelpers.HasSep2243Scenarios(),
             "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
 
-        // SEP-2243 is a draft (DRAFT-2026-v1) scenario that uses the stateless lifecycle, so it
+        // SEP-2243 is a draft (2026-07-28) scenario that uses the stateless lifecycle, so it
         // requires a stateless server (a stateful server rejects the un-initialized list/call
         // requests with JSON-RPC -32000). Use a dedicated port range so it never collides with
         // the stateful class fixture (300x) or the caching stateless server (301x).
@@ -151,7 +151,7 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             TestContext.Current.CancellationToken, basePort: 3021);
 
         var result = await RunStatelessConformanceTestAsync(
-            $"server --url {server.ServerUrl} --scenario http-header-validation --spec-version DRAFT-2026-v1");
+            $"server --url {server.ServerUrl} --scenario http-header-validation --spec-version 2026-07-28");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -169,32 +169,49 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             TestContext.Current.CancellationToken, basePort: 3024);
 
         var result = await RunStatelessConformanceTestAsync(
-            $"server --url {server.ServerUrl} --scenario http-custom-header-server-validation --spec-version DRAFT-2026-v1");
+            $"server --url {server.ServerUrl} --scenario http-custom-header-server-validation --spec-version 2026-07-28");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
-    // SEP-2322 (Multi Round-Trip Requests / IncompleteResult) conformance scenarios.
+    // SEP-2322 (Multi Round-Trip Requests / InputRequiredResult) conformance scenarios.
     // The csharp-sdk ConformanceServer surfaces the matching tools/prompts via
-    // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts.
+    // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts
+    // (the class names predate the conformance-suite rename from "incomplete-result-*" to
+    // "input-required-result-*"; the wire-level tool names now match the new convention).
     // Each scenario uses the conformance harness's RawMcpSession, which negotiates 2026-07-28
     // so the csharp-sdk emits InputRequiredResult on the wire. These tests skip until the
-    // upstream conformance package ships with SEP-2322 scenarios
-    // (https://github.com/modelcontextprotocol/conformance/pull/188).
+    // installed conformance package ships SEP-2322 scenarios <em>and</em> emits this SDK's
+    // draft wire string (see <see cref="NodeHelpers.HasMrtrScenarios"/>).
+    //
+    // Two scenarios (input-required-result-tampered-state and input-required-result-capability-check)
+    // require advanced server-side logic not yet built into the ConformanceServer:
+    //   - tampered-state: HMAC integrity protection on requestState. Server-implementer concern
+    //     outside the SDK wire surface; would need a sample tool implementing the pattern.
+    //   - capability-check: per-request reading of clientCapabilities to gate which inputRequests
+    //     are returned. SDK exposes capabilities via JsonRpcMessageContext but no current tool
+    //     conditionally emits inputRequests based on them.
+    // These rows are skipped until matching tool implementations are added.
     [Theory]
-    [InlineData("incomplete-result-basic-elicitation")]
-    [InlineData("incomplete-result-basic-sampling")]
-    [InlineData("incomplete-result-basic-list-roots")]
-    [InlineData("incomplete-result-request-state")]
-    [InlineData("incomplete-result-multiple-input-requests")]
-    [InlineData("incomplete-result-multi-round")]
-    [InlineData("incomplete-result-missing-input-response")]
-    [InlineData("incomplete-result-non-tool-request")]
+    [InlineData("input-required-result-basic-elicitation")]
+    [InlineData("input-required-result-basic-sampling")]
+    [InlineData("input-required-result-basic-list-roots")]
+    [InlineData("input-required-result-request-state")]
+    [InlineData("input-required-result-multiple-input-requests")]
+    [InlineData("input-required-result-multi-round")]
+    [InlineData("input-required-result-missing-input-response")]
+    [InlineData("input-required-result-non-tool-request")]
+    [InlineData("input-required-result-result-type")]
+    [InlineData("input-required-result-unsupported-methods")]
+    [InlineData("input-required-result-tampered-state", Skip = "Requires HMAC-protected requestState pattern in ConformanceServer tools (not yet implemented).")]
+    [InlineData("input-required-result-capability-check", Skip = "Requires per-request capability-aware inputRequest gating in ConformanceServer tools (not yet implemented).")]
+    [InlineData("input-required-result-ignore-extra-params")]
+    [InlineData("input-required-result-validate-input")]
     public async Task RunMrtrConformanceTest(string scenario)
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package.");
+        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package (or installed version uses a stale draft wire string).");
 
         var result = await RunConformanceTestsAsync(
             $"server --url {fixture.ServerUrl} --scenario {scenario}");

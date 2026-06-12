@@ -20,8 +20,8 @@ namespace ConformanceServer.Tools;
 public sealed class IncompleteResultTools
 {
     // ──── A1: Basic Elicitation ─────────────────────────────────────────────
-    [McpServerTool(Name = "test_tool_with_elicitation")]
-    [Description("SEP-2322 A1: returns IncompleteResult with elicitation/create keyed 'user_name'.")]
+    [McpServerTool(Name = "test_input_required_result_elicitation")]
+    [Description("SEP-2322 A1: returns InputRequiredResult with elicitation/create keyed 'user_name'.")]
     public static CallToolResult ToolWithElicitation(RequestContext<CallToolRequestParams> context)
     {
         if (context.Params!.InputResponses is { } responses &&
@@ -51,8 +51,8 @@ public sealed class IncompleteResultTools
     }
 
     // ──── A2: Basic Sampling ────────────────────────────────────────────────
-    [McpServerTool(Name = "test_incomplete_result_sampling")]
-    [Description("SEP-2322 A2: returns IncompleteResult with sampling/createMessage keyed 'capital_question'.")]
+    [McpServerTool(Name = "test_input_required_result_sampling")]
+    [Description("SEP-2322 A2: returns InputRequiredResult with sampling/createMessage keyed 'capital_question'.")]
     public static CallToolResult ToolWithSampling(RequestContext<CallToolRequestParams> context)
     {
         if (context.Params!.InputResponses is { } responses &&
@@ -81,8 +81,8 @@ public sealed class IncompleteResultTools
     }
 
     // ──── A3: Basic ListRoots ───────────────────────────────────────────────
-    [McpServerTool(Name = "test_incomplete_result_list_roots")]
-    [Description("SEP-2322 A3: returns IncompleteResult with roots/list keyed 'client_roots'.")]
+    [McpServerTool(Name = "test_input_required_result_list_roots")]
+    [Description("SEP-2322 A3: returns InputRequiredResult with roots/list keyed 'client_roots'.")]
     public static CallToolResult ToolWithListRoots(RequestContext<CallToolRequestParams> context)
     {
         if (context.Params!.InputResponses is { } responses &&
@@ -102,7 +102,7 @@ public sealed class IncompleteResultTools
     // ──── B1: requestState round-trip ───────────────────────────────────────
     private const string RequestStateToken = "mrtr-conformance-state-v1";
 
-    [McpServerTool(Name = "test_incomplete_result_request_state")]
+    [McpServerTool(Name = "test_input_required_result_request_state")]
     [Description("SEP-2322 B1: round-trips a requestState string; R2 echoes 'state-ok' on success.")]
     public static CallToolResult ToolWithRequestState(RequestContext<CallToolRequestParams> context)
     {
@@ -135,7 +135,7 @@ public sealed class IncompleteResultTools
     }
 
     // ──── B2: Multiple input requests in one round ──────────────────────────
-    [McpServerTool(Name = "test_incomplete_result_multiple_inputs")]
+    [McpServerTool(Name = "test_input_required_result_multiple_inputs")]
     [Description("SEP-2322 B2: returns 3 simultaneous inputRequests (elicit + sampling + roots) plus requestState.")]
     public static CallToolResult ToolWithMultipleInputs(RequestContext<CallToolRequestParams> context)
     {
@@ -177,7 +177,7 @@ public sealed class IncompleteResultTools
     }
 
     // ──── B3: Multi-round (R1 -> incomplete, R2 -> incomplete (new state), R3 -> complete) ─────
-    [McpServerTool(Name = "test_incomplete_result_multi_round")]
+    [McpServerTool(Name = "test_input_required_result_multi_round")]
     [Description("SEP-2322 B3: three-round flow whose requestState changes between rounds.")]
     public static CallToolResult ToolWithMultiRound(RequestContext<CallToolRequestParams> context)
     {
