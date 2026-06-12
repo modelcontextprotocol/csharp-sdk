@@ -172,6 +172,12 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListToolsResult.TimeToLive"/> and <see cref="ListToolsResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListToolsAsync(ListToolsRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListToolsResult"/> for each page.
+    /// </remarks>
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -254,6 +260,12 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListPromptsResult.TimeToLive"/> and <see cref="ListPromptsResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListPromptsAsync(ListPromptsRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListPromptsResult"/> for each page.
+    /// </remarks>
     public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -364,6 +376,12 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListResourceTemplatesResult.TimeToLive"/> and <see cref="ListResourceTemplatesResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListResourceTemplatesAsync(ListResourceTemplatesRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListResourceTemplatesResult"/> for each page.
+    /// </remarks>
     public async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -420,6 +438,12 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resources as <see cref="Resource"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListResourcesResult.TimeToLive"/> and <see cref="ListResourcesResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListResourcesAsync(ListResourcesRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListResourcesResult"/> for each page.
+    /// </remarks>
     public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
