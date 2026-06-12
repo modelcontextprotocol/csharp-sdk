@@ -34,8 +34,8 @@ public interface ICacheableResult
     /// <para>
     /// When this property is <see langword="null"/> (the field was absent from the response), clients
     /// should assume a default of <see cref="TimeSpan.Zero"/> (immediately stale) and rely on their
-    /// own caching heuristics or notifications. A negative value should likewise be treated as
-    /// <see cref="TimeSpan.Zero"/>.
+    /// own caching heuristics or notifications. The SDK preserves whatever value the server sent and
+    /// does not coerce it; a client that receives a negative value should treat it as immediately stale.
     /// </para>
     /// </remarks>
     TimeSpan? TimeToLive { get; set; }
