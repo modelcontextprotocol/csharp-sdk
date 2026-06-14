@@ -62,6 +62,7 @@ public abstract partial class McpServer : McpSession
     public abstract IServiceProvider? Services { get; }
 
     /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public abstract LoggingLevel? LoggingLevel { get; }
 
     /// <summary>

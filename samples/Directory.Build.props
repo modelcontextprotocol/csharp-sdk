@@ -1,0 +1,9 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..'))" />
+
+  <PropertyGroup>
+    <!-- Suppress the Roots, Sampling, and Logging obsoletion warning (SEP-2577) in sample projects
+         that demonstrate the deprecated features, which continue to work. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
+  </PropertyGroup>
+</Project>

@@ -52,6 +52,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonPropertyName("roots")]
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public RootsCapability? Roots { get; set; }
 
     /// <summary>
@@ -59,6 +60,7 @@ public sealed class ClientCapabilities
     /// supports issuing requests to an LLM on behalf of the server.
     /// </summary>
     [JsonPropertyName("sampling")]
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public SamplingCapability? Sampling { get; set; }
 
     /// <summary>

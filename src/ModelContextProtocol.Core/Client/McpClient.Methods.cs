@@ -1208,6 +1208,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
         SetLoggingLevelAsync(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
 
@@ -1219,6 +1220,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         return SetLoggingLevelAsync(
@@ -1238,6 +1240,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(
         SetLevelRequestParams requestParams,
         CancellationToken cancellationToken = default)

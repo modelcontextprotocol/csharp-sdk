@@ -1368,7 +1368,10 @@ public class McpServerTests : LoggedTest
         public override string? NegotiatedProtocolVersion => throw new NotImplementedException();
         public override Implementation? ClientInfo => throw new NotImplementedException();
         public override IServiceProvider? Services => throw new NotImplementedException();
+        // McpServer.LoggingLevel is obsolete (SEP-2577) but abstract, so this test double must override it.
+#pragma warning disable CS0672 // Member overrides obsolete member
         public override LoggingLevel? LoggingLevel => throw new NotImplementedException();
+#pragma warning restore CS0672
         public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public override Task RunAsync(CancellationToken cancellationToken = default) =>
