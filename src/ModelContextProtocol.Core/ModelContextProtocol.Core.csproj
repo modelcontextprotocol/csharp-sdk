@@ -7,7 +7,7 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress the experimental tasks warning -->
+    <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
   </PropertyGroup>
 
@@ -35,6 +35,7 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
+    <PackageReference Include="System.Collections.Immutable" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" />
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="System.Threading.Channels" />

@@ -17,7 +17,6 @@ public static class CallToolRequestParamsTests
                 ["city"] = JsonDocument.Parse("\"Seattle\"").RootElement.Clone(),
                 ["units"] = JsonDocument.Parse("\"metric\"").RootElement.Clone()
             },
-            Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromHours(1) },
             Meta = new JsonObject { ["progressToken"] = "token-123" }
         };
 
@@ -30,8 +29,6 @@ public static class CallToolRequestParamsTests
         Assert.Equal(2, deserialized.Arguments.Count);
         Assert.Equal("Seattle", deserialized.Arguments["city"].GetString());
         Assert.Equal("metric", deserialized.Arguments["units"].GetString());
-        Assert.NotNull(deserialized.Task);
-        Assert.Equal(original.Task.TimeToLive, deserialized.Task.TimeToLive);
         Assert.NotNull(deserialized.Meta);
         Assert.Equal("token-123", (string)deserialized.Meta["progressToken"]!);
     }
@@ -50,7 +47,6 @@ public static class CallToolRequestParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal(original.Name, deserialized.Name);
         Assert.Null(deserialized.Arguments);
-        Assert.Null(deserialized.Task);
         Assert.Null(deserialized.Meta);
     }
 }

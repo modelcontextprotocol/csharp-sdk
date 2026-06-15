@@ -10,14 +10,27 @@ namespace ModelContextProtocol.Protocol;
 internal static class McpHttpHeaders
 {
     /// <summary>
-    /// The minimum protocol version that requires standard MCP request headers.
+    /// The draft MCP protocol version string used to gate behaviors that are only enabled
+    /// for clients negotiating the in-progress draft specification.
     /// </summary>
     /// <remarks>
-    /// Servers enforce missing <c>Mcp-Method</c> and <c>Mcp-Name</c> headers as errors only when
-    /// the client's <c>MCP-Protocol-Version</c> header indicates this version or later.
-    /// Clients using older versions are not required to send these headers.
+    /// Behaviors currently gated on this version include:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     Requiring the standard MCP request headers (<c>Mcp-Method</c> and <c>Mcp-Name</c>)
+    ///     on Streamable HTTP POST requests; servers treat missing headers as errors only when
+    ///     the client's <c>MCP-Protocol-Version</c> header matches this value.
+    ///   </description></item>
+    ///   <item><description>
+    ///     Reporting unresolvable resource URIs from <c>resources/read</c> with the standard
+    ///     JSON-RPC <see cref="McpErrorCode.InvalidParams"/> (-32602) code rather than the
+    ///     legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002) code.
+    ///   </description></item>
+    /// </list>
+    /// The associated helpers perform exact ordinal matches against this single value rather
+    /// than any ordered comparison.
     /// </remarks>
-    public static readonly string MinVersionForStandardHeaders = "DRAFT-2026-v1";
+    public const string DraftProtocolVersion = "DRAFT-2026-v1";
 
     /// <summary>The session identifier header.</summary>
     public const string SessionId = "Mcp-Session-Id";
@@ -67,7 +80,7 @@ internal static class McpHttpHeaders
     /// </summary>
     private static readonly HashSet<string> s_versionsWithStandardHeaders = new(StringComparer.Ordinal)
     {
-        MinVersionForStandardHeaders,
+        DraftProtocolVersion,
     };
 
     /// <summary>
@@ -75,4 +88,12 @@ internal static class McpHttpHeaders
     /// </summary>
     public static bool SupportsStandardHeaders(string? protocolVersion)
         => !string.IsNullOrEmpty(protocolVersion) && s_versionsWithStandardHeaders.Contains(protocolVersion!);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the negotiated protocol version reports unresolvable
+    /// resource URIs with the standard JSON-RPC <see cref="McpErrorCode.InvalidParams"/> (-32602)
+    /// rather than the legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002).
+    /// </summary>
+    internal static bool UseInvalidParamsForMissingResource(string? protocolVersion)
+        => string.Equals(protocolVersion, DraftProtocolVersion, StringComparison.Ordinal);
 }

@@ -340,3 +340,50 @@ Rules and constraints:
 - Values containing non-ASCII characters, control characters, or leading/trailing whitespace are Base64-encoded using the `=?base64?{value}?=` wrapper.
 - Header names must be case-insensitively unique within the tool's input schema.
 - Header validation is enforced only for protocol versions that support the HTTP Standardization feature (currently `DRAFT-2026-v1` and later).
+
+### Pre-loading tool definitions on the client
+
+By default, `Mcp-Param-*` headers are sent only for tools discovered via <xref:ModelContextProtocol.Client.McpClient.ListToolsAsync*>. If a client already has tool schema information (for example, from a previous session, hardcoded configuration, or an out-of-band source), it can pre-load those definitions so that headers are sent immediately—without a round trip to the server.
+
+```csharp
+// Build the tool definition with x-mcp-header annotations
+var tool = new Tool
+{
+    Name = "execute_sql",
+    InputSchema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "region": {
+                    "type": "string",
+                    "x-mcp-header": "Region"
+                },
+                "query": {
+                    "type": "string"
+                }
+            }
+        }
+        """).RootElement.Clone(),
+};
+
+// Pre-load the tool definition — no ListToolsAsync needed
+client.AddKnownTools([tool]);
+
+// This call now sends an Mcp-Param-Region header automatically
+var result = await client.CallToolAsync("execute_sql",
+    new Dictionary<string, object?> { ["region"] = "us-west-2", ["query"] = "SELECT 1" });
+```
+
+Known tools survive <xref:ModelContextProtocol.Client.McpClient.ListToolsAsync*> cache clears—they remain in the cache even when the server's tool list is refreshed. If the server returns a tool with the same name, the server's definition overwrites the cached one, but the tool keeps its known status.
+
+To remove known tools, use <xref:ModelContextProtocol.Client.McpClient.RemoveKnownTools*> for specific tools or <xref:ModelContextProtocol.Client.McpClient.ClearKnownTools*> to remove all:
+
+```csharp
+// Remove specific known tools by name
+client.RemoveKnownTools(["execute_sql"]);
+
+// Or remove all known tools at once
+client.ClearKnownTools();
+```
+
+All tools passed to <xref:ModelContextProtocol.Client.McpClient.AddKnownTools*> are validated for correct `x-mcp-header` annotations. If any tool in the batch fails validation, an <xref:System.ArgumentException> is thrown and no tools are added (all-or-nothing).

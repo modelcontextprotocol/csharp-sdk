@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -22,8 +23,8 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly McpClientOptions _options;
     private readonly McpSessionHandler _sessionHandler;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
-    private readonly McpTaskCancellationTokenProvider? _taskCancellationTokenProvider;
     private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _registeredToolNames = new(StringComparer.Ordinal);
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -49,12 +50,6 @@ internal sealed partial class McpClientImpl : McpClient
         _options = options;
         _logger = loggerFactory?.CreateLogger<McpClient>() ?? NullLogger<McpClient>.Instance;
 
-        // Only allocate the cancellation token provider if a task store is configured
-        if (options.TaskStore is not null)
-        {
-            _taskCancellationTokenProvider = new();
-        }
-
         var notificationHandlers = new NotificationHandlers();
         var requestHandlers = new RequestHandlers();
 
@@ -72,7 +67,23 @@ internal sealed partial class McpClientImpl : McpClient
 
         ToolDiscovered = tool => _toolCache[tool.Name] = tool;
         ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
-        ToolCacheClearing = () => _toolCache.Clear();
+        ToolCacheClearing = () =>
+        {
+            if (_registeredToolNames.IsEmpty)
+            {
+                _toolCache.Clear();
+                return;
+            }
+
+            // Only remove server-discovered tools; preserve manually registered tools.
+            foreach (var key in _toolCache.Keys)
+            {
+                if (!_registeredToolNames.ContainsKey(key))
+                {
+                    _toolCache.TryRemove(key, out _);
+                }
+            }
+        };
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
@@ -83,89 +94,26 @@ internal sealed partial class McpClientImpl : McpClient
         var samplingHandler = handlers.SamplingHandler;
         var rootsHandler = handlers.RootsHandler;
         var elicitationHandler = handlers.ElicitationHandler;
-        var taskStatusHandler = handlers.TaskStatusHandler;
-        var taskStore = options.TaskStore;
 
         if (notificationHandlersFromOptions is not null)
         {
             notificationHandlers.RegisterRange(notificationHandlersFromOptions);
         }
 
-        if (taskStatusHandler is not null)
-        {
-            notificationHandlers.Register(
-                NotificationMethods.TaskStatusNotification,
-                (notification, cancellationToken) =>
-                {
-                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.McpTaskStatusNotificationParams) is { } notificationParams)
-                    {
-                        var task = new McpTask
-                        {
-                            TaskId = notificationParams.TaskId,
-                            Status = notificationParams.Status,
-                            StatusMessage = notificationParams.StatusMessage,
-                            CreatedAt = notificationParams.CreatedAt,
-                            LastUpdatedAt = notificationParams.LastUpdatedAt,
-                            TimeToLive = notificationParams.TimeToLive,
-                            PollInterval = notificationParams.PollInterval
-                        };
-                        return taskStatusHandler(task, cancellationToken);
-                    }
-
-                    return default;
-                });
-        }
-
         if (samplingHandler is not null)
         {
-            // If task store is configured, wrap the handler to support task-augmented requests
-            if (taskStore is not null)
-            {
-                requestHandlers.Set(
-                    RequestMethods.SamplingCreateMessage,
-                    async (request, jsonRpcRequest, cancellationToken) =>
-                    {
-                        // Check if this is a task-augmented request
-                        if (request?.Task is { } taskMetadata)
-                        {
-                            // Create task in store and return immediately
-                            return await ExecuteAsTaskAsync(
-                                taskStore,
-                                taskMetadata,
-                                jsonRpcRequest,
-                                async ct =>
-                                {
-                                    var result = await samplingHandler(
-                                        request,
-                                        request.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                                        ct).ConfigureAwait(false);
-                                    return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-                                },
-                                options.SendTaskStatusNotifications,
-                                cancellationToken).ConfigureAwait(false);
-                        }
-
-                        // Normal synchronous execution - serialize result to JsonElement
-                        var samplingResult = await samplingHandler(
-                            request,
-                            request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                            cancellationToken).ConfigureAwait(false);
-                        return JsonSerializer.SerializeToElement(samplingResult, McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-                    },
-                    McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
-                    McpJsonUtilities.JsonContext.Default.JsonElement); // Return JsonElement to support both CreateMessageResult and CreateTaskResult
-            }
-            else
-            {
-                requestHandlers.Set(
-                    RequestMethods.SamplingCreateMessage,
-                    (request, _, cancellationToken) => samplingHandler(
+            requestHandlers.Set(
+                RequestMethods.SamplingCreateMessage,
+                (request, _, cancellationToken) =>
+                {
+                    WarnIfLegacyRequestOnMrtrSession(RequestMethods.SamplingCreateMessage);
+                    return samplingHandler(
                         request,
                         request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                        cancellationToken),
-                    McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
-                    McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-            }
+                        cancellationToken);
+                },
+                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageResult);
 
             _options.Capabilities ??= new();
             _options.Capabilities.Sampling ??= new();
@@ -175,7 +123,11 @@ internal sealed partial class McpClientImpl : McpClient
         {
             requestHandlers.Set(
                 RequestMethods.RootsList,
-                (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
+                (request, _, cancellationToken) =>
+                {
+                    WarnIfLegacyRequestOnMrtrSession(RequestMethods.RootsList);
+                    return rootsHandler(request, cancellationToken);
+                },
                 McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsResult);
 
@@ -185,51 +137,16 @@ internal sealed partial class McpClientImpl : McpClient
 
         if (elicitationHandler is not null)
         {
-            // If task store is configured, wrap the handler to support task-augmented requests
-            if (taskStore is not null)
-            {
-                requestHandlers.Set(
-                    RequestMethods.ElicitationCreate,
-                    async (request, jsonRpcRequest, cancellationToken) =>
-                    {
-                        // Check if this is a task-augmented request
-                        if (request?.Task is { } taskMetadata)
-                        {
-                            // Create task in store and return immediately
-                            return await ExecuteAsTaskAsync(
-                                taskStore,
-                                taskMetadata,
-                                jsonRpcRequest,
-                                async ct =>
-                                {
-                                    var result = await elicitationHandler(request, ct).ConfigureAwait(false);
-                                    result = ElicitResult.WithDefaults(request, result);
-                                    return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.ElicitResult);
-                                },
-                                options.SendTaskStatusNotifications,
-                                cancellationToken).ConfigureAwait(false);
-                        }
-
-                        // Normal synchronous execution - serialize result to JsonElement
-                        var elicitResult = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
-                        elicitResult = ElicitResult.WithDefaults(request, elicitResult);
-                        return JsonSerializer.SerializeToElement(elicitResult, McpJsonUtilities.JsonContext.Default.ElicitResult);
-                    },
-                    McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
-                    McpJsonUtilities.JsonContext.Default.JsonElement); // Return JsonElement to support both ElicitResult and CreateTaskResult
-            }
-            else
-            {
-                requestHandlers.Set(
-                    RequestMethods.ElicitationCreate,
-                    async (request, _, cancellationToken) =>
-                    {
-                        var result = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
-                        return ElicitResult.WithDefaults(request, result);
-                    },
-                    McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
-                    McpJsonUtilities.JsonContext.Default.ElicitResult);
-            }
+            requestHandlers.Set(
+                RequestMethods.ElicitationCreate,
+                async (request, _, cancellationToken) =>
+                {
+                    WarnIfLegacyRequestOnMrtrSession(RequestMethods.ElicitationCreate);
+                    var result = await elicitationHandler(request, cancellationToken).ConfigureAwait(false);
+                    return ElicitResult.WithDefaults(request, result);
+                },
+                McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+                McpJsonUtilities.JsonContext.Default.ElicitResult);
 
             _options.Capabilities ??= new();
             _options.Capabilities.Elicitation ??= new();
@@ -239,276 +156,6 @@ internal sealed partial class McpClientImpl : McpClient
                 // If both modes are null, default to form mode for backward compatibility.
                 _options.Capabilities.Elicitation.Form = new();
             }
-        }
-
-        // Register task handlers if a task store is configured
-        if (taskStore is not null)
-        {
-            RegisterTaskHandlers(requestHandlers, taskStore);
-        }
-    }
-
-    /// <summary>
-    /// Executes an operation as a task, creating the task immediately and running the operation asynchronously.
-    /// </summary>
-    private async ValueTask<JsonElement> ExecuteAsTaskAsync(
-        IMcpTaskStore taskStore,
-        McpTaskMetadata taskMetadata,
-        JsonRpcRequest jsonRpcRequest,
-        Func<CancellationToken, Task<JsonElement>> operation,
-        bool sendNotifications,
-        CancellationToken cancellationToken)
-    {
-        // Create the task in the store
-        var mcpTask = await taskStore.CreateTaskAsync(
-            taskMetadata,
-            jsonRpcRequest.Id,
-            jsonRpcRequest,
-            SessionId,
-            cancellationToken).ConfigureAwait(false);
-
-        // Register the task for TTL-based cancellation
-        var taskCancellationToken = _taskCancellationTokenProvider!.RequestToken(mcpTask.TaskId, mcpTask.TimeToLive);
-
-        // Execute the operation asynchronously in the background
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // Send notification if enabled
-                if (sendNotifications)
-                {
-                    var workingTask = await taskStore.GetTaskAsync(mcpTask.TaskId, SessionId, CancellationToken.None).ConfigureAwait(false);
-                    if (workingTask is not null)
-                    {
-                        _ = NotifyTaskStatusAsync(workingTask, CancellationToken.None);
-                    }
-                }
-
-                // Execute the operation with task-specific cancellation token
-                var result = await operation(taskCancellationToken).ConfigureAwait(false);
-
-                // Store the result
-                var completedTask = await taskStore.StoreTaskResultAsync(
-                    mcpTask.TaskId,
-                    McpTaskStatus.Completed,
-                    result,
-                    SessionId,
-                    CancellationToken.None).ConfigureAwait(false);
-
-                // Send final notification if enabled
-                if (sendNotifications)
-                {
-                    _ = NotifyTaskStatusAsync(completedTask, CancellationToken.None);
-                }
-            }
-            catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
-            {
-                // Task was cancelled via TTL expiration or explicit cancellation.
-                // For TTL expiration, the task is deleted so no status update needed.
-                // For explicit cancellation, the cancel handler already updates the status.
-            }
-            catch (Exception ex)
-            {
-                // Store error result using a simple string message
-                try
-                {
-                    var errorElement = JsonSerializer.SerializeToElement(ex.Message, McpJsonUtilities.JsonContext.Default.String);
-                    await taskStore.StoreTaskResultAsync(
-                        mcpTask.TaskId,
-                        McpTaskStatus.Failed,
-                        errorElement,
-                        SessionId,
-                        CancellationToken.None).ConfigureAwait(false);
-
-                    // Update task with error message
-                    var failedTask = await taskStore.UpdateTaskStatusAsync(
-                        mcpTask.TaskId,
-                        McpTaskStatus.Failed,
-                        ex.Message,
-                        SessionId,
-                        CancellationToken.None).ConfigureAwait(false);
-
-                    // Send failure notification if enabled
-                    if (sendNotifications)
-                    {
-                        _ = NotifyTaskStatusAsync(failedTask, CancellationToken.None);
-                    }
-                }
-                catch
-                {
-                    // If we can't store the error result, there's not much we can do
-                }
-            }
-            finally
-            {
-                // Clean up task cancellation tracking
-                _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
-            }
-        }, CancellationToken.None);
-
-        // Return the task result immediately
-        var createTaskResult = new CreateTaskResult { Task = mcpTask };
-        return JsonSerializer.SerializeToElement(createTaskResult, McpJsonUtilities.JsonContext.Default.CreateTaskResult);
-    }
-
-    /// <summary>
-    /// Sends a task status notification to the connected server.
-    /// </summary>
-    private Task NotifyTaskStatusAsync(McpTask task, CancellationToken cancellationToken)
-    {
-        var notificationParams = new McpTaskStatusNotificationParams
-        {
-            TaskId = task.TaskId,
-            Status = task.Status,
-            StatusMessage = task.StatusMessage,
-            CreatedAt = task.CreatedAt,
-            LastUpdatedAt = task.LastUpdatedAt,
-            TimeToLive = task.TimeToLive,
-            PollInterval = task.PollInterval
-        };
-
-        return this.SendNotificationAsync(
-            NotificationMethods.TaskStatusNotification,
-            notificationParams,
-            McpJsonUtilities.JsonContext.Default.McpTaskStatusNotificationParams,
-            cancellationToken);
-    }
-
-    /// <summary>
-    /// Registers handlers for task-related requests from the server.
-    /// </summary>
-    private void RegisterTaskHandlers(RequestHandlers requestHandlers, IMcpTaskStore taskStore)
-    {
-        // tasks/get handler - Retrieve task status
-        requestHandlers.Set(
-            RequestMethods.TasksGet,
-            async (request, _, cancellationToken) =>
-            {
-                if (request?.TaskId is not { } taskId)
-                {
-                    throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-                }
-
-                var task = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-                if (task is null)
-                {
-                    throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-                }
-
-                return new GetTaskResult
-                {
-                    TaskId = task.TaskId,
-                    Status = task.Status,
-                    StatusMessage = task.StatusMessage,
-                    CreatedAt = task.CreatedAt,
-                    LastUpdatedAt = task.LastUpdatedAt,
-                    TimeToLive = task.TimeToLive,
-                    PollInterval = task.PollInterval
-                };
-            },
-            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.GetTaskResult);
-
-        // tasks/result handler - Retrieve task result (blocking until terminal status)
-        requestHandlers.Set(
-            RequestMethods.TasksResult,
-            async (request, _, cancellationToken) =>
-            {
-                if (request?.TaskId is not { } taskId)
-                {
-                    throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-                }
-
-                // Poll until task reaches terminal status
-                while (true)
-                {
-                    McpTask? task = await taskStore.GetTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-                    if (task is null)
-                    {
-                        throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-                    }
-
-                    // If terminal, break and retrieve result
-                    if (task.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
-                    {
-                        break;
-                    }
-
-                    // Poll according to task's pollInterval (default 1 second)
-                    var pollInterval = task.PollInterval ?? TimeSpan.FromSeconds(1);
-                    await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
-                }
-
-                // Retrieve the stored result
-                return await taskStore.GetTaskResultAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-            },
-            McpJsonUtilities.JsonContext.Default.GetTaskPayloadRequestParams,
-            McpJsonUtilities.JsonContext.Default.JsonElement);
-
-        // tasks/list handler - List tasks with pagination
-        requestHandlers.Set(
-            RequestMethods.TasksList,
-            async (request, _, cancellationToken) =>
-            {
-                var cursor = request?.Cursor;
-                return await taskStore.ListTasksAsync(cursor, SessionId, cancellationToken).ConfigureAwait(false);
-            },
-            McpJsonUtilities.JsonContext.Default.ListTasksRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListTasksResult);
-
-        // tasks/cancel handler - Cancel a task
-        requestHandlers.Set(
-            RequestMethods.TasksCancel,
-            async (request, _, cancellationToken) =>
-            {
-                if (request?.TaskId is not { } taskId)
-                {
-                    throw new McpProtocolException("Missing required parameter 'taskId'", McpErrorCode.InvalidParams);
-                }
-
-                // Signal cancellation if task is still running
-                _taskCancellationTokenProvider!.Cancel(taskId);
-
-                var task = await taskStore.CancelTaskAsync(taskId, SessionId, cancellationToken).ConfigureAwait(false);
-                if (task is null)
-                {
-                    throw new McpProtocolException($"Task not found: '{taskId}'", McpErrorCode.InvalidParams);
-                }
-
-                return new CancelMcpTaskResult
-                {
-                    TaskId = task.TaskId,
-                    Status = task.Status,
-                    StatusMessage = task.StatusMessage,
-                    CreatedAt = task.CreatedAt,
-                    LastUpdatedAt = task.LastUpdatedAt,
-                    TimeToLive = task.TimeToLive,
-                    PollInterval = task.PollInterval
-                };
-            },
-            McpJsonUtilities.JsonContext.Default.CancelMcpTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.CancelMcpTaskResult);
-
-        // Advertise task capabilities
-        _options.Capabilities ??= new();
-        var tasksCapability = _options.Capabilities.Tasks ??= new McpTasksCapability();
-        tasksCapability.List ??= new ListMcpTasksCapability();
-        tasksCapability.Cancel ??= new CancelMcpTasksCapability();
-        var requestsCapability = tasksCapability.Requests ??= new RequestMcpTasksCapability();
-
-        // Only advertise sampling tasks if sampling handler is present
-        if (_options.Handlers.SamplingHandler is not null)
-        {
-            var samplingCapability = requestsCapability.Sampling ??= new SamplingMcpTasksCapability();
-            samplingCapability.CreateMessage ??= new CreateMessageMcpTasksCapability();
-        }
-
-        // Only advertise elicitation tasks if elicitation handler is present
-        if (_options.Handlers.ElicitationHandler is not null)
-        {
-            var elicitationCapability = requestsCapability.Elicitation ??= new ElicitationMcpTasksCapability();
-            elicitationCapability.Create ??= new CreateElicitationMcpTasksCapability();
         }
     }
 
@@ -529,6 +176,101 @@ internal sealed partial class McpClientImpl : McpClient
 
     /// <inheritdoc/>
     public override Task<ClientCompletionDetails> Completion => _sessionHandler.CompletionTask;
+
+    /// <inheritdoc/>
+    private protected override int MaxConsecutiveStuckPolls => _options.MaxConsecutiveStuckPolls;
+
+    /// <inheritdoc/>
+    private protected override async ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests,
+        CancellationToken cancellationToken)
+    {
+        // Resolve all input requests concurrently. If any fails, cancel the rest so user-facing
+        // handlers (sampling/elicitation prompts) don't keep running for a request whose caller
+        // has already given up, and ensure exceptions from late-completing tasks are observed.
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var keyed = new (string Key, Task<InputResponse> Task)[inputRequests.Count];
+        int i = 0;
+        foreach (var kvp in inputRequests)
+        {
+            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(kvp.Value, linkedCts.Token));
+        }
+
+        try
+        {
+            await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+        }
+        catch
+        {
+            linkedCts.Cancel();
+            try
+            {
+                await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Observed; the original exception is the one we want to surface.
+            }
+            throw;
+        }
+
+        var responses = new Dictionary<string, InputResponse>(keyed.Length);
+        foreach (var (key, task) in keyed)
+        {
+            responses[key] = task.Result;
+        }
+        return responses;
+    }
+
+    private async Task<InputResponse> ResolveInputRequestAsync(InputRequest inputRequest, CancellationToken cancellationToken)
+    {
+        switch (inputRequest.Method)
+        {
+            case RequestMethods.SamplingCreateMessage:
+                if (_options.Handlers.SamplingHandler is { } samplingHandler)
+                {
+                    var samplingParams = inputRequest.SamplingParams
+                        ?? throw new McpException($"Failed to deserialize sampling parameters from MRTR input request.");
+                    var result = await samplingHandler(
+                        samplingParams,
+                        samplingParams.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        cancellationToken).ConfigureAwait(false);
+                    return InputResponse.FromSamplingResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent a sampling input request, but no {nameof(McpClientHandlers.SamplingHandler)} is registered.");
+
+            case RequestMethods.ElicitationCreate:
+                if (_options.Handlers.ElicitationHandler is { } elicitationHandler)
+                {
+                    var elicitParams = inputRequest.ElicitationParams
+                        ?? throw new McpException($"Failed to deserialize elicitation parameters from MRTR input request.");
+                    var result = await elicitationHandler(elicitParams, cancellationToken).ConfigureAwait(false);
+                    result = ElicitResult.WithDefaults(elicitParams, result);
+                    return InputResponse.FromElicitResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent an elicitation input request, but no {nameof(McpClientHandlers.ElicitationHandler)} is registered.");
+
+            case RequestMethods.RootsList:
+                if (_options.Handlers.RootsHandler is { } rootsHandler)
+                {
+                    // ListRootsRequest params are optional per the spec, so fall back to an empty params instance.
+                    var rootsParams = inputRequest.RootsParams ?? new ListRootsRequestParams();
+                    var result = await rootsHandler(rootsParams, cancellationToken).ConfigureAwait(false);
+                    return InputResponse.FromRootsResult(result);
+                }
+
+                throw new InvalidOperationException(
+                    $"Server sent a roots list input request, but no {nameof(McpClientHandlers.RootsHandler)} is registered.");
+
+            default:
+                throw new NotSupportedException($"Unsupported input request method: '{inputRequest.Method}'.");
+        }
+    }
 
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
@@ -556,6 +298,7 @@ internal sealed partial class McpClientImpl : McpClient
                         ProtocolVersion = requestProtocol,
                         Capabilities = _options.Capabilities ?? new ClientCapabilities(),
                         ClientInfo = _options.ClientInfo ?? DefaultImplementation,
+                        Meta = _options.InitializeMeta,
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,
@@ -638,22 +381,151 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <inheritdoc/>
-    public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+    public override void AddKnownTools(IEnumerable<Tool> tools)
+    {
+        Throw.IfNull(tools);
+
+        var snapshot = tools as IReadOnlyCollection<Tool> ?? [.. tools];
+
+        List<string>? rejections = null;
+        foreach (var tool in snapshot)
+        {
+            Throw.IfNull(tool);
+
+            if (!McpHeaderExtractor.ValidateToolSchema(tool, out var rejectionReason))
+            {
+                ToolRejected?.Invoke(tool, rejectionReason!);
+                (rejections ??= []).Add($"{tool.Name}: {rejectionReason}");
+            }
+        }
+
+        if (rejections is { Count: > 0 })
+        {
+            throw new ArgumentException(
+                "One or more tools failed x-mcp-header validation: " + string.Join("; ", rejections),
+                nameof(tools));
+        }
+
+        foreach (var tool in snapshot)
+        {
+            _registeredToolNames[tool.Name] = 0;
+            _toolCache[tool.Name] = tool;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void RemoveKnownTools(IEnumerable<string> toolNames)
+    {
+        Throw.IfNull(toolNames);
+
+        var snapshot = toolNames as IReadOnlyCollection<string> ?? [.. toolNames];
+
+        foreach (var name in snapshot)
+        {
+            Throw.IfNull(name);
+        }
+
+        foreach (var name in snapshot)
+        {
+            _registeredToolNames.TryRemove(name, out _);
+            _toolCache.TryRemove(name, out _);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ClearKnownTools()
+    {
+        foreach (var name in _registeredToolNames.Keys)
+        {
+            _toolCache.TryRemove(name, out _);
+        }
+
+        _registeredToolNames.Clear();
+    }
+
+    /// <inheritdoc/>
+    public override async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
     {
         // For tools/call requests, attach the cached tool definition to the message context
         // so the transport can add custom Mcp-Param-* headers based on x-mcp-header schema annotations.
         if (request.Method == RequestMethods.ToolsCall &&
-            request.Params is System.Text.Json.Nodes.JsonObject paramsObj &&
-            paramsObj.TryGetPropertyValue("name", out var nameNode) &&
-            nameNode?.GetValue<string>() is { } toolName &&
-            _toolCache.TryGetValue(toolName, out var tool))
+            request.Params is System.Text.Json.Nodes.JsonObject paramsObjForHeaders &&
+            paramsObjForHeaders.TryGetPropertyValue("name", out var nameNode) &&
+            nameNode?.GetValue<string>() is { } toolName)
         {
-            request.Context ??= new();
-            request.Context.Items ??= new Dictionary<string, object?>();
-            request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            if (_toolCache.TryGetValue(toolName, out var tool))
+            {
+                request.Context ??= new();
+                request.Context.Items ??= new Dictionary<string, object?>();
+                request.Context.Items[McpHttpHeaders.ToolContextKey] = tool;
+            }
+            else if (_transport is StreamableHttpClientSessionTransport)
+            {
+                LogToolCacheMiss(toolName);
+            }
         }
 
-        return _sessionHandler.SendRequestAsync(request, cancellationToken);
+        const int maxRetries = 10;
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // Check if the result is an InputRequiredResult by looking at result_type.
+            if (response.Result is JsonObject resultObj &&
+                resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+                resultTypeNode?.GetValue<string>() is "input_required")
+            {
+                WarnIfInputRequiredResultOnNonMrtrSession(request.Method);
+
+                var inputRequiredResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.InputRequiredResult)
+                    ?? throw new JsonException("Failed to deserialize InputRequiredResult.");
+
+                if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
+                {
+                    IDictionary<string, InputResponse> inputResponses =
+                        await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
+
+                    // Clone the original request params and add inputResponses + requestState for the retry.
+                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+
+                    paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
+                        inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+
+                    if (inputRequiredResult.RequestState is { } requestState)
+                    {
+                        paramsObj["requestState"] = requestState;
+                    }
+                    else
+                    {
+                        // Strip any stale requestState carried over from the previous round's clone so
+                        // the server doesn't see a continuation token the current round is not using.
+                        paramsObj.Remove("requestState");
+                    }
+
+                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
+                }
+                else if (inputRequiredResult.RequestState is not null)
+                {
+                    // No input requests but has requestState (e.g., load shedding) - just retry with state.
+                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+                    paramsObj["requestState"] = inputRequiredResult.RequestState;
+                    paramsObj.Remove("inputResponses");
+
+                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
+                }
+                else
+                {
+                    throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
+                }
+
+                continue; // retry with the updated request
+            }
+
+            return response;
+        }
+
+        throw new McpException($"Server returned InputRequiredResult more than {maxRetries} times.");
     }
 
     /// <inheritdoc/>
@@ -676,7 +548,6 @@ internal sealed partial class McpClientImpl : McpClient
 
         _disposed = true;
 
-        _taskCancellationTokenProvider?.Dispose();
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);
 
@@ -688,6 +559,30 @@ internal sealed partial class McpClientImpl : McpClient
         // Then ensure all work has quiesced.
         await Completion.ConfigureAwait(false);
     }
+
+    /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
+    private void WarnIfLegacyRequestOnMrtrSession(string method)
+    {
+        if (_negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+        {
+            LogLegacyRequestOnMrtrSession(_endpointName, method);
+        }
+    }
+
+    /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an InputRequiredResult.</summary>
+    private void WarnIfInputRequiredResultOnNonMrtrSession(string method)
+    {
+        if (_negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion)
+        {
+            LogInputRequiredResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use InputRequiredResult instead of sending direct requests.")]
+    private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received InputRequiredResult for '{Method}' on session that did not negotiate MRTR (protocol version '{ProtocolVersion}'). The server may not be spec-compliant.")]
+    private partial void LogInputRequiredResultOnNonMrtrSession(string endpointName, string method, string? protocolVersion);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
     private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);
@@ -707,7 +602,9 @@ internal sealed partial class McpClientImpl : McpClient
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
     private partial void LogClientSessionResumed(string endpointName);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' not found in cache during tools/call. Mcp-Param-* headers will not be sent. Call AddKnownTools or ListToolsAsync to populate the cache.")]
+    private partial void LogToolCacheMiss(string toolName);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tool '{ToolName}' excluded from tools/list: {Reason}")]
     private partial void LogToolRejected(string toolName, string reason);
-
 }

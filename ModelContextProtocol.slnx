@@ -1,11 +1,12 @@
 <Solution>
-  <Folder Name="/.github/" />
+  <Folder Name="/.github/">
+    <File Path=".github/release-process.md" />
+  </Folder>
   <Folder Name="/.github/workflows/">
     <File Path=".github/workflows/ci-build-test.yml" />
     <File Path=".github/workflows/ci-code-coverage.yml" />
     <File Path=".github/workflows/docs.yml" />
     <File Path=".github/workflows/markdown-link-check.yml" />
-    <File Path=".github/workflows/release.md" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/docs/" />
@@ -44,11 +45,11 @@
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
     <Project Path="samples/InMemoryTransport/InMemoryTransport.csproj" />
-    <Project Path="samples/LongRunningTasks/LongRunningTasks.csproj" />
     <Project Path="samples/ProtectedMcpClient/ProtectedMcpClient.csproj" />
     <Project Path="samples/ProtectedMcpServer/ProtectedMcpServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
+    <Project Path="samples/TasksExtension/TasksExtension.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">

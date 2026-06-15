@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
@@ -96,6 +96,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
+    [JsonSerializable(typeof(JsonRpcErrorDetail))]
 
     // MCP Notification Params
     [JsonSerializable(typeof(CancelledNotificationParams))]
@@ -108,12 +109,16 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(RootsListChangedNotificationParams))]
     [JsonSerializable(typeof(ToolListChangedNotificationParams))]
-    [JsonSerializable(typeof(McpTaskStatusNotificationParams))]
+    [JsonSerializable(typeof(TaskStatusNotificationParams))]
+    [JsonSerializable(typeof(WorkingTaskNotificationParams))]
+    [JsonSerializable(typeof(CompletedTaskNotificationParams))]
+    [JsonSerializable(typeof(FailedTaskNotificationParams))]
+    [JsonSerializable(typeof(CancelledTaskNotificationParams))]
+    [JsonSerializable(typeof(InputRequiredTaskNotificationParams))]
 
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResult))]
-    [JsonSerializable(typeof(CreateTaskResult))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
@@ -144,21 +149,25 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
 
-    // MCP Task Request Params / Results
-    [JsonSerializable(typeof(McpTask))]
-    [JsonSerializable(typeof(McpTaskStatus))]
-    [JsonSerializable(typeof(McpTaskMetadata))]
+    // MCP MRTR (Multi Round-Trip Requests)
+    [JsonSerializable(typeof(InputRequiredResult))]
+    [JsonSerializable(typeof(InputRequest))]
+    [JsonSerializable(typeof(InputResponse))]
+    [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
+    [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
+
     [JsonSerializable(typeof(GetTaskRequestParams))]
     [JsonSerializable(typeof(GetTaskResult))]
-    [JsonSerializable(typeof(GetTaskPayloadRequestParams))]
-    [JsonSerializable(typeof(ListTasksRequestParams))]
-    [JsonSerializable(typeof(ListTasksResult))]
-    [JsonSerializable(typeof(CancelMcpTaskRequestParams))]
-    [JsonSerializable(typeof(CancelMcpTaskResult))]
-    [JsonSerializable(typeof(McpTasksCapability))]
-    [JsonSerializable(typeof(RequestMcpTasksCapability))]
-    [JsonSerializable(typeof(ToolExecution))]
-    [JsonSerializable(typeof(ToolTaskSupport))]
+    [JsonSerializable(typeof(WorkingTaskResult))]
+    [JsonSerializable(typeof(CompletedTaskResult))]
+    [JsonSerializable(typeof(FailedTaskResult))]
+    [JsonSerializable(typeof(CancelledTaskResult))]
+    [JsonSerializable(typeof(InputRequiredTaskResult))]
+    [JsonSerializable(typeof(UpdateTaskRequestParams))]
+    [JsonSerializable(typeof(UpdateTaskResult))]
+    [JsonSerializable(typeof(CancelTaskRequestParams))]
+    [JsonSerializable(typeof(CancelTaskResult))]
+    [JsonSerializable(typeof(CreateTaskResult))]
 
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]
@@ -177,15 +186,21 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(TextResourceContents))]
 
     // Other MCP Types
+    [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
-    [JsonSerializable(typeof(JsonElement))]
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
     [JsonSerializable(typeof(TokenResponse))]
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
+
+    // For Enterprise Managed Authorization flow as specified at
+    // https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx
+    [JsonSerializable(typeof(JagTokenExchangeResponse))]
+    [JsonSerializable(typeof(JwtBearerAccessTokenResponse))]
+    [JsonSerializable(typeof(OAuthErrorResponse))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

@@ -68,32 +68,6 @@ public sealed class ServerCapabilities
     public CompletionsCapability? Completions { get; set; }
 
     /// <summary>
-    /// Gets or sets a server's tasks capability for supporting task-augmented requests.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The tasks capability enables clients to augment their requests with tasks for long-running
-    /// operations. When present, clients can request that certain operations (like tool calls)
-    /// execute asynchronously, with the ability to poll for status and retrieve results later.
-    /// </para>
-    /// <para>
-    /// See <see cref="McpTasksCapability"/> for details on configuring which operations support tasks.
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    [JsonIgnore]
-    public McpTasksCapability? Tasks
-    {
-        get => TasksCore;
-        set => TasksCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
-    [JsonPropertyName("tasks")]
-    internal McpTasksCapability? TasksCore { get; set; }
-
-    /// <summary>
     /// Gets or sets optional MCP extensions that the server supports.
     /// </summary>
     /// <remarks>
