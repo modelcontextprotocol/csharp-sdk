@@ -123,30 +123,29 @@ public static class RequestMethods
     public const string Initialize = "initialize";
 
     /// <summary>
-    /// The name of the request method to retrieve task status.
+    /// The name of the request method sent from the client to poll for task completion.
     /// </summary>
     /// <remarks>
-    /// Requestors poll for task completion by sending tasks/get requests. They should respect
-    /// the pollInterval provided in responses when determining polling frequency.
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Clients poll for task status by sending this request with the task ID.
     /// </remarks>
     public const string TasksGet = "tasks/get";
 
     /// <summary>
-    /// The name of the request method to retrieve the result of a completed task.
+    /// The name of the request method sent from the client to provide input responses to a task.
     /// </summary>
     /// <remarks>
-    /// This request blocks until the task reaches a terminal status (completed, failed, or cancelled).
-    /// The result structure matches the original request type (e.g., CallToolResult for tools/call).
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Used when a task has <c>input_required</c> status and the client needs to fulfill outstanding requests.
     /// </remarks>
-    public const string TasksResult = "tasks/result";
+    public const string TasksUpdate = "tasks/update";
 
     /// <summary>
-    /// The name of the request method to retrieve a list of tasks with pagination support.
+    /// The name of the request method sent from the client to signal intent to cancel a task.
     /// </summary>
-    public const string TasksList = "tasks/list";
-
-    /// <summary>
-    /// The name of the request method to explicitly cancel a task.
-    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Cancellation is cooperative — the server decides whether and when to honor it.
+    /// </remarks>
     public const string TasksCancel = "tasks/cancel";
 }

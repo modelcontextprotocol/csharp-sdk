@@ -72,12 +72,23 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     {
         List<string> messageTypes = [];
 
+        // The client sends notifications/initialized fire-and-forget, so unlike the initialize and
+        // tools/list request/response exchanges it has no synchronization point the test can await.
+        // Signal once the filter finishes processing it so the strict counts below observe a
+        // complete, stable log instead of racing the still-in-flight notification.
+        var initializedNotificationProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
                 var messageTypeName = context.JsonRpcMessage.GetType().Name;
                 messageTypes.Add(messageTypeName);
                 await next(context, cancellationToken);
+
+                if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
+                {
+                    initializedNotificationProcessed.TrySetResult(true);
+                }
             }))
             .WithTools<TestTool>();
 
@@ -86,6 +97,10 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Wait for the fire-and-forget initialized notification to flow through the filter pipeline
+        // before snapshotting the counts; otherwise the strict counts below can race the notification.
+        await initializedNotificationProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // The message filter should intercept JsonRpcRequest messages.
         // Use strict counts so a regression that invokes the filter pipeline more than once per
