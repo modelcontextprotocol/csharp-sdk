@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
@@ -70,6 +71,26 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
+
+    /// <summary>
+    /// Resolves input requests embedded in an <see cref="InputRequiredTaskResult"/> by dispatching
+    /// each request to the appropriate registered handler.
+    /// </summary>
+    /// <param name="inputRequests">
+    /// The input requests from the task, keyed by request identifier. Each value is an
+    /// <see cref="InputRequest"/> wrapping the server-to-client request payload.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
+    private protected abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the maximum number of consecutive stuck-in-<see cref="McpTaskStatus.InputRequired"/> polls
+    /// allowed by <see cref="PollTaskToCompletionAsync"/> before the client cancels and throws.
+    /// Sourced from <see cref="McpClientOptions.MaxConsecutiveStuckPolls"/>.
+    /// </summary>
+    private protected abstract int MaxConsecutiveStuckPolls { get; }
 
     /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport
