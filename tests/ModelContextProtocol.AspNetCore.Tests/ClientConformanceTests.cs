@@ -63,7 +63,7 @@ public class ClientConformanceTests
     }
 
     // HTTP Standardization (SEP-2243)
-    [Theory(Skip = "SEP-2243 conformance scenarios not yet available.", SkipUnless = nameof(HasSep2243Scenarios))]
+    [Theory(Skip = "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).", SkipUnless = nameof(HasSep2243Scenarios))]
     [InlineData("http-standard-headers")]
     [InlineData("http-custom-headers")]
     [InlineData("http-invalid-tool-headers")]
