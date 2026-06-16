@@ -569,12 +569,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         if (metaObj[NotificationMethods.ProtocolVersionMetaKey] is JsonValue protocolVersion &&
             protocolVersion.TryGetValue(out string? protocolVersionValue))
         {
-            // If a transport-level header already populated this, validate it matches per SEP-2575.
+            // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
+            // populated this, validate the body _meta matches per SEP-2575. A disagreement is reported with
+            // -32001 HeaderMismatch (the same code used for the Mcp-Method/Mcp-Name header-vs-body checks),
+            // which conformant draft clients recognize as a modern-server signal and surface as-is rather
+            // than mistaking it for a legacy server and falling back to the initialize handshake.
             if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(
-                    $"Protocol version mismatch: the per-request _meta value '{protocolVersionValue}' does not match the transport-level header value '{existing}'.",
-                    McpErrorCode.InvalidParams);
+                    $"Header mismatch: the per-request _meta protocol version '{protocolVersionValue}' does not match the MCP-Protocol-Version header value '{existing}'.",
+                    McpErrorCode.HeaderMismatch);
             }
 
             context.ProtocolVersion = protocolVersionValue;

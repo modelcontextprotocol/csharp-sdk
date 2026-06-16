@@ -164,6 +164,29 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
+    public async Task DraftPost_ProtocolVersionHeaderMetaMismatch_ReturnsHeaderMismatch_Minus32001()
+    {
+        await StartAsync();
+
+        // The MCP-Protocol-Version header declares the draft revision, but the per-request _meta declares a
+        // different (still individually supported) version. Per SEP-2575 the server MUST reject the
+        // disagreement. It uses -32001 HeaderMismatch (the same code as the Mcp-Method/Mcp-Name header-vs-body
+        // checks) so a conformant draft client surfaces the error instead of mistaking the modern server for a
+        // legacy one and falling back to the initialize handshake.
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" +
+            DraftMetaFragment("2025-11-25") + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, DraftVersion);
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task LegacyInitialize_StillSucceeds_OnDefaultServer()
     {
         await StartAsync();
