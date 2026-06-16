@@ -461,15 +461,22 @@ public partial class McpServerToolTests
     [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
     public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
     {
+        // Per SEP-2106 the output schema's top-level "type" matches the natural shape of the
+        // return value (e.g. "string", "integer", "array") rather than always being "object".
+        // The strict round-trip check is AssertMatchesJsonSchema below, which proves the
+        // emitted structuredContent validates against the published schema.
+        //
+        // Pinned to a SEP-2106 negotiated version because the assertion compares the natural
+        // in-memory schema against the emitted value. Under a legacy negotiated version the
+        // emitted value would be re-wrapped in {"result": <value>} for backward compatibility
+        // and would no longer validate against the natural schema.
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
-        var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
+        var request = CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion);
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
         Assert.NotNull(result.StructuredContent);
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
@@ -594,9 +601,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public void OutputSchema_Options_NonObjectSchema_GetsWrapped()
+    public void OutputSchema_Options_NonObjectSchema_PassesThrough()
     {
-        // Non-object output schema should be wrapped in a "result" property envelope
+        // Per SEP-2106, outputSchema may be any valid JSON Schema document — including
+        // non-object schemas. The SDK no longer wraps non-object schemas in a
+        // {"type":"object","properties":{"result":<schema>}} envelope.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"string"}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -605,16 +614,15 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var resultProp));
-        Assert.Equal("string", resultProp.GetProperty("type").GetString());
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
     }
 
     [Fact]
-    public void OutputSchema_Options_NullableObjectSchema_BecomesObject()
+    public void OutputSchema_Options_NullableObjectSchema_PassesThrough()
     {
-        // ["object", "null"] type should be simplified to just "object"
+        // Per SEP-2106, the SDK no longer normalizes ["object","null"] type-arrays down
+        // to just "object". The schema author's intent is preserved on the wire.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -623,7 +631,177 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        var typeProperty = tool.ProtocolTool.OutputSchema.Value.GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, typeProperty.ValueKind);
+        Assert.Collection(typeProperty.EnumerateArray(),
+            t => Assert.Equal("object", t.GetString()),
+            t => Assert.Equal("null", t.GetString()));
+    }
+
+    [Fact]
+    public void OutputSchema_Create_StringReturn_NoEnvelope()
+    {
+        // End-to-end check: a tool with a string return type and UseStructuredContent
+        // produces an outputSchema describing the string directly (no "result" envelope)
+        // and emits the raw string value as structuredContent.
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { UseStructuredContent = true });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
+    }
+
+    // SEP-2106 backward-compat: for clients negotiating a pre-2026-06-30 protocol version,
+    // non-object structured content is wrapped in the legacy {"result": <value>} envelope.
+    // Clients on the SEP-2106 protocol ("2026-06-30" and later, including the draft) see the
+    // natural value shape. In-memory storage stays natural in both modes — only the wire
+    // emission flips.
+    private const string LegacyProtocolVersion = "2025-11-25";
+    private const string DraftSep2106ProtocolVersion = "DRAFT-2026-06-v1";
+    private const string Sep2106ProtocolVersion = "2026-06-30";
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_StringReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal("hello", inner.GetString());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.String, result.StructuredContent.Value.ValueKind);
+            Assert.Equal("hello", result.StructuredContent.Value.GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_IntegerReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => 42, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(42, inner.GetInt32());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Number, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(42, result.StructuredContent.Value.GetInt32());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(DraftSep2106ProtocolVersion, false)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_ArrayReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => new[] { "a", "b" }, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(JsonValueKind.Array, inner.ValueKind);
+            Assert.Equal(2, inner.GetArrayLength());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Array, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(2, result.StructuredContent.Value.GetArrayLength());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(DraftSep2106ProtocolVersion)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_ObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // Object-typed return: the stored schema is type:"object" — already the form
+        // expected by clients on protocol versions older than 2026-06-30, so no envelope
+        // is applied at any protocol version. Wire shape must be identical across versions.
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+        Assert.Equal(27, result.StructuredContent.Value.GetProperty("age").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(DraftSep2106ProtocolVersion)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_NullableObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // type:["object","null"] — for clients on protocol versions older than 2026-06-30,
+        // the SCHEMA is normalized to plain type:"object" (verified in
+        // Sep2106ListToolsBackCompatTests), but the value side is never envelope-wrapped at
+        // any protocol version. So the emitted structured content stays a plain object
+        // across versions.
+        JsonElement outputSchema = JsonDocument.Parse(
+            """{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            OutputSchema = outputSchema,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+    }
+
+    private static RequestContext<CallToolRequestParams> CreateRequestContextWithProtocolVersion(string? protocolVersion)
+    {
+        var mockServer = new Mock<McpServer>();
+        mockServer.SetupGet(s => s.NegotiatedProtocolVersion).Returns(protocolVersion);
+        return new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
     }
 
     [Fact]
@@ -794,186 +972,6 @@ public partial class McpServerToolTests
         Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
     }
 
-    [Fact]
-    public async Task StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers()
-    {
-        // When a non-object return type contains the same type at multiple locations,
-        // System.Text.Json's schema exporter emits $ref pointers for deduplication.
-        // After wrapping the schema under properties.result, those $ref pointers must
-        // be rewritten to remain valid. This test verifies that fix.
-        var data = new List<ContactInfo>
-        {
-            new()
-            {
-                WorkPhones = [new() { Number = "555-0100", Type = "work" }],
-                HomePhones = [new() { Number = "555-0200", Type = "home" }],
-            }
-        };
-
-        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
-        McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
-        var mockServer = new Mock<McpServer>();
-        var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
-            TestContext.Current.CancellationToken);
-
-        Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.NotNull(result.StructuredContent);
-
-        // Verify $ref pointers in the schema point to valid locations after wrapping.
-        // Without the fix, $ref values like "#/items/..." would be unresolvable because
-        // the original schema was moved under "#/properties/result".
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
-
-        // Also verify that any $ref in the schema starts with #/properties/result
-        // (confirming the rewrite happened).
-        string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
-        var schemaNode = JsonNode.Parse(schemaJson)!;
-        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
-        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
-        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
-        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
-    }
-
-    [Fact]
-    public async Task StructuredOutput_WithRecursiveTypeRefs_RewritesRefPointers()
-    {
-        // When a non-object return type contains a recursive type, System.Text.Json's
-        // schema exporter emits $ref pointers (including potentially bare "#") for the
-        // recursive reference. After wrapping, these must be rewritten. For List<TreeNode>,
-        // Children's items emit "$ref": "#/items" which must become "#/properties/result/items".
-        var data = new List<TreeNode>
-        {
-            new()
-            {
-                Name = "root",
-                Children = [new() { Name = "child" }],
-            }
-        };
-
-        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
-        McpServerTool tool = McpServerTool.Create(() => data, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
-        var mockServer = new Mock<McpServer>();
-        var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "tool" }),
-            TestContext.Current.CancellationToken);
-
-        Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.NotNull(result.StructuredContent);
-
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
-
-        string schemaJson = tool.ProtocolTool.OutputSchema.Value.GetRawText();
-        var schemaNode = JsonNode.Parse(schemaJson)!;
-        int refCount = AssertAllRefsStartWith(schemaNode, "#/properties/result");
-        Assert.True(refCount > 0, "Expected at least one $ref in the schema to validate the rewrite, but none were found.");
-        int resolvableCount = AssertAllRefsResolvable(schemaNode, schemaNode);
-        Assert.True(resolvableCount > 0, "Expected at least one resolvable $ref in the schema, but none were found.");
-    }
-
-    private static int AssertAllRefsStartWith(JsonNode? node, string expectedPrefix)
-    {
-        int count = 0;
-        if (node is JsonObject obj)
-        {
-            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
-                refNode?.GetValue<string>() is string refValue)
-            {
-                Assert.StartsWith(expectedPrefix, refValue);
-                count++;
-            }
-
-            foreach (var property in obj)
-            {
-                count += AssertAllRefsStartWith(property.Value, expectedPrefix);
-            }
-        }
-        else if (node is JsonArray arr)
-        {
-            foreach (var item in arr)
-            {
-                count += AssertAllRefsStartWith(item, expectedPrefix);
-            }
-        }
-
-        return count;
-    }
-
-    /// <summary>
-    /// Walks the JSON tree and verifies that every <c>$ref</c> pointer resolves to a valid node.
-    /// </summary>
-    private static int AssertAllRefsResolvable(JsonNode root, JsonNode? node)
-    {
-        int count = 0;
-        if (node is JsonObject obj)
-        {
-            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
-                refNode?.GetValue<string>() is string refValue &&
-                refValue.StartsWith("#", StringComparison.Ordinal))
-            {
-                var resolved = ResolveJsonPointer(root, refValue);
-                Assert.True(resolved is not null, $"$ref \"{refValue}\" does not resolve to a valid node in the schema.");
-                count++;
-            }
-
-            foreach (var property in obj)
-            {
-                count += AssertAllRefsResolvable(root, property.Value);
-            }
-        }
-        else if (node is JsonArray arr)
-        {
-            foreach (var item in arr)
-            {
-                count += AssertAllRefsResolvable(root, item);
-            }
-        }
-
-        return count;
-    }
-
-    /// <summary>
-    /// Resolves a JSON Pointer (e.g., <c>#/properties/result/items</c>) against a root node.
-    /// Returns <c>null</c> if the pointer cannot be resolved.
-    /// </summary>
-    private static JsonNode? ResolveJsonPointer(JsonNode root, string pointer)
-    {
-        if (pointer == "#")
-        {
-            return root;
-        }
-
-        if (!pointer.StartsWith("#/", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        JsonNode? current = root;
-        string[] segments = pointer.Substring(2).Split('/');
-        foreach (string segment in segments)
-        {
-            if (current is JsonObject obj)
-            {
-                if (!obj.TryGetPropertyValue(segment, out current))
-                {
-                    return null;
-                }
-            }
-            else if (current is JsonArray arr && int.TryParse(segment, out int index) && index >= 0 && index < arr.Count)
-            {
-                current = arr[index];
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        return current;
-    }
-
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
     {
         yield return new object[] { "string" };
@@ -1106,30 +1104,6 @@ public partial class McpServerToolTests
         return options;
     }
 
-    // Types used by StructuredOutput_WithDuplicateTypeRefs_RewritesRefPointers.
-    // ContactInfo has two properties of the same type (PhoneNumber) which causes
-    // System.Text.Json's schema exporter to emit $ref pointers for deduplication.
-    private sealed class PhoneNumber
-    {
-        public string? Number { get; set; }
-        public string? Type { get; set; }
-    }
-
-    private sealed class ContactInfo
-    {
-        public List<PhoneNumber>? WorkPhones { get; set; }
-        public List<PhoneNumber>? HomePhones { get; set; }
-    }
-
-    // Recursive type used by StructuredOutput_WithRecursiveTypeRefs_RewritesRefPointers.
-    // When List<TreeNode> is the return type, Children's items emit "$ref": "#/items"
-    // pointing back to the first TreeNode definition, which must be rewritten after wrapping.
-    private sealed class TreeNode
-    {
-        public string? Name { get; set; }
-        public List<TreeNode>? Children { get; set; }
-    }
-
     [Fact]
     public void SupportsIconsInCreateOptions()
     {
@@ -1208,15 +1182,15 @@ public partial class McpServerToolTests
     [Fact]
     public void ReturnDescription_StructuredOutputEnabled_NotIncludedInToolDescription()
     {
-        // When UseStructuredContent is true, return description should be in the output schema, not in tool description
+        // When UseStructuredContent is true, return description should be in the output schema, not in tool description.
+        // Per SEP-2106 the schema is no longer wrapped in a {"result": <schema>} envelope, so the description
+        // sits directly on the (non-object) output schema.
         McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { UseStructuredContent = true });
 
         Assert.Equal("Tool that returns data.", tool.ProtocolTool.Description);
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        // Verify the output schema contains the description
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var result));
-        Assert.True(result.TryGetProperty("description", out var description));
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("description", out var description));
         Assert.Equal("The computed result", description.GetString());
     }
 
