@@ -720,6 +720,23 @@ internal sealed class StreamableHttpHandler(
 
         var mcpNameInHeader = context.Request.Headers[McpHttpHeaders.Name].ToString().Trim();
 
+        // Per SEP-2243, non-ASCII Mcp-Name values MUST be Base64-encoded using the
+        // "=?base64?...?=" wrapper. Reject raw values containing characters outside the valid
+        // HTTP header value range, then decode so the comparison below is against the
+        // decoded value (mirrors the Mcp-Param-* validation in ValidateCustomParamHeaders).
+        if (!IsValidHeaderValue(mcpNameInHeader))
+        {
+            errorMessage = "Header mismatch: Mcp-Name header contains invalid characters.";
+            return false;
+        }
+
+        var decodedMcpNameInHeader = McpHeaderEncoder.DecodeValue(mcpNameInHeader);
+        if (decodedMcpNameInHeader is null)
+        {
+            errorMessage = "Header mismatch: Mcp-Name header contains invalid Base64 encoding.";
+            return false;
+        }
+
         // Extract the params and name value from the body based on the method, if present.
         var bodyParams = message switch
         {
@@ -736,7 +753,7 @@ internal sealed class StreamableHttpHandler(
         };
 
         // Check that the header value matches the body value if the body value is present.
-        if (!string.Equals(mcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
+        if (!string.Equals(decodedMcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
         {
             errorMessage = $"Header mismatch: Mcp-Name header value '{mcpNameInHeader}' does not match body value '{mcpNameInBody}'.";
             return false;
