@@ -218,7 +218,9 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
+#pragma warning disable MCP9005 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
     private static async Task HandleResumePostResponseStreamAsync(HttpContext context, ISseEventStreamReader eventStreamReader)
+#pragma warning restore MCP9005
     {
         InitializeSseResponse(context);
         await eventStreamReader.CopyToAsync(context.Response.Body, context.RequestAborted);
@@ -515,9 +517,9 @@ internal sealed class StreamableHttpHandler(
         });
     }
 
+#pragma warning disable MCP9005 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
     private async ValueTask<ISseEventStreamReader?> GetEventStreamReaderAsync(HttpContext context, string lastEventId)
     {
-#pragma warning disable MCP9005 // Stateful Streamable HTTP options are obsolete but still wired up internally.
         if (HttpServerTransportOptions.EventStreamStore is not { } eventStreamStore)
 #pragma warning restore MCP9005
         {

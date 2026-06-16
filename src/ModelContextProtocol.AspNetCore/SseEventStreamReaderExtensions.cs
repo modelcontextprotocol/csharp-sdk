@@ -7,6 +7,8 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
 
+#pragma warning disable MCP9005 // These extensions only operate on the obsolete legacy resumability reader.
+
 /// <summary>
 /// Provides extension methods for <see cref="ISseEventStreamReader"/>.
 /// </summary>

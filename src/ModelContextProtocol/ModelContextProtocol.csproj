@@ -10,6 +10,11 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- The legacy SSE resumability implementation (DistributedCacheEventStreamStore and its
+         source-generated JSON/logging) intentionally uses the obsolete ISseEventStreamStore surface. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
+    <!-- CS0436: Allow ObsoleteAttribute to be redefined internally (netstandard2.0 polyfill). -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
