@@ -36,11 +36,42 @@ public sealed class McpRequestFilters
     /// Gets or sets the filters for the call-tool handler pipeline.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// These filters wrap handlers that are invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
+    /// </para>
+    /// <para>
+    /// Cannot be used together with <see cref="CallToolWithTaskFilters"/>. If both are non-empty at configuration time,
+    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
+    {
+        get => field ??= [];
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the filters for the call-tool handler pipeline with task support.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These filters wrap the task-augmented call-tool handler whose return type is
+    /// <see cref="ResultOrCreatedTask{TResult}"/>. Use these filters when the server's tool pipeline
+    /// supports returning either an immediate <see cref="CallToolResult"/> or a <see cref="CreateTaskResult"/>
+    /// for asynchronous execution.
+    /// </para>
+    /// <para>
+    /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
+    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// </para>
+    /// </remarks>
+    public IList<McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>>> CallToolWithTaskFilters
     {
         get => field ??= [];
         set

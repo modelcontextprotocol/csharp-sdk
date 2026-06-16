@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
@@ -37,8 +35,10 @@ public class ConformanceServerFixture : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _serverCts = new CancellationTokenSource();
+        // Explicitly pass "--stateless false" so this stateful fixture is immune to a globally
+        // set MCP_CONFORMANCE_STATELESS environment variable (the command-line switch wins).
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(
-            ["--urls", ServerUrl], cancellationToken: _serverCts.Token));
+            ["--urls", ServerUrl, "--stateless", "false"], cancellationToken: _serverCts.Token));
 
         // Wait for server to be ready (retry for up to 30 seconds)
         var timeout = TimeSpan.FromSeconds(30);
@@ -139,9 +139,19 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunConformanceTest_HttpHeaderValidation()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.HasSep2243Scenarios(), "SEP-2243 conformance scenarios not yet available.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasSep2243Scenarios(),
+            "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
 
-        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-header-validation");
+        // SEP-2243 is a draft (DRAFT-2026-v1) scenario that uses the stateless lifecycle, so it
+        // requires a stateless server (a stateful server rejects the un-initialized list/call
+        // requests with JSON-RPC -32000). Use a dedicated port range so it never collides with
+        // the stateful class fixture (300x) or the caching stateless server (301x).
+        await using var server = await StatelessConformanceServer.StartAsync(
+            TestContext.Current.CancellationToken, basePort: 3021);
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {server.ServerUrl} --scenario http-header-validation --spec-version DRAFT-2026-v1");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -151,9 +161,15 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunConformanceTest_HttpCustomHeaderServerValidation()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.HasSep2243Scenarios(), "SEP-2243 conformance scenarios not yet available.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasSep2243Scenarios(),
+            "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
 
-        var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario http-custom-header-server-validation");
+        await using var server = await StatelessConformanceServer.StartAsync(
+            TestContext.Current.CancellationToken, basePort: 3024);
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {server.ServerUrl} --scenario http-custom-header-server-validation --spec-version DRAFT-2026-v1");
 
         Assert.True(result.Success,
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -189,94 +205,20 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
 
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
-        var startInfo = NodeHelpers.ConformanceTestStartInfo(arguments);
-
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
-
-        var process = new Process { StartInfo = startInfo };
-
-        // Protect callbacks with try/catch to prevent ITestOutputHelper from
-        // throwing on a background thread if events arrive after the test completes.
-        DataReceivedEventHandler outputHandler = (sender, e) =>
-        {
-            if (e.Data != null)
-            {
-                try { output.WriteLine(e.Data); } catch { }
-                outputBuilder.AppendLine(e.Data);
-            }
-        };
-
-        DataReceivedEventHandler errorHandler = (sender, e) =>
-        {
-            if (e.Data != null)
-            {
-                try { output.WriteLine(e.Data); } catch { }
-                errorBuilder.AppendLine(e.Data);
-            }
-        };
-
-        process.OutputDataReceived += outputHandler;
-        process.ErrorDataReceived += errorHandler;
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            process.OutputDataReceived -= outputHandler;
-            process.ErrorDataReceived -= errorHandler;
-            return (
-                Success: false,
-                Output: outputBuilder.ToString(),
-                Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
-            );
-        }
-
-        process.OutputDataReceived -= outputHandler;
-        process.ErrorDataReceived -= errorHandler;
-
-        var stdoutText = outputBuilder.ToString();
-        var stderrText = errorBuilder.ToString();
-
-        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
-        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
-        // code even though every conformance check passed. When that happens, fall back to
-        // parsing the "Test Results:" summary in stdout to decide success.
-        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
-
-        return (
-            Success: success,
-            Output: stdoutText,
-            Error: stderrText
-        );
+        return await NodeHelpers.RunServerConformanceAsync(
+            arguments,
+            line => { try { output.WriteLine(line); } catch { } },
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Parses the conformance runner output for a "Test Results:" line such as
-    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
-    /// and none failed.
-    /// </summary>
-    private static bool ConformanceOutputIndicatesSuccess(string output)
+    // For draft scenarios that pin --spec-version explicitly, suppress the
+    // MCP_CONFORMANCE_PROTOCOL_VERSION override so a duplicate --spec-version is not appended.
+    private async Task<(bool Success, string Output, string Error)> RunStatelessConformanceTestAsync(string arguments)
     {
-        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
-        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        int passed = int.Parse(match.Groups[1].Value);
-        int total = int.Parse(match.Groups[2].Value);
-        int failed = int.Parse(match.Groups[3].Value);
-
-        return passed == total && failed == 0 && total > 0;
+        return await NodeHelpers.RunServerConformanceAsync(
+            arguments,
+            line => { try { output.WriteLine(line); } catch { } },
+            appendProtocolVersionFromEnv: false,
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 }
