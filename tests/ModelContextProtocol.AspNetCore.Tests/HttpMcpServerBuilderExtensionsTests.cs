@@ -211,7 +211,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     {
         Builder.Services
             .AddMcpServer()
-            .WithHttpTransport();
+            .WithHttpTransport(options => options.Stateless = false);
 
         using var app = Builder.Build();
 
@@ -220,7 +220,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
 
         await idleTrackingService.StartAsync(TestContext.Current.CancellationToken);
 
-        // In the default (stateful) mode the timer loop must start, so ExecuteTask should be set.
+        // In stateful mode the timer loop must start, so ExecuteTask should be set.
         Assert.NotNull(idleTrackingService.ExecuteTask);
 
         await idleTrackingService.StopAsync(TestContext.Current.CancellationToken);

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿#if !NET472
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -71,7 +72,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
 
     private async Task<JsonNode> ReadAsync()
     {
-        var line = await _reader.ReadLineAsync(_cts.Token);
+        var line = await _reader.ReadLineAsync(_cts.Token).ConfigureAwait(false);
         Assert.NotNull(line);
         return JsonNode.Parse(line!)!;
     }
@@ -184,3 +185,4 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.Equal("echo:after-init", call["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
 }
+#endif
