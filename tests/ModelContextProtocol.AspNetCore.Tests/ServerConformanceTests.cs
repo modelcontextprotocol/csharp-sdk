@@ -185,14 +185,13 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     // installed conformance package ships SEP-2322 scenarios <em>and</em> emits this SDK's
     // draft wire string (see <see cref="NodeHelpers.HasMrtrScenarios"/>).
     //
-    // Two scenarios (input-required-result-tampered-state and input-required-result-capability-check)
-    // require advanced server-side logic not yet built into the ConformanceServer:
-    //   - tampered-state: HMAC integrity protection on requestState. Server-implementer concern
-    //     outside the SDK wire surface; would need a sample tool implementing the pattern.
-    //   - capability-check: per-request reading of clientCapabilities to gate which inputRequests
-    //     are returned. SDK exposes capabilities via JsonRpcMessageContext but no current tool
-    //     conditionally emits inputRequests based on them.
-    // These rows are skipped until matching tool implementations are added.
+    // input-required-result-tampered-state and input-required-result-capability-check are
+    // implemented by ConformanceServer.Tools.IncompleteResultTools.ToolWithTamperedState
+    // (HMAC-protected requestState; a tampered requestState surfaces a -32602 JSON-RPC error)
+    // and ToolWithCapabilityCheck (gates inputRequests on the per-request
+    // _meta clientCapabilities envelope). Both behaviors also have in-process wire-level
+    // regression coverage in MrtrProtocolTests so they stay verified even while the published
+    // conformance package's draft wire string lags this SDK.
     [Theory]
     [InlineData("input-required-result-basic-elicitation")]
     [InlineData("input-required-result-basic-sampling")]
@@ -204,8 +203,8 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     [InlineData("input-required-result-non-tool-request")]
     [InlineData("input-required-result-result-type")]
     [InlineData("input-required-result-unsupported-methods")]
-    [InlineData("input-required-result-tampered-state", Skip = "Requires HMAC-protected requestState pattern in ConformanceServer tools (not yet implemented).")]
-    [InlineData("input-required-result-capability-check", Skip = "Requires per-request capability-aware inputRequest gating in ConformanceServer tools (not yet implemented).")]
+    [InlineData("input-required-result-tampered-state")]
+    [InlineData("input-required-result-capability-check")]
     [InlineData("input-required-result-ignore-extra-params")]
     [InlineData("input-required-result-validate-input")]
     public async Task RunMrtrConformanceTest(string scenario)

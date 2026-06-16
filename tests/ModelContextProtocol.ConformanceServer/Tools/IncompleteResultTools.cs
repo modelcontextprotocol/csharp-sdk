@@ -4,6 +4,8 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -261,6 +263,137 @@ public sealed class IncompleteResultTools
                     },
                 }),
             });
+    }
+
+    // ──── A12: Tampered requestState rejection (integrity protection) ───────
+    // SEP-2322 recommends integrity-protecting requestState (e.g. an HMAC signature)
+    // so a client cannot forge or mutate it. R1 returns a signed requestState; R2 with
+    // a tampered requestState fails verification and surfaces a JSON-RPC error (not an
+    // isError CallToolResult and not a re-prompt).
+    private static readonly byte[] s_requestStateKey = Encoding.UTF8.GetBytes("mrtr-conformance-hmac-key-v1");
+
+    [McpServerTool(Name = "test_input_required_result_tampered_state")]
+    [Description("SEP-2322 A12: R1 returns an HMAC-signed requestState; R2 rejects a tampered requestState with a JSON-RPC error.")]
+    public static CallToolResult ToolWithTamperedState(RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.RequestState is { } state)
+        {
+            if (!VerifyRequestState(state))
+            {
+                throw new McpProtocolException(
+                    "requestState failed integrity verification (tampered or invalid signature).",
+                    McpErrorCode.InvalidParams);
+            }
+
+            return TextResult("tampered-state-ok: requestState integrity verified");
+        }
+
+        throw new InputRequiredException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "Please confirm",
+                    RequestedSchema = new ElicitRequestParams.RequestSchema
+                    {
+                        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                        {
+                            ["ok"] = new ElicitRequestParams.BooleanSchema(),
+                        },
+                        Required = ["ok"],
+                    },
+                }),
+            },
+            requestState: SignRequestState());
+    }
+
+    // ──── A13: Respect client capabilities ──────────────────────────────────
+    // Per SEP-2575 the client declares its capabilities in the per-request
+    // _meta['io.modelcontextprotocol/clientCapabilities'] envelope (surfaced on
+    // JsonRpcMessageContext.ClientCapabilities). The server MUST only emit inputRequests
+    // for capabilities the client advertised on this request.
+    [McpServerTool(Name = "test_input_required_result_capabilities")]
+    [Description("SEP-2322 A13: returns inputRequests only for the capabilities the client declared in per-request _meta.")]
+    public static CallToolResult ToolWithCapabilityCheck(RequestContext<CallToolRequestParams> context)
+    {
+        if (context.Params!.InputResponses is { Count: > 0 })
+        {
+            return TextResult("capability-check-ok: received input responses");
+        }
+
+        var capabilities = context.JsonRpcRequest.Context?.ClientCapabilities;
+        var inputRequests = new Dictionary<string, InputRequest>();
+
+        if (capabilities?.Sampling is not null)
+        {
+            inputRequests["capital_question"] = InputRequest.ForSampling(new CreateMessageRequestParams
+            {
+                Messages =
+                [
+                    new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content = [new TextContentBlock { Text = "What is the capital of France?" }],
+                    },
+                ],
+                MaxTokens = 100,
+            });
+        }
+
+        if (capabilities?.Elicitation is not null)
+        {
+            inputRequests["user_name"] = InputRequest.ForElicitation(new ElicitRequestParams
+            {
+                Message = "What is your name?",
+                RequestedSchema = new ElicitRequestParams.RequestSchema
+                {
+                    Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                    {
+                        ["name"] = new ElicitRequestParams.StringSchema(),
+                    },
+                    Required = ["name"],
+                },
+            });
+        }
+
+        if (capabilities?.Roots is not null)
+        {
+            inputRequests["client_roots"] = InputRequest.ForRootsList(new ListRootsRequestParams());
+        }
+
+        if (inputRequests.Count == 0)
+        {
+            return TextResult("capability-check-ok: client declared no MRTR-capable features");
+        }
+
+        throw new InputRequiredException(inputRequests);
+    }
+
+    private static string SignRequestState()
+    {
+        var nonce = Guid.NewGuid().ToString("N");
+        return $"{nonce}.{ComputeSignature(nonce)}";
+    }
+
+    private static bool VerifyRequestState(string state)
+    {
+        var separator = state.LastIndexOf('.');
+        if (separator <= 0 || separator == state.Length - 1)
+        {
+            return false;
+        }
+
+        var nonce = state[..separator];
+        var signature = state[(separator + 1)..];
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(signature),
+            Encoding.UTF8.GetBytes(ComputeSignature(nonce)));
+    }
+
+    private static string ComputeSignature(string nonce)
+    {
+        using var hmac = new HMACSHA256(s_requestStateKey);
+        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(nonce)));
     }
 
     private static CallToolResult TextResult(string text) => new()

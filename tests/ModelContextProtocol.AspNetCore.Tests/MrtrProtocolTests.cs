@@ -56,6 +56,98 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
                     Name = "throwing-tool",
                     Description = "A tool that throws immediately"
                 }),
+            McpServerTool.Create(
+                static CallToolResult (RequestContext<CallToolRequestParams> context) =>
+                {
+                    // Mirrors ConformanceServer.Tools.IncompleteResultTools.ToolWithTamperedState:
+                    // R1 (no requestState) issues a requestState; R2 with a tampered requestState
+                    // surfaces a JSON-RPC error rather than a complete result or a re-prompt.
+                    if (context.Params!.RequestState is { } state)
+                    {
+                        if (state != "valid-request-state-token")
+                        {
+                            throw new McpProtocolException(
+                                "requestState failed integrity verification.", McpErrorCode.InvalidParams);
+                        }
+
+                        return new CallToolResult { Content = [new TextContentBlock { Text = "state-ok" }] };
+                    }
+
+                    throw new InputRequiredException(
+                        new Dictionary<string, InputRequest>
+                        {
+                            ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "Please confirm",
+                                RequestedSchema = new ElicitRequestParams.RequestSchema
+                                {
+                                    Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                                    {
+                                        ["ok"] = new ElicitRequestParams.BooleanSchema(),
+                                    },
+                                    Required = ["ok"],
+                                },
+                            }),
+                        },
+                        requestState: "valid-request-state-token");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "tampered-state-tool",
+                    Description = "Rejects a tampered requestState with a JSON-RPC error"
+                }),
+            McpServerTool.Create(
+                static CallToolResult (RequestContext<CallToolRequestParams> context) =>
+                {
+                    // Mirrors ConformanceServer.Tools.IncompleteResultTools.ToolWithCapabilityCheck:
+                    // emit inputRequests only for capabilities declared on the per-request _meta envelope.
+                    var caps = context.JsonRpcRequest.Context?.ClientCapabilities;
+                    var inputRequests = new Dictionary<string, InputRequest>();
+
+                    if (caps?.Sampling is not null)
+                    {
+                        inputRequests["capital_question"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                        {
+                            Messages =
+                            [
+                                new SamplingMessage
+                                {
+                                    Role = Role.User,
+                                    Content = [new TextContentBlock { Text = "What is the capital of France?" }],
+                                },
+                            ],
+                            MaxTokens = 100,
+                        });
+                    }
+
+                    if (caps?.Elicitation is not null)
+                    {
+                        inputRequests["user_name"] = InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "What is your name?",
+                            RequestedSchema = new ElicitRequestParams.RequestSchema
+                            {
+                                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                                {
+                                    ["name"] = new ElicitRequestParams.StringSchema(),
+                                },
+                                Required = ["name"],
+                            },
+                        });
+                    }
+
+                    if (inputRequests.Count == 0)
+                    {
+                        return new CallToolResult { Content = [new TextContentBlock { Text = "no-caps" }] };
+                    }
+
+                    throw new InputRequiredException(inputRequests);
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "capability-check-tool",
+                    Description = "Gates inputRequests on the per-request _meta clientCapabilities envelope"
+                }),
         ]).WithHttpTransport(options => options.Stateless = false);
 
         _app = Builder.Build();
@@ -122,6 +214,76 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         Assert.True(
             message is JsonRpcResponse or JsonRpcError,
             $"Expected JsonRpcResponse or JsonRpcError, got {message?.GetType().Name}");
+    }
+
+    [Fact]
+    public async Task TamperedRequestState_ReturnsJsonRpcError()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Round 1: no requestState -> InputRequiredResult carrying the issued requestState.
+        using var r1 = await PostJsonRpcAsync(CallTool("tampered-state-tool"));
+        var r1Response = await AssertSingleSseResponseAsync(r1);
+        var r1Result = Assert.IsType<JsonObject>(r1Response.Result);
+        Assert.Equal("input_required", r1Result["resultType"]?.GetValue<string>());
+
+        var requestState = r1Result["requestState"]!.GetValue<string>();
+        var inputKey = r1Result["inputRequests"]!.AsObject().First().Key;
+
+        // Round 2: tamper the requestState the way the conformance harness does and retry.
+        // The tool MUST reject it with a JSON-RPC error (not a complete result, not a re-prompt).
+        var inputResponse = InputResponse.FromElicitResult(new ElicitResult { Action = "accept" });
+        var retryParams = new JsonObject
+        {
+            ["name"] = "tampered-state-tool",
+            ["arguments"] = new JsonObject(),
+            ["requestState"] = requestState + "-TAMPERED",
+            ["inputResponses"] = new JsonObject
+            {
+                [inputKey] = JsonSerializer.SerializeToNode(inputResponse, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputResponse)))
+            },
+        };
+
+        using var r2 = await PostJsonRpcAsync(Request("tools/call", retryParams.ToJsonString()));
+        Assert.Equal(HttpStatusCode.OK, r2.StatusCode);
+
+        var sseData = Assert.Single(await ReadSseAsync(r2.Content).ToListAsync(TestContext.Current.CancellationToken));
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(sseData, McpJsonUtilities.DefaultOptions);
+        var error = Assert.IsType<JsonRpcError>(message);
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+    }
+
+    [Fact]
+    public async Task CapabilityCheck_OnlyEmitsInputRequestsForDeclaredCapabilities()
+    {
+        await StartAsync();
+        await InitializeWithMrtrAsync();
+
+        // Per SEP-2575 the client declares capabilities per request in
+        // _meta['io.modelcontextprotocol/clientCapabilities']. Declare ONLY sampling: the tool
+        // must emit a sampling/createMessage inputRequest but no elicitation/create.
+        var callParams = new JsonObject
+        {
+            ["name"] = "capability-check-tool",
+            ["arguments"] = new JsonObject(),
+            ["_meta"] = new JsonObject
+            {
+                ["io.modelcontextprotocol/clientCapabilities"] = new JsonObject
+                {
+                    ["sampling"] = new JsonObject(),
+                },
+            },
+        };
+
+        using var response = await PostJsonRpcAsync(Request("tools/call", callParams.ToJsonString()));
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        var resultObj = Assert.IsType<JsonObject>(rpcResponse.Result);
+        Assert.Equal("input_required", resultObj["resultType"]?.GetValue<string>());
+
+        var inputRequests = resultObj["inputRequests"]!.AsObject();
+        Assert.Contains(inputRequests, kvp => kvp.Value!["method"]?.GetValue<string>() == "sampling/createMessage");
+        Assert.DoesNotContain(inputRequests, kvp => kvp.Value!["method"]?.GetValue<string>() == "elicitation/create");
     }
 
     [Fact]
