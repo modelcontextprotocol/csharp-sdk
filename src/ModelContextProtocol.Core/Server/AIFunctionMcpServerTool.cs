@@ -13,7 +13,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
-    private readonly bool _structuredOutputRequiresWrapping;
     private readonly IReadOnlyList<object> _metadata;
 
     /// <summary>
@@ -120,7 +119,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? function.Name,
             Description = GetToolDescription(function, options),
             InputSchema = function.JsonSchema,
-            OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
+            OutputSchema = CreateOutputSchema(function, options),
             Icons = options?.Icons,
         };
 
@@ -156,7 +155,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.Meta;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? []);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -218,14 +217,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata)
     {
         ValidateToolName(tool.Name);
 
         AIFunction = function;
         ProtocolTool = tool;
 
-        _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
     }
 
@@ -234,6 +232,41 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _metadata;
+
+    /// <summary>
+    /// Returns a <see cref="Tool"/> clone whose <see cref="Tool.OutputSchema"/> is rewritten
+    /// into the wire shape required by clients on protocol versions older than
+    /// <c>"2026-06-30"</c>. Those versions require <c>outputSchema.type == "object"</c>;
+    /// SEP-2106 (negotiated at <c>"2026-06-30"</c> and later) widens that to any JSON
+    /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
+    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
+    /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
+    /// before emission. Returns <see cref="ProtocolTool"/> unchanged when there is no
+    /// output schema. Callers must gate the call on the negotiated version — this method
+    /// is unconditional; the gate lives at the emission site.
+    /// </summary>
+    internal Tool BuildLegacyWireProtocolTool()
+    {
+        if (ProtocolTool.OutputSchema is not { } natural)
+        {
+            return ProtocolTool;
+        }
+
+        JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(natural);
+
+        return new Tool
+        {
+            Name = ProtocolTool.Name,
+            Title = ProtocolTool.Title,
+            Description = ProtocolTool.Description,
+            InputSchema = ProtocolTool.InputSchema,
+            OutputSchema = legacyOutputSchema,
+            Annotations = ProtocolTool.Annotations,
+            Execution = ProtocolTool.Execution,
+            Icons = ProtocolTool.Icons,
+            Meta = ProtocolTool.Meta,
+        };
+    }
 
     /// <inheritdoc />
     public override async ValueTask<CallToolResult> InvokeAsync(
@@ -256,7 +289,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        JsonElement? structuredContent = CreateStructuredResponse(result);
+        JsonElement? structuredContent = CreateStructuredResponse(result, request.Server.NegotiatedProtocolVersion);
         return result switch
         {
             AIContent aiContent => new()
@@ -468,48 +501,102 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return descriptionElement.GetString();
     }
 
-    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
+    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions)
     {
-        structuredOutputRequiresWrapping = false;
-
         if (toolCreateOptions?.UseStructuredContent is not true)
         {
             return null;
         }
 
+        // Per SEP-2106, any valid JSON Schema document is acceptable for outputSchema —
+        // arrays, primitives, compositions, and nullable types pass through unchanged.
         // Explicit OutputSchema takes precedence over AIFunction's return schema.
-        JsonElement outputSchema;
+        // Back-compat for pre-2026-06-30 clients is applied at the wire emission sites
+        // (CreateStructuredResponse for tools/call, listToolsHandler for tools/list).
         if (toolCreateOptions.OutputSchema is { } explicitSchema)
         {
-            outputSchema = explicitSchema;
-        }
-        else if (function.ReturnJsonSchema is { } returnSchema)
-        {
-            outputSchema = returnSchema;
-        }
-        else
-        {
-            return null;
+            return explicitSchema;
         }
 
-        if (outputSchema.ValueKind is not JsonValueKind.Object ||
-            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+        if (function.ReturnJsonSchema is { } returnSchema)
+        {
+            return returnSchema;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> iff the structured-content value must be wrapped in
+    /// the <c>{"result": &lt;value&gt;}</c> envelope on the wire — i.e., the output schema
+    /// is neither plain object-typed (<c>type:"object"</c>) nor the
+    /// <c>type:["object","null"]</c> array form. Used by <see cref="CreateStructuredResponse"/>
+    /// to decide whether to apply the envelope when emitting to a client that negotiated a
+    /// protocol version older than <c>"2026-06-30"</c> (those versions pre-date SEP-2106's
+    /// allowance of non-object output schemas). The inner <c>type:["object","null"]</c>
+    /// check is hoisted into a named bool to keep the surrounding control flow free of
+    /// empty branches.
+    /// </summary>
+    internal static bool ShouldWrapValueForLegacyWire(JsonElement schema)
+    {
+        bool structuredOutputRequiresWrapping = false;
+
+        if (schema.ValueKind is not JsonValueKind.Object ||
+            !schema.TryGetProperty("type", out JsonElement typeProperty) ||
             typeProperty.ValueKind is not JsonValueKind.String ||
             typeProperty.GetString() is not "object")
         {
-            // If the output schema is not an object, need to modify to be a valid MCP output schema.
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(schema, McpJsonUtilities.JsonContext.Default.JsonElement);
+
+            bool isNullableObjectArray =
+                schemaNode is JsonObject objSchema &&
+                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
+                typeNode is JsonArray { Count: 2 } typeArray &&
+                typeArray.Any(type => (string?)type is "object") &&
+                typeArray.Any(type => (string?)type is "null");
+
+            if (!isNullableObjectArray)
+            {
+                structuredOutputRequiresWrapping = true;
+            }
+        }
+
+        return structuredOutputRequiresWrapping;
+    }
+
+    /// <summary>
+    /// Transforms <paramref name="naturalSchema"/> into the wire shape required by clients
+    /// on protocol versions older than <c>"2026-06-30"</c>: non-object schemas are wrapped
+    /// in <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>,
+    /// the <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>,
+    /// and plain object-typed schemas pass through unchanged. SEP-2106 clients
+    /// (<c>"2026-06-30"</c>+) see the natural schema and never need this transform.
+    /// Dispatches on <see cref="ShouldWrapValueForLegacyWire"/> so the wrap decision lives
+    /// in one place.
+    /// </summary>
+    /// <param name="naturalSchema">The natural JSON Schema 2020-12 document.</param>
+    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema)
+    {
+        if (naturalSchema.ValueKind is not JsonValueKind.Object ||
+            !naturalSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+            typeProperty.ValueKind is not JsonValueKind.String ||
+            typeProperty.GetString() is not "object")
+        {
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
 
             if (schemaNode is JsonObject objSchema &&
                 objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
+                typeNode is JsonArray { Count: 2 } typeArray &&
+                typeArray.Any(type => (string?)type is "object") &&
+                typeArray.Any(type => (string?)type is "null"))
             {
-                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
+                // type:["object","null"] → normalize to plain "object". No envelope.
                 objSchema["type"] = "object";
             }
             else
             {
-                // For anything else, wrap the schema in an envelope with a "result" property.
+                // Anything else (string, integer, array, boolean schemas, missing type,
+                // compositions). Wrap in the {"result": <schema>} envelope.
                 schemaNode = new JsonObject
                 {
                     ["type"] = "object",
@@ -524,14 +611,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
                 // has moved under "#/properties/result". Rewrite them to account for the new location.
                 RewriteRefPointers(schemaNode["properties"]!["result"]);
-
-                structuredOutputRequiresWrapping = true;
             }
 
-            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+            return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
         }
 
-        return outputSchema;
+        return naturalSchema;
     }
 
     /// <summary>
@@ -580,7 +665,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
     }
 
-    private JsonElement? CreateStructuredResponse(object? aiFunctionResult)
+    private JsonElement? CreateStructuredResponse(object? aiFunctionResult, string? negotiatedProtocolVersion)
     {
         if (ProtocolTool.OutputSchema is null)
         {
@@ -596,10 +681,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
 
-        if (_structuredOutputRequiresWrapping)
+        // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
+        // schemas. SEP-2106 clients see the natural shape. The classification is decided
+        // fresh per request from the stored natural schema.
+        if (!McpSessionHandler.SupportsNaturalOutputSchemas(negotiatedProtocolVersion) &&
+            ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema.Value))
         {
-            JsonNode? resultNode = elementResult is { } je
-                ? JsonSerializer.SerializeToNode(je, McpJsonUtilities.JsonContext.Default.JsonElement)
+            JsonNode? resultNode = elementResult is { } v
+                ? JsonSerializer.SerializeToNode(v, McpJsonUtilities.JsonContext.Default.JsonElement)
                 : null;
             return JsonSerializer.SerializeToElement(new JsonObject
             {
