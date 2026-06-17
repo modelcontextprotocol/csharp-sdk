@@ -38,13 +38,13 @@ public abstract partial class McpSession : IAsyncDisposable
 
     /// <summary>The in-progress draft protocol revision this SDK supports.</summary>
     /// <remarks>
-    /// Setting <see cref="McpClientOptions.ProtocolVersion"/> or <see cref="McpServerOptions.ProtocolVersion"/>
-    /// to this value opts the session into the draft revision. The draft revision removes the
-    /// <c>initialize</c> handshake (SEP-2575) and the <c>Mcp-Session-Id</c> header (SEP-2567), so a draft
-    /// HTTP server is sessionless on the wire regardless of <c>HttpServerTransportOptions.Stateless</c>.
-    /// Clients automatically fall back to the legacy <c>initialize</c> flow when the server does not
-    /// support the draft revision; set <see cref="McpClientOptions.MinProtocolVersion"/> to this value
-    /// to disable that fallback.
+    /// The draft revision removes the <c>initialize</c> handshake (SEP-2575) and the
+    /// <c>Mcp-Session-Id</c> header (SEP-2567), so a draft HTTP server is sessionless on the wire
+    /// regardless of <c>HttpServerTransportOptions.Stateless</c>. Clients prefer this revision by
+    /// default and automatically fall back to the legacy <c>initialize</c> flow when the server does
+    /// not support it; pin <see cref="McpClientOptions.ProtocolVersion"/> to a legacy version to opt
+    /// out, or set <see cref="McpClientOptions.MinProtocolVersion"/> to this value to keep the draft
+    /// preference while refusing the legacy fallback.
     /// </remarks>
     public const string DraftProtocolVersion = McpSessionHandler.DraftProtocolVersion;
 

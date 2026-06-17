@@ -32,9 +32,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>
-    /// The draft protocol version that enables MRTR (Multi Round-Trip Requests) per SEP-2322.
-    /// Clients and servers opt in by setting <see cref="McpClientOptions.ProtocolVersion"/>
-    /// or <see cref="McpServerOptions.ProtocolVersion"/> to this value.
+    /// The draft protocol version (SEP-2575 + SEP-2567) that removes the <c>initialize</c> handshake
+    /// and <c>Mcp-Session-Id</c> and enables MRTR (Multi Round-Trip Requests) per SEP-2322.
+    /// Clients prefer this revision by default and fall back to the legacy <c>initialize</c> handshake
+    /// when the server does not support it; pin <see cref="McpClientOptions.ProtocolVersion"/> to a
+    /// legacy version to opt out. Servers remain reactive: with
+    /// <see cref="McpServerOptions.ProtocolVersion"/> left <see langword="null"/> they honor whichever
+    /// supported revision each peer requests, so a single server serves both draft and legacy clients.
     /// </summary>
     internal const string DraftProtocolVersion = "2026-07-28";
 
@@ -601,8 +605,9 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     }
 
     /// <summary>
-    /// Injects the draft-protocol per-request <c>_meta</c> fields into an outgoing request,
-    /// idempotently overwriting any existing values.
+    /// Injects the draft-protocol per-request <c>_meta</c> fields into an outgoing request.
+    /// Protocol version and client info overwrite any existing values; client capabilities are merged
+    /// so per-request capability opt-ins already present in the envelope are preserved.
     /// </summary>
     /// <remarks>
     /// Used by <see cref="Client.McpClient"/> in draft mode to carry protocol version, client info, and
@@ -631,7 +636,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         metaObj[NotificationMethods.ProtocolVersionMetaKey] = protocolVersion;
         metaObj[NotificationMethods.ClientInfoMetaKey] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.JsonContext.Default.Implementation);
-        metaObj[NotificationMethods.ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
+
+        // Overlay the session-level standard capabilities onto whatever the request already carried
+        // in _meta.clientCapabilities. A caller higher up the pipeline (e.g. CallToolRawAsync via
+        // GetMetaWithTaskCapability) may have already written per-request capability opt-ins such as
+        // extensions/io.modelcontextprotocol/tasks. Blindly overwriting the node would drop those
+        // additions, so merge instead: set the standard capability fields from the session
+        // capabilities while preserving any extra keys (extensions) the request envelope already had.
+        var serializedCapabilities = (JsonObject)JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities)!;
+        if (metaObj[NotificationMethods.ClientCapabilitiesMetaKey] is JsonObject existingCapabilities)
+        {
+            foreach (var property in serializedCapabilities.ToArray())
+            {
+                existingCapabilities[property.Key] = property.Value?.DeepClone();
+            }
+        }
+        else
+        {
+            metaObj[NotificationMethods.ClientCapabilitiesMetaKey] = serializedCapabilities;
+        }
 
         if (logLevel is { } level)
         {

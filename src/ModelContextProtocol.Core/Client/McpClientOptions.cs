@@ -52,14 +52,16 @@ public sealed class McpClientOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The protocol version is a key part of the initialization handshake. The client and server must
-    /// agree on a compatible protocol version to communicate successfully.
+    /// When non-<see langword="null"/>, this version is requested from the server. Setting it to a
+    /// legacy (non-draft) version such as <c>2025-11-25</c> opts out of the draft revision and forces
+    /// the <c>initialize</c> handshake; the handshake then fails if the server's negotiated version
+    /// does not match.
     /// </para>
     /// <para>
-    /// If non-<see langword="null"/>, this version will be sent to the server, and the handshake
-    /// will fail if the version in the server's response does not match this version.
-    /// If <see langword="null"/>, the client will request the latest version supported by the server
-    /// but will allow any supported version that the server advertises in its response.
+    /// When <see langword="null"/> (the default), the client prefers the draft revision
+    /// (<see cref="McpSession.DraftProtocolVersion"/>): it probes with <c>server/discover</c> and
+    /// automatically falls back to a legacy <c>initialize</c> handshake, downgrading to any version
+    /// the server advertises, when the server does not support the draft revision.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
@@ -76,8 +78,9 @@ public sealed class McpClientOptions
     /// <para>
     /// This is useful when the client requires features (such as the draft revision's removal of the
     /// <c>initialize</c> handshake or <c>Mcp-Session-Id</c>) that are not available in older protocol
-    /// revisions. Setting this to <see cref="McpSession.DraftProtocolVersion"/> disables the
-    /// automatic legacy-server fallback that otherwise switches to the <c>initialize</c> handshake.
+    /// revisions. Because the client already prefers the draft revision by default, setting this to
+    /// <see cref="McpSession.DraftProtocolVersion"/> disables the automatic legacy-server fallback
+    /// that otherwise switches to the <c>initialize</c> handshake.
     /// </para>
     /// <para>
     /// If <see langword="null"/> (the default), the client falls back to any version the server
@@ -85,9 +88,9 @@ public sealed class McpClientOptions
     /// </para>
     /// <example>
     /// <code>
+    /// // The draft revision is already the default; pin the minimum to refuse the legacy fallback.
     /// var clientOptions = new McpClientOptions
     /// {
-    ///     ProtocolVersion = McpSession.DraftProtocolVersion,
     ///     MinProtocolVersion = McpSession.DraftProtocolVersion,
     /// };
     /// </code>

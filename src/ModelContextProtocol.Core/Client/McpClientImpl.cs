@@ -289,11 +289,14 @@ internal sealed partial class McpClientImpl : McpClient
 
             try
             {
-                // Under the draft protocol revision (SEP-2575), there is no initialize handshake.
-                // Instead, the client calls server/discover to learn the server's capabilities and
-                // then begins sending normal RPCs that carry protocolVersion / clientInfo /
-                // clientCapabilities in their per-request _meta.
-                if (_options.ProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+                // The draft protocol revision (SEP-2575) is the default: there is no initialize
+                // handshake. Instead, the client calls server/discover to learn the server's
+                // capabilities and then begins sending normal RPCs that carry protocolVersion /
+                // clientInfo / clientCapabilities in their per-request _meta. A null ProtocolVersion
+                // prefers the draft revision and automatically falls back to the legacy initialize
+                // handshake when the server doesn't support it. The legacy branch below runs only
+                // when the caller explicitly pins a non-draft version (opting out of draft).
+                if (_options.ProtocolVersion is null || _options.ProtocolVersion == McpSessionHandler.DraftProtocolVersion)
                 {
                     string draftVersion = McpSessionHandler.DraftProtocolVersion;
 
@@ -419,7 +422,9 @@ internal sealed partial class McpClientImpl : McpClient
                 }
                 else
                 {
-                    // Legacy initialize handshake.
+                    // Legacy initialize handshake. Reached only when the caller explicitly pinned a
+                    // non-draft ProtocolVersion (opting out of the draft default), so
+                    // _options.ProtocolVersion is non-null here.
                     string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
                     await PerformLegacyInitializeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
                 }
