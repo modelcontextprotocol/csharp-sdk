@@ -262,7 +262,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             InputSchema = ProtocolTool.InputSchema,
             OutputSchema = legacyOutputSchema,
             Annotations = ProtocolTool.Annotations,
-            Execution = ProtocolTool.Execution,
             Icons = ProtocolTool.Icons,
             Meta = ProtocolTool.Meta,
         };
