@@ -1,3 +1,7 @@
+---
+uid: list-of-diagnostics
+---
+
 # List of Diagnostics Produced by MCP C# SDK
 
 This document provides information about each of the diagnostics produced by the MCP C# SDK analyzers and source generators.
