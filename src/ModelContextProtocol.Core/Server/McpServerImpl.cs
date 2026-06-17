@@ -826,9 +826,22 @@ internal sealed partial class McpServerImpl : McpServer
 
                 if (request.Params?.Cursor is null)
                 {
+                    // SEP-2106 wire shaping: clients on protocol versions older than
+                    // 2026-06-30 require outputSchema.type == "object", so the natural
+                    // schema is reshaped before emission (type:["object","null"] normalized
+                    // to "object", any other non-object schema wrapped in
+                    // {"type":"object","properties":{"result":<schema>}}). Clients on
+                    // 2026-06-30+ receive the natural JSON Schema 2020-12 document stored
+                    // on Tool.OutputSchema. Only AIFunctionMcpServerTool tools go through
+                    // reshaping; custom McpServerTool subclasses build their Tool directly
+                    // and pass through unchanged at every protocol version.
+                    bool useNaturalSchemas = McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion);
                     foreach (var t in tools)
                     {
-                        result.Tools.Add(t.ProtocolTool);
+                        Tool wireTool = useNaturalSchemas || t is not AIFunctionMcpServerTool aiFunctionTool
+                            ? t.ProtocolTool
+                            : aiFunctionTool.BuildLegacyWireProtocolTool();
+                        result.Tools.Add(wireTool);
                     }
                 }
 
