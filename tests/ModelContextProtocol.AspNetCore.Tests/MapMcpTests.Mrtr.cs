@@ -33,8 +33,14 @@ public abstract partial class MapMcpTests
             options.ProtocolVersion = "2026-07-28";
         });
 
-    private Task<McpClient> ConnectDefaultAsync() =>
-        ConnectAsync(configureClient: ConfigureMrtrHandlers);
+    // The default client now negotiates draft (2026-07-28). The legacy JSON-RPC MRTR back-compat
+    // resolver only applies to legacy clients, so pin these to the latest non-draft version.
+    private Task<McpClient> ConnectLegacyAsync() =>
+        ConnectAsync(configureClient: options =>
+        {
+            ConfigureMrtrHandlers(options);
+            options.ProtocolVersion = "2025-11-25";
+        });
 
     /// <summary>Configures elicitation, sampling, and roots handlers on client options.</summary>
     private static void ConfigureMrtrHandlers(McpClientOptions options)
@@ -175,7 +181,8 @@ public abstract partial class MapMcpTests
 
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            : ConfigureMrtrHandlers;
+            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
 
         // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3.
         // In stateless mode, those calls succeed only when the request is still open on the same
@@ -287,7 +294,8 @@ public abstract partial class MapMcpTests
 
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            : ConfigureMrtrHandlers;
+            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
 
         await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -426,7 +434,8 @@ public abstract partial class MapMcpTests
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            : ConfigureMrtrHandlers;
+            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
         await using var client = await ConnectAsync(configureClient: configureClient);
 
         if (!experimentalClient && Stateless)
@@ -472,7 +481,8 @@ public abstract partial class MapMcpTests
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            : ConfigureMrtrHandlers;
+            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
         await using var client = await ConnectAsync(configureClient: configureClient);
         Assert.Equal(experimentalClient ? "2026-07-28" : "2025-11-25", client.NegotiatedProtocolVersion);
 
@@ -629,7 +639,7 @@ public abstract partial class MapMcpTests
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
+        await using var client = await ConnectLegacyAsync();
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-roots-backcompat",
@@ -680,7 +690,7 @@ public abstract partial class MapMcpTests
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
+        await using var client = await ConnectLegacyAsync();
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("mrtr-multi-input",
@@ -719,6 +729,7 @@ public abstract partial class MapMcpTests
         await using var client = await ConnectAsync(configureClient: options =>
         {
             ConfigureMrtrHandlers(options);
+            options.ProtocolVersion = "2025-11-25";
             var originalHandler = options.Handlers.ElicitationHandler!;
             options.Handlers.ElicitationHandler = (request, ct) =>
             {
@@ -751,7 +762,7 @@ public abstract partial class MapMcpTests
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var client = await ConnectDefaultAsync();
+        await using var client = await ConnectLegacyAsync();
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
@@ -774,6 +785,7 @@ public abstract partial class MapMcpTests
         await using var client = await ConnectAsync(configureClient: options =>
         {
             ConfigureMrtrHandlers(options);
+            options.ProtocolVersion = "2025-11-25";
             options.Handlers.ElicitationHandler = (request, ct) =>
             {
                 throw new InvalidOperationException("Client-side elicitation failure");

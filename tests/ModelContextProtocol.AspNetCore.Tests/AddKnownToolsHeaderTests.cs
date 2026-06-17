@@ -46,7 +46,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2026-07-28",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "header-capture-test", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions)
@@ -146,7 +146,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register the tool WITHOUT calling ListToolsAsync first — this is the core scenario from issue #1577
@@ -186,7 +186,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         client.AddKnownTools([CreateToolWithHeaders()]);
@@ -222,7 +222,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         client.AddKnownTools([CreateToolWithHeaders()]);
@@ -252,7 +252,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Call the tool without AddKnownTools or ListToolsAsync — no Mcp-Param-* headers should be sent
@@ -285,7 +285,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register the tool first
@@ -322,7 +322,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register then remove — headers should no longer be sent
@@ -376,7 +376,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register tool, then ListToolsAsync returns empty list from server
@@ -411,7 +411,7 @@ public class AddKnownToolsHeaderTests(ITestOutputHelper outputHelper) : KestrelI
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory,
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Register with header "SchemaA", then overwrite with "SchemaB"

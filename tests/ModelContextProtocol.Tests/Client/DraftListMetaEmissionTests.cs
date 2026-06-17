@@ -26,6 +26,7 @@ namespace ModelContextProtocol.Tests.Client;
 public class DraftListMetaEmissionTests : ClientServerTestBase
 {
     private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
+    private const string LatestStableVersion = "2025-11-25";
 
     // Captured _meta envelopes for each request method we exercise. Populated by the per-method
     // server-side filters and asserted from each test method.
@@ -150,7 +151,7 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
         // injector is gated on the negotiated protocol version. If this ever started writing draft keys
         // under legacy protocols, every legacy server would reject the request.
         StartServer();
-        await using var client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 

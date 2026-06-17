@@ -250,8 +250,9 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        // Client does NOT set 2026-07-28 - standard protocol only
-        var clientOptions = new McpClientOptions();
+        // Client is pinned to a legacy protocol version, so it performs the initialize
+        // handshake and the session is treated as non-MRTR.
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2025-03-26" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult
             {
@@ -405,7 +406,9 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        var clientOptions = new McpClientOptions();
+        // Pin to the draft revision so the client performs the server/discover handshake and
+        // treats InputRequiredResult as an MRTR round-trip.
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (_, _) =>
             new ValueTask<ElicitResult>(new ElicitResult
             {
@@ -428,27 +431,24 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var serverReader = new StreamReader(clientToServer.Reader.AsStream());
         var serverWriter = serverToClient.Writer.AsStream();
 
-        // Initialize handshake - negotiate 2026-07-28 so the client treats InputRequiredResult as MRTR.
-        var initLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        Assert.NotNull(initLine);
-        var initRequest = JsonSerializer.Deserialize<JsonRpcRequest>(initLine, McpJsonUtilities.DefaultOptions);
-        Assert.NotNull(initRequest);
-        Assert.Equal("initialize", initRequest.Method);
+        // server/discover handshake - negotiate 2026-07-28 so the client treats InputRequiredResult as MRTR.
+        var discoverLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(discoverLine);
+        var discoverRequest = JsonSerializer.Deserialize<JsonRpcRequest>(discoverLine, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(discoverRequest);
+        Assert.Equal("server/discover", discoverRequest.Method);
 
-        var initResponse = new JsonRpcResponse
+        var discoverResponse = new JsonRpcResponse
         {
-            Id = initRequest.Id,
-            Result = JsonSerializer.SerializeToNode(new InitializeResult
+            Id = discoverRequest.Id,
+            Result = JsonSerializer.SerializeToNode(new DiscoverResult
             {
-                ProtocolVersion = "2026-07-28",
+                SupportedVersions = ["2026-07-28"],
                 Capabilities = new ServerCapabilities { Tools = new() },
                 ServerInfo = new Implementation { Name = "MrtrServer", Version = "1.0" }
             }, McpJsonUtilities.DefaultOptions),
         };
-        await WriteJsonRpcAsync(serverWriter, initResponse);
-
-        var initializedLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        Assert.NotNull(initializedLine);
+        await WriteJsonRpcAsync(serverWriter, discoverResponse);
 
         await using var client = await clientTask;
         Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);

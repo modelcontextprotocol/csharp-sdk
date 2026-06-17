@@ -48,7 +48,7 @@ public class DraftConnectionTests : ClientServerTestBase
     {
         StartServer();
 
-        await using var client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
         Assert.NotEqual(DraftVersion, client.NegotiatedProtocolVersion);
     }
@@ -60,7 +60,7 @@ public class DraftConnectionTests : ClientServerTestBase
         // (e.g., to learn capabilities without doing a second initialize).
         StartServer();
 
-        await using var client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
         var response = await client.SendRequestAsync(
             new JsonRpcRequest { Method = RequestMethods.ServerDiscover },

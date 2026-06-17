@@ -91,10 +91,13 @@ public class DiagnosticTests
         Assert.Equal(clientListToolsCall.SpanId, serverListToolsCall.ParentSpanId);
         Assert.Equal(clientListToolsCall.TraceId, serverListToolsCall.TraceId);
 
-        // Validate that the client trace context encoded to request.params._meta[traceparent]
+        // Validate that the client trace context encoded to request.params._meta[traceparent].
+        // Under the draft revision _meta also carries the per-request envelope (protocolVersion,
+        // clientInfo, clientCapabilities), so assert on the traceparent property specifically
+        // rather than the entire _meta object.
         using var listToolsJson = JsonDocument.Parse(clientToServerLog.First(s => s.Contains("\"method\":\"tools/list\"")));
-        var metaJson = listToolsJson.RootElement.GetProperty("params").GetProperty("_meta").GetRawText();
-        Assert.Equal($$"""{"traceparent":"00-{{clientListToolsCall.TraceId}}-{{clientListToolsCall.SpanId}}-01"}""", metaJson);
+        var traceparent = listToolsJson.RootElement.GetProperty("params").GetProperty("_meta").GetProperty("traceparent").GetString();
+        Assert.Equal($"00-{clientListToolsCall.TraceId}-{clientListToolsCall.SpanId}-01", traceparent);
 
         // Validate that mcp.session.id is set on both client and server activities and that
         // all client activities share one session ID while all server activities share another.
