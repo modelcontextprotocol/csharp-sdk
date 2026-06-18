@@ -825,9 +825,22 @@ internal sealed partial class McpServerImpl : McpServer
 
                 if (request.Params?.Cursor is null)
                 {
+                    // SEP-2106 wire shaping: clients on protocol versions older than
+                    // 2026-06-30 require outputSchema.type == "object", so the natural
+                    // schema is reshaped before emission (type:["object","null"] normalized
+                    // to "object", any other non-object schema wrapped in
+                    // {"type":"object","properties":{"result":<schema>}}). Clients on
+                    // 2026-06-30+ receive the natural JSON Schema 2020-12 document stored
+                    // on Tool.OutputSchema. Only AIFunctionMcpServerTool tools go through
+                    // reshaping; custom McpServerTool subclasses build their Tool directly
+                    // and pass through unchanged at every protocol version.
+                    bool useNaturalSchemas = McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion);
                     foreach (var t in tools)
                     {
-                        result.Tools.Add(t.ProtocolTool);
+                        Tool wireTool = useNaturalSchemas || t is not AIFunctionMcpServerTool aiFunctionTool
+                            ? t.ProtocolTool
+                            : aiFunctionTool.BuildLegacyWireProtocolTool();
+                        result.Tools.Add(wireTool);
                     }
                 }
 
@@ -1275,6 +1288,27 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
+        // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
+        // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
+        // When a handler leaves them unset, fill in conservative defaults (immediately stale and not
+        // shareable) so the wire form always carries the fields while preserving today's "don't cache"
+        // behavior. Any value supplied by the handler or a filter is left untouched.
+        if (typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
+        {
+            var innerHandler = handler;
+            handler = async (request, cancellationToken) =>
+            {
+                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+                if (result is ICacheableResult cacheable)
+                {
+                    cacheable.TimeToLive ??= TimeSpan.Zero;
+                    cacheable.CacheScope ??= CacheScope.Private;
+                }
+
+                return result;
+            };
+        }
+
         _requestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
