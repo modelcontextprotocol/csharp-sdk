@@ -178,17 +178,25 @@ public class McpServerTaskTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        _ = Task.Run(async () =>
+        var failedTask = new TaskCompletionSource<bool>();
+
+        // Run failure task once the task from the tool call is created
+        _taskStore.OnTaskCreated += taskId =>
         {
-            await Task.Delay(100, ct);
-            var taskId = _taskStore.GetAllTaskIds().Single();
-            _taskStore.FailTask(taskId, JsonElement.Parse("""{"code":-32000,"message":"something went wrong"}"""));
-        }, ct);
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(100, ct);
+                _taskStore.FailTask(taskId, JsonElement.Parse("""{"code":-32000,"message":"something went wrong"}"""));
+                failedTask.SetResult(true);
+            }, ct);
+        };
 
         await Assert.ThrowsAsync<McpException>(async () =>
             await client.CallToolAsync(
                 new CallToolRequestParams { Name = "async-tool" },
                 ct));
+
+        Assert.True(await failedTask.Task);
     }
 
     [Fact]
@@ -197,17 +205,25 @@ public class McpServerTaskTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        _ = Task.Run(async () =>
+        var cancelledTask = new TaskCompletionSource<bool>();
+
+        // Run cancellation task once the task from the tool call is created
+        _taskStore.OnTaskCreated += taskId =>
         {
-            await Task.Delay(100, ct);
-            var taskId = _taskStore.GetAllTaskIds().Single();
-            _taskStore.CancelTask(taskId);
-        }, ct);
+            Task.Run(async () =>
+            {
+                await Task.Delay(100, ct);
+                _taskStore.CancelTask(taskId);
+                cancelledTask.SetResult(true);
+            }, ct);
+        };
 
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
             await client.CallToolAsync(
                 new CallToolRequestParams { Name = "async-tool" },
                 ct));
+
+        Assert.True(await cancelledTask.Task);
     }
 
     [Fact]
@@ -539,6 +555,8 @@ public class McpServerTaskTests : ClientServerTestBase
     {
         private readonly Dictionary<string, TaskEntry> _tasks = new();
 
+        internal Action<string>? OnTaskCreated;
+
         public string CreateTask(McpTaskStatus initialStatus = McpTaskStatus.Working)
         {
             var taskId = Guid.NewGuid().ToString("N");
@@ -551,6 +569,9 @@ public class McpServerTaskTests : ClientServerTestBase
                     LastUpdatedAt = DateTimeOffset.UtcNow,
                 };
             }
+
+            OnTaskCreated?.Invoke(taskId);
+
             return taskId;
         }
 
