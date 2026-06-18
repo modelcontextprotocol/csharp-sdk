@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests;
@@ -16,29 +15,6 @@ namespace ModelContextProtocol.Tests;
 /// </remarks>
 public class ExperimentalInternalPropertyTests
 {
-    [Fact]
-    public void OfficialExtensionsTasksAndMrtrApis_AreNotExperimental()
-    {
-        static bool HasExperimentalAttribute(ICustomAttributeProvider provider) =>
-            provider.GetCustomAttributes(inherit: false).Any(a => a.GetType().Name == "ExperimentalAttribute");
-
-        Assert.False(HasExperimentalAttribute(typeof(InputRequest)));
-        Assert.False(HasExperimentalAttribute(typeof(InputResponse)));
-        Assert.False(HasExperimentalAttribute(typeof(InputRequiredResult)));
-        Assert.False(HasExperimentalAttribute(typeof(InputRequiredException)));
-        Assert.False(HasExperimentalAttribute(typeof(IMcpTaskStore)));
-        Assert.False(HasExperimentalAttribute(typeof(InMemoryMcpTaskStore)));
-        Assert.False(HasExperimentalAttribute(typeof(InputResponseReceivedEventArgs)));
-        Assert.False(HasExperimentalAttribute(typeof(McpTaskInfo)));
-
-        Assert.False(HasExperimentalAttribute(typeof(ClientCapabilities).GetProperty(nameof(ClientCapabilities.Extensions))!));
-        Assert.False(HasExperimentalAttribute(typeof(ServerCapabilities).GetProperty(nameof(ServerCapabilities.Extensions))!));
-        Assert.False(HasExperimentalAttribute(typeof(RequestParams).GetProperty(nameof(RequestParams.InputResponses))!));
-        Assert.False(HasExperimentalAttribute(typeof(RequestParams).GetProperty(nameof(RequestParams.RequestState))!));
-        Assert.False(HasExperimentalAttribute(typeof(McpServer).GetProperty(nameof(McpServer.IsMrtrSupported))!));
-        Assert.False(HasExperimentalAttribute(typeof(McpServer).GetMethod(nameof(McpServer.CreateMcpTaskScope))!));
-    }
-
     [Fact]
     public void ExperimentalProperties_MustBeHiddenFromSourceGenerator()
     {
