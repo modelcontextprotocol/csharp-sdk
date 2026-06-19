@@ -25,6 +25,7 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | :------------ | :---------- |
 | `MCPEXP001` | Experimental APIs tied to MCP specification features. Reuse this ID for newly introduced experimental spec features, and add feature-specific messages/URLs in `Experimentals`. |
 | `MCPEXP002` | Experimental SDK APIs unrelated to the MCP specification itself, including subclassing `McpClient`/`McpServer` (see [#1363](https://github.com/modelcontextprotocol/csharp-sdk/pull/1363)) and `RunSessionHandler`, which may be removed or change signatures in a future release (consider using `ConfigureSessionOptions` instead). |
+| `MCPEXP003` | Experimental MCP Apps extension APIs. MCP Apps is the first official MCP extension (`io.modelcontextprotocol/ui`), enabling servers to deliver interactive UIs inside AI clients (see [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)). |
 
 ## Obsolete APIs
 
