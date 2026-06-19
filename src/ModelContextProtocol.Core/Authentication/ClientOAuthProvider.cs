@@ -50,6 +50,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private AuthorizationServerMetadata? _authServerMetadata;
     private readonly HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
     private readonly object _scopeAccumulatorLock = new();
+    private bool _hasAttemptedStepUp;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -245,6 +246,28 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (availableAuthorizationServers.Count == 0)
         {
             ThrowFailedToHandleUnauthorizedResponse("No authorization servers found in authentication challenge");
+        }
+
+        // SEP-2350: A step-up may legitimately introduce new scopes, so at least one interactive
+        // (re-)authorization attempt is always allowed. However, once a step-up has already been
+        // attempted, a subsequent insufficient_scope challenge that introduces no scope beyond those
+        // already requested cannot make progress by re-running authorization. Treat that repeated,
+        // unproductive challenge as a permanent authorization failure instead of prompting the user
+        // again for the same resource and operation combination.
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            bool introducesNewScopes = ChallengeIntroducesNewScopes(protectedResourceMetadata);
+            lock (_scopeAccumulatorLock)
+            {
+                if (_hasAttemptedStepUp && !introducesNewScopes)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
+                        "so step-up authorization cannot satisfy the request.");
+                }
+
+                _hasAttemptedStepUp = true;
+            }
         }
 
         // Convert string URIs to Uri objects for the selector
@@ -733,21 +756,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
         // Determine the scopes for the current operation from the challenge or metadata.
-        string? currentOperationScopes;
-        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
-        {
-            currentOperationScopes = protectedResourceMetadata.WwwAuthenticateScope;
-        }
-        else if (protectedResourceMetadata.ScopesSupported.Count > 0)
-        {
-            currentOperationScopes = string.Join(" ", protectedResourceMetadata.ScopesSupported);
-        }
-        else
-        {
-            currentOperationScopes = _configuredScopes;
-        }
+        var currentOperationScopes = GetCurrentOperationScopes(protectedResourceMetadata);
 
-        if (string.IsNullOrEmpty(currentOperationScopes))
+        if (currentOperationScopes.Count == 0)
         {
             lock (_scopeAccumulatorLock)
             {
@@ -760,10 +771,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
         // to avoid losing permissions needed for other operations during step-up authorization.
-        var newScopes = currentOperationScopes!.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         lock (_scopeAccumulatorLock)
         {
-            foreach (var scope in newScopes)
+            foreach (var scope in currentOperationScopes)
             {
                 _previouslyRequestedScopes.Add(scope);
             }
@@ -771,6 +781,62 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
             return string.Join(" ", _previouslyRequestedScopes.OrderBy(s => s, StringComparer.Ordinal));
         }
+    }
+
+    /// <summary>
+    /// Determines the scopes required for the current operation, preferring the <c>WWW-Authenticate</c>
+    /// challenge scope, then <c>scopes_supported</c> from the protected resource metadata, then the
+    /// configured scopes. Returns the individual scope tokens so callers can compare and accumulate them
+    /// without re-joining and re-splitting. This does not mutate the accumulated scope set.
+    /// </summary>
+    private IReadOnlyList<string> GetCurrentOperationScopes(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        {
+            return SplitScopes(protectedResourceMetadata.WwwAuthenticateScope!);
+        }
+
+        var scopesSupported = protectedResourceMetadata.ScopesSupported;
+        if (scopesSupported.Count > 0)
+        {
+            // scopes_supported is already a list of individual scopes; avoid join/split round-tripping.
+            return scopesSupported as IReadOnlyList<string> ?? [.. scopesSupported];
+        }
+
+        return _configuredScopes is null ? [] : SplitScopes(_configuredScopes);
+    }
+
+    private static string[] SplitScopes(string scopes) =>
+        scopes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the current challenge requires at least one scope that has not
+    /// already been requested in a previous (re-)authorization. The caller combines this with step-up
+    /// attempt tracking: per SEP-2350, a step-up that adds a new scope is always allowed, but once a
+    /// step-up has been attempted, a later challenge that adds no new scope is treated as a permanent
+    /// failure because re-running interactive authorization cannot make progress.
+    /// </summary>
+    private bool ChallengeIntroducesNewScopes(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        var currentOperationScopes = GetCurrentOperationScopes(protectedResourceMetadata);
+        if (currentOperationScopes.Count == 0)
+        {
+            // No concrete scope to request, so a re-authorization cannot add anything new.
+            return false;
+        }
+
+        lock (_scopeAccumulatorLock)
+        {
+            foreach (var scope in currentOperationScopes)
+            {
+                if (!_previouslyRequestedScopes.Contains(scope))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

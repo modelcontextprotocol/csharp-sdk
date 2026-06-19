@@ -685,6 +685,195 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task AuthorizationFlow_StopsSteppingUpWhenChallengeAddsNoNewScope()
+    {
+        // SEP-2350: A misconfigured server repeats the same insufficient_scope challenge even after the
+        // client has already requested that scope. Re-running interactive authorization cannot make
+        // progress, so the client must treat it as a permanent failure rather than prompting the user
+        // again on every call to the same resource and operation.
+
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "deny-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Deny tool executed.";
+                }),
+            ]);
+
+        List<string?> requestedScopes = [];
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        // Always reject "deny-tool" with the same challenge, regardless of the token's scopes.
+                        if (toolCallParams?.Name == "deny-tool")
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:read\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScopes.Add(query["scope"].ToString());
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Initial auth gets "mcp:tools" from protected resource metadata.
+        Assert.Single(requestedScopes);
+
+        // First call introduces a new scope ("files:read"), so exactly one step-up authorization occurs.
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => client.CallToolAsync("deny-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask());
+        Assert.Equal(2, requestedScopes.Count);
+
+        // Second call repeats the same challenge with no new scope. The client must NOT prompt again;
+        // it surfaces a permanent authorization failure instead of re-running interactive authorization.
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => client.CallToolAsync("deny-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask());
+        Assert.Contains("added no scope beyond those already requested", ex.ToString());
+
+        // No additional authorization prompt was triggered by the second call.
+        Assert.Equal(2, requestedScopes.Count);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_AllowsOneStepUpEvenWhenChallengeAddsNoNewScope()
+    {
+        // SEP-2350 (strict reading): A step-up authorization is always allowed at least once, even when
+        // the challenged scope was already requested during the initial authorization. Only a *repeated*
+        // challenge that still adds no new scope is treated as permanent. Here the server always rejects
+        // "deny-tool" with the same "mcp:tools" scope that the client already requested on initial connect.
+
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "deny-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Deny tool executed.";
+                }),
+            ]);
+
+        List<string?> requestedScopes = [];
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        // Always reject "deny-tool" challenging "mcp:tools", which the client already
+                        // requested on initial connect, so the challenge never introduces a new scope.
+                        if (toolCallParams?.Name == "deny-tool")
+                        {
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"mcp:tools\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScopes.Add(query["scope"].ToString());
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Initial auth already requests "mcp:tools" from protected resource metadata.
+        Assert.Single(requestedScopes);
+        Assert.Equal("mcp:tools", requestedScopes[0]);
+
+        // First call: even though the challenged scope is not new, one step-up attempt is still allowed,
+        // so a second authorization request is made.
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => client.CallToolAsync("deny-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask());
+        Assert.Equal(2, requestedScopes.Count);
+
+        // Second call: the step-up has already been attempted and the challenge still adds no new scope,
+        // so the client surfaces a permanent failure without prompting again.
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => client.CallToolAsync("deny-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask());
+        Assert.Contains("added no scope beyond those already requested", ex.ToString());
+        Assert.Equal(2, requestedScopes.Count);
+    }
+
+    [Fact]
     public async Task AuthorizationFails_WhenResourceMetadataPortDiffers()
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
