@@ -771,6 +771,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
         // to avoid losing permissions needed for other operations during step-up authorization.
+        // Note: the accumulator stores only server-challenged / scopes_supported / configured scopes.
+        // offline_access (AugmentScopeWithOfflineAccess) and any ScopeSelector are applied per request
+        // in ComputeEffectiveScope and are intentionally not accumulated, so the selector always sees
+        // the full union and the operation stays idempotent.
         lock (_scopeAccumulatorLock)
         {
             foreach (var scope in currentOperationScopes)
