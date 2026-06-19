@@ -381,7 +381,7 @@ Like [stdio](#stdio-transport), the in-memory transport is inherently single-ses
 
 ## Cross-Application Access
 
-The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
+The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
 
 The flow consists of two steps:
 1. **RFC 8693 Token Exchange** at the enterprise IdP: OIDC ID token → JWT Authorization Grant (JAG)
