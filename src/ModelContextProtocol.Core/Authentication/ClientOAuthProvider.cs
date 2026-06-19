@@ -48,6 +48,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    // The accumulated scope set lives for this provider's lifetime and is intentionally not keyed by
+    // resource or authorization server. This is safe today because one ClientOAuthProvider is created
+    // per HttpClientTransport, i.e. per endpoint/resource. If a provider were ever reused across
+    // multiple resources or auth servers, accumulated scopes could be sent to a server that rejects
+    // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
     private readonly HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
     private readonly object _scopeAccumulatorLock = new();
     private bool _hasAttemptedStepUp;
