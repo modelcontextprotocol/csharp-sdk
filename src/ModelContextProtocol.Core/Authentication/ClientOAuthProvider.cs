@@ -53,7 +53,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     // per HttpClientTransport, i.e. per endpoint/resource. If a provider were ever reused across
     // multiple resources or auth servers, accumulated scopes could be sent to a server that rejects
     // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
-    private readonly HashSet<string> _previouslyRequestedScopes = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
     private readonly object _scopeAccumulatorLock = new();
     private bool _hasAttemptedStepUp;
 
@@ -768,8 +768,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             lock (_scopeAccumulatorLock)
             {
                 // If we have previously requested scopes but nothing new, return the accumulated set.
-                return _previouslyRequestedScopes.Count > 0
-                    ? string.Join(" ", _previouslyRequestedScopes.OrderBy(s => s, StringComparer.Ordinal))
+                return _accumulatedScopes.Count > 0
+                    ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
                     : null;
             }
         }
@@ -784,11 +784,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             foreach (var scope in currentOperationScopes)
             {
-                _previouslyRequestedScopes.Add(scope);
+                _accumulatedScopes.Add(scope);
             }
 
             // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
-            return string.Join(" ", _previouslyRequestedScopes.OrderBy(s => s, StringComparer.Ordinal));
+            return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
         }
     }
 
@@ -838,7 +838,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             foreach (var scope in currentOperationScopes)
             {
-                if (!_previouslyRequestedScopes.Contains(scope))
+                if (!_accumulatedScopes.Contains(scope))
                 {
                     return true;
                 }
