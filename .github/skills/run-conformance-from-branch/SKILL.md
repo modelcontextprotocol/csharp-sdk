@@ -72,5 +72,6 @@ Always report:
 Return repo to pinned dependency state:
 
 ```bash
+git checkout -- package.json package-lock.json
 npm ci
 ```
