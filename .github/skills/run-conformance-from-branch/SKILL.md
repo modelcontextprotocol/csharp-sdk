@@ -18,7 +18,7 @@ Run C# SDK conformance tests against an unpublished `modelcontextprotocol/confor
 
 1. Start from a clean git state.
 2. Commit or stash local changes first.
-3. Restore pinned dependencies when done (`git checkout -- package.json package-lock.json` + `npm ci`).
+3. Restore pinned dependencies when done (`npm ci`).
 
 ## Inputs
 
@@ -72,6 +72,5 @@ Always report:
 Return repo to pinned dependency state:
 
 ```bash
-git checkout -- package.json package-lock.json
 npm ci
 ```
