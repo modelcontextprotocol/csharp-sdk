@@ -187,14 +187,29 @@ public sealed partial class StdioClientTransport : IClientTransport
             lock (s_consoleEncodingLock)
             {
                 Encoding originalInputEncoding = Console.InputEncoding;
+                bool encodingChanged = false;
                 try
                 {
-                    Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                    try
+                    {
+                        Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                        encodingChanged = true;
+                    }
+                    catch
+                    {
+                        // Host has no usable console (e.g. WPF/WinForms on .NET Framework with no
+                        // AllocConsole). The child inherits the current Console.InputEncoding;
+                        // non-ASCII stdin may be misencoded, but the connect itself proceeds.
+                    }
+
                     processStarted = process.Start();
                 }
                 finally
                 {
-                    Console.InputEncoding = originalInputEncoding;
+                    if (encodingChanged)
+                    {
+                        Console.InputEncoding = originalInputEncoding;
+                    }
                 }
             }
 #endif
