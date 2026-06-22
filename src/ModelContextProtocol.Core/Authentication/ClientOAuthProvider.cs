@@ -373,13 +373,24 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
+        // Restore any client registration persisted alongside the tokens. On a cold start a durable
+        // token cache may hold a refresh token together with the client ID it was issued to, while this
+        // provider has not assigned a client ID yet. Restoring it here makes the refresh below possible
+        // and avoids a redundant dynamic client registration in the assignment block.
+        var cachedTokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        RestoreCachedClientCredentials(cachedTokens);
+
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
-        // should not be used for expired access tokens. This is important because 403 forbiden responses can
-        // be used for incremental consent which cannot be acheived with a simple refresh.
+        // should not be used for expired access tokens. This is important because 403 forbidden responses can
+        // be used for incremental consent which cannot be achieved with a simple refresh.
+        // A refresh also requires a client ID. On a cold start one may not be available yet (and could not
+        // be restored from the cache), in which case we fall through to the client-ID assignment block and
+        // the authorization-code flow below rather than throwing.
         if (!attemptedRefresh &&
             response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
-            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { Length: > 0 } refreshToken })
+            !string.IsNullOrEmpty(_clientId) &&
+            cachedTokens is { RefreshToken: { Length: > 0 } refreshToken })
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (accessToken is not null)
@@ -749,6 +760,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             TokenType = tokenResponse.TokenType,
             Scope = tokenResponse.Scope,
             ObtainedAt = DateTimeOffset.UtcNow,
+            // Persist the client registration alongside the tokens so a durable cache can use the
+            // refresh token after a process restart without re-running dynamic client registration.
+            ClientId = _clientId,
+            ClientSecret = _clientSecret,
+            TokenEndpointAuthMethod = _tokenEndpointAuthMethod,
         };
 
         await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
@@ -1258,6 +1274,30 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 #endif
 
     private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException("Client ID is not available. This may indicate an issue with dynamic client registration.");
+
+    /// <summary>
+    /// Restores the client registration persisted alongside cached tokens when this provider has not been
+    /// assigned a client ID yet. This allows a durable <see cref="ITokenCache"/> to use a refresh token that
+    /// survived a process restart without re-running dynamic client registration. An explicitly configured
+    /// client ID always takes precedence, so nothing is restored when one is already available.
+    /// </summary>
+    /// <remarks>
+    /// Callers must hold <c>_tokenAcquisitionLock</c>: this writes the shared <c>_clientId</c>,
+    /// <c>_clientSecret</c>, and <c>_tokenEndpointAuthMethod</c> fields, which the lock serializes.
+    /// </remarks>
+    private void RestoreCachedClientCredentials(TokenContainer? tokens)
+    {
+        if (!string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(tokens?.ClientId))
+        {
+            return;
+        }
+
+        // Assign _clientId last. Callers treat a non-empty _clientId as "registration complete", so the
+        // secret and auth method must already be in place before _clientId becomes observable.
+        _clientSecret ??= tokens.ClientSecret;
+        _tokenEndpointAuthMethod ??= tokens.TokenEndpointAuthMethod;
+        _clientId = tokens!.ClientId;
+    }
 
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
