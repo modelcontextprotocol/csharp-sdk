@@ -58,6 +58,7 @@ public sealed class InputResponse
     /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
     /// <see cref="RequestMethods.SamplingCreateMessage"/>.
     /// </summary>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static JsonTypeInfo<CreateMessageResult> CreateMessageResultJsonTypeInfo => McpJsonUtilities.JsonContext.Default.CreateMessageResult;
 
     /// <summary>
@@ -65,6 +66,7 @@ public sealed class InputResponse
     /// <see cref="Deserialize{T}"/> when the corresponding <see cref="InputRequest.Method"/> is
     /// <see cref="RequestMethods.RootsList"/>.
     /// </summary>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static JsonTypeInfo<ListRootsResult> ListRootsResultJsonTypeInfo => McpJsonUtilities.JsonContext.Default.ListRootsResult;
 
     /// <summary>
@@ -72,6 +74,7 @@ public sealed class InputResponse
     /// </summary>
     /// <param name="result">The sampling result.</param>
     /// <returns>A new <see cref="InputResponse"/> instance.</returns>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static InputResponse FromSamplingResult(CreateMessageResult result)
     {
         Throw.IfNull(result);
@@ -100,6 +103,7 @@ public sealed class InputResponse
     /// </summary>
     /// <param name="result">The roots list result.</param>
     /// <returns>A new <see cref="InputResponse"/> instance.</returns>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static InputResponse FromRootsResult(ListRootsResult result)
     {
         Throw.IfNull(result);

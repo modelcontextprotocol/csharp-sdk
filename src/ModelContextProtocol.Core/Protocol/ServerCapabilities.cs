@@ -41,6 +41,7 @@ public sealed class ServerCapabilities
     /// Gets or sets a server's logging capability for sending log messages to the client.
     /// </summary>
     [JsonPropertyName("logging")]
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public LoggingCapability? Logging { get; set; }
 
     /// <summary>

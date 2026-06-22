@@ -63,6 +63,7 @@ public static class NotificationMethods
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsListChangedNotification = "notifications/roots/list_changed";
 
     /// <summary>
@@ -80,6 +81,7 @@ public static class NotificationMethods
     /// the server can determine which messages to send based on its own configuration.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingMessageNotification = "notifications/message";
 
     /// <summary>

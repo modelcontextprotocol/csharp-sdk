@@ -169,6 +169,7 @@ internal sealed partial class McpServerImpl : McpServer
     public override IServiceProvider? Services { get; }
 
     /// <inheritdoc />
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public override LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
