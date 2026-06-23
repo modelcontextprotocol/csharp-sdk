@@ -165,6 +165,7 @@ public static class McpRequestFilterBuilderExtensions
     /// <param name="builder">The request filter builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static IMcpRequestFilterBuilder AddSetLoggingLevelFilter(this IMcpRequestFilterBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter)
     {
         Throw.IfNull(builder);

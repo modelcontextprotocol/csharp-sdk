@@ -55,6 +55,7 @@ public static class RequestMethods
     /// <summary>
     /// The name of the request method sent from the server to request a list of the client's roots.
     /// </summary>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsList = "roots/list";
 
     /// <summary>
@@ -71,6 +72,7 @@ public static class RequestMethods
     /// send log messages with severity at or above the specified level to the client as
     /// <see cref="NotificationMethods.LoggingMessageNotification"/> notifications.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingSetLevel = "logging/setLevel";
 
     /// <summary>
@@ -91,6 +93,7 @@ public static class RequestMethods
     /// based on provided messages. It is part of the sampling capability in the Model Context Protocol and enables servers to access
     /// client-side AI models without needing direct API access to those models.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>

@@ -305,6 +305,7 @@ internal sealed partial class McpServerImpl : McpServer
     public override IServiceProvider? Services { get; }
 
     /// <inheritdoc />
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public override LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
@@ -1256,7 +1257,7 @@ internal sealed partial class McpServerImpl : McpServer
         Status = info.Status,
         CreatedAt = info.CreatedAt,
         LastUpdatedAt = info.LastUpdatedAt,
-        TtlMs = info.TtlMs,
+        TimeToLive = info.TimeToLive,
         PollIntervalMs = info.PollIntervalMs,
         StatusMessage = info.StatusMessage,
         ResultType = "task",
@@ -1269,7 +1270,7 @@ internal sealed partial class McpServerImpl : McpServer
             TaskId = info.TaskId,
             CreatedAt = info.CreatedAt,
             LastUpdatedAt = info.LastUpdatedAt,
-            TtlMs = info.TtlMs,
+            TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
             ResultType = "complete",
@@ -1279,7 +1280,7 @@ internal sealed partial class McpServerImpl : McpServer
             TaskId = info.TaskId,
             CreatedAt = info.CreatedAt,
             LastUpdatedAt = info.LastUpdatedAt,
-            TtlMs = info.TtlMs,
+            TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
             Result = info.Result ?? throw new InvalidOperationException($"Task '{info.TaskId}' is completed but has no result."),
@@ -1290,7 +1291,7 @@ internal sealed partial class McpServerImpl : McpServer
             TaskId = info.TaskId,
             CreatedAt = info.CreatedAt,
             LastUpdatedAt = info.LastUpdatedAt,
-            TtlMs = info.TtlMs,
+            TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
             Error = info.Error ?? throw new InvalidOperationException($"Task '{info.TaskId}' is failed but has no error."),
@@ -1301,7 +1302,7 @@ internal sealed partial class McpServerImpl : McpServer
             TaskId = info.TaskId,
             CreatedAt = info.CreatedAt,
             LastUpdatedAt = info.LastUpdatedAt,
-            TtlMs = info.TtlMs,
+            TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
             ResultType = "complete",
@@ -1311,7 +1312,7 @@ internal sealed partial class McpServerImpl : McpServer
             TaskId = info.TaskId,
             CreatedAt = info.CreatedAt,
             LastUpdatedAt = info.LastUpdatedAt,
-            TtlMs = info.TtlMs,
+            TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
             // McpTaskInfo.InputRequests is IReadOnlyDictionary (covers immutable store

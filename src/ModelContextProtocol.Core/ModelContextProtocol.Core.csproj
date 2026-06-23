@@ -9,6 +9,11 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
+         The deprecated types remain in the source-generated JsonSerializerContext and are used throughout
+         the implementation, so the obsolete-usage diagnostic is suppressed project-wide here while staying
+         active for external consumers of the package. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">

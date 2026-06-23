@@ -8,4 +8,5 @@ namespace ModelContextProtocol.Protocol;
 /// The client responds with a <see cref="ListRootsResult"/> containing the client's roots.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ListRootsRequestParams : RequestParams;

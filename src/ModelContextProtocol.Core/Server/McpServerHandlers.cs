@@ -199,6 +199,7 @@ public sealed class McpServerHandlers
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 
     /// <summary>
