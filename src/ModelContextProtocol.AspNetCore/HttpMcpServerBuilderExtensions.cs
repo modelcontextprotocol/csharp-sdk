@@ -85,7 +85,7 @@ public static class HttpMcpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [Obsolete(ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Url)]
-#pragma warning disable MCP9005 // The method is itself obsolete and intentionally wires up the legacy resumability store.
+#pragma warning disable MCP9006 // The method is itself obsolete and intentionally wires up the legacy resumability store.
     public static IMcpServerBuilder WithDistributedCacheEventStreamStore(this IMcpServerBuilder builder, Action<DistributedCacheEventStreamStoreOptions>? configureOptions = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -101,5 +101,5 @@ public static class HttpMcpServerBuilderExtensions
 
         return builder;
     }
-#pragma warning restore MCP9005
+#pragma warning restore MCP9006
 }

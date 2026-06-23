@@ -40,9 +40,9 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     private readonly ILogger _logger;
 
     private SseEventWriter? _httpSseWriter;
-#pragma warning disable MCP9005 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
     private ISseEventStreamWriter? _storeSseWriter;
-#pragma warning restore MCP9005
+#pragma warning restore MCP9006
     private TaskCompletionSource<bool>? _httpResponseTcs;
     private string? _negotiatedProtocolVersion;
     private bool _getHttpRequestStarted;
@@ -360,7 +360,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
         }
     }
 
-#pragma warning disable MCP9005 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
     internal async ValueTask<ISseEventStreamWriter?> TryCreateEventStreamAsync(string streamId, CancellationToken cancellationToken)
     {
         if (EventStreamStore is null || !McpSessionHandler.SupportsPrimingEvent(_negotiatedProtocolVersion))
@@ -381,7 +381,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
 
         return sseEventStreamWriter;
     }
-#pragma warning restore MCP9005
+#pragma warning restore MCP9006
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Sending server-to-client JSON-RPC request '{Method}' over the standalone GET SSE stream (SessionId: '{SessionId}'). " +

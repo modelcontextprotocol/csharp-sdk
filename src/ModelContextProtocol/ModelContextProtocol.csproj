@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
@@ -12,7 +12,7 @@
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
     <!-- The legacy SSE resumability implementation (DistributedCacheEventStreamStore and its
          source-generated JSON/logging) intentionally uses the obsolete ISseEventStreamStore surface. -->
-    <NoWarn>$(NoWarn);MCP9005</NoWarn>
+    <NoWarn>$(NoWarn);MCP9006</NoWarn>
     <!-- CS0436: Allow ObsoleteAttribute to be redefined internally (netstandard2.0 polyfill). -->
     <NoWarn>$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>

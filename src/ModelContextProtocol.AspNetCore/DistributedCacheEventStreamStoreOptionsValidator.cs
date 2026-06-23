@@ -5,7 +5,7 @@ using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.AspNetCore;
 
-#pragma warning disable MCP9005 // This type only exists to validate the obsolete legacy resumability store options.
+#pragma warning disable MCP9006 // This type only exists to validate the obsolete legacy resumability store options.
 
 /// <summary>
 /// Validates that <see cref="DistributedCacheEventStreamStoreOptions.Cache"/> is set.

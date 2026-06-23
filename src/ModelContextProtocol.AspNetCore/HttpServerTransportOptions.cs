@@ -61,9 +61,12 @@ public class HttpServerTransportOptions
     /// might arrive at another ASP.NET Core application process.
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// <para>
-    /// Requests that declare the <c>2026-07-28</c> draft protocol revision via the <c>MCP-Protocol-Version</c> header
-    /// are always routed through the stateless path regardless of this property's value, because that revision
-    /// removes <c>Mcp-Session-Id</c> entirely (SEP-2567).
+    /// The <c>2026-07-28</c> draft protocol revision is sessionless and removes <c>Mcp-Session-Id</c> entirely
+    /// (SEP-2567), so over HTTP draft requests are only ever served when <see langword="true"/>. When this
+    /// property is <see langword="false"/>, a sessionless draft request is refused with a
+    /// <c>-32004 UnsupportedProtocolVersion</c> error so that a dual-era client downgrades to the legacy
+    /// <c>initialize</c> handshake and obtains the session that the server was configured to provide. A draft
+    /// request that carries an <c>Mcp-Session-Id</c> is always rejected, regardless of this property's value.
     /// </para>
     /// </remarks>
     public bool Stateless { get; set; } = true;

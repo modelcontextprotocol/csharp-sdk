@@ -128,7 +128,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 if (collection is not null)
                 {
-                    EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(notificationMethod);
+                    EventHandler changed = (sender, e) => _ = SendListChangedNotificationAsync(notificationMethod);
                     collection.Changed += changed;
                     _disposables.Add(() => collection.Changed -= changed);
                 }
@@ -194,29 +194,20 @@ internal sealed partial class McpServerImpl : McpServer
                             supported: McpSessionHandler.SupportedProtocolVersions);
                     }
 
-                    if (!string.Equals(_negotiatedProtocolVersion, protocolVersion, StringComparison.Ordinal))
-                    {
-                        _negotiatedProtocolVersion = protocolVersion;
-                        _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
-                    }
+                    SetNegotiatedProtocolVersion(protocolVersion);
                 }
 
-                if (context.ClientCapabilities is { } clientCapabilities && IsStatefulSession())
+                if (context.ClientCapabilities is { } clientCapabilities && IsDraftProtocol() && IsStatefulSession())
                 {
-                    // Defensive merge instead of overwrite. SEP-2575 says the per-request envelope is
-                    // the client's full capabilities, but PR #1579's GetMetaWithTaskCapability emits a
-                    // partial envelope (only extensions.io.modelcontextprotocol/tasks) on every
-                    // tools/call regardless of the negotiated protocol version. If we overwrote here,
-                    // a legacy client that called initialize with { Elicitation = new() } would lose
-                    // its elicitation capability the moment it issued a tools/call. Merging non-null
-                    // fields preserves whatever the initialize handshake (or a prior, more complete
-                    // envelope) established.
-                    //
-                    // The IsStatefulSession() gate prevents leaking per-request capability state into
-                    // _clientCapabilities under StreamableHttpServerTransport { Stateless = true }
-                    // (where _clientCapabilities is otherwise null and StatelessServerTests rely on
-                    // that invariant to surface the "X is not supported in stateless mode" errors).
-                    _clientCapabilities = MergeClientCapabilities(_clientCapabilities, clientCapabilities);
+                    // Under the draft revision the per-request _meta envelope carries the client's FULL
+                    // capabilities (SEP-2575), so a plain overwrite is correct. The IsDraftProtocol() gate
+                    // makes any legacy per-request envelope a no-op (legacy capabilities stay as the
+                    // initialize handshake established them); the IsStatefulSession() gate keeps
+                    // _clientCapabilities null under StreamableHttpServerTransport { Stateless = true }
+                    // (where the same server instance handles every request, so persisting per-request
+                    // capability state would both leak across requests and break the StatelessServerTests
+                    // invariant that surfaces the "X is not supported in stateless mode" errors).
+                    _clientCapabilities = clientCapabilities;
                 }
 
                 if (context.ClientInfo is { } clientInfo &&
@@ -238,56 +229,51 @@ internal sealed partial class McpServerImpl : McpServer
         };
     }
 
-    /// <summary>
-    /// Merges per-request <see cref="ClientCapabilities"/> envelope values onto the existing
-    /// session-scoped capabilities, preserving fields that the envelope leaves unset.
-    /// </summary>
-    /// <remarks>
-    /// SEP-2575 treats the per-request envelope as the client's full capabilities for the request, but
-    /// at least one extension (SEP-2663 Tasks) emits a partial envelope advertising only
-    /// <c>extensions.io.modelcontextprotocol/tasks = {}</c> on every <c>tools/call</c>. Overwriting the
-    /// captured initialize-time capabilities with that partial envelope would silently drop other
-    /// declared capabilities (e.g., <c>elicitation</c>), so we merge per-field instead.
-    /// </remarks>
-    private static ClientCapabilities MergeClientCapabilities(ClientCapabilities? existing, ClientCapabilities envelope)
-    {
-        if (existing is null)
-        {
-            return envelope;
-        }
-
-        IDictionary<string, object>? mergedExtensions = existing.ExtensionsCore;
-        if (envelope.ExtensionsCore is { Count: > 0 } envelopeExtensions)
-        {
-            if (mergedExtensions is null)
-            {
-                mergedExtensions = new Dictionary<string, object>(envelopeExtensions);
-            }
-            else
-            {
-                // Per-request extensions are additive; don't strip ones declared at initialize.
-                foreach (var kvp in envelopeExtensions)
-                {
-                    mergedExtensions[kvp.Key] = kvp.Value;
-                }
-            }
-        }
-
-        return new ClientCapabilities
-        {
-            Roots = envelope.Roots ?? existing.Roots,
-            Sampling = envelope.Sampling ?? existing.Sampling,
-            Elicitation = envelope.Elicitation ?? existing.Elicitation,
-            Experimental = envelope.Experimental ?? existing.Experimental,
-            ExtensionsCore = mergedExtensions,
-        };
-    }
-
     /// <inheritdoc/>
     public override string? SessionId => _sessionTransport.SessionId;
 
     /// <inheritdoc/>
     public override string? NegotiatedProtocolVersion => _negotiatedProtocolVersion;
+
+    /// <summary>
+    /// Records the negotiated MCP protocol version for the session. The version is established exactly
+    /// once: the initial <see langword="null"/>-to-value transition is allowed (and racing requests that
+    /// select the same version are idempotent no-ops), but any later attempt to switch to a different
+    /// version throws. A single session MUST NOT change protocol versions, so a conflicting per-request
+    /// <c>_meta</c> protocol version (or <c>Mcp-Protocol-Version</c> header) is a client error rather than
+    /// something we silently overwrite.
+    /// </summary>
+    private void SetNegotiatedProtocolVersion(string protocolVersion)
+    {
+        string? previous = Interlocked.CompareExchange(ref _negotiatedProtocolVersion, protocolVersion, null);
+        if (previous is null)
+        {
+            // We won the initial null-to-value transition; publish it to the session handler for telemetry.
+            _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+        }
+        else if (!string.Equals(previous, protocolVersion, StringComparison.Ordinal))
+        {
+            throw new McpProtocolException(
+                $"The negotiated protocol version cannot change within a session. " +
+                $"The session negotiated '{previous}', but a request specified '{protocolVersion}'.",
+                McpErrorCode.InvalidRequest);
+        }
+    }
+
+    /// <summary>
+    /// In stateless mode each request is handled by a fresh server instance that never saw an
+    /// <c>initialize</c> handshake, so <see cref="_negotiatedProtocolVersion"/> starts <see langword="null"/>.
+    /// The transport flows the negotiated draft version through
+    /// <see cref="JsonRpcMessageContext.ProtocolVersion"/> (sourced from the per-request <c>_meta</c> or the
+    /// <c>Mcp-Protocol-Version</c> header); adopt it so the per-request handlers observe it.
+    /// </summary>
+    private void AdoptProtocolVersionFromRequestContext(JsonRpcRequest request)
+    {
+        if (request.Context?.ProtocolVersion is { } headerProtocolVersion)
+        {
+            SetNegotiatedProtocolVersion(headerProtocolVersion);
+        }
+    }
 
     /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; }
@@ -409,9 +395,12 @@ internal sealed partial class McpServerImpl : McpServer
                     clientProtocolVersion :
                     McpSessionHandler.LatestProtocolVersion;
 
+                // The legacy initialize handshake is authoritative: it may supersede a protocol version
+                // a prior draft server/discover probe established on the same connection (the dual-era
+                // fallback path a permissive client takes against an unknown server). Unlike the
+                // per-request draft version - which SetNegotiatedProtocolVersion locks once negotiated -
+                // initialize force-sets the version.
                 _negotiatedProtocolVersion = protocolVersion;
-
-                // Update session handler with the negotiated protocol version for telemetry
                 _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
 
                 return new InitializeResult
@@ -476,8 +465,28 @@ internal sealed partial class McpServerImpl : McpServer
         _requestHandlers.Set(RequestMethods.SubscriptionsListen,
             async (request, jsonRpcRequest, cancellationToken) =>
             {
-                // Filter the requested notifications against what the server actually supports.
                 var requested = request?.Notifications ?? new SubscriptionsListenNotifications();
+
+                // A stateless session (Streamable HTTP with no session) cannot deliver out-of-band
+                // notifications: each request is isolated and nothing outlives it to push later list/resource
+                // changes back to the client (tracked by #1662). Rather than hold the POST open forever only
+                // to deliver nothing - pinning the connection and its request scope - acknowledge the listen
+                // request granting no notifications and complete immediately. This runs after protocol
+                // negotiation, so it is not a legacy-server signal and never triggers a client fallback to the
+                // initialize handshake.
+                if (!IsStatefulSession())
+                {
+                    var statelessSubscription = new ActiveSubscription(
+                        jsonRpcRequest.Id,
+                        new SubscriptionsListenNotifications(),
+                        jsonRpcRequest.Context?.RelatedTransport);
+
+                    await SendSubscriptionAckAsync(statelessSubscription, cancellationToken).ConfigureAwait(false);
+
+                    return new EmptyResult();
+                }
+
+                // Filter the requested notifications against what the server actually supports.
                 var granted = new SubscriptionsListenNotifications
                 {
                     ToolsListChanged = requested.ToolsListChanged == true && ServerCapabilities?.Tools?.ListChanged == true ? true : null,
@@ -488,19 +497,20 @@ internal sealed partial class McpServerImpl : McpServer
                         : null,
                 };
 
-                // Track this subscription so notifications can tag themselves with the right subscriptionId
-                // and so we can stream resource-updated notifications for the requested URIs.
-                var subscription = new ActiveSubscription(jsonRpcRequest.Id, granted, jsonRpcRequest.Context?.LogLevel);
+                // Track this subscription so list-changed notifications can be fanned out to it, tagged with
+                // the right subscriptionId, and routed back over the stream this request opened.
+                var subscription = new ActiveSubscription(
+                    jsonRpcRequest.Id,
+                    granted,
+                    jsonRpcRequest.Context?.RelatedTransport);
                 _activeSubscriptions[jsonRpcRequest.Id] = subscription;
 
                 try
                 {
-                    // Send the acknowledgement notification first, as required by SEP-2575.
-                    await this.SendNotificationAsync(
-                        NotificationMethods.SubscriptionsAcknowledgedNotification,
-                        new SubscriptionsAcknowledgedNotificationParams { Notifications = granted },
-                        McpJsonUtilities.JsonContext.Default.SubscriptionsAcknowledgedNotificationParams,
-                        cancellationToken).ConfigureAwait(false);
+                    // Send the acknowledgement notification first, as required by SEP-2575. Like every other
+                    // notification delivered on the subscription it is routed back over this request's own
+                    // stream and tagged with the subscription id so shared-channel clients can demultiplex it.
+                    await SendSubscriptionAckAsync(subscription, cancellationToken).ConfigureAwait(false);
 
                     // Keep the subscription open until the request is cancelled (client disconnect on HTTP,
                     // or notifications/cancelled on STDIO).
@@ -520,9 +530,112 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>Tracks an active <c>subscriptions/listen</c> subscription for notification fan-out.</summary>
-    private sealed record ActiveSubscription(RequestId Id, SubscriptionsListenNotifications Granted, LoggingLevel? LogLevel);
+    /// <param name="Id">The id of the <c>subscriptions/listen</c> request, reused as the SEP-2575 subscription id.</param>
+    /// <param name="Granted">The notification types the server agreed to deliver on this subscription.</param>
+    /// <param name="RelatedTransport">
+    /// The transport the <c>subscriptions/listen</c> request arrived on. For Streamable HTTP this is the
+    /// per-request response stream the subscription must be delivered on; for stdio it is <see langword="null"/>,
+    /// so notifications fall back to the shared session channel.
+    /// </param>
+    private sealed record ActiveSubscription(RequestId Id, SubscriptionsListenNotifications Granted, ITransport? RelatedTransport);
 
     private readonly ConcurrentDictionary<RequestId, ActiveSubscription> _activeSubscriptions = new();
+
+    /// <summary>
+    /// Delivers a <c>*/list_changed</c> notification triggered by a server-side collection change.
+    /// </summary>
+    /// <remarks>
+    /// Pre-SEP-2575 clients do not open <c>subscriptions/listen</c> streams, so they keep receiving a single
+    /// session-wide broadcast. Draft clients instead receive only the change notifications they explicitly
+    /// requested, each routed back over the originating subscription stream and tagged with its id; the server
+    /// <b>MUST NOT</b> send a draft client notification types it never subscribed to.
+    /// </remarks>
+    private async Task SendListChangedNotificationAsync(string notificationMethod)
+    {
+        // Legacy clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
+        // subscriptions/listen is a SEP-2575 draft feature, so draft clients instead get a fan-out limited
+        // to the notification types they explicitly subscribed to.
+        if (!IsDraftProtocol())
+        {
+            await this.SendNotificationAsync(notificationMethod).ConfigureAwait(false);
+            return;
+        }
+
+        foreach (var subscription in _activeSubscriptions.Values)
+        {
+            if (!GrantsListChanged(subscription.Granted, notificationMethod))
+            {
+                continue;
+            }
+
+            try
+            {
+                await SendSubscriptionNotificationAsync(subscription, notificationMethod, paramsNode: null, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // A single closed or faulted subscription stream must not prevent fan-out to the others.
+                SubscriptionNotificationFailed(notificationMethod, subscription.Id.ToString(), ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends <paramref name="method"/> over <paramref name="subscription"/>'s stream, tagging it with the
+    /// SEP-2575 <c>_meta</c> subscription id so clients sharing a channel (notably stdio) can demultiplex it.
+    /// </summary>
+    private Task SendSubscriptionNotificationAsync(ActiveSubscription subscription, string method, JsonNode? paramsNode, CancellationToken cancellationToken)
+    {
+        var paramsObject = paramsNode as JsonObject ?? new JsonObject();
+        if (paramsObject["_meta"] is not JsonObject meta)
+        {
+            meta = new JsonObject();
+            paramsObject["_meta"] = meta;
+        }
+
+        meta[NotificationMethods.SubscriptionIdMetaKey] = subscription.Id.Id switch
+        {
+            string stringId => JsonValue.Create(stringId),
+            long longId => JsonValue.Create(longId),
+            _ => null,
+        };
+
+        var notification = new JsonRpcNotification
+        {
+            Method = method,
+            Params = paramsObject,
+            Context = new JsonRpcMessageContext { RelatedTransport = subscription.RelatedTransport },
+        };
+
+        return SendMessageAsync(notification, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the SEP-2575 <c>subscriptions/acknowledged</c> notification for a subscription, carrying the
+    /// notification types the server agreed to deliver. Routed back over the subscription's own stream and
+    /// tagged with its id like every other subscription notification.
+    /// </summary>
+    private Task SendSubscriptionAckAsync(ActiveSubscription subscription, CancellationToken cancellationToken)
+    {
+        var ackParams = JsonSerializer.SerializeToNode(
+            new SubscriptionsAcknowledgedNotificationParams { Notifications = subscription.Granted },
+            McpJsonUtilities.JsonContext.Default.SubscriptionsAcknowledgedNotificationParams);
+
+        return SendSubscriptionNotificationAsync(
+            subscription,
+            NotificationMethods.SubscriptionsAcknowledgedNotification,
+            ackParams,
+            cancellationToken);
+    }
+
+    /// <summary>Maps a <c>*/list_changed</c> method to the subscription filter flag that enables it.</summary>
+    private static bool GrantsListChanged(SubscriptionsListenNotifications granted, string method) => method switch
+    {
+        NotificationMethods.ToolListChangedNotification => granted.ToolsListChanged == true,
+        NotificationMethods.PromptListChangedNotification => granted.PromptsListChanged == true,
+        NotificationMethods.ResourceListChangedNotification => granted.ResourcesListChanged == true,
+        _ => false,
+    };
 
     private void ConfigureCompletion(McpServerOptions options)
     {
@@ -721,6 +834,13 @@ internal sealed partial class McpServerImpl : McpServer
         updateTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
         cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
 
+        // The tasks/* methods do not exist before the draft revision (SEP-2663). Reject them with
+        // MethodNotFound when the request was negotiated under a legacy protocol version. The handlers
+        // stay registered so a dual-era server still serves them for draft requests.
+        getTaskHandler = GateTaskMethodToDraft(getTaskHandler, RequestMethods.TasksGet);
+        updateTaskHandler = GateTaskMethodToDraft(updateTaskHandler, RequestMethods.TasksUpdate);
+        cancelTaskHandler = GateTaskMethodToDraft(cancelTaskHandler, RequestMethods.TasksCancel);
+
         // Advertise tasks extension in server capabilities.
         ServerCapabilities.Extensions ??= new Dictionary<string, object>();
         ServerCapabilities.Extensions[McpExtensions.Tasks] = new JsonObject();
@@ -743,6 +863,26 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.CancelTaskRequestParams,
             McpJsonUtilities.JsonContext.Default.CancelTaskResult);
     }
+
+    /// <summary>
+    /// Wraps a tasks/* request handler so it throws <see cref="McpErrorCode.MethodNotFound"/> unless the
+    /// request was negotiated under the draft revision. The tasks extension (SEP-2663) only interoperates
+    /// under draft, and these methods don't exist on legacy peers.
+    /// </summary>
+    private McpRequestHandler<TParams, TResult> GateTaskMethodToDraft<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> inner, string method)
+        => (request, cancellationToken) =>
+        {
+            if (!IsDraftProtocolRequest(request.JsonRpcRequest))
+            {
+                throw new McpProtocolException(
+                    $"The method '{method}' requires the draft protocol revision ('{DraftProtocolVersion}'); " +
+                    $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
+                    McpErrorCode.MethodNotFound);
+            }
+
+            return inner(request, cancellationToken);
+        };
 
     private void ConfigureExperimentalAndExtensions(McpServerOptions options)
     {
@@ -1145,7 +1285,12 @@ internal sealed partial class McpServerImpl : McpServer
             var innerTaskHandler = callToolWithTaskHandler;
             callToolWithTaskHandler = async (request, cancellationToken) =>
             {
-                if (HasTaskExtensionOptIn(request.Params?.Meta))
+                // The SEP-2663 Tasks extension is draft-only: the task wire shapes we ship do not
+                // interoperate with legacy (<= 2025-11-25) peers. Only materialize a task when the
+                // request was negotiated under the draft revision AND the client opted in; otherwise
+                // run the inner handler and return the direct result (best-effort downgrade, which also
+                // defends against a non-conformant legacy client that forges the opt-in envelope).
+                if (IsDraftProtocolRequest(request.JsonRpcRequest) && HasTaskExtensionOptIn(request.Params?.Meta))
                 {
                     var taskInfo = await taskStore.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
                     var taskId = taskInfo.TaskId;
@@ -1655,10 +1800,12 @@ internal sealed partial class McpServerImpl : McpServer
         };
 
     /// <summary>
-    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (2026-07-28).
+    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (2026-07-28). MRTR rides on
+    /// the draft revision, so this is the MRTR-meaning alias of <see cref="McpSession.IsDraftProtocol"/> -
+    /// use it at the input-required/handler-suspension sites where the intent is "the client understands
+    /// <see cref="InputRequiredResult"/>" rather than "the peer speaks the draft revision".
     /// </summary>
-    internal bool ClientSupportsMrtr() =>
-        _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
+    internal bool ClientSupportsMrtr() => IsDraftProtocol();
 
     /// <summary>
     /// Returns <see langword="true"/> when the session is stateful - the same server instance handles
@@ -1669,6 +1816,18 @@ internal sealed partial class McpServerImpl : McpServer
     /// </summary>
     internal bool IsStatefulSession() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the given request was negotiated under the draft protocol
+    /// revision, derived from the per-request <c>_meta</c>/<c>MCP-Protocol-Version</c> value (so it works
+    /// for sessionless draft over stateless HTTP) and falling back to the session-negotiated version.
+    /// Used to gate the SEP-2663 Tasks extension, which only interoperates under the draft revision.
+    /// </summary>
+    private bool IsDraftProtocolRequest(JsonRpcRequest? request) =>
+        string.Equals(
+            request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion,
+            DraftProtocolVersion,
+            StringComparison.Ordinal);
 
     /// <inheritdoc />
     public override bool IsMrtrSupported => ClientSupportsMrtr() || IsStatefulSession();
@@ -1689,11 +1848,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         // In stateless mode, pick up the negotiated draft protocol version from the
         // transport-provided request context because there is no long-lived initialize handshake state.
-        if (_negotiatedProtocolVersion is null &&
-            request.Context?.ProtocolVersion is { } headerProtocolVersion)
-        {
-            _negotiatedProtocolVersion = headerProtocolVersion;
-        }
+        AdoptProtocolVersionFromRequestContext(request);
 
         for (int retry = 0; ; retry++)
         {
@@ -1883,11 +2038,7 @@ internal sealed partial class McpServerImpl : McpServer
             // In stateless mode, each request creates a new server instance that never saw the
             // initialize handshake, so _negotiatedProtocolVersion is null. Pick it up from the
             // Mcp-Protocol-Version header that the transport layer flowed via JsonRpcMessageContext.
-            if (_negotiatedProtocolVersion is null &&
-                request.Context?.ProtocolVersion is { } headerProtocolVersion)
-            {
-                _negotiatedProtocolVersion = headerProtocolVersion;
-            }
+            AdoptProtocolVersionFromRequestContext(request);
 
             // Check for MRTR retry: if requestState is present, look up the continuation.
             if (request.Params is JsonObject paramsObj &&
@@ -2107,4 +2258,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "An MRTR handler threw an unhandled exception.")]
     private partial void MrtrHandlerError(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to deliver \"{NotificationMethod}\" to subscription \"{SubscriptionId}\".")]
+    private partial void SubscriptionNotificationFailed(string notificationMethod, string subscriptionId, Exception exception);
 }
