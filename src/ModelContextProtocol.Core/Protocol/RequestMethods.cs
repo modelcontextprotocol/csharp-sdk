@@ -55,6 +55,7 @@ public static class RequestMethods
     /// <summary>
     /// The name of the request method sent from the server to request a list of the client's roots.
     /// </summary>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsList = "roots/list";
 
     /// <summary>
@@ -71,6 +72,7 @@ public static class RequestMethods
     /// send log messages with severity at or above the specified level to the client as
     /// <see cref="NotificationMethods.LoggingMessageNotification"/> notifications.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingSetLevel = "logging/setLevel";
 
     /// <summary>
@@ -91,6 +93,7 @@ public static class RequestMethods
     /// based on provided messages. It is part of the sampling capability in the Model Context Protocol and enables servers to access
     /// client-side AI models without needing direct API access to those models.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>
@@ -123,30 +126,29 @@ public static class RequestMethods
     public const string Initialize = "initialize";
 
     /// <summary>
-    /// The name of the request method to retrieve task status.
+    /// The name of the request method sent from the client to poll for task completion.
     /// </summary>
     /// <remarks>
-    /// Requestors poll for task completion by sending tasks/get requests. They should respect
-    /// the pollInterval provided in responses when determining polling frequency.
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Clients poll for task status by sending this request with the task ID.
     /// </remarks>
     public const string TasksGet = "tasks/get";
 
     /// <summary>
-    /// The name of the request method to retrieve the result of a completed task.
+    /// The name of the request method sent from the client to provide input responses to a task.
     /// </summary>
     /// <remarks>
-    /// This request blocks until the task reaches a terminal status (completed, failed, or cancelled).
-    /// The result structure matches the original request type (e.g., CallToolResult for tools/call).
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Used when a task has <c>input_required</c> status and the client needs to fulfill outstanding requests.
     /// </remarks>
-    public const string TasksResult = "tasks/result";
+    public const string TasksUpdate = "tasks/update";
 
     /// <summary>
-    /// The name of the request method to retrieve a list of tasks with pagination support.
+    /// The name of the request method sent from the client to signal intent to cancel a task.
     /// </summary>
-    public const string TasksList = "tasks/list";
-
-    /// <summary>
-    /// The name of the request method to explicitly cancel a task.
-    /// </summary>
+    /// <remarks>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Cancellation is cooperative — the server decides whether and when to honor it.
+    /// </remarks>
     public const string TasksCancel = "tasks/cancel";
 }

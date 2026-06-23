@@ -18,6 +18,7 @@ namespace ModelContextProtocol.Protocol;
 /// specification may extend this capability with additional configuration options.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class LoggingCapability
 {
 }

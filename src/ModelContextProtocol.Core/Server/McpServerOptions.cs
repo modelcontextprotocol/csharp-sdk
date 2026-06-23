@@ -1,6 +1,8 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
+#pragma warning disable MCPEXP001
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -185,57 +187,21 @@ public sealed class McpServerOptions
     /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, System.Text.Json.JsonSerializerOptions?, CancellationToken)"/>
     /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public int MaxSamplingOutputTokens { get; set; } = 1000;
 
     /// <summary>
-    /// Gets or sets the task store for managing asynchronous task execution.
+    /// Gets or sets the task store for managing asynchronous task executions.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When non-null, enables explicit task support with persistence, allowing clients to:
-    /// <list type="bullet">
-    /// <item><description>Execute operations asynchronously by augmenting requests with task metadata</description></item>
-    /// <item><description>Poll for task status via tasks/get requests</description></item>
-    /// <item><description>Retrieve task results via tasks/result requests</description></item>
-    /// <item><description>List all tasks via tasks/list requests</description></item>
-    /// <item><description>Cancel tasks via tasks/cancel requests</description></item>
-    /// </list>
+    /// When set, the server automatically enables the <c>io.modelcontextprotocol/tasks</c> extension
+    /// and wires up <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> handlers backed by this store.
+    /// Tool executions from clients that signal task support will be wrapped in tasks via the store.
     /// </para>
     /// <para>
-    /// When null, implicit task support may still be available for async methods (returning <see cref="Task"/> or
-    /// <see cref="ValueTask"/>), but tasks will be ephemeral and not persisted. Use <see cref="InMemoryMcpTaskStore"/>
-    /// for development/testing or implement <see cref="IMcpTaskStore"/> for production scenarios.
-    /// </para>
-    /// <para>
-    /// The server will automatically advertise task capabilities based on the presence of a task store
-    /// and the detection of async server primitives (tools, prompts, resources).
+    /// If explicit task handlers are also set on <see cref="Handlers"/>, the explicit handlers take precedence.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
     public IMcpTaskStore? TaskStore { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to send task status notifications to clients.
-    /// </summary>
-    /// <value>
-    /// <see langword="true"/> to send optional <c>notifications/tasks/status</c> notifications when task status changes;
-    /// <see langword="false"/> to not send notifications. The default is <see langword="false"/>.
-    /// </value>
-    /// <remarks>
-    /// <para>
-    /// When enabled, the server will send <c>notifications/tasks/status</c> notifications to inform clients
-    /// of task state changes. According to the MCP specification, these notifications are optional and
-    /// receivers MAY send them but are not required to.
-    /// </para>
-    /// <para>
-    /// Clients must not rely on receiving these notifications and should continue polling via <c>tasks/get</c>
-    /// requests to ensure they receive status updates.
-    /// </para>
-    /// <para>
-    /// Even when this is set to <see langword="true"/>, notifications are only sent when <see cref="TaskStore"/>
-    /// is configured, as task-augmented requests require a task store.
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public bool SendTaskStatusNotifications { get; set; }
 }

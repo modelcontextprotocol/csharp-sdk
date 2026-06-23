@@ -14,6 +14,9 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+// Sampling support type: only used inside ModelPreferences to hint a model for sampling (createMessage)
+// requests, so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ModelHint
 {
     /// <summary>
