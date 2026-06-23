@@ -34,7 +34,7 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
             options.TaskStore = new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-                DefaultTtlMs = 5000,
+                DefaultTimeToLive = TimeSpan.FromSeconds(5),
             };
         });
 

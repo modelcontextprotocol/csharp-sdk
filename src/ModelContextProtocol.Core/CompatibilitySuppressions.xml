@@ -829,13 +829,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -844,13 +837,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1214,13 +1200,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -1229,13 +1208,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1599,13 +1571,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -1614,13 +1579,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1984,13 +1942,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
@@ -1999,13 +1950,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
