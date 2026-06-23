@@ -86,7 +86,9 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
     [Fact]
     public async Task DraftSessionlessRequest_AbortFlowsCancellationToToolHandler()
     {
-        await StartAsync(stateless: false);
+        // Draft is sessionless (SEP-2567) and is served natively only on a stateless server; a
+        // Stateless=false server refuses sessionless draft so dual-era clients fall back to initialize.
+        await StartAsync(stateless: true);
 
         using var request = CreateBlockingToolRequest(draft: true);
 

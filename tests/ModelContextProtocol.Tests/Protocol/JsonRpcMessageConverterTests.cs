@@ -792,4 +792,39 @@ public static class JsonRpcMessageConverterTests
         Assert.Equal(default(RequestId), error.Id);
         Assert.Equal(-32700, error.Error.Code);
     }
+
+    [Fact]
+    public static void Deserialize_RequestWithExplicitNullId_Throws()
+    {
+        // A message carrying a `method` and an explicit `id:null` is a malformed request. Per the MCP
+        // base protocol the request id "MUST NOT be null", and a null id does NOT denote a notification
+        // (JSON-RPC 2.0 notifications omit the id member entirely). The converter must reject it rather
+        // than silently downgrading to a notification (which would swallow the id and skip the response).
+        string json = """{"jsonrpc":"2.0","id":null,"method":"tools/list"}""";
+
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions));
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithExplicitNullIdAndParams_Throws()
+    {
+        string json = """{"jsonrpc":"2.0","id":null,"method":"tools/call","params":{"name":"echo"}}""";
+
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions));
+    }
+
+    [Fact]
+    public static void Deserialize_NotificationWithoutIdMember_IsNotConfusedWithNullIdRequest()
+    {
+        // Contrast with the explicit-null-id case above: omitting the id member entirely is a valid
+        // notification and must continue to deserialize as one.
+        string json = """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}""";
+
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        var notification = Assert.IsType<JsonRpcNotification>(message);
+        Assert.Equal("notifications/cancelled", notification.Method);
+    }
 }

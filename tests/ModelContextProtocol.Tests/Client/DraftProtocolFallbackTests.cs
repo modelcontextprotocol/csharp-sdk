@@ -1,6 +1,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -120,14 +121,71 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
         Assert.Equal(McpErrorCode.HeaderMismatch, ((McpProtocolException)exception).ErrorCode);
     }
 
+    [Fact]
+    public async Task DraftClient_OnSilentProbe_FallsBackTo_Initialize_AfterConfiguredProbeTimeout()
+    {
+        // Simulate a legacy server that silently drops the unknown server/discover method (it never
+        // responds to the probe). The client must fall back to legacy initialize once the configured
+        // DiscoverProbeTimeout elapses, well before the much larger InitializationTimeout.
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new LegacyServerTestTransport(
+            serverNegotiatedVersion: "2025-11-25",
+            silentDiscoverProbe: true);
+
+        var stopwatch = Stopwatch.StartNew();
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = McpSession.DraftProtocolVersion,
+            DiscoverProbeTimeout = TimeSpan.FromMilliseconds(250),
+            InitializationTimeout = TestConstants.DefaultTimeout,
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        stopwatch.Stop();
+
+        Assert.True(transport.ServerDiscoverProbed);
+        Assert.True(transport.LegacyInitializeReceived);
+        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+
+        // The fallback was driven by the short probe timeout, not the 60s InitializationTimeout.
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(30),
+            $"Fallback should have happened shortly after the {nameof(McpClientOptions.DiscoverProbeTimeout)}, but took {stopwatch.Elapsed}.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1000)]
+    public void DiscoverProbeTimeout_Setter_Rejects_NonPositiveValues(int milliseconds)
+    {
+        var options = new McpClientOptions();
+        Assert.Throws<ArgumentOutOfRangeException>(() => options.DiscoverProbeTimeout = TimeSpan.FromMilliseconds(milliseconds));
+    }
+
+    [Fact]
+    public void DiscoverProbeTimeout_Setter_Accepts_PositiveAndInfiniteValues()
+    {
+        var options = new McpClientOptions();
+
+        // Default is the documented 5 seconds.
+        Assert.Equal(TimeSpan.FromSeconds(5), options.DiscoverProbeTimeout);
+
+        options.DiscoverProbeTimeout = TimeSpan.FromSeconds(30);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.DiscoverProbeTimeout);
+
+        // Timeout.InfiniteTimeSpan disables the separate probe timeout (bounded by InitializationTimeout only).
+        options.DiscoverProbeTimeout = Timeout.InfiniteTimeSpan;
+        Assert.Equal(Timeout.InfiniteTimeSpan, options.DiscoverProbeTimeout);
+    }
+
     /// <summary>
     /// Minimal in-memory transport that simulates a legacy server: rejects
-    /// <c>server/discover</c> (with a configurable JSON-RPC error code) and
-    /// responds to <c>initialize</c> with a configurable protocol version.
+    /// <c>server/discover</c> (with a configurable JSON-RPC error code, or by
+    /// silently dropping the request) and responds to <c>initialize</c> with a
+    /// configurable protocol version.
     /// </summary>
     private sealed class LegacyServerTestTransport(
         string serverNegotiatedVersion,
-        int probeErrorCode = (int)McpErrorCode.MethodNotFound) : IClientTransport
+        int probeErrorCode = (int)McpErrorCode.MethodNotFound,
+        bool silentDiscoverProbe = false) : IClientTransport
     {
         private readonly Channel<JsonRpcMessage> _incomingToClient = Channel.CreateUnbounded<JsonRpcMessage>();
 
@@ -151,6 +209,12 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
             {
                 case JsonRpcRequest { Method: RequestMethods.ServerDiscover } discoverReq:
                     ServerDiscoverProbed = true;
+                    if (silentDiscoverProbe)
+                    {
+                        // Model a legacy server that drops the unknown method without replying.
+                        break;
+                    }
+
                     _ = WriteAsync(new JsonRpcError
                     {
                         Id = discoverReq.Id,

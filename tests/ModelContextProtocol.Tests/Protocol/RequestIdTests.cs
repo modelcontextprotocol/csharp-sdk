@@ -46,4 +46,21 @@ public class RequestIdTests
         Assert.Equal(default(RequestId), id);
         Assert.Null(id.Id);
     }
+
+    [Fact]
+    public void Null_SerializesAsJsonNull()
+    {
+        // The default RequestId (Id == null) is the id-less-error-response shape. It MUST serialize as
+        // JSON null — not "" — so the wire form is spec-conformant and round-trips losslessly.
+        Assert.Equal("null", JsonSerializer.Serialize(default(RequestId), McpJsonUtilities.DefaultOptions));
+    }
+
+    [Fact]
+    public void Null_Roundtrips()
+    {
+        var json = JsonSerializer.Serialize(default(RequestId), McpJsonUtilities.DefaultOptions);
+        var id = JsonSerializer.Deserialize<RequestId>(json, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(default(RequestId), id);
+        Assert.Null(id.Id);
+    }
 }

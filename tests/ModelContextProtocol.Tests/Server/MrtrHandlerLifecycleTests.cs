@@ -250,6 +250,29 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
+
+        // Disposing the server while a continuation is suspended should log the cancellation of the
+        // pending MRTR continuation once at Debug level (this is the only path that reaches the
+        // continuation-cancellation log now that HTTP draft is always sessionless). Poll for the
+        // async cancellation to propagate through the handler task.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("pending MRTR continuation"))
+            && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        var mrtrCancelledLog = MockLoggerProvider.LogMessages
+            .Where(m => m.Message.Contains("pending MRTR continuation"))
+            .ToList();
+        var log = Assert.Single(mrtrCancelledLog);
+        Assert.Equal(LogLevel.Debug, log.LogLevel);
+        Assert.Contains("1", log.Message);
+
+        // The handler's OperationCanceledException must be silently observed during disposal, not
+        // logged as an error.
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel >= LogLevel.Error && m.Message.Contains("cancellation-test-tool"));
     }
 
     [Fact]

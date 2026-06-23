@@ -327,8 +327,12 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             cancellationToken: TestContext.Current.CancellationToken);
 
         // The client now defaults to the draft revision, whose handshake is server/discover
-        // rather than the legacy initialize request.
-        Assert.Contains(RequestMethods.ServerDiscover, observedMethods);
+        // rather than the legacy initialize request. On the stateful Streamable HTTP fixture the
+        // sessionless draft request is refused, so the client downgrades to the legacy initialize.
+        var expectedHandshakeMethod = UseStreamableHttp && !Stateless
+            ? RequestMethods.Initialize
+            : RequestMethods.ServerDiscover;
+        Assert.Contains(expectedHandshakeMethod, observedMethods);
         Assert.Contains(RequestMethods.ToolsList, observedMethods);
         Assert.Contains(RequestMethods.ToolsCall, observedMethods);
     }

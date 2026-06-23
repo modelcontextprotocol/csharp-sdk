@@ -759,6 +759,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     {
         var capturedSessionIds = new ConcurrentBag<(string? BeforeNext, string? AfterNext, string Method)>();
         var capturedActivityTags = new ConcurrentBag<(string? TagValue, bool HadActivity, string Method)>();
+        var requestObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
@@ -788,6 +789,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
             capturedSessionIds.Add((beforeSessionId, afterSessionId, httpContext.Request.Method));
             capturedActivityTags.Add((tagValue, activity is not null, httpContext.Request.Method));
+            requestObserved.TrySetResult();
 
             return result;
         });
@@ -806,8 +808,12 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // The filter must have observed at least one MCP request. Don't assert an exact
-        // minimum - the initialized notification or GET stream may not have completed yet.
+        // The filter records into the bag *after* await next(context) returns. For a streamed SSE
+        // response the client can observe completion (and ListToolsAsync can return) before that
+        // server-side continuation runs, so asserting the bag immediately races. Wait for the filter
+        // to record at least one request first. Don't assert an exact minimum - the initialized
+        // notification or GET stream may not have completed yet.
+        await requestObserved.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.NotEmpty(capturedSessionIds);
 
         if (Stateless)

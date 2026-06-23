@@ -10,6 +10,13 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public abstract partial class MapMcpTests
 {
+    // Draft is sessionless (SEP-2567): the Streamable HTTP handler refuses a sessionless draft request
+    // when the server opted into sessions (Stateless = false), so a draft-pinned client downgrades to
+    // legacy instead of negotiating 2026-07-28. These draft MRTR tests therefore can't run on the
+    // stateful Streamable HTTP fixture; the same coverage runs on the stateless and legacy-SSE fixtures.
+    private const string DraftStatefulStreamableHttpSkipReason =
+        "Draft is sessionless (SEP-2567); stateful Streamable HTTP refuses sessionless draft. Covered by the stateless and SSE fixtures.";
+
     private ServerMessageTracker ConfigureServer(params Delegate[] tools)
     {
         var messageTracker = new ServerMessageTracker();
@@ -350,6 +357,8 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_Roots_CompletesViaMrtr()
     {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-roots")] (RequestContext<CallToolRequestParams> context) =>
             {
@@ -426,6 +435,8 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_MultiRoundTrip_Completes(bool experimentalClient)
     {
+        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+
         var messageTracker = ConfigureServer(MrtrMulti);
         await using var app = Builder.Build();
         app.MapMcp();
@@ -473,6 +484,8 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_IsMrtrSupported(bool experimentalClient)
     {
+        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+
         ConfigureServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
         app.MapMcp();
@@ -537,6 +550,8 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_ConcurrentThreeInputs_ResolvedSimultaneously()
     {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+
         var messageTracker = ConfigureServer(MrtrConcurrentThree);
         await using var app = Builder.Build();
         app.MapMcp();
@@ -589,6 +604,8 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-loadshed")] (RequestContext<CallToolRequestParams> context) =>
             {

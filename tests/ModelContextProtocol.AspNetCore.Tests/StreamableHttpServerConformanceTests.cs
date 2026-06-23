@@ -27,7 +27,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
     private WebApplication? _app;
 
-    private async Task StartAsync()
+    private async Task StartAsync(bool stateless = false)
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -36,7 +36,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
                 Name = nameof(StreamableHttpServerConformanceTests),
                 Version = "73",
             };
-        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = false);
+        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = stateless);
 
         _app = Builder.Build();
 
@@ -65,7 +65,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             options.IdleTimeout = TimeSpan.MinValue;
         });
 
-        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(() => StartAsync());
         Assert.Contains("IdleTimeout", ex.Message);
     }
 
@@ -77,7 +77,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             options.MaxIdleSessionCount = -1;
         });
 
-        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(() => StartAsync());
         Assert.Contains("MaxIdleSessionCount", ex.Message);
     }
 
@@ -245,6 +245,38 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Mcp-Session-Id", body);
         Assert.Contains("Stateless", body);
+    }
+
+    [Fact]
+    public async Task PostMalformedJson_Returns400_InvalidRequest_WithNullId()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent("{ this is not valid json"), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Because the request
+        // id could not be read, the error carries id=null per JSON-RPC 2.0 §5.1 — and crucially it must
+        // serialize as JSON null, not "" (regression guard for the RequestId write path).
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task PostRequestWithExplicitNullId_Returns400_InvalidRequest_WithNullId()
+    {
+        await StartAsync();
+
+        // A request carrying an explicit `id:null` is malformed per the MCP base protocol ("the ID MUST
+        // NOT be null") and must NOT be silently treated as a notification. The server rejects it with a
+        // conformant 400 InvalidRequest error whose own id is null.
+        using var response = await HttpClient.PostAsync("", JsonContent("""{"jsonrpc":"2.0","id":null,"method":"tools/list"}"""), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -886,7 +918,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [Fact]
     public async Task DraftVersion_RejectsMissingMcpMethodHeader()
     {
-        await StartAsync();
+        // Draft is sessionless and served only on a stateless server (SEP-2567).
+        await StartAsync(stateless: true);
 
         // Initialize with draft version to enable header validation
         await CallInitializeWithDraftVersionAndValidateAsync();
@@ -904,7 +937,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [Fact]
     public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
     {
-        await StartAsync();
+        await StartAsync(stateless: true);
         await CallInitializeWithDraftVersionAndValidateAsync();
 
         // Send a tools/call request but set Mcp-Method to wrong value
@@ -920,7 +953,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [Fact]
     public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
     {
-        await StartAsync();
+        await StartAsync(stateless: true);
         await CallInitializeWithDraftVersionAndValidateAsync();
 
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
