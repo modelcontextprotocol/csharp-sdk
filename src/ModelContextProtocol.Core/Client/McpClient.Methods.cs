@@ -173,10 +173,18 @@ public abstract partial class McpClient : McpSession
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
+    /// <para>
     /// This overload aggregates every page into a single list and does not surface the per-result caching hints
     /// (<see cref="ListToolsResult.TimeToLive"/> and <see cref="ListToolsResult.CacheScope"/>). To read those hints,
     /// use the <see cref="ListToolsAsync(ListToolsRequestParams, CancellationToken)"/> overload, which returns the
     /// raw <see cref="ListToolsResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListToolsAsync(ListToolsRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
     /// </remarks>
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
         RequestOptions? options = null,
@@ -247,12 +255,25 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ToolsList, SendRequestAsync(
             RequestMethods.ToolsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// Awaits a cacheable result and gives derived clients a chance to emit diagnostics (for example, a
+    /// SEP-2549 conformance warning) before returning it. Preserves the synchronous argument validation
+    /// performed by the callers before the request is issued.
+    /// </summary>
+    private async ValueTask<TResult> ValidateCacheableResultAsync<TResult>(string method, ValueTask<TResult> resultTask)
+        where TResult : ICacheableResult
+    {
+        var result = await resultTask.ConfigureAwait(false);
+        ValidateCacheableResult(method, result);
+        return result;
     }
 
     /// <summary>
@@ -263,10 +284,18 @@ public abstract partial class McpClient : McpSession
     /// <returns>A list of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
+    /// <para>
     /// This overload aggregates every page into a single list and does not surface the per-result caching hints
     /// (<see cref="ListPromptsResult.TimeToLive"/> and <see cref="ListPromptsResult.CacheScope"/>). To read those hints,
     /// use the <see cref="ListPromptsAsync(ListPromptsRequestParams, CancellationToken)"/> overload, which returns the
     /// raw <see cref="ListPromptsResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListPromptsAsync(ListPromptsRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
     /// </remarks>
     public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         RequestOptions? options = null,
@@ -309,12 +338,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.PromptsList, SendRequestAsync(
             RequestMethods.PromptsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -379,10 +408,18 @@ public abstract partial class McpClient : McpSession
     /// <returns>A list of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
+    /// <para>
     /// This overload aggregates every page into a single list and does not surface the per-result caching hints
     /// (<see cref="ListResourceTemplatesResult.TimeToLive"/> and <see cref="ListResourceTemplatesResult.CacheScope"/>). To read those hints,
     /// use the <see cref="ListResourceTemplatesAsync(ListResourceTemplatesRequestParams, CancellationToken)"/> overload, which returns the
     /// raw <see cref="ListResourceTemplatesResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListResourceTemplatesAsync(ListResourceTemplatesRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
     /// </remarks>
     public async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         RequestOptions? options = null,
@@ -425,12 +462,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesTemplatesList, SendRequestAsync(
             RequestMethods.ResourcesTemplatesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -441,10 +478,18 @@ public abstract partial class McpClient : McpSession
     /// <returns>A list of all available resources as <see cref="Resource"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
+    /// <para>
     /// This overload aggregates every page into a single list and does not surface the per-result caching hints
     /// (<see cref="ListResourcesResult.TimeToLive"/> and <see cref="ListResourcesResult.CacheScope"/>). To read those hints,
     /// use the <see cref="ListResourcesAsync(ListResourcesRequestParams, CancellationToken)"/> overload, which returns the
     /// raw <see cref="ListResourcesResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListResourcesAsync(ListResourcesRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
     /// </remarks>
     public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
         RequestOptions? options = null,
@@ -487,12 +532,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesList, SendRequestAsync(
             RequestMethods.ResourcesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
         
     /// <summary>
@@ -571,12 +616,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesRead, SendRequestAsync(
             RequestMethods.ResourcesRead,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
