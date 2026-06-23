@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -594,7 +594,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         var context = request.Context ??= new JsonRpcMessageContext();
 
-        if (metaObj[NotificationMethods.ProtocolVersionMetaKey] is JsonValue protocolVersion &&
+        if (metaObj[MetaKeys.ProtocolVersion] is JsonValue protocolVersion &&
             protocolVersion.TryGetValue(out string? protocolVersionValue))
         {
             // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
@@ -612,17 +612,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             context.ProtocolVersion = protocolVersionValue;
         }
 
-        if (metaObj[NotificationMethods.ClientInfoMetaKey] is JsonNode clientInfoNode)
+        if (metaObj[MetaKeys.ClientInfo] is JsonNode clientInfoNode)
         {
             context.ClientInfo = JsonSerializer.Deserialize(clientInfoNode, McpJsonUtilities.JsonContext.Default.Implementation);
         }
 
-        if (metaObj[NotificationMethods.ClientCapabilitiesMetaKey] is JsonNode clientCapabilitiesNode)
+        if (metaObj[MetaKeys.ClientCapabilities] is JsonNode clientCapabilitiesNode)
         {
             context.ClientCapabilities = JsonSerializer.Deserialize(clientCapabilitiesNode, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
         }
 
-        if (metaObj[NotificationMethods.LogLevelMetaKey] is JsonNode logLevelNode)
+        if (metaObj[MetaKeys.LogLevel] is JsonNode logLevelNode)
         {
             context.LogLevel = JsonSerializer.Deserialize(logLevelNode, McpJsonUtilities.JsonContext.Default.LoggingLevel);
         }
@@ -658,8 +658,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             paramsObj["_meta"] = metaObj;
         }
 
-        metaObj[NotificationMethods.ProtocolVersionMetaKey] = protocolVersion;
-        metaObj[NotificationMethods.ClientInfoMetaKey] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.JsonContext.Default.Implementation);
+        metaObj[MetaKeys.ProtocolVersion] = protocolVersion;
+        metaObj[MetaKeys.ClientInfo] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.JsonContext.Default.Implementation);
 
         // Overlay the session-level standard capabilities onto whatever the request already carried
         // in _meta.clientCapabilities. A caller higher up the pipeline (e.g. CallToolRawAsync via
@@ -668,7 +668,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         // additions, so merge instead: set the standard capability fields from the session
         // capabilities while preserving any extra keys (extensions) the request envelope already had.
         var serializedCapabilities = (JsonObject)JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities)!;
-        if (metaObj[NotificationMethods.ClientCapabilitiesMetaKey] is JsonObject existingCapabilities)
+        if (metaObj[MetaKeys.ClientCapabilities] is JsonObject existingCapabilities)
         {
             foreach (var property in serializedCapabilities.ToArray())
             {
@@ -677,16 +677,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         else
         {
-            metaObj[NotificationMethods.ClientCapabilitiesMetaKey] = serializedCapabilities;
+            metaObj[MetaKeys.ClientCapabilities] = serializedCapabilities;
         }
 
         if (logLevel is { } level)
         {
-            metaObj[NotificationMethods.LogLevelMetaKey] = JsonSerializer.SerializeToNode(level, McpJsonUtilities.JsonContext.Default.LoggingLevel);
+            metaObj[MetaKeys.LogLevel] = JsonSerializer.SerializeToNode(level, McpJsonUtilities.JsonContext.Default.LoggingLevel);
         }
         else
         {
-            metaObj.Remove(NotificationMethods.LogLevelMetaKey);
+            metaObj.Remove(MetaKeys.LogLevel);
         }
     }
 

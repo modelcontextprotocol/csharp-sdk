@@ -1388,16 +1388,16 @@ public abstract partial class McpClient : McpSession
             ? (JsonObject)existingMeta.DeepClone()
             : [];
 
-        if (meta[NotificationMethods.ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
+        if (meta[MetaKeys.ClientCapabilities] is not JsonObject capsRoot)
         {
             capsRoot = [];
-            meta[NotificationMethods.ClientCapabilitiesMetaKey] = capsRoot;
+            meta[MetaKeys.ClientCapabilities] = capsRoot;
         }
 
-        if (capsRoot[NotificationMethods.ClientCapabilityExtensionsKey] is not JsonObject extensionsRoot)
+        if (capsRoot["extensions"] is not JsonObject extensionsRoot)
         {
             extensionsRoot = [];
-            capsRoot[NotificationMethods.ClientCapabilityExtensionsKey] = extensionsRoot;
+            capsRoot["extensions"] = extensionsRoot;
         }
 
         extensionsRoot.TryAdd(McpExtensions.Tasks, new JsonObject());

@@ -16,13 +16,13 @@ public static class DiscoverProtocolTests
         {
             Meta = new JsonObject
             {
-                [NotificationMethods.ProtocolVersionMetaKey] = "2026-07-28",
-                [NotificationMethods.ClientInfoMetaKey] = new JsonObject
+                [MetaKeys.ProtocolVersion] = "2026-07-28",
+                [MetaKeys.ClientInfo] = new JsonObject
                 {
                     ["name"] = "test-client",
                     ["version"] = "1.0",
                 },
-                [NotificationMethods.ClientCapabilitiesMetaKey] = new JsonObject(),
+                [MetaKeys.ClientCapabilities] = new JsonObject(),
             },
         };
 
@@ -31,7 +31,7 @@ public static class DiscoverProtocolTests
 
         Assert.NotNull(deserialized);
         Assert.NotNull(deserialized.Meta);
-        Assert.Equal("2026-07-28", (string)deserialized.Meta[NotificationMethods.ProtocolVersionMetaKey]!);
+        Assert.Equal("2026-07-28", (string)deserialized.Meta[MetaKeys.ProtocolVersion]!);
     }
 
     [Fact]

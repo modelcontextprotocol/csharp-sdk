@@ -155,26 +155,6 @@ public static class NotificationMethods
     public const string TaskStatusNotification = "notifications/tasks/status";
 
     /// <summary>
-    /// The metadata key used to associate requests, responses, and notifications with a task.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This constant defines the key <c>"io.modelcontextprotocol/related-task"</c> used in the
-    /// <c>_meta</c> field to associate messages with their originating task across the entire
-    /// request lifecycle.
-    /// </para>
-    /// <para>
-    /// For example, an elicitation that a task-augmented tool call depends on must share the
-    /// same related task ID with that tool call's task.
-    /// </para>
-    /// <para>
-    /// For <c>tasks/get</c>, <c>tasks/list</c>, and <c>tasks/cancel</c> operations, this
-    /// metadata should not be included as the taskId is already present in the message structure.
-    /// </para>
-    /// </remarks>
-    public const string RelatedTaskMetaKey = "io.modelcontextprotocol/related-task";
-
-    /// <summary>
     /// The name of the notification sent first on a <see cref="RequestMethods.SubscriptionsListen"/>
     /// response stream to indicate which notification types the server agreed to deliver.
     /// </summary>
@@ -183,59 +163,4 @@ public static class NotificationMethods
     /// of the requested notifications and include only the entries the server actually supports.
     /// </remarks>
     public const string SubscriptionsAcknowledgedNotification = "notifications/subscriptions/acknowledged";
-
-    /// <summary>
-    /// The metadata key used to carry the MCP protocol version in a request's <c>_meta</c> field.
-    /// </summary>
-    /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). For HTTP transports, the value MUST
-    /// match the <c>MCP-Protocol-Version</c> header. Servers reject mismatched versions with
-    /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/>.
-    /// </remarks>
-    public const string ProtocolVersionMetaKey = "io.modelcontextprotocol/protocolVersion";
-
-    /// <summary>
-    /// The metadata key used to identify the client software in a request's <c>_meta</c> field.
-    /// </summary>
-    /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Carries an <see cref="Protocol.Implementation"/>
-    /// describing the client; replaces the <c>clientInfo</c> previously sent only with <c>initialize</c>.
-    /// </remarks>
-    public const string ClientInfoMetaKey = "io.modelcontextprotocol/clientInfo";
-
-    /// <summary>
-    /// The metadata key used to declare client capabilities in a request's <c>_meta</c> field.
-    /// </summary>
-    /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Carries a <see cref="Protocol.ClientCapabilities"/>
-    /// describing what optional features the client supports for this specific request. Servers MUST NOT
-    /// infer capabilities from previous requests.
-    /// </remarks>
-    public const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-
-    /// <summary>
-    /// The sub-key of <see cref="ClientCapabilitiesMetaKey"/> that holds per-request capability
-    /// extensions (such as the tasks extension). Matches <see cref="Protocol.ClientCapabilities.Extensions"/>.
-    /// </summary>
-    public const string ClientCapabilityExtensionsKey = "extensions";
-
-    /// <summary>
-    /// The metadata key used to specify the desired log level for a request's resulting log notifications.
-    /// </summary>
-    /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Carries a <see cref="Protocol.LoggingLevel"/>.
-    /// Replaces the legacy <see cref="RequestMethods.LoggingSetLevel"/> RPC. When absent, the server
-    /// MUST NOT send log notifications for the request.
-    /// </remarks>
-    public const string LogLevelMetaKey = "io.modelcontextprotocol/logLevel";
-
-    /// <summary>
-    /// The metadata key used to associate a notification with the request ID of an active
-    /// <see cref="RequestMethods.SubscriptionsListen"/> subscription.
-    /// </summary>
-    /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Allows clients to demultiplex notifications
-    /// belonging to different subscriptions on a shared channel (especially STDIO).
-    /// </remarks>
-    public const string SubscriptionIdMetaKey = "io.modelcontextprotocol/subscriptionId";
 }

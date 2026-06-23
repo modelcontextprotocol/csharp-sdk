@@ -143,7 +143,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
     }
 
     private static string? GetSubscriptionId(JsonRpcNotification notification)
-        => ((notification.Params as JsonObject)?["_meta"] as JsonObject)?[NotificationMethods.SubscriptionIdMetaKey]?.ToJsonString();
+        => ((notification.Params as JsonObject)?["_meta"] as JsonObject)?[MetaKeys.SubscriptionId]?.ToJsonString();
 
     [McpServerToolType]
     private sealed class ListenTools

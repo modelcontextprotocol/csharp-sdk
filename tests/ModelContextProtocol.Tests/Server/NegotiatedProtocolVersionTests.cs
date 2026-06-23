@@ -81,7 +81,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
             {
                 ["_meta"] = new JsonObject
                 {
-                    [NotificationMethods.ProtocolVersionMetaKey] = protocolVersion,
+                    [MetaKeys.ProtocolVersion] = protocolVersion,
                 },
             },
         };

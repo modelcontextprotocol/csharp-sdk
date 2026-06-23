@@ -158,9 +158,9 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
         var meta = _capturedMeta[RequestMethods.ToolsList];
         if (meta is not null)
         {
-            Assert.False(meta.ContainsKey(NotificationMethods.ProtocolVersionMetaKey));
-            Assert.False(meta.ContainsKey(NotificationMethods.ClientInfoMetaKey));
-            Assert.False(meta.ContainsKey(NotificationMethods.ClientCapabilitiesMetaKey));
+            Assert.False(meta.ContainsKey(MetaKeys.ProtocolVersion));
+            Assert.False(meta.ContainsKey(MetaKeys.ClientInfo));
+            Assert.False(meta.ContainsKey(MetaKeys.ClientCapabilities));
         }
     }
 
@@ -168,14 +168,14 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
     {
         Assert.True(_capturedMeta.TryGetValue(method, out var meta), $"No capture for {method}");
         Assert.NotNull(meta);
-        Assert.True(meta!.ContainsKey(NotificationMethods.ProtocolVersionMetaKey),
+        Assert.True(meta!.ContainsKey(MetaKeys.ProtocolVersion),
             $"Missing protocolVersion key on {method} _meta envelope");
-        Assert.True(meta.ContainsKey(NotificationMethods.ClientInfoMetaKey),
+        Assert.True(meta.ContainsKey(MetaKeys.ClientInfo),
             $"Missing clientInfo key on {method} _meta envelope");
-        Assert.True(meta.ContainsKey(NotificationMethods.ClientCapabilitiesMetaKey),
+        Assert.True(meta.ContainsKey(MetaKeys.ClientCapabilities),
             $"Missing clientCapabilities key on {method} _meta envelope");
 
         // The protocolVersion value must match the negotiated draft version.
-        Assert.Equal(DraftVersion, meta[NotificationMethods.ProtocolVersionMetaKey]!.GetValue<string>());
+        Assert.Equal(DraftVersion, meta[MetaKeys.ProtocolVersion]!.GetValue<string>());
     }
 }

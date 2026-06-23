@@ -247,7 +247,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         if (message is JsonRpcRequest { Params: System.Text.Json.Nodes.JsonObject paramsObj } &&
             paramsObj["_meta"] is System.Text.Json.Nodes.JsonObject metaObj &&
-            metaObj[NotificationMethods.ProtocolVersionMetaKey] is System.Text.Json.Nodes.JsonValue versionValue &&
+            metaObj[MetaKeys.ProtocolVersion] is System.Text.Json.Nodes.JsonValue versionValue &&
             versionValue.TryGetValue(out string? version))
         {
             return version;

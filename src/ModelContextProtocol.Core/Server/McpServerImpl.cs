@@ -568,7 +568,7 @@ internal sealed partial class McpServerImpl : McpServer
             paramsObject["_meta"] = meta;
         }
 
-        meta[NotificationMethods.SubscriptionIdMetaKey] = subscription.Id.Id switch
+        meta[MetaKeys.SubscriptionId] = subscription.Id.Id switch
         {
             string stringId => JsonValue.Create(stringId),
             long longId => JsonValue.Create(longId),
@@ -1709,8 +1709,8 @@ internal sealed partial class McpServerImpl : McpServer
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
     private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
         meta is not null &&
-        meta[NotificationMethods.ClientCapabilitiesMetaKey] is JsonObject caps &&
-        caps[NotificationMethods.ClientCapabilityExtensionsKey] is JsonObject exts &&
+        meta[MetaKeys.ClientCapabilities] is JsonObject caps &&
+        caps["extensions"] is JsonObject exts &&
         exts.ContainsKey(McpExtensions.Tasks);
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
