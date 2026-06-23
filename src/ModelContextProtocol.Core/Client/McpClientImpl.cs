@@ -311,9 +311,9 @@ internal sealed partial class McpClientImpl : McpClient
 
                     // Apply a probe timeout so dual-era clients don't block forever waiting for a
                     // legacy server that silently drops unknown methods (per stdio.mdx fallback rules).
-                    // The probe timeout is bounded by InitializationTimeout, but we cap it at 5s so we
-                    // can quickly fall back when a server isn't going to respond.
-                    var probeTimeout = TimeSpan.FromSeconds(5);
+                    // The probe timeout is configurable via McpClientOptions.DiscoverProbeTimeout and is
+                    // always bounded by InitializationTimeout (only applied when it is the tighter bound).
+                    var probeTimeout = _options.DiscoverProbeTimeout;
                     using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(initializationCts.Token);
                     if (_options.InitializationTimeout > probeTimeout)
                     {
@@ -713,13 +713,6 @@ internal sealed partial class McpClientImpl : McpClient
             _options.Capabilities ?? new ClientCapabilities());
     }
 
-    /// <summary>
-    /// Returns <see langword="true"/> when the negotiated protocol version is the draft revision
-    /// (SEP-2575 + SEP-2567 + MRTR).
-    /// </summary>
-    internal bool IsDraftProtocol() =>
-        _negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion;
-
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         => _sessionHandler.SendMessageAsync(message, cancellationToken);
@@ -755,7 +748,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
-        if (_negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+        if (IsDraftProtocol())
         {
             LogLegacyRequestOnMrtrSession(_endpointName, method);
         }
@@ -764,7 +757,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an InputRequiredResult.</summary>
     private void WarnIfInputRequiredResultOnNonMrtrSession(string method)
     {
-        if (_negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion)
+        if (!IsDraftProtocol())
         {
             LogInputRequiredResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }

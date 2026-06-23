@@ -87,7 +87,11 @@ public readonly struct RequestId : IEquatable<RequestId>
                     return;
 
                 case null:
-                    writer.WriteStringValue(string.Empty);
+                    // A null Id represents a JSON-RPC error response whose request id could not be
+                    // determined (JSON-RPC 2.0 §5; the MCP base protocol permits an error response to a
+                    // malformed request to carry a null id). Emit JSON null — not "" — so the wire form
+                    // is spec-conformant and round-trips losslessly with the Null-accepting Read above.
+                    writer.WriteNullValue();
                     return;
             }
         }

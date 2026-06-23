@@ -619,13 +619,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.RelatedTaskMetaKey</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -986,13 +979,6 @@
     <Target>M:ModelContextProtocol.Server.McpServerToolCreateOptions.set_Execution(ModelContextProtocol.Protocol.ToolExecution)</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.RelatedTaskMetaKey</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
@@ -1361,13 +1347,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.RelatedTaskMetaKey</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -1728,13 +1707,6 @@
     <Target>M:ModelContextProtocol.Server.McpServerToolCreateOptions.set_Execution(ModelContextProtocol.Protocol.ToolExecution)</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.RelatedTaskMetaKey</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>

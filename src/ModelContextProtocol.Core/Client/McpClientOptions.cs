@@ -118,6 +118,52 @@ public sealed class McpClientOptions
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
+    /// before falling back to the legacy <c>initialize</c> handshake.
+    /// </summary>
+    /// <value>
+    /// The probe timeout. The default value is 5 seconds. Use
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> to disable the separate probe timeout
+    /// and rely solely on <see cref="InitializationTimeout"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// This timeout only has an effect when the client prefers the draft protocol revision &#8212; that is,
+    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or
+    /// <see cref="McpSession.DraftProtocolVersion"/>. In that mode the client first probes the server
+    /// with a <c>server/discover</c> request. A legacy server that predates the draft revision may
+    /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
+    /// client concludes the server is legacy and falls back to the <c>initialize</c> handshake on the
+    /// same connection. When the caller pins a legacy <see cref="ProtocolVersion"/>, no probe is issued
+    /// and this value has no effect.
+    /// </para>
+    /// <para>
+    /// The default is intentionally short so that dual-era clients fall back quickly against legacy
+    /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
+    /// satellite links) where a short probe could trigger the legacy fallback before a draft-capable
+    /// server has had a chance to respond. The probe is always also bounded by
+    /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
+    /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
+    /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value is not positive and is not <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
+    public TimeSpan DiscoverProbeTimeout
+    {
+        get;
+        set
+        {
+            if (value <= TimeSpan.Zero && value != Timeout.InfiniteTimeSpan)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "must be positive or Timeout.InfiniteTimeSpan.");
+            }
+            field = value;
+        }
+    } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// Gets or sets the container of handlers used by the client for processing protocol messages.
     /// </summary>
     public McpClientHandlers Handlers

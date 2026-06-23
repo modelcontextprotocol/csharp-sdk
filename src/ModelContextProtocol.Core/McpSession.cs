@@ -39,12 +39,13 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <summary>The in-progress draft protocol revision this SDK supports.</summary>
     /// <remarks>
     /// The draft revision removes the <c>initialize</c> handshake (SEP-2575) and the
-    /// <c>Mcp-Session-Id</c> header (SEP-2567), so a draft HTTP server is sessionless on the wire
-    /// regardless of <c>HttpServerTransportOptions.Stateless</c>. Clients prefer this revision by
-    /// default and automatically fall back to the legacy <c>initialize</c> flow when the server does
-    /// not support it; pin <see cref="McpClientOptions.ProtocolVersion"/> to a legacy version to opt
-    /// out, or set <see cref="McpClientOptions.MinProtocolVersion"/> to this value to keep the draft
-    /// preference while refusing the legacy fallback.
+    /// <c>Mcp-Session-Id</c> header (SEP-2567), so it is sessionless on the wire and over HTTP is only
+    /// served when the server is stateless. A stateful (<c>HttpServerTransportOptions.Stateless = false</c>)
+    /// server refuses a sessionless draft request so that a dual-era client downgrades to the legacy
+    /// <c>initialize</c> flow. Clients prefer this revision by default and automatically fall back to the
+    /// legacy flow when the server does not support it; pin <see cref="McpClientOptions.ProtocolVersion"/>
+    /// to a legacy version to opt out, or set <see cref="McpClientOptions.MinProtocolVersion"/> to this
+    /// value to keep the draft preference while refusing the legacy fallback.
     /// </remarks>
     public const string DraftProtocolVersion = McpSessionHandler.DraftProtocolVersion;
 
@@ -64,6 +65,17 @@ public abstract partial class McpSession : IAsyncDisposable
     /// or <see langword="null"/> if initialization hasn't yet occurred.
     /// </remarks>
     public abstract string? NegotiatedProtocolVersion { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the negotiated protocol version is the draft revision
+    /// (<see cref="DraftProtocolVersion"/>, which carries SEP-2575 + SEP-2567 + MRTR).
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="false"/> when no version has been negotiated yet. This is the shared
+    /// definition of "is this peer speaking the draft revision" used by both the client and server.
+    /// </remarks>
+    internal bool IsDraftProtocol() =>
+        NegotiatedProtocolVersion == DraftProtocolVersion;
 
     /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.
