@@ -77,25 +77,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // The three modern draft-protocol error codes are also surfaced for non-400 status codes
         // for robustness — servers occasionally emit them with 4xx codes other than 400.
         if (!response.IsSuccessStatusCode &&
-            response.Content.Headers.ContentType?.MediaType == "application/json")
+            await TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
+            (response.StatusCode == HttpStatusCode.BadRequest ||
+             IsModernDraftErrorCode((McpErrorCode)parsedError.Error.Code)))
         {
-            string body;
-            try
-            {
-                body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                body = string.Empty;
-            }
-
-            if (!string.IsNullOrEmpty(body) &&
-                TryParseJsonRpcError(body, out var parsedError) &&
-                (response.StatusCode == HttpStatusCode.BadRequest ||
-                 IsModernDraftErrorCode((McpErrorCode)parsedError.Error.Code)))
-            {
-                throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
-            }
+            throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
         }
 
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
@@ -106,24 +92,43 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
              or McpErrorCode.MissingRequiredClientCapability
              or McpErrorCode.HeaderMismatch;
 
-    private static bool TryParseJsonRpcError(string body, out JsonRpcError parsedError)
+    /// <summary>
+    /// Reads a JSON-RPC error envelope from an <c>application/json</c> response body, returning
+    /// <see langword="null"/> when the response isn't JSON, is empty, or doesn't parse to a
+    /// <see cref="JsonRpcError"/>. Shared with the auto-detecting transport so it can tell an MCP
+    /// server that rejected the request apart from a non-MCP endpoint without throwing.
+    /// </summary>
+    internal static async Task<JsonRpcError?> TryReadJsonRpcErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        if (response.Content.Headers.ContentType?.MediaType != "application/json")
+        {
+            return null;
+        }
+
+        string body;
         try
         {
-            var message = JsonSerializer.Deserialize(body, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
-            if (message is JsonRpcError rpcError)
-            {
-                parsedError = rpcError;
-                return true;
-            }
+            body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(body))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize(body, McpJsonUtilities.JsonContext.Default.JsonRpcMessage) as JsonRpcError;
         }
         catch
         {
             // Not a valid JSON-RPC error response — fall through to the standard HTTP exception path.
+            return null;
         }
-
-        parsedError = null!;
-        return false;
     }
 
     // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.

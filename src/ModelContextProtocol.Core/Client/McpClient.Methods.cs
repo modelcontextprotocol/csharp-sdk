@@ -1382,27 +1382,22 @@ public abstract partial class McpClient : McpSession
 
     // Per SEP-2663 §51, the per-request opt-in uses the SEP-2575 capabilities envelope:
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    // TODO: replace the literal with a shared NotificationMethods.ClientCapabilitiesMetaKey once
-    // the SEP-2575 plumbing lands and drop the local consts.
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-    private const string ExtensionsKey = "extensions";
-
     private static JsonObject GetMetaWithTaskCapability(JsonObject? existingMeta)
     {
         JsonObject meta = existingMeta is not null
             ? (JsonObject)existingMeta.DeepClone()
             : [];
 
-        if (meta[ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
+        if (meta[NotificationMethods.ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
         {
             capsRoot = [];
-            meta[ClientCapabilitiesMetaKey] = capsRoot;
+            meta[NotificationMethods.ClientCapabilitiesMetaKey] = capsRoot;
         }
 
-        if (capsRoot[ExtensionsKey] is not JsonObject extensionsRoot)
+        if (capsRoot[NotificationMethods.ClientCapabilityExtensionsKey] is not JsonObject extensionsRoot)
         {
             extensionsRoot = [];
-            capsRoot[ExtensionsKey] = extensionsRoot;
+            capsRoot[NotificationMethods.ClientCapabilityExtensionsKey] = extensionsRoot;
         }
 
         extensionsRoot.TryAdd(McpExtensions.Tasks, new JsonObject());

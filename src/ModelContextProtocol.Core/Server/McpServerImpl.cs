@@ -104,20 +104,10 @@ internal sealed partial class McpServerImpl : McpServer
             _notificationHandlers.RegisterRange(notificationHandlers);
         }
 
-        // In stateless mode, the server cannot send unsolicited notifications,
-        // so listChanged should not be advertised.
-        if (transport is StreamableHttpServerTransport { Stateless: true })
-        {
-            if (ServerCapabilities.Tools is not null)
-                ServerCapabilities.Tools.ListChanged = null;
-            if (ServerCapabilities.Prompts is not null)
-                ServerCapabilities.Prompts.ListChanged = null;
-            if (ServerCapabilities.Resources is not null)
-                ServerCapabilities.Resources.ListChanged = null;
-        }
-
-        // Now that everything has been configured, subscribe to any necessary notifications.
-        if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
+        // A stateful session can push unsolicited list-changed notifications, so subscribe to the
+        // collection change events. A stateless HTTP server cannot send unsolicited notifications, so
+        // instead suppress the listChanged capability it would otherwise advertise.
+        if (IsStatefulSession())
         {
             Register(ServerOptions.ToolCollection, NotificationMethods.ToolListChangedNotification);
             Register(ServerOptions.PromptCollection, NotificationMethods.PromptListChangedNotification);
@@ -134,19 +124,20 @@ internal sealed partial class McpServerImpl : McpServer
                 }
             }
         }
+        else
+        {
+            if (ServerCapabilities.Tools is not null)
+                ServerCapabilities.Tools.ListChanged = null;
+            if (ServerCapabilities.Prompts is not null)
+                ServerCapabilities.Prompts.ListChanged = null;
+            if (ServerCapabilities.Resources is not null)
+                ServerCapabilities.Resources.ListChanged = null;
+        }
 
-        // And initialize the session.
-        var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters);
+        // And initialize the session. The built-in draft state-sync filter runs ahead of any
+        // user-supplied incoming filters; see PrependDraftStateSyncFilter for what it records and why.
+        var incomingMessageFilter = PrependDraftStateSyncFilter(BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters));
         var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
-
-        // Prepend a built-in filter that picks up per-request _meta values populated by
-        // McpSessionHandler.PopulateContextFromMeta and projects them onto the server's
-        // per-session state. Under the draft protocol revision (SEP-2575) the client no longer
-        // performs an initialize handshake, so this is the only place client info / capabilities
-        // / negotiated protocol version are recorded server-side. This filter is a no-op for
-        // legacy clients that already populated these via initialize.
-        var draftStateSyncFilter = CreateDraftStateSyncFilter();
-        var combinedIncomingFilter = ComposeFilters(draftStateSyncFilter, incomingMessageFilter);
 
         _sessionHandler = new McpSessionHandler(
             isServer: true,
@@ -154,29 +145,26 @@ internal sealed partial class McpServerImpl : McpServer
             _endpointName!,
             _requestHandlers,
             _notificationHandlers,
-            combinedIncomingFilter,
+            incomingMessageFilter,
             outgoingMessageFilter,
             _logger);
     }
 
-    /// <summary>Composes two <see cref="JsonRpcMessageFilter"/>s so <paramref name="outer"/> runs first.</summary>
-    private static JsonRpcMessageFilter ComposeFilters(JsonRpcMessageFilter outer, JsonRpcMessageFilter inner) =>
-        next => outer(inner(next));
-
     /// <summary>
-    /// Builds an incoming message filter that, for every JSON-RPC request, synchronizes server-side state
-    /// (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>)
-    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/> and
-    /// validates the per-request protocol version.
+    /// Wraps <paramref name="inner"/> so that, for every JSON-RPC request, a built-in filter first
+    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>,
+    /// <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>) from the per-request <c>_meta</c>
+    /// values projected onto <see cref="JsonRpcMessageContext"/> and validates the per-request protocol
+    /// version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
     /// Under the draft protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. For legacy clients the per-request values are absent and this filter
-    /// is a no-op (the values were captured during the initialize handler).
+    /// MUST be populated per-request. For legacy clients the per-request values are absent and the built-in
+    /// filter is a no-op (the values were captured during the initialize handler).
     /// </remarks>
-    private JsonRpcMessageFilter CreateDraftStateSyncFilter()
+    private JsonRpcMessageFilter PrependDraftStateSyncFilter(JsonRpcMessageFilter inner)
     {
-        return next => async (message, cancellationToken) =>
+        JsonRpcMessageFilter draftStateSync = next => async (message, cancellationToken) =>
         {
             if (message is JsonRpcRequest { Method: not RequestMethods.Initialize } request && request.Context is { } context)
             {
@@ -227,6 +215,8 @@ internal sealed partial class McpServerImpl : McpServer
 
             await next(message, cancellationToken).ConfigureAwait(false);
         };
+
+        return next => draftStateSync(inner(next));
     }
 
     /// <inheritdoc/>
@@ -257,21 +247,6 @@ internal sealed partial class McpServerImpl : McpServer
                 $"The negotiated protocol version cannot change within a session. " +
                 $"The session negotiated '{previous}', but a request specified '{protocolVersion}'.",
                 McpErrorCode.InvalidRequest);
-        }
-    }
-
-    /// <summary>
-    /// In stateless mode each request is handled by a fresh server instance that never saw an
-    /// <c>initialize</c> handshake, so <see cref="_negotiatedProtocolVersion"/> starts <see langword="null"/>.
-    /// The transport flows the negotiated draft version through
-    /// <see cref="JsonRpcMessageContext.ProtocolVersion"/> (sourced from the per-request <c>_meta</c> or the
-    /// <c>Mcp-Protocol-Version</c> header); adopt it so the per-request handlers observe it.
-    /// </summary>
-    private void AdoptProtocolVersionFromRequestContext(JsonRpcRequest request)
-    {
-        if (request.Context?.ProtocolVersion is { } headerProtocolVersion)
-        {
-            SetNegotiatedProtocolVersion(headerProtocolVersion);
         }
     }
 
@@ -1732,15 +1707,10 @@ internal sealed partial class McpServerImpl : McpServer
     // Per SEP-2663 §51, the client opts in to the tasks extension on a per-request basis
     // via the SEP-2575 capabilities envelope:
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    // TODO: swap the literals for a shared NotificationMethods.ClientCapabilitiesMetaKey once
-    // the SEP-2575 plumbing lands.
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-    private const string ExtensionsKey = "extensions";
-
     private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
         meta is not null &&
-        meta[ClientCapabilitiesMetaKey] is JsonObject caps &&
-        caps[ExtensionsKey] is JsonObject exts &&
+        meta[NotificationMethods.ClientCapabilitiesMetaKey] is JsonObject caps &&
+        caps[NotificationMethods.ClientCapabilityExtensionsKey] is JsonObject exts &&
         exts.ContainsKey(McpExtensions.Tasks);
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
@@ -1846,10 +1816,6 @@ internal sealed partial class McpServerImpl : McpServer
     {
         const int MaxRetries = 10;
 
-        // In stateless mode, pick up the negotiated draft protocol version from the
-        // transport-provided request context because there is no long-lived initialize handshake state.
-        AdoptProtocolVersionFromRequestContext(request);
-
         for (int retry = 0; ; retry++)
         {
             try
@@ -1868,7 +1834,6 @@ internal sealed partial class McpServerImpl : McpServer
                 // In stateless mode without MRTR, the server can't resolve input requests via
                 // JSON-RPC (no persistent session for server-to-client requests), and the client
                 // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-                // TODO(stateless-draft): When 2026-07-28 becomes stateless-only, the IsStatefulSession() gate collapses - the stateful path will only matter for legacy clients on the current protocol.
                 if (!IsStatefulSession())
                 {
                     throw new McpException(
@@ -2035,11 +2000,6 @@ internal sealed partial class McpServerImpl : McpServer
 
         _requestHandlers[method] = async (request, cancellationToken) =>
         {
-            // In stateless mode, each request creates a new server instance that never saw the
-            // initialize handshake, so _negotiatedProtocolVersion is null. Pick it up from the
-            // Mcp-Protocol-Version header that the transport layer flowed via JsonRpcMessageContext.
-            AdoptProtocolVersionFromRequestContext(request);
-
             // Check for MRTR retry: if requestState is present, look up the continuation.
             if (request.Params is JsonObject paramsObj &&
                 paramsObj.TryGetPropertyValue("requestState", out var requestStateNode) &&

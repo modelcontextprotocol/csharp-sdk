@@ -677,6 +677,13 @@ internal sealed partial class McpClientImpl : McpClient
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
                     InjectDraftMetaIfNeeded(request);
                 }
+                else
+                {
+                    // An input_required result carrying neither inputRequests nor requestState is
+                    // malformed: there is nothing to resolve and nothing to continue, so retrying the
+                    // unchanged request would just loop until maxRetries. Fail fast instead.
+                    throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
+                }
 
                 continue; // retry with the updated request
             }

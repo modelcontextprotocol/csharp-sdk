@@ -214,6 +214,12 @@ public static class NotificationMethods
     public const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
 
     /// <summary>
+    /// The sub-key of <see cref="ClientCapabilitiesMetaKey"/> that holds per-request capability
+    /// extensions (such as the tasks extension). Matches <see cref="Protocol.ClientCapabilities.Extensions"/>.
+    /// </summary>
+    public const string ClientCapabilityExtensionsKey = "extensions";
+
+    /// <summary>
     /// The metadata key used to specify the desired log level for a request's resulting log notifications.
     /// </summary>
     /// <remarks>
