@@ -10,8 +10,8 @@ public static class MetaKeys
     /// </summary>
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). For HTTP transports, the value MUST
-    /// match the <c>MCP-Protocol-Version</c> header. Servers reject mismatched versions with
-    /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/>.
+    /// match the <c>MCP-Protocol-Version</c> header. Servers reject a header/body mismatch with
+    /// <see cref="McpErrorCode.HeaderMismatch"/>.
     /// </remarks>
     public const string ProtocolVersion = "io.modelcontextprotocol/protocolVersion";
 

@@ -391,7 +391,7 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Registers the <c>server/discover</c> request handler Introduced by the 2026-07-28 protocol revision (SEP-2575).
+    /// Registers the <c>server/discover</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
     /// The handler is registered unconditionally so legacy clients can probe it too. It returns the server's
@@ -421,7 +421,7 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Registers the <c>subscriptions/listen</c> request handler Introduced by the 2026-07-28 protocol revision (SEP-2575).
+    /// Registers the <c>subscriptions/listen</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
     /// <para>

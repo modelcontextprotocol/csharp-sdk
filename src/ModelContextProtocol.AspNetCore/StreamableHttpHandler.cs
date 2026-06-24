@@ -693,16 +693,17 @@ internal sealed class StreamableHttpHandler(
     /// </summary>
     private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context)
     {
+        var requestedProtocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         var errorDetail = new JsonRpcErrorDetail
         {
             Code = (int)McpErrorCode.UnsupportedProtocolVersion,
-            Message = $"Bad Request: The protocol revision '{McpHttpHeaders.July2026ProtocolVersion}' does not support Streamable HTTP sessions and is not supported when the server is configured with sessions (HttpServerTransportOptions.Stateless = false). " +
+            Message = $"Bad Request: Starting with protocol version '{McpHttpHeaders.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
                 "Use the initialize handshake with a protocol version that still supports sessions instead.",
             Data = JsonSerializer.SerializeToNode(
                 new UnsupportedProtocolVersionErrorData
                 {
                     Supported = s_sessionSupportingProtocolVersions,
-                    Requested = McpHttpHeaders.July2026ProtocolVersion,
+                    Requested = requestedProtocolVersion,
                 },
                 GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
         };

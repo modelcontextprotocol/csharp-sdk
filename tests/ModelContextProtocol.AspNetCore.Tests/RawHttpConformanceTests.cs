@@ -136,7 +136,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task July2026Post_WithUnsupportedProtocolVersionHeader_Returns400_With_Minus32004()
+    public async Task July2026Post_WithUnsupportedProtocolVersionHeader_Returns400_With_Minus32022()
     {
         await StartAsync();
 
