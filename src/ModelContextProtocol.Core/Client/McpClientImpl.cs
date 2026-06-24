@@ -392,13 +392,15 @@ internal sealed partial class McpClientImpl : McpClient
                             .FirstOrDefault()
                             ?? McpHttpHeaders.November2025ProtocolVersion;
 
-                        // Honor MinProtocolVersion: refuse to fall back below the configured minimum.
-                        // String.Compare is the spec's prescribed ordering for ISO-8601 date-based versions.
-                        if (_options.MinProtocolVersion is { } minVersion &&
-                            StringComparer.Ordinal.Compare(fallbackVersion, minVersion) < 0)
+                        // A non-null ProtocolVersion is also the minimum: refuse to fall back below the
+                        // explicitly requested version. String.Compare is the spec's prescribed ordering
+                        // for ISO-8601 date-based versions.
+                        if (_options.ProtocolVersion is { } pinnedVersion &&
+                            StringComparer.Ordinal.Compare(fallbackVersion, pinnedVersion) < 0)
                         {
                             throw new McpException(
-                                $"Server does not support the configured minimum protocol version '{minVersion}'. " +
+                                $"The server does not support the requested protocol version '{pinnedVersion}'. " +
+                                "Leave McpClientOptions.ProtocolVersion unset to allow automatic fallback to an older version. " +
                                 (serverSupportedVersions is null
                                     ? "The server appears to be a legacy server that requires the deprecated initialize handshake."
                                     : $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}."));
@@ -493,15 +495,6 @@ internal sealed partial class McpClientImpl : McpClient
         {
             LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
             throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
-        }
-
-        // If the user set a MinProtocolVersion, also enforce it against the negotiated response
-        // (the server could have downgraded further than the version we asked for).
-        if (_options.MinProtocolVersion is { } minVersion &&
-            StringComparer.Ordinal.Compare(initializeResponse.ProtocolVersion, minVersion) < 0)
-        {
-            throw new McpException(
-                $"Server negotiated protocol version '{initializeResponse.ProtocolVersion}' is below the configured minimum '{minVersion}'.");
         }
 
         _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;

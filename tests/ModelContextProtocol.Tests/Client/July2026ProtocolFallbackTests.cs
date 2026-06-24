@@ -9,20 +9,16 @@ namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
 /// Regression tests for the fallback from the 2026-07-28 protocol revision to a legacy protocol in
-/// <see cref="McpClient"/>. These verify that a client configured with
-/// <c>McpClientOptions.ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion</c>
-/// correctly probes a server with <c>server/discover</c>, falls
-/// back to the legacy <c>initialize</c> handshake when the server is legacy,
-/// and accepts whatever supported protocol version the legacy server
-/// negotiates, including a version different from the one the client
-/// originally requested.
+/// <see cref="McpClient"/>. With default options (<c>ProtocolVersion = null</c>) the client prefers
+/// 2026-07-28 but probes with <c>server/discover</c>, falls back to the legacy <c>initialize</c>
+/// handshake when the server is legacy, and accepts whatever supported protocol version the legacy
+/// server negotiates. Pinning <c>ProtocolVersion</c> to <c>2026-07-28</c> instead makes it the
+/// minimum too, so the client refuses to fall back.
 /// </summary>
 /// <remarks>
-/// The originally shipped logic in <c>PerformLegacyInitializeAsync</c> compared
-/// the server's response against <c>_options.ProtocolVersion</c>, which for a
-/// 2026-07-28 client is <c>"2026-07-28"</c>. When the legacy server downgraded to (say)
-/// <c>"2025-06-18"</c>, the comparison threw, even though the legacy
-/// negotiation succeeded. These tests guard against that regression.
+/// The originally shipped logic in <c>PerformLegacyInitializeAsync</c> compared the server's response
+/// against the requested version and threw when a legacy server downgraded to (say) <c>"2025-06-18"</c>,
+/// even though the legacy negotiation succeeded. These tests guard against that regression.
 /// </remarks>
 public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
@@ -32,10 +28,9 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.ServerDiscoverProbed);
         Assert.True(transport.LegacyInitializeReceived);
@@ -50,17 +45,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             serverNegotiatedVersion: "2025-11-25",
             probeErrorCode: (int)McpErrorCode.InvalidParams);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.LegacyInitializeReceived);
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
-    public async Task Client_WithMinProtocolVersion_RefusesFallback_BelowMinimum()
+    public async Task Client_WithPinnedJuly2026Version_RefusesFallback_ToLegacyServer()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
@@ -69,13 +63,13 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
+                // Pinning the version makes it the minimum too, so the client refuses to fall back.
                 ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
-                MinProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
         Assert.IsType<McpException>(exception);
-        Assert.Contains("minimum", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2026-07-28", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -133,9 +127,9 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             silentDiscoverProbe: true);
 
         var stopwatch = Stopwatch.StartNew();
+        // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             DiscoverProbeTimeout = TimeSpan.FromMilliseconds(250),
             InitializationTimeout = TestConstants.DefaultTimeout,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);

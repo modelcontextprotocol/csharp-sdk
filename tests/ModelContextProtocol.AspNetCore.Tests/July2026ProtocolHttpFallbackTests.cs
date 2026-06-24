@@ -157,10 +157,9 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
 
@@ -245,10 +244,9 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
     }

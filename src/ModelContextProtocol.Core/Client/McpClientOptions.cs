@@ -52,51 +52,22 @@ public sealed class McpClientOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When non-<see langword="null"/>, this version is requested from the server. Setting it to a
-    /// version that still supports Streamable HTTP sessions, such as <c>2025-11-25</c>, opts out of the
-    /// <c>2026-07-28</c> revision and forces the <c>initialize</c> handshake; the handshake then fails if
-    /// the server's negotiated version does not match.
+    /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
+    /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions. It probes with
+    /// <c>server/discover</c> and automatically falls back to the legacy <c>initialize</c> handshake,
+    /// downgrading to any version the server advertises, when the server does not support that revision.
     /// </para>
     /// <para>
-    /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
-    /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions: it probes with
-    /// <c>server/discover</c> and automatically falls back to a legacy <c>initialize</c> handshake,
-    /// downgrading to any version the server advertises, when the server does not support that revision.
+    /// When non-<see langword="null"/>, this value is both the requested version and the minimum the client
+    /// will accept: the client requests exactly this version and refuses to downgrade below it, throwing an
+    /// <see cref="McpException"/> instead of falling back. Setting it to <c>2026-07-28</c> therefore disables
+    /// the automatic legacy-server fallback, and setting it to a version that still supports Streamable HTTP
+    /// sessions, such as <c>2025-11-25</c>, forces the <c>initialize</c> handshake and fails if the server
+    /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
+    /// or retry the connection with a different value.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
-
-    /// <summary>
-    /// Gets or sets the minimum protocol version the client will accept during version negotiation.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When negotiating with a server that advertises multiple supported versions, or when falling back
-    /// to a legacy server, the client will refuse any version older than this minimum and surface an
-    /// <see cref="McpException"/> instead.
-    /// </para>
-    /// <para>
-    /// This is useful when the client requires features that older protocol revisions lack, such as the
-    /// <c>2026-07-28</c> revision's removal of the <c>initialize</c> handshake and <c>Mcp-Session-Id</c>.
-    /// Because the client already prefers <c>2026-07-28</c> by default, setting this to
-    /// <c>2026-07-28</c> disables the automatic legacy-server fallback that otherwise switches to the
-    /// <c>initialize</c> handshake.
-    /// </para>
-    /// <para>
-    /// If <see langword="null"/> (the default), the client falls back to any version the server
-    /// advertises, including legacy versions such as 2025-11-25.
-    /// </para>
-    /// <example>
-    /// <code>
-    /// // 2026-07-28 is already the default; pin the minimum to refuse the legacy fallback.
-    /// var clientOptions = new McpClientOptions
-    /// {
-    ///     MinProtocolVersion = "2026-07-28",
-    /// };
-    /// </code>
-    /// </example>
-    /// </remarks>
-    public string? MinProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.

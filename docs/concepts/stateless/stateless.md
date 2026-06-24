@@ -24,7 +24,7 @@ When sessions are enabled (`Stateless = false`), the server creates and tracks a
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> **Why is stateless now the default?** Earlier versions of the SDK defaulted to stateful for back-compat with the `2025-11-25` (and older) protocol revisions, which require the `Mcp-Session-Id` header. The `2026-07-28` protocol revision removes that header (SEP-2567) and the `initialize` handshake (SEP-2575) entirely, so the SDK now defaults <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true` to match the new wire format. You can still opt back into sessions with `Stateless = false` for [unsolicited notifications](#how-streamable-http-delivers-messages), resource subscriptions, per-client isolation, or server-to-client requests against clients that don't support [MRTR](xref:mrtr) — see [Stateful mode (sessions)](#stateful-mode-sessions).
+> **Why is stateless now the default?** Earlier versions of the SDK defaulted to stateful, but not because the `2025-11-25` (and older) protocol revisions ever required a server to use the `Mcp-Session-Id` header. They didn't. The original SSE transport could only operate statefully, and keeping Streamable HTTP stateful by default let server-to-client requests (elicitation, sampling, roots) keep working on `2025-11-25` the way they always had. A client was required to echo a server-assigned `Mcp-Session-Id` on later requests, but whether to assign one was always the server's choice. The `2026-07-28` protocol revision removes the header (SEP-2567) and the `initialize` handshake (SEP-2575) from the wire format entirely, and server-to-client requests now run through [MRTR](xref:mrtr), so the SDK now defaults <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true` to match the new wire format. You can still opt back into sessions with `Stateless = false` for [unsolicited notifications](#how-streamable-http-delivers-messages), resource subscriptions, per-client isolation, or server-to-client requests against clients that don't support [MRTR](xref:mrtr) — see [Stateful mode (sessions)](#stateful-mode-sessions).
 
 ## Forward and backward compatibility
 
@@ -53,13 +53,12 @@ The `2026-07-28` protocol revision goes further than `Stateless = true`: it remo
 
 The era is cached per <xref:ModelContextProtocol.Client.IClientTransport> instance, so the probe cost is paid only on the first connect.
 
-**Opting out of fallback.** Set <xref:ModelContextProtocol.Client.McpClientOptions.MinProtocolVersion> to <xref:ModelContextProtocol.McpSession.DraftProtocolVersion> when you want the client to refuse to fall back. The connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading. This is useful for strict-modern production code and for tests that need to assert `2026-07-28`-only behavior.
+**Opting out of fallback.** Pin <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> to `2026-07-28` when you want the client to refuse to fall back. A non-null `ProtocolVersion` is also treated as the minimum, so the connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading to a legacy revision. This is useful for strict-modern production code and for tests that need to assert `2026-07-28`-only behavior. To try several versions yourself, leave `ProtocolVersion` unset (the default) or retry the connection with a different value.
 
 ```csharp
 var clientOptions = new McpClientOptions
 {
-    ProtocolVersion = McpSession.DraftProtocolVersion,
-    MinProtocolVersion = McpSession.DraftProtocolVersion,
+    ProtocolVersion = "2026-07-28",
 };
 ```
 
