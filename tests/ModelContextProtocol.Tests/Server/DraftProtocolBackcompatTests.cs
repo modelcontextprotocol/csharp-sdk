@@ -9,15 +9,15 @@ namespace ModelContextProtocol.Tests.Server;
 /// Verifies that the server-to-client request methods (<see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.SampleAsync(CreateMessageRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.RequestRootsAsync"/>) keep working when the negotiated protocol revision is
-/// <c>DRAFT-2026-v1</c> on a stateful session - for example, stdio.
+/// <c>2026-07-28</c> on a stateful session - for example, stdio.
 /// </summary>
 /// <remarks>
-/// Under <c>DRAFT-2026-v1</c> the spec removes the corresponding server-to-client request methods, but
+/// Under <c>2026-07-28</c> the spec removes the corresponding server-to-client request methods, but
 /// the SDK only fails fast in stateless mode (where the existing <c>ThrowIf*Unsupported</c> guards already
 /// throw "X is not supported in stateless mode" because <see cref="McpServer.ClientCapabilities"/> is
 /// <see langword="null"/>). Stdio is implicitly stateful - one <see cref="McpServer"/> per process - so the
 /// legacy <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> flow still works.
-/// A future PR is expected to force <c>DRAFT-2026-v1</c> Streamable HTTP servers to stateless mode, at which
+/// A future PR is expected to force <c>2026-07-28</c> Streamable HTTP servers to stateless mode, at which
 /// point those configurations will start throwing through the existing stateless guard.
 /// </remarks>
 public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
@@ -31,7 +31,7 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
         });
 
         mcpServerBuilder.WithTools([
@@ -47,7 +47,7 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Elicitation = new ElicitationCapability(),
@@ -69,7 +69,7 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Sampling = new SamplingCapability(),
@@ -96,7 +96,7 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Roots = new RootsCapability(),

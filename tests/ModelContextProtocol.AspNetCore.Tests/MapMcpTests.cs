@@ -111,7 +111,10 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var httpRequestException = await Assert.ThrowsAsync<HttpRequestException>(() => ConnectAsync());
+        // Session-scoped user validation across requests is a legacy stateful-session behavior; the
+        // draft revision is sessionless. Pin to the latest stable version to keep covering it.
+        var httpRequestException = await Assert.ThrowsAsync<HttpRequestException>(
+            () => ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25"));
         Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
     }
 
@@ -159,6 +162,10 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
         var sampleCount = 0;
         await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
+            // Server->client sampling over the open response stream is a stateful-session behavior.
+            // Under draft, Streamable HTTP is forced sessionless, so the implicit-MRTR suspend path
+            // doesn't apply over HTTP (draft sampling is covered by the stdio MRTR tests). Pin legacy.
+            options.ProtocolVersion = "2025-11-25";
             options.Handlers.SamplingHandler = async (parameters, _, _) =>
             {
                 Assert.NotNull(parameters?.Messages);
@@ -319,7 +326,13 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             new Dictionary<string, object?> { ["message"] = "hi" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains(RequestMethods.Initialize, observedMethods);
+        // The client now defaults to the draft revision, whose handshake is server/discover
+        // rather than the legacy initialize request. On the stateful Streamable HTTP fixture the
+        // sessionless draft request is refused, so the client downgrades to the legacy initialize.
+        var expectedHandshakeMethod = UseStreamableHttp && !Stateless
+            ? RequestMethods.Initialize
+            : RequestMethods.ServerDiscover;
+        Assert.Contains(expectedHandshakeMethod, observedMethods);
         Assert.Contains(RequestMethods.ToolsList, observedMethods);
         Assert.Contains(RequestMethods.ToolsCall, observedMethods);
     }
@@ -373,6 +386,9 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
 
         await using var client = await ConnectAsync(configureClient: opts =>
         {
+            // Server-originated sampling requests and the initialize response are legacy stateful
+            // behaviors; the draft revision routes sampling through MRTR and drops initialize.
+            opts.ProtocolVersion = "2025-11-25";
             opts.Capabilities = clientOptions.Capabilities;
             opts.Handlers = clientOptions.Handlers;
         });

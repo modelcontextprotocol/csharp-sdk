@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Net;
+using System.Net.Http;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Client;
@@ -73,19 +74,37 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
             }
+            else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError)
+            {
+                // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server
+                // — it just rejected our specific request (e.g., -32004 UnsupportedProtocolVersion,
+                // -32003 MissingRequiredClientCapability, -32001 HeaderMismatch, or any other
+                // application-level error). Don't fall back to SSE — that would mask the real signal
+                // and surface a misleading "session id required" error from the SSE GET path.
+                // Adopt the Streamable HTTP transport and throw the structured exception so the
+                // connect-time fallback logic can react per spec PR #2844. Setting ActiveTransport
+                // first makes the catch filter below leave the now-owned transport alone.
+                LogUsingStreamableHttp(_name);
+                ActiveTransport = streamableHttpTransport;
+                throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
+            }
             else
             {
-                // If the status code is not success, fall back to SSE
+                // Non-JSON-RPC error response: either the server doesn't speak MCP at all, or this
+                // is an older deployment that expects the SSE transport (which establishes its
+                // protocol via GET /sse rather than POST). Fall back to SSE per the original
+                // behavior.
                 LogStreamableHttpFailed(_name, response.StatusCode);
 
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                 await InitializeSseTransportAsync(message, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch
+        catch when (ActiveTransport is null)
         {
-            // If nothing threw inside the try block, we've either set streamableHttpTransport as the
-            // ActiveTransport, or else we will have disposed it in the !IsSuccessStatusCode else block.
+            // Only dispose the Streamable HTTP transport when we didn't adopt it. If we set
+            // ActiveTransport above (success path OR structured-error path), the transport's
+            // lifetime is owned by the outer transport from this point on.
             await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
             throw;
         }

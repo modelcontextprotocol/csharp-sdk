@@ -42,4 +42,8 @@ internal static class Obsoletions
     public const string DeprecatedRoots_Message = "The Roots feature is deprecated as of specification version 2026-07-28 and may be removed in a future version. See SEP-2577 for more information.";
     public const string DeprecatedSampling_Message = "The Sampling feature is deprecated as of specification version 2026-07-28 and may be removed in a future version. See SEP-2577 for more information.";
     public const string DeprecatedLogging_Message = "The Logging feature is deprecated as of specification version 2026-07-28 and may be removed in a future version. See SEP-2577 for more information.";
+
+    public const string LegacyStatefulHttp_DiagnosticId = "MCP9006";
+    public const string LegacyStatefulHttp_Message = "Stateful Streamable HTTP mode is a back-compat-only escape hatch for legacy clients. Set HttpServerTransportOptions.Stateless = true (the default as of the 2026-07-28 protocol revision) for new code. See SEP-2567.";
+    public const string LegacyStatefulHttp_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

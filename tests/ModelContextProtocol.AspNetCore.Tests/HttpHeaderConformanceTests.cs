@@ -122,7 +122,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "union_test");
         request.Headers.Add("Mcp-Param-Priority", "42");
@@ -141,7 +141,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "union_test");
         request.Headers.Add("Mcp-Param-Priority", "9007199254740993");
@@ -161,7 +161,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -185,7 +185,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.TryAddWithoutValidation("Mcp-Method", "tools/call");
         request.Headers.TryAddWithoutValidation("Mcp-Name", "  header_test  ");
         request.Headers.Add("Mcp-Param-Region", "us-west1");
@@ -208,7 +208,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.TryAddWithoutValidation("Mcp-Method", "  tools/call  ");
         request.Headers.TryAddWithoutValidation("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "us-west1");
@@ -232,7 +232,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "us-west1");
@@ -255,7 +255,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "us-west1");
@@ -281,7 +281,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", encodedValue!);
@@ -306,7 +306,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -334,7 +334,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -363,7 +363,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -391,7 +391,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -414,7 +414,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
         request.Headers.Add("Mcp-Param-Region", "test");
@@ -476,7 +476,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.TryAddWithoutValidation("Mcp-Method", "tools/call");
         // Raw UTF-8 non-ASCII value in Mcp-Name — server must reject this
         request.Headers.TryAddWithoutValidation("Mcp-Name", "café☕");
@@ -555,7 +555,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     #region Version gating tests
 
     [Theory]
-    [InlineData("DRAFT-2026-v1", true)]
+    [InlineData("2026-07-28", true)]
     [InlineData("2025-11-25", false)]
     [InlineData("2025-06-18", false)]
     [InlineData("2024-11-05", false)]
@@ -576,15 +576,15 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(InitializeRequestDraft);
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "initialize");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
-        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+        // Draft protocol revision (SEP-2567) is sessionless: the server does not return a
+        // mcp-session-id header. Subsequent requests carry MCP-Protocol-Version=2026-07-28
+        // to route through the sessionless path.
     }
 
     private async Task InitializeWithNonDraftVersionAsync()
@@ -594,9 +594,8 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
-        HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
+        // Server is stateless by default (SEP-2567), so initializing with the non-draft protocol does not return
+        // a mcp-session-id header. Subsequent requests are independent, just like the draft path.
     }
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
@@ -616,8 +615,9 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         """;
 
     private static string InitializeRequestDraft => """
-        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"TestClient","version":"1.0"}}}
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"TestClient","version":"1.0"}}}
         """;
 
     #endregion
 }
+

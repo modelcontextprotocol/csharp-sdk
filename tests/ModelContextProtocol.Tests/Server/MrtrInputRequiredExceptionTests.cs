@@ -23,7 +23,7 @@ public class MrtrInputRequiredExceptionTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 

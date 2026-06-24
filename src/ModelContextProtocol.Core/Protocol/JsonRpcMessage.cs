@@ -83,6 +83,7 @@ public abstract class JsonRpcMessage
             // Local variables for parsed message data
             bool hasJsonRpc = false;
             RequestId id = default;
+            bool hasId = false;
             string? method = null;
             JsonNode? parameters = null;
             JsonRpcErrorDetail? error = null;
@@ -118,6 +119,7 @@ public abstract class JsonRpcMessage
 
                     case "id":
                         id = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<RequestId>());
+                        hasId = true;
                         break;
 
                     case "method":
@@ -153,6 +155,16 @@ public abstract class JsonRpcMessage
             // Determine message type based on presence of id and method properties
             if (method is not null)
             {
+                if (hasId && id.Id is null)
+                {
+                    // A request that carries an explicit `id: null` is malformed. The MCP base protocol
+                    // states "Unlike base JSON-RPC, the ID MUST NOT be null", and a null id does NOT denote
+                    // a notification — per JSON-RPC 2.0 a Notification is a Request object *without* an id
+                    // member. Reject it rather than silently downgrading to a notification (which would
+                    // drop the malformed id and skip sending any response).
+                    throw new JsonException("Request id must not be null. Per MCP, a request id must be a non-null string or number; omit the id member entirely to send a notification.");
+                }
+
                 if (id.Id is not null)
                 {
                     // Messages with both method and id are requests
@@ -165,7 +177,7 @@ public abstract class JsonRpcMessage
                 }
                 else
                 {
-                    // Messages with a method but no id are notifications
+                    // Messages with a method but no id member are notifications
                     return new JsonRpcNotification
                     {
                         Method = method,
@@ -198,6 +210,19 @@ public abstract class JsonRpcMessage
 
                 // Error: Messages with an id but no method, error, or result are invalid
                 throw new JsonException("Response must have either result or error");
+            }
+
+            if (error is not null)
+            {
+                // Per JSON-RPC 2.0, when an error occurs before the request id can be determined
+                // (e.g. parse error or invalid request), the server MUST respond with id=null.
+                // Accept null-id error responses so callers can recognize the structured signal
+                // (e.g. an HTTP 400 body whose JSON-RPC envelope carries a non-modern error code).
+                return new JsonRpcError
+                {
+                    Id = id,
+                    Error = error
+                };
             }
 
             // Error: Messages with neither id nor method are invalid

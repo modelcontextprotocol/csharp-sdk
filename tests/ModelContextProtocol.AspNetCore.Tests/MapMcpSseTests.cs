@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -21,7 +21,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     [InlineData("/mcp/secondary")]
     public async Task Allows_Customizing_Route(string pattern)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true);
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
 
         app.MapMcp(pattern);
@@ -53,7 +53,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
                 Name = "TestCustomRouteServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport(options => options.EnableLegacySse = true);
+        }).WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
 
         app.MapMcp(routePattern);
@@ -83,7 +83,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
             return "Complete";
         }, options: new() { Name = "polling_tool" });
 
-        Builder.Services.AddMcpServer().WithHttpTransport(options => options.EnableLegacySse = true).WithTools([pollingTool]);
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; }).WithTools([pollingTool]);
 
         await using var app = Builder.Build();
         app.MapMcp();

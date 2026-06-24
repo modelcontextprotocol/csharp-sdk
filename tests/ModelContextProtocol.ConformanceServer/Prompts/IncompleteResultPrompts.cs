@@ -16,8 +16,8 @@ namespace ConformanceServer.Prompts;
 [McpServerPromptType]
 public sealed class IncompleteResultPrompts
 {
-    [McpServerPrompt(Name = "test_incomplete_result_prompt")]
-    [Description("SEP-2322 D1: prompts/get returns IncompleteResult until user_context is supplied.")]
+    [McpServerPrompt(Name = "test_input_required_result_prompt")]
+    [Description("SEP-2322 D1: prompts/get returns InputRequiredResult until user_context is supplied.")]
     public static GetPromptResult IncompleteResultPrompt(RequestContext<GetPromptRequestParams> context)
     {
         if (context.Params!.InputResponses is { } responses &&

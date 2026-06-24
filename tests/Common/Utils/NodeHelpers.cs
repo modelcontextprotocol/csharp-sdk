@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests.Utils;
 
@@ -187,8 +188,12 @@ public static class NodeHelpers
     /// the pinned version in package.json) means this also returns <see langword="true"/>
     /// when a newer private build has been installed locally via
     /// <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// Additionally requires that the installed conformance package emits the draft wire
+    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
-    public static bool HasSep2243Scenarios() => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+    public static bool HasSep2243Scenarios()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
+        && HasMatchingDraftWireVersion();
 
     /// <summary>
     /// Checks whether the SEP-2549 "caching" conformance scenario (added in conformance
@@ -197,8 +202,47 @@ public static class NodeHelpers
     /// Reading the installed version (rather than the pinned version in package.json) means
     /// this also returns <see langword="true"/> when a newer private build has been installed
     /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// Additionally requires that the installed conformance package emits the draft wire
+    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
-    public static bool HasCachingScenario() => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+    public static bool HasCachingScenario()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
+        && HasMatchingDraftWireVersion();
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the installed conformance package's bundled
+    /// dist emits the same draft protocol version string as this SDK
+    /// (<see cref="McpHttpHeaders.DraftProtocolVersion"/>). Used to suppress draft-only
+    /// conformance scenarios when the published conformance binary is still pinned to a
+    /// stale wire string (for example, conformance 0.2.0-alpha.2 ships
+    /// <c>"DRAFT-2026-v1"</c> while this SDK speaks <c>"2026-07-28"</c>).
+    /// </summary>
+    /// <remarks>
+    /// This check is a pragmatic alternative to inspecting the conformance package's
+    /// internal constants: the bundled <c>dist/index.js</c> is minified so we can't grep
+    /// the constant name, but the literal version string survives bundling and is unique
+    /// enough to be a reliable signal.
+    /// </remarks>
+    public static bool HasMatchingDraftWireVersion()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var distPath = Path.Combine(
+                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "dist", "index.js");
+            if (!File.Exists(distPath))
+            {
+                return false;
+            }
+
+            var bundled = File.ReadAllText(distPath);
+            return bundled.Contains(McpHttpHeaders.DraftProtocolVersion, StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// Returns <see langword="true"/> when the conformance package installed in node_modules
@@ -373,42 +417,20 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / IncompleteResult)
-    /// conformance scenarios are available by reading the conformance package version
-    /// from the repo's package.json. MRTR scenarios require a conformance package version
-    /// that includes SEP-2322 support (see
+    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / InputRequiredResult)
+    /// conformance scenarios are available, by reading the <em>installed</em> conformance
+    /// package version from node_modules. The <c>incomplete-result-*</c> scenarios were
+    /// introduced in conformance package 0.2.0 (see
     /// https://github.com/modelcontextprotocol/conformance/pull/188).
+    /// Reading the installed version (rather than the pinned version in package.json) means
+    /// this also returns <see langword="true"/> when a newer private build has been installed
+    /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// Additionally requires that the installed conformance package emits the draft wire
+    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
     public static bool HasMrtrScenarios()
-    {
-        try
-        {
-            var repoRoot = FindRepoRoot();
-            var packageJsonPath = Path.Combine(repoRoot, "package.json");
-            if (!File.Exists(packageJsonPath))
-            {
-                return false;
-            }
-
-            var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
-            if (json.RootElement.TryGetProperty("dependencies", out var deps) &&
-                deps.TryGetProperty("@modelcontextprotocol/conformance", out var versionElement))
-            {
-                var versionStr = versionElement.GetString();
-                if (versionStr is not null && Version.TryParse(versionStr, out var version))
-                {
-                    // SEP-2322 scenarios are expected in conformance package >= 0.2.0
-                    return version >= new Version(0, 2, 0);
-                }
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
+        && HasMatchingDraftWireVersion();
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {

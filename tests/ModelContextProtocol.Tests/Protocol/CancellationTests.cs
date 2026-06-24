@@ -84,6 +84,9 @@ public class CancellationTests : ClientServerTestBase
 
         var clientOptions = new McpClientOptions
         {
+            // Pin to a legacy protocol version so the client performs the initialize handshake
+            // (the spec rule under test is "the initialize request MUST NOT be cancelled by clients").
+            ProtocolVersion = "2025-11-25",
             InitializationTimeout = TimeSpan.FromMilliseconds(500),
         };
 
