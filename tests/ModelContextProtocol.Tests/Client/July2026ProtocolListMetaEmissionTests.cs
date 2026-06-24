@@ -9,30 +9,29 @@ namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
 /// Verifies that the C# client emits the SEP-2575 <c>_meta</c> envelope on every list-style
-/// request (and on <c>server/discover</c>) under the draft protocol revision, even when the
-/// caller supplies no <c>RequestOptions</c> / no params.
+/// request (and on <c>server/discover</c>) under the 2026-07-28 protocol revision, even when
+/// the caller supplies no <c>RequestOptions</c> / no params.
 /// </summary>
 /// <remarks>
 /// Spec PR #2759 promotes <c>params._meta</c> to required on <c>tools/list</c>,
 /// <c>resources/list</c>, <c>resources/templates/list</c>, <c>prompts/list</c>, and
-/// <c>server/discover</c> under draft. This test class drives the C# client through
-/// <see cref="ClientServerTestBase"/> with the draft revision negotiated, attaches a request
+/// <c>server/discover</c>. This test class drives the C# client through
+/// <see cref="ClientServerTestBase"/> with the 2026-07-28 protocol negotiated, attaches a request
 /// filter on each list endpoint that captures the incoming <c>_meta</c> envelope, and asserts
 /// the three required SEP-2575 keys are present:
 ///   <c>io.modelcontextprotocol/protocolVersion</c>,
 ///   <c>io.modelcontextprotocol/clientInfo</c>, and
 ///   <c>io.modelcontextprotocol/clientCapabilities</c>.
 /// </remarks>
-public class DraftListMetaEmissionTests : ClientServerTestBase
+public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
     private const string LatestStableVersion = "2025-11-25";
 
     // Captured _meta envelopes for each request method we exercise. Populated by the per-method
     // server-side filters and asserted from each test method.
     private readonly Dictionary<string, JsonObject?> _capturedMeta = new(StringComparer.Ordinal);
 
-    public DraftListMetaEmissionTests(ITestOutputHelper testOutputHelper)
+    public July2026ProtocolListMetaEmissionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
@@ -74,62 +73,62 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task DraftClient_ListTools_NoOptions_EmitsRequiredMeta()
+    public async Task Client_ListTools_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = DraftVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        AssertDraftMetaPresent(RequestMethods.ToolsList);
+        AssertRequiredMetaPresent(RequestMethods.ToolsList);
     }
 
     [Fact]
-    public async Task DraftClient_ListPrompts_NoOptions_EmitsRequiredMeta()
+    public async Task Client_ListPrompts_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = DraftVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
 
         await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        AssertDraftMetaPresent(RequestMethods.PromptsList);
+        AssertRequiredMetaPresent(RequestMethods.PromptsList);
     }
 
     [Fact]
-    public async Task DraftClient_ListResources_NoOptions_EmitsRequiredMeta()
+    public async Task Client_ListResources_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = DraftVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
 
         await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        AssertDraftMetaPresent(RequestMethods.ResourcesList);
+        AssertRequiredMetaPresent(RequestMethods.ResourcesList);
     }
 
     [Fact]
-    public async Task DraftClient_ListResourceTemplates_NoOptions_EmitsRequiredMeta()
+    public async Task Client_ListResourceTemplates_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = DraftVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
 
         await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        AssertDraftMetaPresent(RequestMethods.ResourcesTemplatesList);
+        AssertRequiredMetaPresent(RequestMethods.ResourcesTemplatesList);
     }
 
     [Fact]
-    public async Task DraftClient_ServerDiscover_EmitsRequiredMeta()
+    public async Task Client_ServerDiscover_EmitsRequiredMeta()
     {
         // server/discover has no public List-style helper; we drive it via SendRequestAsync directly,
-        // which still flows through the client's draft-meta injector.
+        // which still flows through the client's per-request _meta injector.
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = DraftVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
 
         // Hook the server-side handler invocation via a notification handler is awkward here; assert
         // instead by sending the request and parsing the wire-shape echo from the response context.
-        // Easier path: rely on the existing JsonRpcRequest capture in the message context — see the
-        // raw conformance tests for the wire-level proof. For this in-process test, we instead drive
-        // the request and rely on the response being a valid DiscoverResult; the draft meta injector
+        // Easier path: rely on the existing JsonRpcRequest capture in the message context (see the
+        // raw conformance tests for the wire-level proof). For this in-process test, we instead drive
+        // the request and rely on the response being a valid DiscoverResult; the _meta injector
         // would otherwise have failed the server's per-request envelope validation.
         var response = await client.SendRequestAsync(
             new JsonRpcRequest { Method = RequestMethods.ServerDiscover },
@@ -137,19 +136,19 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
 
         Assert.NotNull(response.Result);
         var discover = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions)!;
-        Assert.Contains(DraftVersion, discover.SupportedVersions);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, discover.SupportedVersions);
 
-        // The server enforces draft envelope shape per request; if the client had omitted _meta, the
-        // request would have failed with -32602 / -32003 rather than returning a DiscoverResult. The
+        // The server enforces the per-request envelope shape; if the client had omitted _meta, the
+        // request would have failed with -32602 / -32021 rather than returning a DiscoverResult. The
         // successful round-trip is the assertion.
     }
 
     [Fact]
-    public async Task LegacyClient_ListTools_DoesNotEmitDraftMeta()
+    public async Task LegacyClient_ListTools_DoesNotEmitMeta()
     {
-        // Sanity guard: the legacy (non-draft) client must NOT emit the SEP-2575 envelope — the meta
-        // injector is gated on the negotiated protocol version. If this ever started writing draft keys
-        // under legacy protocols, every legacy server would reject the request.
+        // Sanity guard: a client on the session-supporting (legacy) protocol must NOT emit the SEP-2575
+        // envelope. The injector is gated on the negotiated protocol version; if it ever started writing
+        // those keys on a legacy request, every legacy server would reject it.
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
@@ -164,7 +163,7 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
         }
     }
 
-    private void AssertDraftMetaPresent(string method)
+    private void AssertRequiredMetaPresent(string method)
     {
         Assert.True(_capturedMeta.TryGetValue(method, out var meta), $"No capture for {method}");
         Assert.NotNull(meta);
@@ -175,7 +174,7 @@ public class DraftListMetaEmissionTests : ClientServerTestBase
         Assert.True(meta.ContainsKey(MetaKeys.ClientCapabilities),
             $"Missing clientCapabilities key on {method} _meta envelope");
 
-        // The protocolVersion value must match the negotiated draft version.
-        Assert.Equal(DraftVersion, meta[MetaKeys.ProtocolVersion]!.GetValue<string>());
+        // The protocolVersion value must match the negotiated 2026-07-28 protocol version.
+        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, meta[MetaKeys.ProtocolVersion]!.GetValue<string>());
     }
 }

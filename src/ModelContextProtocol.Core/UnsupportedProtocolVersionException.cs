@@ -9,10 +9,10 @@ namespace ModelContextProtocol;
 /// Represents an exception used to signal that a request's declared protocol version is not supported by the server.
 /// </summary>
 /// <remarks>
-/// Introduced by the draft protocol revision (SEP-2575). Servers throw this exception when they cannot process
+/// Introduced by the 2026-07-28 protocol revision (SEP-2575). Servers throw this exception when they cannot process
 /// a request because the per-request <c>_meta/io.modelcontextprotocol/protocolVersion</c> (or the equivalent
 /// transport-level header) names a version the server does not implement. The exception is converted to a
-/// JSON-RPC error response with code <see cref="McpErrorCode.UnsupportedProtocolVersion"/> (<c>-32004</c>) and
+/// JSON-RPC error response with code <see cref="McpErrorCode.UnsupportedProtocolVersion"/> (<c>-32022</c>) and
 /// a <see cref="UnsupportedProtocolVersionErrorData"/> payload.
 /// </remarks>
 public sealed class UnsupportedProtocolVersionException : McpProtocolException

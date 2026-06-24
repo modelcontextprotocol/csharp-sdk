@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 /// Represents the payload for the <see cref="McpErrorCode.UnsupportedProtocolVersion"/> JSON-RPC error.
 /// </summary>
 /// <remarks>
-/// Introduced by the draft protocol revision (SEP-2575). When a server receives a request whose
+/// Introduced by the 2026-07-28 protocol revision (SEP-2575). When a server receives a request whose
 /// declared protocol version it does not implement, it MUST return this error so clients can
 /// fall back to a mutually supported version.
 /// </remarks>

@@ -10,27 +10,23 @@ namespace ModelContextProtocol.Protocol;
 internal static class McpHttpHeaders
 {
     /// <summary>
-    /// The draft MCP protocol version string used to gate behaviors that are only enabled
-    /// for clients negotiating the in-progress draft specification.
+    /// The 2026-07-28 MCP protocol revision (SEP-2575 + SEP-2567). It removed the <c>initialize</c>
+    /// handshake and <c>Mcp-Session-Id</c>, so Streamable HTTP no longer has sessions; it also enabled
+    /// MRTR (SEP-2322) and made the standard MCP request headers (<c>Mcp-Method</c>, <c>Mcp-Name</c>)
+    /// required. Behaviors that began at this revision are gated by ordinal-comparing the per-request
+    /// version against it (see <see cref="IsJuly2026OrLaterProtocolVersion"/>), so it underpins the more
+    /// semantically named helpers. It is also the latest revision this SDK supports, so clients prefer it
+    /// by default.
     /// </summary>
-    /// <remarks>
-    /// Behaviors currently gated on this version include:
-    /// <list type="bullet">
-    ///   <item><description>
-    ///     Requiring the standard MCP request headers (<c>Mcp-Method</c> and <c>Mcp-Name</c>)
-    ///     on Streamable HTTP POST requests; servers treat missing headers as errors only when
-    ///     the client's <c>MCP-Protocol-Version</c> header matches this value.
-    ///   </description></item>
-    ///   <item><description>
-    ///     Reporting unresolvable resource URIs from <c>resources/read</c> with the standard
-    ///     JSON-RPC <see cref="McpErrorCode.InvalidParams"/> (-32602) code rather than the
-    ///     legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002) code.
-    ///   </description></item>
-    /// </list>
-    /// The associated helpers perform exact ordinal matches against this single value rather
-    /// than any ordered comparison.
-    /// </remarks>
-    public const string DraftProtocolVersion = "2026-07-28";
+    public const string July2026ProtocolVersion = "2026-07-28";
+
+    /// <summary>
+    /// The 2025-11-25 MCP protocol revision: the latest revision that still supports Streamable HTTP
+    /// sessions (the <c>initialize</c> handshake and <c>Mcp-Session-Id</c>); newer revisions remove them.
+    /// It is the default version for the legacy <c>initialize</c> and session-resume code paths, and the
+    /// version the server advertises when a peer requests an unsupported version on the legacy handshake.
+    /// </summary>
+    public const string November2025ProtocolVersion = "2025-11-25";
 
     /// <summary>The session identifier header.</summary>
     public const string SessionId = "Mcp-Session-Id";
@@ -76,18 +72,20 @@ internal static class McpHttpHeaders
     internal const string ToolContextKey = "Mcp.Tool";
 
     /// <summary>
-    /// Protocol versions that require standard MCP request headers (Mcp-Method, Mcp-Name).
+    /// Returns <see langword="true"/> if the given protocol version is <see cref="July2026ProtocolVersion"/>
+    /// or later, the revision that removed the <c>initialize</c> handshake and Streamable HTTP sessions.
+    /// Protocol versions are ISO-8601 dates, so an ordinal comparison orders them chronologically.
     /// </summary>
-    private static readonly HashSet<string> s_versionsWithStandardHeaders = new(StringComparer.Ordinal)
-    {
-        DraftProtocolVersion,
-    };
+    internal static bool IsJuly2026OrLaterProtocolVersion(string? protocolVersion)
+        => !string.IsNullOrEmpty(protocolVersion)
+            && StringComparer.Ordinal.Compare(protocolVersion, July2026ProtocolVersion) >= 0;
 
     /// <summary>
-    /// Returns <see langword="true"/> if the given protocol version requires standard MCP request headers.
+    /// Returns <see langword="true"/> if the given protocol version requires standard MCP request headers
+    /// (<c>Mcp-Method</c>, <c>Mcp-Name</c>).
     /// </summary>
     public static bool SupportsStandardHeaders(string? protocolVersion)
-        => !string.IsNullOrEmpty(protocolVersion) && s_versionsWithStandardHeaders.Contains(protocolVersion!);
+        => IsJuly2026OrLaterProtocolVersion(protocolVersion);
 
     /// <summary>
     /// Returns <see langword="true"/> if the negotiated protocol version reports unresolvable
@@ -95,5 +93,5 @@ internal static class McpHttpHeaders
     /// rather than the legacy <see cref="McpErrorCode.ResourceNotFound"/> (-32002).
     /// </summary>
     internal static bool UseInvalidParamsForMissingResource(string? protocolVersion)
-        => string.Equals(protocolVersion, DraftProtocolVersion, StringComparison.Ordinal);
+        => IsJuly2026OrLaterProtocolVersion(protocolVersion);
 }

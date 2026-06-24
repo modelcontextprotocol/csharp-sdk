@@ -2,7 +2,7 @@
   "private": true,
   "description": "Pinned npm dependencies for MCP C# SDK integration and conformance tests",
   "dependencies": {
-    "@modelcontextprotocol/conformance": "0.2.0-alpha.2",
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.5",
     "@modelcontextprotocol/server-everything": "2026.1.26",
     "@modelcontextprotocol/server-memory": "2026.1.26"
   }

@@ -92,7 +92,7 @@ public class DiagnosticTests
         Assert.Equal(clientListToolsCall.TraceId, serverListToolsCall.TraceId);
 
         // Validate that the client trace context encoded to request.params._meta[traceparent].
-        // Under the draft revision _meta also carries the per-request envelope (protocolVersion,
+        // Under the 2026-07-28 protocol _meta also carries the per-request envelope (protocolVersion,
         // clientInfo, clientCapabilities), so assert on the traceparent property specifically
         // rather than the entire _meta object.
         using var listToolsJson = JsonDocument.Parse(clientToServerLog.First(s => s.Contains("\"method\":\"tools/list\"")));

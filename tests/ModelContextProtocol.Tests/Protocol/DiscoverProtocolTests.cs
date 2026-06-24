@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Tests.Protocol;
 
 /// <summary>
-/// Serialization tests for the request/result types introduced by the draft protocol revision (SEP-2575).
+/// Serialization tests for the request/result types introduced by the 2026-07-28 protocol revision (SEP-2575).
 /// </summary>
 public static class DiscoverProtocolTests
 {

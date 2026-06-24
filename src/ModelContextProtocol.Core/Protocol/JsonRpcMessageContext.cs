@@ -91,7 +91,7 @@ public sealed class JsonRpcMessageContext
     /// <c>_meta/io.modelcontextprotocol/clientInfo</c> field.
     /// </summary>
     /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). When the request was made under the draft revision,
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). When the request was made under the 2026-07-28 or later revision,
     /// the server uses this in lieu of the value previously captured during the <c>initialize</c> handshake.
     /// </remarks>
     public Implementation? ClientInfo { get; set; }
@@ -101,7 +101,7 @@ public sealed class JsonRpcMessageContext
     /// <c>_meta/io.modelcontextprotocol/clientCapabilities</c> field.
     /// </summary>
     /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Per the spec, the server MUST NOT infer client
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Per the spec, the server MUST NOT infer client
     /// capabilities from previous requests; the authoritative value is the one declared on each request.
     /// </remarks>
     public ClientCapabilities? ClientCapabilities { get; set; }
@@ -111,7 +111,7 @@ public sealed class JsonRpcMessageContext
     /// <c>_meta/io.modelcontextprotocol/logLevel</c> field.
     /// </summary>
     /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). Replaces the legacy
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Replaces the legacy
     /// <see cref="RequestMethods.LoggingSetLevel"/> RPC. When absent, the server MUST NOT emit log notifications
     /// for the request.
     /// </remarks>

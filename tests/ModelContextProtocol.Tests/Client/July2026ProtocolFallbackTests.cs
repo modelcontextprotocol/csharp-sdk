@@ -8,33 +8,33 @@ using System.Threading.Channels;
 namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
-/// Regression tests for the draft-protocol-to-legacy fallback path in
+/// Regression tests for the fallback from the 2026-07-28 protocol revision to a legacy protocol in
 /// <see cref="McpClient"/>. These verify that a client configured with
-/// <c>McpClientOptions.ProtocolVersion = McpSession.DraftProtocolVersion</c>
-/// correctly probes for a draft-aware server with <c>server/discover</c>, falls
+/// <c>McpClientOptions.ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion</c>
+/// correctly probes a server with <c>server/discover</c>, falls
 /// back to the legacy <c>initialize</c> handshake when the server is legacy,
 /// and accepts whatever supported protocol version the legacy server
-/// negotiates - including a version different from the one the client
+/// negotiates, including a version different from the one the client
 /// originally requested.
 /// </summary>
 /// <remarks>
 /// The originally shipped logic in <c>PerformLegacyInitializeAsync</c> compared
-/// the server's response against <c>_options.ProtocolVersion</c>, which under
-/// draft is <c>"2026-07-28"</c>. When the legacy server downgraded to (say)
+/// the server's response against <c>_options.ProtocolVersion</c>, which for a
+/// 2026-07-28 client is <c>"2026-07-28"</c>. When the legacy server downgraded to (say)
 /// <c>"2025-06-18"</c>, the comparison threw, even though the legacy
 /// negotiation succeeded. These tests guard against that regression.
 /// </remarks>
-public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
+public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     [Fact]
-    public async Task DraftClient_OnMethodNotFound_FallsBackTo_Initialize_AcceptsDowngradedVersion()
+    public async Task Client_OnMethodNotFound_FallsBackTo_Initialize_AcceptsDowngradedVersion()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
 
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.ServerDiscoverProbed);
@@ -43,7 +43,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
     }
 
     [Fact]
-    public async Task DraftClient_OnInvalidParams_FallsBackTo_Initialize()
+    public async Task Client_OnInvalidParams_FallsBackTo_Initialize()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new LegacyServerTestTransport(
@@ -52,7 +52,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
 
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.LegacyInitializeReceived);
@@ -60,7 +60,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
     }
 
     [Fact]
-    public async Task DraftClient_WithMinProtocolVersion_RefusesFallback_BelowMinimum()
+    public async Task Client_WithMinProtocolVersion_RefusesFallback_BelowMinimum()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
@@ -69,8 +69,8 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ProtocolVersion = McpSession.DraftProtocolVersion,
-                MinProtocolVersion = McpSession.DraftProtocolVersion,
+                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+                MinProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
@@ -98,9 +98,9 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
     }
 
     [Fact]
-    public async Task DraftClient_OnHeaderMismatch_Surfaces_NoFallback()
+    public async Task Client_OnHeaderMismatch_Surfaces_NoFallback()
     {
-        // The peer is modern (returns the spec-defined -32001 HeaderMismatch on the probe).
+        // The peer is modern (returns the spec-defined -32020 HeaderMismatch on the probe).
         // Falling back to legacy initialize would just produce another malformed envelope.
         // Verify the connect-time logic surfaces the error to the caller instead of falling back.
         var ct = TestContext.Current.CancellationToken;
@@ -112,7 +112,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ProtocolVersion = McpSession.DraftProtocolVersion,
+                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
@@ -122,7 +122,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
     }
 
     [Fact]
-    public async Task DraftClient_OnSilentProbe_FallsBackTo_Initialize_AfterConfiguredProbeTimeout()
+    public async Task Client_OnSilentProbe_FallsBackTo_Initialize_AfterConfiguredProbeTimeout()
     {
         // Simulate a legacy server that silently drops the unknown server/discover method (it never
         // responds to the probe). The client must fall back to legacy initialize once the configured
@@ -135,7 +135,7 @@ public class DraftProtocolFallbackTests(ITestOutputHelper testOutputHelper) : Lo
         var stopwatch = Stopwatch.StartNew();
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             DiscoverProbeTimeout = TimeSpan.FromMilliseconds(250),
             InitializationTimeout = TestConstants.DefaultTimeout,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);

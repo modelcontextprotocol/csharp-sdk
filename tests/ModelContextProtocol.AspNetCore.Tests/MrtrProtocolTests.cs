@@ -13,10 +13,10 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// Protocol-level tests for Multi Round-Trip Requests (MRTR) over the draft revision.
-/// Under the draft protocol (SEP-2575 + SEP-2567) Streamable HTTP is sessionless, so these tests
-/// drive the default <see cref="ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless"/> server with raw, sessionless
-/// draft JSON-RPC requests (no <c>initialize</c>, no <c>Mcp-Session-Id</c>) and verify the explicit
+/// Protocol-level tests for Multi Round-Trip Requests (MRTR) over the 2026-07-28 protocol revision.
+/// Under that revision (SEP-2575 + SEP-2567) Streamable HTTP no longer supports sessions, so these tests
+/// drive the default <see cref="ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless"/> server with raw
+/// JSON-RPC requests (no <c>initialize</c>, no <c>Mcp-Session-Id</c>) and verify the explicit
 /// MRTR <see cref="InputRequiredResult"/> structure, retry with inputResponses, and error handling.
 /// Stateful-session MRTR behaviors (implicit handler suspension, disposal cancellation) are covered
 /// over stdio by <c>MrtrHandlerLifecycleTests</c>, and unknown-session rejection by
@@ -24,7 +24,6 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </summary>
 public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
 
     private WebApplication? _app;
 
@@ -143,12 +142,12 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         _app.MapMcp();
         await _app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Drive the server with sessionless draft requests: every request carries the draft
+        // Drive the server with raw requests: every request carries the 2026-07-28 protocol
         // MCP-Protocol-Version header and (via PostJsonRpcAsync) the SEP-2243 Mcp-Method/Mcp-Name
         // headers. No initialize handshake and no Mcp-Session-Id.
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
     }
 
     public async ValueTask DisposeAsync()
@@ -303,7 +302,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
 
-        // Initialize with the current (non-draft) protocol so the server's backcompat resolver runs.
+        // Initialize with the current legacy protocol so the server's backcompat resolver runs.
         var initJson = """
             {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"BackcompatTestClient","version":"1.0.0"}}}
             """;

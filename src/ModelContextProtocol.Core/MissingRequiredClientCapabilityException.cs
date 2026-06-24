@@ -10,9 +10,9 @@ namespace ModelContextProtocol;
 /// in the request's per-request <c>_meta/io.modelcontextprotocol/clientCapabilities</c> field.
 /// </summary>
 /// <remarks>
-/// Introduced by the draft protocol revision (SEP-2575). Servers throw this exception when a handler cannot
+/// Introduced by the 2026-07-28 protocol revision (SEP-2575). Servers throw this exception when a handler cannot
 /// proceed because the client did not declare a required capability for the request. The exception is converted
-/// to a JSON-RPC error response with code <see cref="McpErrorCode.MissingRequiredClientCapability"/> (<c>-32003</c>)
+/// to a JSON-RPC error response with code <see cref="McpErrorCode.MissingRequiredClientCapability"/> (<c>-32021</c>)
 /// and a <see cref="MissingRequiredClientCapabilityErrorData"/> payload.
 /// </remarks>
 public sealed class MissingRequiredClientCapabilityException : McpProtocolException

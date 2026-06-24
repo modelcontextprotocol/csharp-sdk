@@ -10,15 +10,15 @@ using System.Text.Json;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// End-to-end coverage for a default (draft-first) client connecting to a real C# Streamable HTTP
+/// End-to-end coverage for a default (2026-07-28-first) client connecting to a real C# Streamable HTTP
 /// server that deliberately opted into sessions (<see cref="HttpServerTransportOptions.Stateless"/>
-/// is <c>false</c>). Draft is sessionless (SEP-2567 / SEP-2575), so the server refuses the
-/// sessionless draft probe with <c>-32004 UnsupportedProtocolVersion</c>. The client must then
-/// auto-downgrade to the legacy <c>initialize</c> handshake, obtain the stateful session the server
-/// author opted into, and continue to work — including a server→client elicitation round-trip
+/// is <c>false</c>). Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports
+/// sessions (SEP-2567 / SEP-2575), so the server refuses the probe with <c>-32022 UnsupportedProtocolVersion</c>.
+/// The client must then auto-downgrade to the legacy <c>initialize</c> handshake, obtain the stateful session
+/// the server author opted into, and continue to work, including a server→client elicitation round-trip
 /// resolved over the stateful session via the legacy backcompat resolver.
 /// </summary>
-public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
 
@@ -38,7 +38,7 @@ public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : Kestre
     private static async Task<string> GreetViaElicit(McpServer server, CancellationToken cancellationToken)
     {
         // Server→client round-trip: only works when the session is stateful, which is exactly what
-        // the legacy fallback re-establishes for the draft-first client.
+        // the legacy fallback re-establishes for the 2026-07-28-first client.
         var elicitResult = await server.ElicitAsync(new ElicitRequestParams
         {
             Message = "What is your name?",
@@ -56,10 +56,10 @@ public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : Kestre
     {
         Builder.Services.AddMcpServer(options =>
         {
-            options.ServerInfo = new Implementation { Name = nameof(DraftStatefulFallbackTests), Version = "1" };
+            options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolStatefulFallbackTests), Version = "1" };
         })
-            // Stateless = false is a deliberate opt-in to sessions. Draft can never be served
-            // statefully, so the server refuses the sessionless draft probe and the client downgrades.
+            // Stateless = false is a deliberate opt-in to sessions. Starting with the 2026-07-28 protocol revision,
+            // Streamable HTTP can never be served statefully, so the server refuses the probe and the client downgrades.
             .WithHttpTransport(options => options.Stateless = false)
             .WithTools([McpServerTool.Create(Greet), McpServerTool.Create(GreetViaElicit)]);
 
@@ -76,7 +76,7 @@ public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : Kestre
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        // Default options: ProtocolVersion is null, which now prefers the draft revision and probes
+        // Default options: ProtocolVersion is null, which now prefers the 2026-07-28 protocol revision and probes
         // with server/discover before falling back to a legacy initialize handshake.
         var clientOptions = new McpClientOptions();
         configureClient?.Invoke(clientOptions);
@@ -84,13 +84,13 @@ public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
-    public async Task DefaultDraftClient_AgainstStatefulServer_DowngradesToLegacy_AndToolsWork()
+    public async Task DefaultClient_AgainstStatefulServer_DowngradesToLegacy_AndToolsWork()
     {
         await StartStatefulServerAsync();
 
         await using var client = await ConnectDefaultClientAsync();
 
-        // The sessionless draft probe was refused (-32004), so the client downgraded to legacy.
+        // The 2026-07-28 probe was refused (-32022), so the client downgraded to legacy.
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("greet",
@@ -102,7 +102,7 @@ public class DraftStatefulFallbackTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
-    public async Task DefaultDraftClient_AgainstStatefulServer_ServerToClientElicitation_RoundTrips()
+    public async Task DefaultClient_AgainstStatefulServer_ServerToClientElicitation_RoundTrips()
     {
         await StartStatefulServerAsync();
 

@@ -916,13 +916,13 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     #region SEP-2243 Header Validation Tests
 
     [Fact]
-    public async Task DraftVersion_RejectsMissingMcpMethodHeader()
+    public async Task July2026ProtocolVersion_RejectsMissingMcpMethodHeader()
     {
-        // Draft is sessionless and served only on a stateless server (SEP-2567).
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is served only on a stateless server.
         await StartAsync(stateless: true);
 
-        // Initialize with draft version to enable header validation
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        // Initialize with the 2026-07-28 protocol version to enable header validation
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request without Mcp-Method header — should be rejected
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
@@ -935,10 +935,10 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
+    public async Task July2026ProtocolVersion_RejectsMismatchedMcpMethodHeader()
     {
         await StartAsync(stateless: true);
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request but set Mcp-Method to wrong value
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
@@ -951,10 +951,10 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
+    public async Task July2026ProtocolVersion_AcceptsCorrectMcpMethodHeader()
     {
         await StartAsync(stateless: true);
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
@@ -968,12 +968,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task NonDraftVersion_DoesNotRequireMcpMethodHeader()
+    public async Task LegacyVersion_DoesNotRequireMcpMethodHeader()
     {
         await StartAsync();
         await CallInitializeAndValidateAsync();
 
-        // With non-draft version, Mcp-Method header is not required
+        // With the legacy version, Mcp-Method header is not required
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
         request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
@@ -983,12 +983,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private async Task CallInitializeWithDraftVersionAndValidateAsync()
+    private async Task CallInitializeWithJuly2026ProtocolVersionAndValidateAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(InitializeRequestDraft);
+        request.Content = JsonContent(InitializeRequestJuly2026Protocol);
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "initialize");
 
@@ -996,11 +996,11 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertServerInfo(rpcResponse);
 
-        // Draft protocol revision (SEP-2567) is sessionless; the server does not return mcp-session-id.
-        // Subsequent requests carry MCP-Protocol-Version=2026-07-28 to opt back into the draft path.
+        // Starting with the 2026-07-28 protocol revision (SEP-2567), Streamable HTTP no longer supports sessions; the server does not return mcp-session-id.
+        // Subsequent requests carry MCP-Protocol-Version=2026-07-28 so each one is handled independently.
     }
 
-    private static string InitializeRequestDraft => """
+    private static string InitializeRequestJuly2026Protocol => """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
         """;
 

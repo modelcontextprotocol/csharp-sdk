@@ -53,15 +53,15 @@ public sealed class McpClientOptions
     /// <remarks>
     /// <para>
     /// When non-<see langword="null"/>, this version is requested from the server. Setting it to a
-    /// legacy (non-draft) version such as <c>2025-11-25</c> opts out of the draft revision and forces
-    /// the <c>initialize</c> handshake; the handshake then fails if the server's negotiated version
-    /// does not match.
+    /// version that still supports Streamable HTTP sessions, such as <c>2025-11-25</c>, opts out of the
+    /// <c>2026-07-28</c> revision and forces the <c>initialize</c> handshake; the handshake then fails if
+    /// the server's negotiated version does not match.
     /// </para>
     /// <para>
-    /// When <see langword="null"/> (the default), the client prefers the draft revision
-    /// (<see cref="McpSession.DraftProtocolVersion"/>): it probes with <c>server/discover</c> and
-    /// automatically falls back to a legacy <c>initialize</c> handshake, downgrading to any version
-    /// the server advertises, when the server does not support the draft revision.
+    /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
+    /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions: it probes with
+    /// <c>server/discover</c> and automatically falls back to a legacy <c>initialize</c> handshake,
+    /// downgrading to any version the server advertises, when the server does not support that revision.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
@@ -76,11 +76,11 @@ public sealed class McpClientOptions
     /// <see cref="McpException"/> instead.
     /// </para>
     /// <para>
-    /// This is useful when the client requires features (such as the draft revision's removal of the
-    /// <c>initialize</c> handshake or <c>Mcp-Session-Id</c>) that are not available in older protocol
-    /// revisions. Because the client already prefers the draft revision by default, setting this to
-    /// <see cref="McpSession.DraftProtocolVersion"/> disables the automatic legacy-server fallback
-    /// that otherwise switches to the <c>initialize</c> handshake.
+    /// This is useful when the client requires features that older protocol revisions lack, such as the
+    /// <c>2026-07-28</c> revision's removal of the <c>initialize</c> handshake and <c>Mcp-Session-Id</c>.
+    /// Because the client already prefers <c>2026-07-28</c> by default, setting this to
+    /// <c>2026-07-28</c> disables the automatic legacy-server fallback that otherwise switches to the
+    /// <c>initialize</c> handshake.
     /// </para>
     /// <para>
     /// If <see langword="null"/> (the default), the client falls back to any version the server
@@ -88,10 +88,10 @@ public sealed class McpClientOptions
     /// </para>
     /// <example>
     /// <code>
-    /// // The draft revision is already the default; pin the minimum to refuse the legacy fallback.
+    /// // 2026-07-28 is already the default; pin the minimum to refuse the legacy fallback.
     /// var clientOptions = new McpClientOptions
     /// {
-    ///     MinProtocolVersion = McpSession.DraftProtocolVersion,
+    ///     MinProtocolVersion = "2026-07-28",
     /// };
     /// </code>
     /// </example>
@@ -128,10 +128,10 @@ public sealed class McpClientOptions
     /// </value>
     /// <remarks>
     /// <para>
-    /// This timeout only has an effect when the client prefers the draft protocol revision &#8212; that is,
-    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or
-    /// <see cref="McpSession.DraftProtocolVersion"/>. In that mode the client first probes the server
-    /// with a <c>server/discover</c> request. A legacy server that predates the draft revision may
+    /// This timeout only has an effect when the client prefers the <c>2026-07-28</c> protocol revision, that is,
+    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or <c>2026-07-28</c>.
+    /// In that mode the client first probes the server with a
+    /// <c>server/discover</c> request. A legacy server that predates the <c>2026-07-28</c> revision may
     /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
     /// client concludes the server is legacy and falls back to the <c>initialize</c> handshake on the
     /// same connection. When the caller pins a legacy <see cref="ProtocolVersion"/>, no probe is issued
@@ -140,7 +140,7 @@ public sealed class McpClientOptions
     /// <para>
     /// The default is intentionally short so that dual-era clients fall back quickly against legacy
     /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
-    /// satellite links) where a short probe could trigger the legacy fallback before a draft-capable
+    /// satellite links) where a short probe could trigger the legacy fallback before a server on the new revision
     /// server has had a chance to respond. The probe is always also bounded by
     /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by

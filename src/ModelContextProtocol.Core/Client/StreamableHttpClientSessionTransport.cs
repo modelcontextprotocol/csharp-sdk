@@ -67,19 +67,19 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // Per spec PR #2844 (HTTP backwards compatibility), a 400 Bad Request that carries a
         // JSON-RPC error envelope means the peer is signalling something application-level about
         // our request. Surface ANY JSON-RPC error on a 400 as McpProtocolException so the
-        // connect-time logic can react — for example, the three modern draft-protocol error codes
-        // (-32004 UnsupportedProtocolVersion, -32003 MissingRequiredClientCapability,
-        // -32001 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
-        // legacy servers that don't understand the draft _meta envelope) become generic
+        // connect-time logic can react. For example, the three modern protocol error codes
+        // (-32022 UnsupportedProtocolVersion, -32021 MissingRequiredClientCapability,
+        // -32020 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
+        // legacy servers that don't understand the SEP-2575 _meta envelope) become generic
         // McpProtocolException instances and trigger the fallback-to-legacy-initialize path.
         // Other status codes (401 auth, 403 forbidden, 404 session-not-found, 5xx server) continue
         // to surface as HttpRequestException to preserve back-compat with transport-layer behaviors.
-        // The three modern draft-protocol error codes are also surfaced for non-400 status codes
-        // for robustness — servers occasionally emit them with 4xx codes other than 400.
+        // The three modern protocol error codes are also surfaced for non-400 status codes
+        // for robustness. Servers occasionally emit them with 4xx codes other than 400.
         if (!response.IsSuccessStatusCode &&
             await TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
             (response.StatusCode == HttpStatusCode.BadRequest ||
-             IsModernDraftErrorCode((McpErrorCode)parsedError.Error.Code)))
+             IsModernProtocolErrorCode((McpErrorCode)parsedError.Error.Code)))
         {
             throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
         }
@@ -87,7 +87,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool IsModernDraftErrorCode(McpErrorCode code) =>
+    private static bool IsModernProtocolErrorCode(McpErrorCode code) =>
         code is McpErrorCode.UnsupportedProtocolVersion
              or McpErrorCode.MissingRequiredClientCapability
              or McpErrorCode.HeaderMismatch;
@@ -144,9 +144,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         LogTransportSendingMessageSensitive(message);
 
-        // Under the draft protocol revision (SEP-2575), every request carries its protocol version in
+        // Under the 2026-07-28 or later protocol revision (SEP-2575), every request carries its protocol version in
         // _meta/io.modelcontextprotocol/protocolVersion (and the matching MCP-Protocol-Version HTTP
-        // header). Pick the value off the message so the first draft request (server/discover) can
+        // header). Pick the value off the message so the first request (server/discover) can
         // include the header even before we've recorded a negotiated version from an initialize reply.
         var protocolVersionForRequest = ExtractProtocolVersionFromMeta(message) ?? _negotiatedProtocolVersion;
 
@@ -229,7 +229,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         else if (rpcRequest.Method == RequestMethods.ServerDiscover && rpcResponseOrError is JsonRpcResponse)
         {
-            // Under the draft protocol revision (SEP-2575), server/discover replaces the initialize
+            // Under the 2026-07-28 or later protocol revision (SEP-2575), server/discover replaces the initialize
             // handshake. The transport caches the protocol version from the outgoing request's _meta
             // so subsequent requests carry the matching MCP-Protocol-Version header without re-parsing.
             _negotiatedProtocolVersion ??= ExtractProtocolVersionFromMeta(message);
@@ -240,7 +240,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     /// <summary>
     /// Reads the protocol version from a request's <c>_meta/io.modelcontextprotocol/protocolVersion</c> field,
-    /// introduced by the draft protocol revision (SEP-2575). Returns <see langword="null"/> for messages that
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Returns <see langword="null"/> for messages that
     /// don't have that field.
     /// </summary>
     private static string? ExtractProtocolVersionFromMeta(JsonRpcMessage message)
