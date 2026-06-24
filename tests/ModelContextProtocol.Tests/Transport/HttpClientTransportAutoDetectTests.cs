@@ -47,6 +47,59 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         Assert.NotNull(session);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task AutoDetectMode_DoesNotFallBackToSse_OnAuthError(HttpStatusCode authStatusCode)
+    {
+        // Auth errors (401, 403) are not transport-related — the server understood the
+        // request but rejected the credentials. The SDK should propagate the error
+        // immediately instead of falling back to SSE, which would mask the real cause.
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        var requestMethods = new List<HttpMethod>();
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            requestMethods.Add(request.Method);
+
+            if (request.Method == HttpMethod.Post)
+            {
+                // Streamable HTTP POST returns auth error
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = authStatusCode,
+                    Content = new StringContent($"{{\"error\": \"{authStatusCode}\"}}")
+                });
+            }
+
+            // SSE GET should never be reached
+            throw new InvalidOperationException("Should not fall back to SSE on auth error");
+        };
+
+        // ConnectAsync for AutoDetect mode just creates the transport without sending
+        // any HTTP request. The auto-detection is triggered lazily by the first
+        // SendMessageAsync call, which happens inside McpClient.CreateAsync when it
+        // sends the JSON-RPC "initialize" message.
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(authStatusCode, ex.StatusCode);
+
+        // Verify only POST was sent — no GET fallback
+        Assert.Single(requestMethods);
+        Assert.Equal(HttpMethod.Post, requestMethods[0]);
+    }
+
     [Fact] 
     public async Task AutoDetectMode_FallsBackToSse_WhenStreamableHttpFails()
     {
