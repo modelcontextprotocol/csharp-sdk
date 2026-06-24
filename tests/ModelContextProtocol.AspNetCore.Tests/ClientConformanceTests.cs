@@ -69,7 +69,7 @@ public class ClientConformanceTests
     // Commented out: the upstream scenario annotates a "number"-typed parameter with x-mcp-header,
     // which SEP-2243 forbids, so the client rejects the tool and sends no Mcp-Param-* headers,
     // failing every positive check. Re-enable once a conformant conformance package ships (#1655).
-    // [InlineData("http-custom-headers")]
+    //[InlineData("http-custom-headers")]
     public async Task RunConformanceTest_Sep2243(string scenario)
     {
         // Run the conformance test suite
