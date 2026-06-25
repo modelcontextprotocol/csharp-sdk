@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -36,7 +35,6 @@ public abstract class RequestParams
     /// the value is the client's response to that input request.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
     [JsonIgnore]
     public IDictionary<string, InputResponse>? InputResponses
     {
@@ -59,7 +57,6 @@ public abstract class RequestParams
     /// exact value without modification.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
     [JsonIgnore]
     public string? RequestState
     {

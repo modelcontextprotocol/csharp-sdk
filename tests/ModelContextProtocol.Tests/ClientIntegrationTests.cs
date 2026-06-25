@@ -33,7 +33,10 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // Arrange
 
         // Act
-        await using var client = await _fixture.CreateClientAsync(clientId);
+        // ping was removed in the 2026-07-28 protocol (SEP-2575), so pin to the latest stable
+        // protocol version to keep exercising the legacy ping RPC. The 2026-07-28 protocol relies on
+        // the transport/request lifecycle instead of an explicit ping.
+        await using var client = await _fixture.CreateClientAsync(clientId, new McpClientOptions { ProtocolVersion = "2025-11-25" });
         await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert

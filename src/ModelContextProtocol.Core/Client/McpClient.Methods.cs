@@ -1219,7 +1219,10 @@ public abstract partial class McpClient : McpSession
         {
             Name = requestParams.Name,
             Arguments = requestParams.Arguments,
-            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+            // The SEP-2663 Tasks extension requires the 2026-07-28 or later protocol revision. On an older session, send a plain tools/call
+            // (no task capability envelope) so the server returns a direct CallToolResult and never
+            // creates a task.
+            Meta = IsJuly2026OrLaterProtocol() ? GetMetaWithTaskCapability(requestParams.Meta) : requestParams.Meta,
         };
 
         JsonRpcRequest jsonRpcRequest = new()
@@ -1330,6 +1333,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(GetTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksGet,
@@ -1352,6 +1356,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(UpdateTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksUpdate,
@@ -1391,6 +1396,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(CancelTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksCancel,
@@ -1421,30 +1427,41 @@ public abstract partial class McpClient : McpSession
 
     // Per SEP-2663 §51, the per-request opt-in uses the SEP-2575 capabilities envelope:
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    // TODO: replace the literal with a shared NotificationMethods.ClientCapabilitiesMetaKey once
-    // the SEP-2575 plumbing lands and drop the local consts.
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-    private const string ExtensionsKey = "extensions";
-
     private static JsonObject GetMetaWithTaskCapability(JsonObject? existingMeta)
     {
         JsonObject meta = existingMeta is not null
             ? (JsonObject)existingMeta.DeepClone()
             : [];
 
-        if (meta[ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
+        if (meta[MetaKeys.ClientCapabilities] is not JsonObject capsRoot)
         {
             capsRoot = [];
-            meta[ClientCapabilitiesMetaKey] = capsRoot;
+            meta[MetaKeys.ClientCapabilities] = capsRoot;
         }
 
-        if (capsRoot[ExtensionsKey] is not JsonObject extensionsRoot)
+        if (capsRoot["extensions"] is not JsonObject extensionsRoot)
         {
             extensionsRoot = [];
-            capsRoot[ExtensionsKey] = extensionsRoot;
+            capsRoot["extensions"] = extensionsRoot;
         }
 
         extensionsRoot.TryAdd(McpExtensions.Tasks, new JsonObject());
         return meta;
+    }
+
+    /// <summary>
+    /// Throws when the negotiated protocol version does not support the SEP-2663 Tasks extension. Tasks
+    /// require the 2026-07-28 or later protocol revision, and a task id only ever exists when the session
+    /// negotiated such a revision, so invoking <c>tasks/get</c>, <c>tasks/update</c>, or <c>tasks/cancel</c>
+    /// on an older session is a programming error rather than a recoverable protocol condition.
+    /// </summary>
+    private void ThrowIfTasksNotSupported(string operationName)
+    {
+        if (!IsJuly2026OrLaterProtocol())
+        {
+            throw new InvalidOperationException(
+                $"'{operationName}' requires a newer protocol revision that supports tasks. " +
+                $"The negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.");
+        }
     }
 }

@@ -36,6 +36,17 @@ McpClientOptions options = new()
     },
 };
 
+// The default client now prefers the 2026-07-28 protocol (probing with server/discover and
+// falling back to a legacy initialize handshake). The "initialize" and "sse-retry" scenarios
+// specifically exercise the legacy initialize handshake and SSE resumability (removed in the
+// 2026-07-28 protocol) and strictly expect initialize as the first message, so pin them to the
+// latest stable version. Other scenarios run on the 2026-07-28 default and exercise the
+// server/discover probe plus the transparent legacy fallback.
+if (scenario is "initialize" or "sse-retry")
+{
+    options.ProtocolVersion = "2025-11-25";
+}
+
 var consoleLoggerFactory = LoggerFactory.Create(builder =>
 {
     builder.AddConsole();

@@ -15,6 +15,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class TaskPollStuckDetectorTests : ClientServerTestBase
 {
+    private int _pollCount = 0;
+
     public TaskPollStuckDetectorTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
 #if !NET
@@ -48,6 +50,8 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
             // misbehaving-server condition the stuck-detector exists to break out of.
             options.Handlers.GetTaskHandler = (context, cancellationToken) =>
             {
+                Interlocked.Increment(ref _pollCount);
+
                 return new ValueTask<GetTaskResult>(new InputRequiredTaskResult
                 {
                     TaskId = context.Params!.TaskId,
@@ -77,19 +81,13 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
             await client.CallToolAsync(new CallToolRequestParams { Name = "any-tool" }, ct));
-
-        sw.Stop();
 
         Assert.Contains(McpTaskStatus.InputRequired.ToString(), ex.Message);
         Assert.Contains("consecutive polls", ex.Message);
 
-        // 60 polls × 5ms ≈ 300ms; allow generous slack for CI.
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10),
-            $"Stuck-detector should give up promptly but took {sw.Elapsed}.");
+        Assert.Equal(60, _pollCount);
     }
 
     [Fact]
@@ -111,6 +109,7 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         // The message embeds the configured threshold, which is the strongest signal that the
         // option value (not the 60-default constant) is what governed the loop.
         Assert.Contains($"{CustomThreshold} consecutive polls", ex.Message);
+        Assert.Equal(CustomThreshold, _pollCount);
     }
 
     [Theory]

@@ -9,20 +9,20 @@ namespace ModelContextProtocol.Tests.Server;
 /// Verifies that the server-to-client request methods (<see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.SampleAsync(CreateMessageRequestParams, CancellationToken)"/>,
 /// <see cref="McpServer.RequestRootsAsync"/>) keep working when the negotiated protocol revision is
-/// <c>DRAFT-2026-v1</c> on a stateful session - for example, stdio.
+/// <c>2026-07-28</c> on a stateful transport - for example, stdio.
 /// </summary>
 /// <remarks>
-/// Under <c>DRAFT-2026-v1</c> the spec removes the corresponding server-to-client request methods, but
+/// Under <c>2026-07-28</c> the spec removes the corresponding server-to-client request methods, but
 /// the SDK only fails fast in stateless mode (where the existing <c>ThrowIf*Unsupported</c> guards already
 /// throw "X is not supported in stateless mode" because <see cref="McpServer.ClientCapabilities"/> is
 /// <see langword="null"/>). Stdio is implicitly stateful - one <see cref="McpServer"/> per process - so the
 /// legacy <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> flow still works.
-/// A future PR is expected to force <c>DRAFT-2026-v1</c> Streamable HTTP servers to stateless mode, at which
-/// point those configurations will start throwing through the existing stateless guard.
+/// Starting with <c>2026-07-28</c>, Streamable HTTP servers are stateless by default, so those configurations
+/// throw through the existing stateless guard unless the author explicitly opts back into sessions.
 /// </remarks>
-public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
+public sealed class July2026ProtocolBackcompatTests : ClientServerTestBase
 {
-    public DraftProtocolBackcompatTests(ITestOutputHelper testOutputHelper)
+    public July2026ProtocolBackcompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
@@ -31,7 +31,7 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
         });
 
         mcpServerBuilder.WithTools([
@@ -42,12 +42,12 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task ElicitAsync_OnStatefulDraftSession_ResolvesViaLegacyRequest()
+    public async Task ElicitAsync_OnStatefulTransport_ResolvesViaLegacyRequest()
     {
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Elicitation = new ElicitationCapability(),
@@ -64,12 +64,12 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task SampleAsync_OnStatefulDraftSession_ResolvesViaLegacyRequest()
+    public async Task SampleAsync_OnStatefulTransport_ResolvesViaLegacyRequest()
     {
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Sampling = new SamplingCapability(),
@@ -91,12 +91,12 @@ public sealed class DraftProtocolBackcompatTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task RequestRootsAsync_OnStatefulDraftSession_ResolvesViaLegacyRequest()
+    public async Task RequestRootsAsync_OnStatefulTransport_ResolvesViaLegacyRequest()
     {
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "DRAFT-2026-v1",
+            ProtocolVersion = "2026-07-28",
             Capabilities = new ClientCapabilities
             {
                 Roots = new RootsCapability(),

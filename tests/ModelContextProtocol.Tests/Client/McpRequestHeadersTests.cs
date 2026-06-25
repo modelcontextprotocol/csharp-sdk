@@ -18,11 +18,11 @@ public class McpRequestHeadersTests
     [Fact]
     public void McpErrorCode_HeaderMismatch_HasCorrectValue()
     {
-        Assert.Equal(-32001, (int)McpErrorCode.HeaderMismatch);
+        Assert.Equal(-32020, (int)McpErrorCode.HeaderMismatch);
     }
 
     [Theory]
-    [InlineData("DRAFT-2026-v1", true)]
+    [InlineData("2026-07-28", true)]
     [InlineData("2025-11-25", false)]
     [InlineData("2025-06-18", false)]
     [InlineData("2024-11-05", false)]

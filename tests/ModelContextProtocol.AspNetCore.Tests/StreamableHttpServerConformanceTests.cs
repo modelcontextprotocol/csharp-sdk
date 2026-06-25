@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -27,7 +27,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
     private WebApplication? _app;
 
-    private async Task StartAsync()
+    private async Task StartAsync(bool stateless = false)
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -36,7 +36,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
                 Name = nameof(StreamableHttpServerConformanceTests),
                 Version = "73",
             };
-        }).WithTools(Tools).WithHttpTransport();
+        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = stateless);
 
         _app = Builder.Build();
 
@@ -65,7 +65,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             options.IdleTimeout = TimeSpan.MinValue;
         });
 
-        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(() => StartAsync());
         Assert.Contains("IdleTimeout", ex.Message);
     }
 
@@ -77,7 +77,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             options.MaxIdleSessionCount = -1;
         });
 
-        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(() => StartAsync());
         Assert.Contains("MaxIdleSessionCount", ex.Message);
     }
 
@@ -245,6 +245,38 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Mcp-Session-Id", body);
         Assert.Contains("Stateless", body);
+    }
+
+    [Fact]
+    public async Task PostMalformedJson_Returns400_InvalidRequest_WithNullId()
+    {
+        await StartAsync();
+
+        using var response = await HttpClient.PostAsync("", JsonContent("{ this is not valid json"), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Because the request
+        // id could not be read, the error carries id=null per JSON-RPC 2.0 §5.1 — and crucially it must
+        // serialize as JSON null, not "" (regression guard for the RequestId write path).
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task PostRequestWithExplicitNullId_Returns400_InvalidRequest_WithNullId()
+    {
+        await StartAsync();
+
+        // A request carrying an explicit `id:null` is malformed per the MCP base protocol ("the ID MUST
+        // NOT be null") and must NOT be silently treated as a notification. The server rejects it with a
+        // conformant 400 InvalidRequest error whose own id is null.
+        using var response = await HttpClient.PostAsync("", JsonContent("""{"jsonrpc":"2.0","id":null,"method":"tools/list"}"""), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
@@ -884,17 +916,18 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     #region SEP-2243 Header Validation Tests
 
     [Fact]
-    public async Task DraftVersion_RejectsMissingMcpMethodHeader()
+    public async Task July2026ProtocolVersion_RejectsMissingMcpMethodHeader()
     {
-        await StartAsync();
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is served only on a stateless server.
+        await StartAsync(stateless: true);
 
-        // Initialize with draft version to enable header validation
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        // Initialize with the 2026-07-28 protocol version to enable header validation
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request without Mcp-Method header — should be rejected
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         // Deliberately omit Mcp-Method header
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -902,15 +935,15 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task DraftVersion_RejectsMismatchedMcpMethodHeader()
+    public async Task July2026ProtocolVersion_RejectsMismatchedMcpMethodHeader()
     {
-        await StartAsync();
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        await StartAsync(stateless: true);
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request but set Mcp-Method to wrong value
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -918,15 +951,15 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task DraftVersion_AcceptsCorrectMcpMethodHeader()
+    public async Task July2026ProtocolVersion_AcceptsCorrectMcpMethodHeader()
     {
-        await StartAsync();
-        await CallInitializeWithDraftVersionAndValidateAsync();
+        await StartAsync(stateless: true);
+        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
 
@@ -935,12 +968,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task NonDraftVersion_DoesNotRequireMcpMethodHeader()
+    public async Task LegacyVersion_DoesNotRequireMcpMethodHeader()
     {
         await StartAsync();
         await CallInitializeAndValidateAsync();
 
-        // With non-draft version, Mcp-Method header is not required
+        // With the legacy version, Mcp-Method header is not required
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
         request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
@@ -950,25 +983,25 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private async Task CallInitializeWithDraftVersionAndValidateAsync()
+    private async Task CallInitializeWithJuly2026ProtocolVersionAndValidateAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(InitializeRequestDraft);
-        request.Headers.Add("MCP-Protocol-Version", "DRAFT-2026-v1");
+        request.Content = JsonContent(InitializeRequestJuly2026Protocol);
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "initialize");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertServerInfo(rpcResponse);
 
-        var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
-        SetSessionId(sessionId);
+        // Starting with the 2026-07-28 protocol revision (SEP-2567), Streamable HTTP no longer supports sessions; the server does not return mcp-session-id.
+        // Subsequent requests carry MCP-Protocol-Version=2026-07-28 so each one is handled independently.
     }
 
-    private static string InitializeRequestDraft => """
-        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"DRAFT-2026-v1","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+    private static string InitializeRequestJuly2026Protocol => """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
         """;
 
     #endregion

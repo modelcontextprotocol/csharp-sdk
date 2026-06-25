@@ -84,7 +84,7 @@ public static class NodeHelpers
     /// When <see langword="true"/> (the default) and the MCP_CONFORMANCE_PROTOCOL_VERSION
     /// environment variable is set, a "--spec-version &lt;value&gt;" argument is appended.
     /// Pass <see langword="false"/> for scenarios that pin their own spec version (e.g. the
-    /// draft-only caching scenario) to avoid a conflicting duplicate flag.
+    /// caching scenario specific to the 2026-07-28 protocol) to avoid a conflicting duplicate flag.
     /// </param>
     /// <returns>A configured ProcessStartInfo for running the binary.</returns>
     public static ProcessStartInfo ConformanceTestStartInfo(string arguments, bool appendProtocolVersionFromEnv = true)
@@ -188,7 +188,8 @@ public static class NodeHelpers
     /// when a newer private build has been installed locally via
     /// <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
     /// </summary>
-    public static bool HasSep2243Scenarios() => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+    public static bool HasSep2243Scenarios()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     /// <summary>
     /// Checks whether the SEP-2549 "caching" conformance scenario (added in conformance
@@ -198,7 +199,8 @@ public static class NodeHelpers
     /// this also returns <see langword="true"/> when a newer private build has been installed
     /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
     /// </summary>
-    public static bool HasCachingScenario() => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+    public static bool HasCachingScenario()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     /// <summary>
     /// Returns <see langword="true"/> when the conformance package installed in node_modules
@@ -373,42 +375,17 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / IncompleteResult)
-    /// conformance scenarios are available by reading the conformance package version
-    /// from the repo's package.json. MRTR scenarios require a conformance package version
-    /// that includes SEP-2322 support (see
+    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / InputRequiredResult)
+    /// conformance scenarios are available, by reading the <em>installed</em> conformance
+    /// package version from node_modules. The <c>incomplete-result-*</c> scenarios were
+    /// introduced in conformance package 0.2.0 (see
     /// https://github.com/modelcontextprotocol/conformance/pull/188).
+    /// Reading the installed version (rather than the pinned version in package.json) means
+    /// this also returns <see langword="true"/> when a newer private build has been installed
+    /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
     /// </summary>
     public static bool HasMrtrScenarios()
-    {
-        try
-        {
-            var repoRoot = FindRepoRoot();
-            var packageJsonPath = Path.Combine(repoRoot, "package.json");
-            if (!File.Exists(packageJsonPath))
-            {
-                return false;
-            }
-
-            var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
-            if (json.RootElement.TryGetProperty("dependencies", out var deps) &&
-                deps.TryGetProperty("@modelcontextprotocol/conformance", out var versionElement))
-            {
-                var versionStr = versionElement.GetString();
-                if (versionStr is not null && Version.TryParse(versionStr, out var version))
-                {
-                    // SEP-2322 scenarios are expected in conformance package >= 0.2.0
-                    return version >= new Version(0, 2, 0);
-                }
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {

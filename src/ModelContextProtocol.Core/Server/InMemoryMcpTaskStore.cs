@@ -1,7 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -20,7 +19,6 @@ namespace ModelContextProtocol.Server;
 /// implement a custom <see cref="IMcpTaskStore"/>.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
 public class InMemoryMcpTaskStore : IMcpTaskStore
 {
     private readonly ConcurrentDictionary<string, McpTaskInfo> _tasks = new();

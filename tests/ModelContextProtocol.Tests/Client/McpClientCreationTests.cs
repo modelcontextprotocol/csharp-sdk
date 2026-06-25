@@ -171,10 +171,27 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
         {
             switch (message)
             {
-                case JsonRpcRequest:
+                case JsonRpcRequest { Method: RequestMethods.ServerDiscover } discoverRequest:
                     _channel.Writer.TryWrite(new JsonRpcResponse
                     {
-                        Id = ((JsonRpcRequest)message).Id,
+                        Id = discoverRequest.Id,
+                        Result = JsonSerializer.SerializeToNode(new DiscoverResult
+                        {
+                            Capabilities = new ServerCapabilities(),
+                            SupportedVersions = [McpHttpHeaders.July2026ProtocolVersion],
+                            ServerInfo = new Implementation
+                            {
+                                Name = "NopTransport",
+                                Version = "1.0.0"
+                            },
+                        }, McpJsonUtilities.DefaultOptions),
+                    });
+                    break;
+
+                case JsonRpcRequest request:
+                    _channel.Writer.TryWrite(new JsonRpcResponse
+                    {
+                        Id = request.Id,
                         Result = JsonSerializer.SerializeToNode(new InitializeResult
                         {
                             Capabilities = new ServerCapabilities(),

@@ -7,15 +7,15 @@ uid: stateless
 
 # Stateless and stateful mode
 
-The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to send requests _to_ the client, push [unsolicited notifications](#how-streamable-http-delivers-messages), or maintain per-client state across requests.
+The MCP [Streamable HTTP transport] uses an `Mcp-Session-Id` HTTP header to associate multiple requests with a single logical session. However, **we recommend most servers disable sessions entirely by setting <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true`**. Stateless mode avoids the complexity, memory overhead, and deployment constraints that come with sessions. Sessions are only necessary when the server needs to push [unsolicited notifications](#how-streamable-http-delivers-messages), maintain per-client state across requests, or send requests _to_ clients that don't support [MRTR](xref:mrtr).
 
-When sessions are enabled (the current C# SDK default), the server creates and tracks an in-memory session for each client, while the client automatically includes the session ID in subsequent requests. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header — this is not optional for the client. Session expiry detection and reconnection are the responsibility of the application using the client SDK (see [Client-side session behavior](#client-side-session-behavior)).
+When sessions are enabled (`Stateless = false`), the server creates and tracks an in-memory session for each client, while the client automatically includes the session ID in subsequent requests. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header — this is not optional for the client. Session expiry detection and reconnection are the responsibility of the application using the client SDK (see [Client-side session behavior](#client-side-session-behavior)).
 
 [Streamable HTTP transport]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http
 
 **Quick guide — which mode should I use?**
 
-- Does your server need to send requests _to_ the client (sampling, elicitation, roots)?  → **Use stateful.**
+- Does your server need to send requests _to_ the client (elicitation, sampling, roots) and can't rely on clients supporting [MRTR](xref:mrtr)?  → **Use stateful.**
 - Does your server send [unsolicited notifications](#how-streamable-http-delivers-messages) or support resource subscriptions?  → **Use stateful.**
 - Do you need to support clients that only speak the [legacy SSE transport](#legacy-sse-transport)?  → **Use stateful** with <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default due to [backpressure concerns](#request-backpressure)).
 - Does your server manage per-client state that concurrent agents must not share (isolated environments, parallel workspaces)?  → **Use stateful.**
@@ -24,19 +24,43 @@ When sessions are enabled (the current C# SDK default), the server creates and t
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> **Why isn't stateless the C# SDK default?** Stateful mode remains the default for backward compatibility and because it is the only HTTP mode with full feature parity with [stdio](xref:transports) (server-to-client requests, unsolicited notifications, subscriptions). Stateless is the recommended choice when you don't need those features — see [Forward and backward compatibility](#forward-and-backward-compatibility) for guidance on choosing an explicit setting.
+> **Why is stateless now the default?** Earlier versions of the SDK defaulted to stateful, but not because the `2025-11-25` (and older) protocol revisions ever required a server to use the `Mcp-Session-Id` header. They didn't. The original SSE transport could only operate statefully, and keeping Streamable HTTP stateful by default let server-to-client requests (elicitation, sampling, roots) keep working on `2025-11-25` the way they always had. A client was required to echo a server-assigned `Mcp-Session-Id` on later requests, but whether to assign one was always the server's choice. The `2026-07-28` protocol revision removes the header (SEP-2567) and the `initialize` handshake (SEP-2575) from the wire format entirely, and server-to-client requests now run through [MRTR](xref:mrtr), so the SDK now defaults <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> to `true` to match the new wire format. You can still opt back into sessions with `Stateless = false` for [unsolicited notifications](#how-streamable-http-delivers-messages), resource subscriptions, per-client isolation, or server-to-client requests against clients that don't support [MRTR](xref:mrtr) — see [Stateful mode (sessions)](#stateful-mode-sessions).
 
 ## Forward and backward compatibility
 
-The `Stateless` property is the single most important setting for forward-proofing your MCP server. The current C# SDK default is `Stateless = false` (sessions enabled), but **we expect this default to change** once mechanisms like [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) bring server-to-client interactions (sampling, elicitation, roots) to stateless mode. We recommend every server set `Stateless` explicitly rather than relying on the default:
+The `Stateless` property is the single most important setting for forward-proofing your MCP server. The default is now `Stateless = true` (sessions disabled), which is the forward-compatible setting for the `2026-07-28` protocol revision and beyond. Stateless servers still respond to legacy clients on `2025-11-25` and earlier — the SDK keeps the `initialize` + `Mcp-Session-Id` handshake available for those clients — but they cannot use the session-dependent features ([unsolicited notifications](#how-streamable-http-delivers-messages), resource subscriptions, per-client isolation). Server-to-client requests are the exception: [elicitation](xref:elicitation) — and the now-deprecated [sampling](xref:sampling) and [roots](xref:roots) — can run statelessly through [MRTR](xref:mrtr), though MRTR requires the unratified `2026-07-28` revision and is far less widely supported than session-based requests. We recommend every server set `Stateless` explicitly rather than relying on the default:
 
-- **`Stateless = true`** — the best forward-compatible choice. Your server opts out of sessions entirely. No matter how the SDK default changes in the future, your behavior stays the same. If you don't need [unsolicited notifications](#how-streamable-http-delivers-messages), server-to-client requests, or session-scoped state, this is the setting to use today.
+- **`Stateless = true`** — the current default and the forward-compatible choice. Your server opts out of sessions entirely and the `Mcp-Session-Id` header is never sent or honored. The `2026-07-28` protocol revision drops the `initialize` handshake and `Mcp-Session-Id` from the wire format entirely, so this is the only configuration that lets the server respond to `2026-07-28` clients without falling back to legacy handling. If you don't need [unsolicited notifications](#how-streamable-http-delivers-messages), server-to-client requests, or session-scoped state, this is the setting to use today.
 
-- **`Stateless = false`** — the right choice when your server depends on sessions for features like sampling, elicitation, roots, unsolicited notifications, or per-client isolation. Setting this explicitly protects your server from a future default change. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header, so compliant clients will always honor your server's session. Once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or a similar mechanism is available, you may be able to migrate server-to-client interactions to stateless mode and drop sessions entirely — but until then, explicit `Stateless = false` is the safe choice. See [Stateless alternatives for server-to-client interactions](#stateless-alternatives-for-server-to-client-interactions) for more on MRTR.
+- **`Stateless = false`** — the right choice when your server depends on sessions for [unsolicited notifications](#how-streamable-http-delivers-messages), resource subscriptions, or per-client isolation, none of which work without a session. Setting this explicitly protects your server from a future default change, and the [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header, so compliant clients always honor your server's session. Server-to-client requests no longer force a session: [elicitation](xref:elicitation) — and the now-deprecated [sampling](xref:sampling) and [roots](xref:roots) — can run statelessly through [MRTR](xref:mrtr) (see [Stateless alternatives for server-to-client interactions](#stateless-alternatives-for-server-to-client-interactions)). MRTR is only as available as the unratified `2026-07-28` revision, however, so keep a session if you need server-to-client requests against clients that don't speak it. Note that even with `Stateless = false`, a `2026-07-28` request is still served without a session because the protocol has no session header; the stateful path activates only when a client falls back to a legacy revision.
 
 <!-- mlc-disable-next-line -->
 > [!TIP]
-> If you're not sure which to pick, start with `Stateless = true`. You can switch to `Stateless = false` later if you discover you need server-to-client requests or unsolicited notifications. Either way, setting the property explicitly means your server's behavior won't silently change when the SDK default is updated.
+> If you're not sure which to pick, leave the default (`Stateless = true`). You can switch to `Stateless = false` later if you discover you need unsolicited notifications or resource subscriptions. Either way, setting the property explicitly means your server's behavior won't silently change when the SDK default is updated.
+
+### The 2026-07-28 protocol revision
+
+The `2026-07-28` protocol revision goes further than `Stateless = true`: it removes the `initialize` handshake (SEP-2575) and the `Mcp-Session-Id` header (SEP-2567) from the wire format entirely. Clients bootstrap by sending `server/discover` instead, and every request carries the negotiated protocol version in the `MCP-Protocol-Version` HTTP header (HTTP transport) or the `_meta.io.modelcontextprotocol/protocolVersion` JSON-RPC field (every transport).
+
+**Server side.** With `Stateless = true` (the default), the SDK already meets `2026-07-28` on the wire. Any HTTP POST that arrives with the `2026-07-28` `MCP-Protocol-Version` header is routed through the stateless path automatically — no session is created, no `Mcp-Session-Id` is returned, and the `GET` and `DELETE` endpoints are not mapped. Legacy clients that still send `initialize` on the same endpoint continue to work in stateless mode for the lifetime of that single POST. With `Stateless = false`, the server still falls back to legacy session creation when the client speaks `2025-11-25` or earlier — but a `2026-07-28` request (which carries no session) on a stateful server is refused with a `-32022 UnsupportedProtocolVersion` error, so a dual-era client downgrades to the legacy `initialize` handshake and obtains a session. A `2026-07-28` request that carries an `Mcp-Session-Id` is always rejected, since the revision has no session concept.
+
+**Stateful options marked obsolete.** Because Streamable HTTP no longer supports sessions starting with the `2026-07-28` revision, the stateful-only knobs on <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions> — `IdleTimeout`, `MaxIdleSessionCount`, `EventStreamStore`, `SessionMigrationHandler`, and `PerSessionExecutionContext` — are now marked `[Obsolete]` with diagnostic `MCP9006` to signal that they only apply to legacy-protocol back-compat. You can still set them — the warning is informational — and they continue to govern stateful behavior for legacy clients.
+
+**Client side — automatic fallback.** Clients automatically probe `2026-07-28` first and fall back to the `initialize` handshake when the server doesn't support it:
+
+- **HTTP**: the client sends its first request with the `2026-07-28` `MCP-Protocol-Version` header. If the server returns HTTP `400` with anything other than a structured `-32022` / `-32021` / `-32020` JSON-RPC error, the client switches to the legacy `initialize` flow on the same endpoint.
+- **stdio**: the client sends a `server/discover` probe with a 5-second timeout. A `DiscoverResult` confirms `2026-07-28`; a `-32022` error with a `supported` payload triggers a retry at the highest mutually-supported version; anything else — including a timeout — falls back to legacy `initialize` on the same stdin/stdout. The SDK does not relaunch the server process.
+
+The era is cached per <xref:ModelContextProtocol.Client.IClientTransport> instance, so the probe cost is paid only on the first connect.
+
+**Opting out of fallback.** Pin <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> to `2026-07-28` when you want the client to refuse to fall back. A non-null `ProtocolVersion` is also treated as the minimum, so the connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading to a legacy revision. This is useful for strict-modern production code and for tests that need to assert `2026-07-28`-only behavior. To try several versions yourself, leave `ProtocolVersion` unset (the default) or retry the connection with a different value.
+
+```csharp
+var clientOptions = new McpClientOptions
+{
+    ProtocolVersion = "2026-07-28",
+};
+```
 
 ### Migrating from legacy SSE
 
@@ -93,7 +117,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
   - [Roots](xref:roots) (`RequestRootsAsync`)
   - Ping — the server cannot ping the client to verify connectivity
 
-  The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to bring these capabilities to stateless mode, but it is not yet available.
+  [MRTR](xref:mrtr) brings elicitation (and the deprecated sampling and roots) to stateless mode when both client and server speak `2026-07-28` — see [Stateless alternatives for server-to-client interactions](#stateless-alternatives-for-server-to-client-interactions).
 - **[Unsolicited](#how-streamable-http-delivers-messages) server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client POST request — see [How Streamable HTTP delivers messages](#how-streamable-http-delivers-messages) for why.
 - **No concurrent client isolation.** Every request is independent — the server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
 - **No state reset on reconnect.** Stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start. If your server holds any external state, you must manage cleanup through other means.
@@ -115,17 +139,13 @@ Most MCP servers fall into this category. Tools that call APIs, query databases,
 
 ### Stateless alternatives for server-to-client interactions
 
-<!-- mlc-disable-next-line -->
-> [!NOTE]
-> Multi Round-Trip Requests (MRTR) is a proposed experimental feature that is not yet available. See PR [#1458](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) for the reference implementation and specification proposal.
+The traditional approach to server-to-client interactions (elicitation, sampling, roots) requires sessions because the server must hold an open connection to send JSON-RPC requests back to the client. [Multi Round-Trip Requests (MRTR)](xref:mrtr) is a stateless alternative — instead of sending a request, the server returns an **incomplete result** that tells the client what input is needed. The client fulfills the requests and retries the tool call with the responses attached.
 
-The traditional approach to server-to-client interactions (elicitation, sampling, roots) requires sessions because the server must hold an open connection to send JSON-RPC requests back to the client. [Multi Round-Trip Requests (MRTR)](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is a proposed alternative that works with stateless servers by inverting the communication model — instead of sending a request, the server returns an **incomplete result** that tells the client what input is needed. The client fulfills the requests and retries the tool call with the responses attached.
-
-This means servers that need user confirmation, LLM reasoning, or other client input can still run in stateless mode when both sides support MRTR.
+This means servers that need user confirmation ([elicitation](xref:elicitation)) — or the now-deprecated (SEP-2577) [sampling](xref:sampling) and [roots](xref:roots) — can run in stateless mode when both sides support MRTR. Because MRTR rides on the unratified `2026-07-28` revision, it is far less broadly supported than session-based requests; keep a session if you must interact with clients that don't speak it.
 
 ## Stateful mode (sessions)
 
-When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `false` (the default), the server assigns an `Mcp-Session-Id` to each client during the `initialize` handshake. The client must include this header in all subsequent requests. The server maintains an in-memory session for each connected client, enabling:
+When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is `false`, the server assigns an `Mcp-Session-Id` to each client during the `initialize` handshake when the client speaks the `2025-11-25` (or earlier) protocol revision. The client must include this header in all subsequent requests. The server maintains an in-memory session for each connected client, enabling:
 
 - Server-to-client requests (sampling, elicitation, roots) via an open HTTP response stream
 - [Unsolicited notifications](#how-streamable-http-delivers-messages) (resource updates, logging messages) via the GET stream
@@ -154,7 +174,7 @@ The [deployment considerations](#deployment-considerations) below are real conce
 | **Scaling** | Horizontal scaling without constraints | Limited by session-affinity routing |
 | **Server restarts** | No impact — each request is independent | All sessions lost; clients must reinitialize |
 | **Memory** | Per-request only | Per-session (default: up to 10,000 sessions × 2 hours) |
-| **Server-to-client requests** | Not supported (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) for a stateless alternative) | Supported (sampling, elicitation, roots) |
+| **Server-to-client requests** | Available via [MRTR](xref:mrtr) (`2026-07-28`-only) for elicitation, plus deprecated sampling and roots | Supported (elicitation; deprecated sampling and roots) |
 | **[Unsolicited notifications](#how-streamable-http-delivers-messages)** | Not supported | Supported (resource updates, logging) |
 | **Resource subscriptions** | Not supported | Supported |
 | **Client compatibility** | Works with all Streamable HTTP clients | Also supports legacy SSE-only clients via <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> (disabled by default), but some Streamable HTTP clients [may not send `Mcp-Session-Id` correctly](#deployment-considerations) |
@@ -396,14 +416,16 @@ builder.Services.AddMcpServer()
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> | `bool` | `false` | Enables stateless mode. No sessions, no `Mcp-Session-Id` header, no server-to-client requests. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> | `TimeSpan` | 2 hours | Duration of inactivity before a session is closed. Checked every 5 seconds. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> | `int` | 10,000 | Maximum idle sessions before the oldest are forcibly terminated. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> | `Func<HttpContext, McpServerOptions, CancellationToken, Task>?` | `null` | Per-session callback to customize `McpServerOptions` with access to `HttpContext`. In stateless mode, this runs on every HTTP request. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> | `bool` | `true` | Enables stateless mode. No sessions, no `Mcp-Session-Id` header, no server-to-client requests on the legacy protocol. Required by the `2026-07-28` protocol revision. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> | `TimeSpan` | 2 hours | _Stateful only (`MCP9006`)._ Duration of inactivity before a session is closed. Checked every 5 seconds. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> | `int` | 10,000 | _Stateful only (`MCP9006`)._ Maximum idle sessions before the oldest are forcibly terminated. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> | `Func<HttpContext, McpServerOptions, CancellationToken, Task>?` | `null` | Per-session callback to customize `McpServerOptions` with access to `HttpContext`. In stateless mode (including all `2026-07-28` requests), this runs on every HTTP request. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.RunSessionHandler> | `Func<HttpContext, McpServer, CancellationToken, Task>?` | `null` | *(Experimental)* Custom session lifecycle handler. Consider `ConfigureSessionOptions` instead. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.SessionMigrationHandler> | `ISessionMigrationHandler?` | `null` | Enables cross-instance session migration. Can also be registered in DI. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> | `ISseEventStreamStore?` | `null` | Stores SSE events for session resumability via `Last-Event-ID`. Can also be registered in DI. |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.PerSessionExecutionContext> | `bool` | `false` | Uses a single `ExecutionContext` for the entire session instead of per-request. Enables session-scoped `AsyncLocal<T>` values but prevents `IHttpContextAccessor` from working in handlers. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.SessionMigrationHandler> | `ISessionMigrationHandler?` | `null` | _Stateful only (`MCP9006`)._ Enables cross-instance session migration. Can also be registered in DI. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EventStreamStore> | `ISseEventStreamStore?` | `null` | _Stateful only (`MCP9006`)._ Stores SSE events for session resumability via `Last-Event-ID`. Can also be registered in DI. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.PerSessionExecutionContext> | `bool` | `false` | _Stateful only (`MCP9006`)._ Uses a single `ExecutionContext` for the entire session instead of per-request. Enables session-scoped `AsyncLocal<T>` values but prevents `IHttpContextAccessor` from working in handlers. |
+
+The properties marked _Stateful only_ above carry diagnostic [`MCP9006`](xref:list-of-diagnostics#obsolete-apis) because they have no effect when the request is served without a session (every `2026-07-28` request, plus every request on a server with `Stateless = true`). They remain available as back-compat knobs for the legacy stateful Streamable HTTP path.
 
 ### ConfigureSessionOptions
 

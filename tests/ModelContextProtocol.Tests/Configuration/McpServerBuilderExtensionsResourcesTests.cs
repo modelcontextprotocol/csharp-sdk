@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -162,7 +162,14 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_Be_Notified_Of_Resource_Changes()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
+        // legacy revision to keep coverage of the session-wide broadcast that legacy clients still rely on.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+        });
+
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(7, resources.Count);

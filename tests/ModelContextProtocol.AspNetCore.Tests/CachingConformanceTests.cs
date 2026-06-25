@@ -4,8 +4,9 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.ConformanceTests;
 
 /// <summary>
-/// A ConformanceServer instance started in the SEP-2575 stateless lifecycle, which the draft
-/// SEP-2549 "caching" conformance scenario requires. Started on demand (so it is not bound
+/// A ConformanceServer instance started in the SEP-2575 stateless lifecycle, which the
+/// SEP-2549 "caching" conformance scenario (new in the 2026-07-28 protocol revision)
+/// requires. Started on demand (so it is not bound
 /// when the caching test is skipped) and torn down via <see cref="DisposeAsync"/>. Uses a
 /// distinct port range from the stateful <c>ConformanceServerFixture</c> (3001/3002/3003) so
 /// the two can run in parallel without TCP conflicts.
@@ -105,12 +106,10 @@ internal sealed class StatelessConformanceServer : IAsyncDisposable
 /// (tools/list, prompts/list, resources/list, resources/templates/list, resources/read).
 /// </summary>
 /// <remarks>
-/// The scenario is draft-only (introduced in DRAFT-2026-v1) and uses the stateless lifecycle.
-/// It is gated on the installed conformance package version (>= 0.2.0) and is skipped when
-/// running against the currently-pinned package, so it activates automatically once a
-/// conformance package containing the caching scenario is installed (including a local private
-/// build installed via <c>npm install --no-save &lt;path-to-conformance&gt;</c>). The stateless
-/// server is started only after the gates pass, so a skipped run binds no port.
+/// The scenario was introduced in spec wire version 2026-07-28 and uses the stateless lifecycle.
+/// It is gated on the installed conformance
+/// package version (>= 0.2.0). The stateless server is
+/// started only after the gates pass, so a skipped run binds no port.
 /// </remarks>
 public class CachingConformanceTests(ITestOutputHelper output)
 {
@@ -124,11 +123,11 @@ public class CachingConformanceTests(ITestOutputHelper output)
 
         await using var server = await StatelessConformanceServer.StartAsync(TestContext.Current.CancellationToken);
 
-        // The caching scenario only exists in the draft spec, so pin the spec version
+        // The caching scenario only exists in the 2026-07-28 protocol revision, so pin the spec version
         // explicitly (and suppress the MCP_CONFORMANCE_PROTOCOL_VERSION override to avoid a
         // conflicting duplicate --spec-version flag).
         var result = await NodeHelpers.RunServerConformanceAsync(
-            $"server --url {server.ServerUrl} --scenario caching --spec-version DRAFT-2026-v1",
+            $"server --url {server.ServerUrl} --scenario caching --spec-version 2026-07-28",
             line => { try { output.WriteLine(line); } catch { } },
             appendProtocolVersionFromEnv: false,
             cancellationToken: TestContext.Current.CancellationToken);

@@ -2,12 +2,17 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
 public class McpClientMetaTests : ClientServerTestBase
 {
+    // InitializeMeta is carried on the legacy initialize request, which the 2026-07-28 protocol removes.
+    // The two InitializeMeta_* tests pin to the latest stable version so the handshake actually runs.
+    private const string LatestStableVersion = "2025-11-25";
+
     private readonly TaskCompletionSource<JsonNode?> _initializeMeta = new();
 
     public McpClientMetaTests(ITestOutputHelper outputHelper)
@@ -50,6 +55,7 @@ public class McpClientMetaTests : ClientServerTestBase
     {
         var clientOptions = new McpClientOptions
         {
+            ProtocolVersion = LatestStableVersion,
             InitializeMeta = new JsonObject
             {
                 { "foo", "bar baz" }
@@ -58,7 +64,7 @@ public class McpClientMetaTests : ClientServerTestBase
 
         await using McpClient client = await CreateMcpClientForServer(clientOptions);
 
-        var meta = await _initializeMeta.Task.WaitAsync(TestContext.Current.CancellationToken);
+        var meta = await _initializeMeta.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         Assert.NotNull(meta);
         Assert.Equal("bar baz", meta["foo"]?.ToString());
@@ -67,9 +73,9 @@ public class McpClientMetaTests : ClientServerTestBase
     [Fact]
     public async Task InitializeMeta_IsOmitted_WhenNotSet()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
-        var meta = await _initializeMeta.Task.WaitAsync(TestContext.Current.CancellationToken);
+        var meta = await _initializeMeta.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         Assert.Null(meta);
     }
