@@ -287,6 +287,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.CallToolAsync("TestElicitationNullablePropertyForm", cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Nullable", ex.Message);
     }
 
     [Fact]
@@ -340,7 +342,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     public sealed class NullablePropertyForm
     {
         public string? FirstName { get; set; }
-        public int ZipCode { get; set; }
+        public int? ZipCode { get; set; }
         public bool IsAdmin { get; set; }
     }
 

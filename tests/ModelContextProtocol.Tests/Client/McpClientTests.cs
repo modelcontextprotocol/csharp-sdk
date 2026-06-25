@@ -584,15 +584,16 @@ public class McpClientTests : ClientServerTestBase
     public async Task ReturnsNegotiatedProtocolVersion(string? protocolVersion)
     {
         await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = protocolVersion });
-        Assert.Equal(protocolVersion ?? "2025-11-25", client.NegotiatedProtocolVersion);
+        // A null ProtocolVersion now prefers the draft revision, which the reactive test server advertises.
+        Assert.Equal(protocolVersion ?? "2026-07-28", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
     public async Task ReturnsNegotiatedProtocolVersion_WithExperimentalProtocol()
     {
-        Server.ServerOptions.ProtocolVersion = "DRAFT-2026-v1";
-        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "DRAFT-2026-v1" });
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Server.ServerOptions.ProtocolVersion = "2026-07-28";
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "2026-07-28" });
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -794,7 +795,9 @@ public class McpClientTests : ClientServerTestBase
     [Fact]
     public async Task ServerCanPingClient()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // ping is a legacy-only RPC (removed in the draft revision per SEP-2575), so pin the client
+        // to a legacy protocol version to exercise the server-initiated ping round-trip.
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = "2025-11-25" });
 
         var pingRequest = new JsonRpcRequest { Method = RequestMethods.Ping };
         var response = await Server.SendRequestAsync(pingRequest, TestContext.Current.CancellationToken);

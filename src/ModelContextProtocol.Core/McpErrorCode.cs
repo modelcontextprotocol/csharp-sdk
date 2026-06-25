@@ -44,6 +44,31 @@ public enum McpErrorCode
     ResourceNotFound = -32002,
 
     /// <summary>
+    /// Indicates that a request requires a client capability that was not declared in the request's
+    /// <c>_meta/io.modelcontextprotocol/clientCapabilities</c> field.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Introduced by the draft protocol revision (SEP-2575). The error data MUST include a
+    /// <c>requiredCapabilities</c> object describing the capabilities the server requires from the client
+    /// to process the request. For HTTP, the response status code is <c>400 Bad Request</c>.
+    /// </para>
+    /// </remarks>
+    MissingRequiredClientCapability = -32003,
+
+    /// <summary>
+    /// Indicates that the request's declared protocol version is not supported by the server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Introduced by the draft protocol revision (SEP-2575). The error data MUST include a
+    /// <c>supported</c> array of protocol version strings the server supports and the original
+    /// <c>requested</c> protocol version. For HTTP, the response status code is <c>400 Bad Request</c>.
+    /// </para>
+    /// </remarks>
+    UnsupportedProtocolVersion = -32004,
+
+    /// <summary>
     /// Indicates that URL-mode elicitation is required to complete the requested operation.
     /// </summary>
     /// <remarks>

@@ -50,7 +50,9 @@ public class HttpServerTransportOptions
     /// allowing for load balancing without session affinity.
     /// </summary>
     /// <value>
-    /// <see langword="true"/> if the server runs in a stateless mode; <see langword="false"/> if the server tracks state between requests. The default is <see langword="false"/>.
+    /// <see langword="true"/> if the server runs in a stateless mode; <see langword="false"/> if the server tracks state between requests.
+    /// The default is <see langword="true"/> as of the <c>2026-07-28</c> draft protocol revision (SEP-2567);
+    /// set to <see langword="false"/> only when you need to support legacy clients that rely on session affinity.
     /// </value>
     /// <remarks>
     /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
@@ -58,8 +60,16 @@ public class HttpServerTransportOptions
     /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
     /// might arrive at another ASP.NET Core application process.
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
+    /// <para>
+    /// The <c>2026-07-28</c> draft protocol revision is sessionless and removes <c>Mcp-Session-Id</c> entirely
+    /// (SEP-2567), so over HTTP draft requests are only ever served when <see langword="true"/>. When this
+    /// property is <see langword="false"/>, a sessionless draft request is refused with a
+    /// <c>-32004 UnsupportedProtocolVersion</c> error so that a dual-era client downgrades to the legacy
+    /// <c>initialize</c> handshake and obtains the session that the server was configured to provide. A draft
+    /// request that carries an <c>Mcp-Session-Id</c> is always rejected, regardless of this property's value.
+    /// </para>
     /// </remarks>
-    public bool Stateless { get; set; }
+    public bool Stateless { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
@@ -112,6 +122,7 @@ public class HttpServerTransportOptions
     /// If this property is not set, the server will attempt to resolve an <see cref="ISseEventStreamStore"/> from DI.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public ISseEventStreamStore? EventStreamStore { get; set; }
 
     /// <summary>
@@ -128,6 +139,7 @@ public class HttpServerTransportOptions
     /// If this property is not set, the server will attempt to resolve an <see cref="ISessionMigrationHandler"/> from DI.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public ISessionMigrationHandler? SessionMigrationHandler { get; set; }
 
     /// <summary>
@@ -144,6 +156,7 @@ public class HttpServerTransportOptions
     /// Enabling a per-session <see cref="ExecutionContext"/> can be useful for setting <see cref="AsyncLocal{T}"/> variables
     /// that persist for the entire session, but it prevents you from using IHttpContextAccessor in handlers.
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public bool PerSessionExecutionContext { get; set; }
 
     /// <summary>
@@ -162,6 +175,7 @@ public class HttpServerTransportOptions
     /// tied to the open GET <c>/sse</c> request, and they are removed immediately when the client disconnects.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
     /// <summary>
@@ -182,6 +196,7 @@ public class HttpServerTransportOptions
     /// exactly as long as the SSE connection is open.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public int MaxIdleSessionCount { get; set; } = 10_000;
 
     /// <summary>

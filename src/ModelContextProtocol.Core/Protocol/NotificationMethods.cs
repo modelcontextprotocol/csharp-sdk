@@ -63,6 +63,7 @@ public static class NotificationMethods
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsListChangedNotification = "notifications/roots/list_changed";
 
     /// <summary>
@@ -80,6 +81,7 @@ public static class NotificationMethods
     /// the server can determine which messages to send based on its own configuration.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingMessageNotification = "notifications/message";
 
     /// <summary>
@@ -150,5 +152,15 @@ public static class NotificationMethods
     /// Each notification carries a complete task state for the current status, identical to what
     /// <c>tasks/get</c> would have returned at that moment.
     /// </remarks>
-    public const string TaskStatusNotification = "notifications/tasks";
+    public const string TaskStatusNotification = "notifications/tasks/status";
+
+    /// <summary>
+    /// The name of the notification sent first on a <see cref="RequestMethods.SubscriptionsListen"/>
+    /// response stream to indicate which notification types the server agreed to deliver.
+    /// </summary>
+    /// <remarks>
+    /// Introduced by the draft protocol revision (SEP-2575). The notification's params mirror the shape
+    /// of the requested notifications and include only the entries the server actually supports.
+    /// </remarks>
+    public const string SubscriptionsAcknowledgedNotification = "notifications/subscriptions/acknowledged";
 }

@@ -289,55 +289,145 @@ internal sealed partial class McpClientImpl : McpClient
 
             try
             {
-                // Send initialize request
-                string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                var initializeResponse = await SendRequestAsync(
-                    RequestMethods.Initialize,
-                    new InitializeRequestParams
+                // The draft protocol revision (SEP-2575) is the default: there is no initialize
+                // handshake. Instead, the client calls server/discover to learn the server's
+                // capabilities and then begins sending normal RPCs that carry protocolVersion /
+                // clientInfo / clientCapabilities in their per-request _meta. A null ProtocolVersion
+                // prefers the draft revision and automatically falls back to the legacy initialize
+                // handshake when the server doesn't support it. The legacy branch below runs only
+                // when the caller explicitly pins a non-draft version (opting out of draft).
+                if (_options.ProtocolVersion is null || _options.ProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+                {
+                    string draftVersion = McpSessionHandler.DraftProtocolVersion;
+
+                    // Eagerly set the negotiated version so InjectDraftMetaIfNeeded recognizes us as
+                    // a draft client when SendRequestAsync is invoked for server/discover.
+                    _negotiatedProtocolVersion = draftVersion;
+                    _sessionHandler.NegotiatedProtocolVersion = draftVersion;
+
+                    DiscoverResult? discoverResult = null;
+                    bool fallbackToLegacy = false;
+                    IList<string>? serverSupportedVersions = null;
+
+                    // Apply a probe timeout so dual-era clients don't block forever waiting for a
+                    // legacy server that silently drops unknown methods (per stdio.mdx fallback rules).
+                    // The probe timeout is configurable via McpClientOptions.DiscoverProbeTimeout and is
+                    // always bounded by InitializationTimeout (only applied when it is the tighter bound).
+                    var probeTimeout = _options.DiscoverProbeTimeout;
+                    using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(initializationCts.Token);
+                    if (_options.InitializationTimeout > probeTimeout)
                     {
-                        ProtocolVersion = requestProtocol,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo ?? DefaultImplementation,
-                        Meta = _options.InitializeMeta,
-                    },
-                    McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
-                    McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
+                        probeCts.CancelAfter(probeTimeout);
+                    }
 
-                // Store server information
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    LogServerCapabilitiesReceived(_endpointName,
-                        capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                        serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                    try
+                    {
+                        discoverResult = await SendRequestAsync(
+                            RequestMethods.ServerDiscover,
+                            new DiscoverRequestParams(),
+                            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
+                            McpJsonUtilities.JsonContext.Default.DiscoverResult,
+                            cancellationToken: probeCts.Token).ConfigureAwait(false);
+                    }
+                    catch (UnsupportedProtocolVersionException ex)
+                    {
+                        // Spec-recognized modern-server signal: -32004 with data.supported[]. The server is
+                        // modern but doesn't speak our preferred version. Retry with a mutually supported
+                        // version from data.supported[] instead of falling back to legacy initialize.
+                        fallbackToLegacy = true;
+                        serverSupportedVersions = (IList<string>)ex.Supported;
+                    }
+                    catch (MissingRequiredClientCapabilityException)
+                    {
+                        // Spec-recognized modern-server signal: -32003. The server is modern but rejected
+                        // our capability set. Surface as-is (no fallback): the user must add capabilities.
+                        throw;
+                    }
+                    catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.HeaderMismatch)
+                    {
+                        // Spec-recognized modern-server signal: -32001. The server is modern but rejected
+                        // our request envelope (e.g., the MCP-Protocol-Version HTTP header didn't match
+                        // the body _meta.io.modelcontextprotocol/protocolVersion). Surface as-is (no
+                        // fallback): falling back to legacy initialize wouldn't fix a malformed envelope.
+                        throw;
+                    }
+                    catch (McpProtocolException)
+                    {
+                        // Per spec PR #2844, the fallback MUST NOT be keyed to a single error code —
+                        // any non-modern JSON-RPC error from the probe indicates a legacy server.
+                        // Common causes include MethodNotFound from a server that has no
+                        // server/discover handler, InvalidParams from a server confused by the
+                        // SEP-2575 _meta envelope, ParseError from a server that can't handle our
+                        // payload shape, or any other transport-defined error. The three modern-server
+                        // signals (-32004 UnsupportedProtocolVersion, -32003
+                        // MissingRequiredClientCapability, -32001 HeaderMismatch) are caught above and
+                        // never reach here.
+                        fallbackToLegacy = true;
+                    }
+                    catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
+                    {
+                        // Probe timeout elapsed without a response. Per stdio.mdx fallback rules, no
+                        // response within a reasonable timeout means the server is legacy. Fall back.
+                        fallbackToLegacy = true;
+                    }
+
+                    if (discoverResult is not null && !discoverResult.SupportedVersions.Contains(draftVersion))
+                    {
+                        // Server is reachable and supports server/discover, but doesn't support the
+                        // experimental version. Fall back to legacy initialize with the highest
+                        // mutually-supported version from supportedVersions[].
+                        fallbackToLegacy = true;
+                        serverSupportedVersions = discoverResult.SupportedVersions;
+                    }
+
+                    if (fallbackToLegacy)
+                    {
+                        // Reset negotiated state and try legacy initialize.
+                        _negotiatedProtocolVersion = null;
+                        _sessionHandler.NegotiatedProtocolVersion = null;
+
+                        string fallbackVersion = serverSupportedVersions?
+                            .Where(McpSessionHandler.SupportedProtocolVersions.Contains)
+                            .OrderByDescending(v => v, StringComparer.Ordinal)
+                            .FirstOrDefault()
+                            ?? McpSessionHandler.LatestProtocolVersion;
+
+                        // Honor MinProtocolVersion: refuse to fall back below the configured minimum.
+                        // String.Compare is the spec's prescribed ordering for ISO-8601 date-based versions.
+                        if (_options.MinProtocolVersion is { } minVersion &&
+                            StringComparer.Ordinal.Compare(fallbackVersion, minVersion) < 0)
+                        {
+                            throw new McpException(
+                                $"Server does not support the configured minimum protocol version '{minVersion}'. " +
+                                (serverSupportedVersions is null
+                                    ? "The server appears to be a legacy server that requires the deprecated initialize handshake."
+                                    : $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}."));
+                        }
+
+                        await PerformLegacyInitializeAsync(fallbackVersion, initializationCts.Token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        if (_logger.IsEnabled(LogLevel.Information))
+                        {
+                            LogServerCapabilitiesReceived(_endpointName,
+                                capabilities: JsonSerializer.Serialize(discoverResult!.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                        }
+
+                        _serverCapabilities = discoverResult!.Capabilities;
+                        _serverInfo = discoverResult.ServerInfo;
+                        _serverInstructions = discoverResult.Instructions;
+                    }
                 }
-
-                _serverCapabilities = initializeResponse.Capabilities;
-                _serverInfo = initializeResponse.ServerInfo;
-                _serverInstructions = initializeResponse.Instructions;
-
-                // Validate protocol version
-                bool isResponseProtocolValid =
-                    _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
-                if (!isResponseProtocolValid)
+                else
                 {
-                    LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
-                    throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
+                    // Legacy initialize handshake. Reached only when the caller explicitly pinned a
+                    // non-draft ProtocolVersion (opting out of the draft default), so
+                    // _options.ProtocolVersion is non-null here.
+                    string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
+                    await PerformLegacyInitializeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
                 }
-
-                _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
-
-                // Update session handler with the negotiated protocol version for telemetry
-                _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
-
-                // Send initialized notification
-                await this.SendNotificationAsync(
-                    NotificationMethods.InitializedNotification,
-                    new InitializedNotificationParams(),
-                    McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
-
             }
             catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -353,6 +443,75 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         LogClientConnected(_endpointName);
+    }
+
+    /// <summary>
+    /// Performs the legacy initialize handshake (initialize request + initialized notification),
+    /// records the negotiated protocol version, and stores the server capabilities/info/instructions.
+    /// </summary>
+    private async Task PerformLegacyInitializeAsync(string requestProtocol, CancellationToken cancellationToken)
+    {
+        var initializeResponse = await SendRequestAsync(
+            RequestMethods.Initialize,
+            new InitializeRequestParams
+            {
+                ProtocolVersion = requestProtocol,
+                Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                ClientInfo = _options.ClientInfo ?? DefaultImplementation,
+                Meta = _options.InitializeMeta,
+            },
+            McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
+            McpJsonUtilities.JsonContext.Default.InitializeResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            LogServerCapabilitiesReceived(_endpointName,
+                capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+        }
+
+        _serverCapabilities = initializeResponse.Capabilities;
+        _serverInfo = initializeResponse.ServerInfo;
+        _serverInstructions = initializeResponse.Instructions;
+
+        // When the user explicitly pinned a legacy (non-draft) protocol version, the server MUST
+        // respect it. When the user pinned the draft version but we fell back (e.g., legacy server
+        // rejected server/discover), or when no version was pinned, accept any supported response.
+        // This is the spec-mandated behavior: a draft client must be able to downgrade to whatever
+        // legacy version the server advertises.
+        bool isResponseProtocolValid;
+        if (_options.ProtocolVersion is { } optionsProtocol && optionsProtocol != McpSessionHandler.DraftProtocolVersion)
+        {
+            isResponseProtocolValid = optionsProtocol == initializeResponse.ProtocolVersion;
+        }
+        else
+        {
+            isResponseProtocolValid = McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+        }
+        if (!isResponseProtocolValid)
+        {
+            LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
+            throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
+        }
+
+        // If the user set a MinProtocolVersion, also enforce it against the negotiated response
+        // (the server could have downgraded further than the version we asked for).
+        if (_options.MinProtocolVersion is { } minVersion &&
+            StringComparer.Ordinal.Compare(initializeResponse.ProtocolVersion, minVersion) < 0)
+        {
+            throw new McpException(
+                $"Server negotiated protocol version '{initializeResponse.ProtocolVersion}' is below the configured minimum '{minVersion}'.");
+        }
+
+        _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
+        _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
+
+        await this.SendNotificationAsync(
+            NotificationMethods.InitializedNotification,
+            new InitializedNotificationParams(),
+            McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -467,6 +626,8 @@ internal sealed partial class McpClientImpl : McpClient
 
         const int maxRetries = 10;
 
+        InjectDraftMetaIfNeeded(request);
+
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
             JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
@@ -504,6 +665,7 @@ internal sealed partial class McpClientImpl : McpClient
                     }
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
+                    InjectDraftMetaIfNeeded(request);
                 }
                 else if (inputRequiredResult.RequestState is not null)
                 {
@@ -513,9 +675,13 @@ internal sealed partial class McpClientImpl : McpClient
                     paramsObj.Remove("inputResponses");
 
                     request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
+                    InjectDraftMetaIfNeeded(request);
                 }
                 else
                 {
+                    // An input_required result carrying neither inputRequests nor requestState is
+                    // malformed: there is nothing to resolve and nothing to continue, so retrying the
+                    // unchanged request would just loop until maxRetries. Fail fast instead.
                     throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
                 }
 
@@ -526,6 +692,32 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         throw new McpException($"Server returned InputRequiredResult more than {maxRetries} times.");
+    }
+
+    /// <summary>
+    /// Injects the draft-protocol per-request <c>_meta</c> fields (protocol version, client info,
+    /// client capabilities) into the request when this client is using the draft protocol revision
+    /// (SEP-2575). No-op for legacy clients.
+    /// </summary>
+    private void InjectDraftMetaIfNeeded(JsonRpcRequest request)
+    {
+        if (!IsDraftProtocol())
+        {
+            return;
+        }
+
+        // Initialize is never sent under the draft revision, but guard defensively in case a caller
+        // routes it through here (e.g., during back-compat fallback negotiation).
+        if (request.Method == RequestMethods.Initialize)
+        {
+            return;
+        }
+
+        McpSessionHandler.InjectDraftMeta(
+            request,
+            _negotiatedProtocolVersion!,
+            _options.ClientInfo ?? DefaultImplementation,
+            _options.Capabilities ?? new ClientCapabilities());
     }
 
     /// <inheritdoc/>
@@ -563,7 +755,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>Logs a warning if the session negotiated MRTR but the server sent a legacy JSON-RPC request.</summary>
     private void WarnIfLegacyRequestOnMrtrSession(string method)
     {
-        if (_negotiatedProtocolVersion == McpSessionHandler.DraftProtocolVersion)
+        if (IsDraftProtocol())
         {
             LogLegacyRequestOnMrtrSession(_endpointName, method);
         }
@@ -572,7 +764,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>Logs a warning if the session did not negotiate MRTR but the server sent an InputRequiredResult.</summary>
     private void WarnIfInputRequiredResultOnNonMrtrSession(string method)
     {
-        if (_negotiatedProtocolVersion != McpSessionHandler.DraftProtocolVersion)
+        if (!IsDraftProtocol())
         {
             LogInputRequiredResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }

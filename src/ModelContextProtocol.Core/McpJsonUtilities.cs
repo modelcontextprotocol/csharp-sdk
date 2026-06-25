@@ -84,6 +84,17 @@ public static partial class McpJsonUtilities
         return false; // No type keyword found.
     }
 
+    // Per SEP-2106, a tool's outputSchema may be any valid JSON Schema document — not just
+    // schemas with type:"object". Validation is therefore reduced to a structural check
+    // matching JSON Schema 2020-12: a schema may be either a JSON object (the usual form
+    // with keywords like "type", "properties", etc.) or a boolean (`true` matches anything,
+    // `false` matches nothing). Stricter keyword-level validation is intentionally not
+    // performed. Pre-2026-06-30 clients still receive the legacy wrapped wire shape — that
+    // wiring lives in AIFunctionMcpServerTool.CreateStructuredResponse and McpServerImpl's
+    // listToolsHandler.
+    internal static bool IsValidToolOutputSchema(JsonElement element) =>
+        element.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False;
+
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -123,8 +134,14 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
     [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(DiscoverRequestParams))]
+    [JsonSerializable(typeof(DiscoverResult))]
     [JsonSerializable(typeof(ElicitRequestParams))]
     [JsonSerializable(typeof(ElicitResult))]
+    [JsonSerializable(typeof(MissingRequiredClientCapabilityErrorData))]
+    [JsonSerializable(typeof(SubscriptionsListenRequestParams))]
+    [JsonSerializable(typeof(SubscriptionsAcknowledgedNotificationParams))]
+    [JsonSerializable(typeof(UnsupportedProtocolVersionErrorData))]
     [JsonSerializable(typeof(UrlElicitationRequiredErrorData))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
@@ -190,6 +207,11 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
+    [JsonSerializable(typeof(JsonElement))]
+    [JsonSerializable(typeof(Implementation))]
+    [JsonSerializable(typeof(ClientCapabilities))]
+    [JsonSerializable(typeof(ServerCapabilities))]
+    [JsonSerializable(typeof(LoggingLevel))]
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]

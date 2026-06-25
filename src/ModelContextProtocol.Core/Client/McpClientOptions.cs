@@ -52,17 +52,51 @@ public sealed class McpClientOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The protocol version is a key part of the initialization handshake. The client and server must
-    /// agree on a compatible protocol version to communicate successfully.
+    /// When non-<see langword="null"/>, this version is requested from the server. Setting it to a
+    /// legacy (non-draft) version such as <c>2025-11-25</c> opts out of the draft revision and forces
+    /// the <c>initialize</c> handshake; the handshake then fails if the server's negotiated version
+    /// does not match.
     /// </para>
     /// <para>
-    /// If non-<see langword="null"/>, this version will be sent to the server, and the handshake
-    /// will fail if the version in the server's response does not match this version.
-    /// If <see langword="null"/>, the client will request the latest version supported by the server
-    /// but will allow any supported version that the server advertises in its response.
+    /// When <see langword="null"/> (the default), the client prefers the draft revision
+    /// (<see cref="McpSession.DraftProtocolVersion"/>): it probes with <c>server/discover</c> and
+    /// automatically falls back to a legacy <c>initialize</c> handshake, downgrading to any version
+    /// the server advertises, when the server does not support the draft revision.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum protocol version the client will accept during version negotiation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When negotiating with a server that advertises multiple supported versions, or when falling back
+    /// to a legacy server, the client will refuse any version older than this minimum and surface an
+    /// <see cref="McpException"/> instead.
+    /// </para>
+    /// <para>
+    /// This is useful when the client requires features (such as the draft revision's removal of the
+    /// <c>initialize</c> handshake or <c>Mcp-Session-Id</c>) that are not available in older protocol
+    /// revisions. Because the client already prefers the draft revision by default, setting this to
+    /// <see cref="McpSession.DraftProtocolVersion"/> disables the automatic legacy-server fallback
+    /// that otherwise switches to the <c>initialize</c> handshake.
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/> (the default), the client falls back to any version the server
+    /// advertises, including legacy versions such as 2025-11-25.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// // The draft revision is already the default; pin the minimum to refuse the legacy fallback.
+    /// var clientOptions = new McpClientOptions
+    /// {
+    ///     MinProtocolVersion = McpSession.DraftProtocolVersion,
+    /// };
+    /// </code>
+    /// </example>
+    /// </remarks>
+    public string? MinProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.
@@ -82,6 +116,52 @@ public sealed class McpClientOptions
     /// </para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
+    /// before falling back to the legacy <c>initialize</c> handshake.
+    /// </summary>
+    /// <value>
+    /// The probe timeout. The default value is 5 seconds. Use
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> to disable the separate probe timeout
+    /// and rely solely on <see cref="InitializationTimeout"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// This timeout only has an effect when the client prefers the draft protocol revision &#8212; that is,
+    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or
+    /// <see cref="McpSession.DraftProtocolVersion"/>. In that mode the client first probes the server
+    /// with a <c>server/discover</c> request. A legacy server that predates the draft revision may
+    /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
+    /// client concludes the server is legacy and falls back to the <c>initialize</c> handshake on the
+    /// same connection. When the caller pins a legacy <see cref="ProtocolVersion"/>, no probe is issued
+    /// and this value has no effect.
+    /// </para>
+    /// <para>
+    /// The default is intentionally short so that dual-era clients fall back quickly against legacy
+    /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
+    /// satellite links) where a short probe could trigger the legacy fallback before a draft-capable
+    /// server has had a chance to respond. The probe is always also bounded by
+    /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
+    /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
+    /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value is not positive and is not <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
+    public TimeSpan DiscoverProbeTimeout
+    {
+        get;
+        set
+        {
+            if (value <= TimeSpan.Zero && value != Timeout.InfiniteTimeSpan)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "must be positive or Timeout.InfiniteTimeSpan.");
+            }
+            field = value;
+        }
+    } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Gets or sets the container of handlers used by the client for processing protocol messages.

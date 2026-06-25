@@ -14,6 +14,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     public override Implementation? ClientInfo => server.ClientInfo;
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
 
     /// <summary>

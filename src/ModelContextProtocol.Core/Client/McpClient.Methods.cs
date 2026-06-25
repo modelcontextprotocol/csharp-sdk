@@ -1174,7 +1174,10 @@ public abstract partial class McpClient : McpSession
         {
             Name = requestParams.Name,
             Arguments = requestParams.Arguments,
-            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+            // The SEP-2663 Tasks extension is draft-only. On a legacy session, send a plain tools/call
+            // (no task capability envelope) so the server returns a direct CallToolResult and never
+            // creates a task.
+            Meta = IsDraftProtocol() ? GetMetaWithTaskCapability(requestParams.Meta) : requestParams.Meta,
         };
 
         JsonRpcRequest jsonRpcRequest = new()
@@ -1208,6 +1211,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
         SetLoggingLevelAsync(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
 
@@ -1219,6 +1223,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         return SetLoggingLevelAsync(
@@ -1238,6 +1243,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(
         SetLevelRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -1282,6 +1288,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(GetTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksGet,
@@ -1304,6 +1311,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(UpdateTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksUpdate,
@@ -1343,6 +1351,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(CancelTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksCancel,
@@ -1373,30 +1382,42 @@ public abstract partial class McpClient : McpSession
 
     // Per SEP-2663 §51, the per-request opt-in uses the SEP-2575 capabilities envelope:
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    // TODO: replace the literal with a shared NotificationMethods.ClientCapabilitiesMetaKey once
-    // the SEP-2575 plumbing lands and drop the local consts.
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-    private const string ExtensionsKey = "extensions";
-
     private static JsonObject GetMetaWithTaskCapability(JsonObject? existingMeta)
     {
         JsonObject meta = existingMeta is not null
             ? (JsonObject)existingMeta.DeepClone()
             : [];
 
-        if (meta[ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
+        if (meta[MetaKeys.ClientCapabilities] is not JsonObject capsRoot)
         {
             capsRoot = [];
-            meta[ClientCapabilitiesMetaKey] = capsRoot;
+            meta[MetaKeys.ClientCapabilities] = capsRoot;
         }
 
-        if (capsRoot[ExtensionsKey] is not JsonObject extensionsRoot)
+        if (capsRoot["extensions"] is not JsonObject extensionsRoot)
         {
             extensionsRoot = [];
-            capsRoot[ExtensionsKey] = extensionsRoot;
+            capsRoot["extensions"] = extensionsRoot;
         }
 
         extensionsRoot.TryAdd(McpExtensions.Tasks, new JsonObject());
         return meta;
+    }
+
+    /// <summary>
+    /// Throws when the negotiated protocol version is not the draft revision. The SEP-2663 Tasks
+    /// extension is draft-only, and a task id only ever exists when the session negotiated draft, so
+    /// invoking <c>tasks/get</c>, <c>tasks/update</c>, or <c>tasks/cancel</c> on a legacy session is a
+    /// programming error rather than a recoverable protocol condition.
+    /// </summary>
+    private void ThrowIfTasksNotSupported(string operationName)
+    {
+        if (!IsDraftProtocol())
+        {
+            throw new InvalidOperationException(
+                $"'{operationName}' requires the draft protocol revision ('{DraftProtocolVersion}'). " +
+                $"The negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'. " +
+                "The Tasks extension is only available under the draft revision.");
+        }
     }
 }

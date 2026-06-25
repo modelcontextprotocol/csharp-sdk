@@ -70,10 +70,10 @@ public abstract class TaskStatusNotificationParams : NotificationParams
     public required DateTimeOffset LastUpdatedAt { get; set; }
 
     /// <summary>
-    /// Gets or sets the time-to-live duration from creation in milliseconds, or <see langword="null"/> for unlimited.
+    /// Gets or sets the time-to-live duration from creation, or <see langword="null"/> for unlimited.
     /// </summary>
     [JsonPropertyName("ttlMs")]
-    public long? TtlMs { get; set; }
+    public TimeSpan? TimeToLive { get; set; }
 
     /// <summary>
     /// Gets or sets the suggested polling interval in milliseconds.
@@ -247,7 +247,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
             };
 
             notification.StatusMessage = statusMessage;
-            notification.TtlMs = ttlMs;
+            notification.TimeToLive = ttlMs is null ? null : TimeSpan.FromMilliseconds(ttlMs.Value);
             notification.PollIntervalMs = pollIntervalMs;
             notification.Meta = meta;
 
@@ -283,9 +283,9 @@ public abstract class TaskStatusNotificationParams : NotificationParams
             writer.WriteString("createdAt", value.CreatedAt);
             writer.WriteString("lastUpdatedAt", value.LastUpdatedAt);
 
-            if (value.TtlMs is not null)
+            if (value.TimeToLive is not null)
             {
-                writer.WriteNumber("ttlMs", value.TtlMs.Value);
+                writer.WriteNumber("ttlMs", (long)value.TimeToLive.Value.TotalMilliseconds);
             }
 
             if (value.PollIntervalMs is not null)

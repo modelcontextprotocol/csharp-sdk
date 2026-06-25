@@ -31,7 +31,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Debug));
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -191,7 +191,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             // Cancel the token during the callback. The retry loop will throw
@@ -219,7 +219,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         var elicitHandlerCalled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = async (request, ct) =>
         {
             // Signal that the MRTR round trip reached the client, then block indefinitely.
@@ -250,6 +250,29 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // The client call should fail (server disposed mid-MRTR).
         await Assert.ThrowsAnyAsync<Exception>(async () => await callTask);
+
+        // Disposing the server while a continuation is suspended should log the cancellation of the
+        // pending MRTR continuation once at Debug level (this is the only path that reaches the
+        // continuation-cancellation log now that HTTP draft is always sessionless). Poll for the
+        // async cancellation to propagate through the handler task.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("pending MRTR continuation"))
+            && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        var mrtrCancelledLog = MockLoggerProvider.LogMessages
+            .Where(m => m.Message.Contains("pending MRTR continuation"))
+            .ToList();
+        var log = Assert.Single(mrtrCancelledLog);
+        Assert.Equal(LogLevel.Debug, log.LogLevel);
+        Assert.Contains("1", log.Message);
+
+        // The handler's OperationCanceledException must be silently observed during disposal, not
+        // logged as an error.
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel >= LogLevel.Error && m.Message.Contains("cancellation-test-tool"));
     }
 
     [Fact]
@@ -263,7 +286,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // (c) the cancellation registration in AwaitMrtrHandlerAsync bridges to handlerCts.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -301,7 +324,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
 
         int elicitationCount = 0;
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             Interlocked.Increment(ref elicitationCount);
@@ -345,7 +368,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         StartServer();
         bool handlerCompleted = false;
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -387,7 +410,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // (after resuming from ElicitAsync), the error is logged at Error level.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -417,7 +440,7 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
         // not an error. It should not be logged via ToolCallError at Error level.
         StartServer();
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
