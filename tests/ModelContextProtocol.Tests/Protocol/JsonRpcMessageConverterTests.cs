@@ -766,7 +766,7 @@ public static class JsonRpcMessageConverterTests
     {
         // Per JSON-RPC 2.0 §5.1, when an error occurs before the request id can be determined
         // (parse error or invalid request), the server MUST respond with id=null. This shape is
-        // produced by some peers (e.g. Python's simple-streamablehttp-stateless on a draft probe)
+        // produced by some peers (e.g. Python's simple-streamablehttp-stateless on a 2026-07-28 probe)
         // and must be accepted so the HTTP-fallback path can recognize the structured signal.
         string json = """{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Bad Request"}}""";
 

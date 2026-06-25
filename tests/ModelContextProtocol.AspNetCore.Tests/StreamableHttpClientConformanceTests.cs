@@ -20,7 +20,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     private WebApplication? _app;
     private readonly List<string> _deleteRequestSessionIds = [];
 
-    // Don't add the delete endpoint by default to ensure the client still works with basic sessionless servers.
+    // Don't add the delete endpoint by default to ensure the client still works with basic stateless servers.
     private async Task StartAsync(bool enableDelete = false)
     {
         Builder.Services.Configure<JsonOptions>(options =>
@@ -128,7 +128,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task CanCallToolOnSessionlessStreamableHttpServer()
+    public async Task CanCallToolOnStatelessStreamableHttpServer()
     {
         await StartAsync();
 

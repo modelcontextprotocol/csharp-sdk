@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Introduced by the draft protocol revision (SEP-2575). The client uses this request to open a
+/// Introduced by the 2026-07-28 protocol revision (SEP-2575). The client uses this request to open a
 /// long-lived channel for receiving notifications outside the context of a specific request.
 /// </para>
 /// <para>

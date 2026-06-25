@@ -14,10 +14,10 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// Regression tests for the draft-protocol-to-legacy fallback path over Streamable HTTP. These
+/// Regression tests for the 2026-07-28-to-legacy fallback path over Streamable HTTP. These
 /// hand-craft minimal HTTP servers that mimic real-world peer behavior (e.g. Python's
 /// <c>simple-streamablehttp-stateless</c> returns a JSON-RPC error envelope in a <c>400</c> body
-/// on a draft probe; vanilla Go does the same on <c>POST /</c>) so the client's HTTP-fallback
+/// on a 2026-07-28 probe; vanilla Go does the same on <c>POST /</c>) so the client's HTTP-fallback
 /// logic can be exercised in isolation without the cross-SDK harness.
 /// </summary>
 /// <remarks>
@@ -27,10 +27,10 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </para>
 /// <list type="number">
 ///   <item>
-///     <see cref="StreamableHttpClientSessionTransport"/> only surfaced the three modern draft
-///     error codes (<c>-32004</c>, <c>-32003</c>, <c>-32001</c>) as <see cref="McpProtocolException"/>;
+///     <see cref="StreamableHttpClientSessionTransport"/> only surfaced the three error codes
+///     introduced by the 2026-07-28 revision (<c>-32022</c>, <c>-32021</c>, <c>-32020</c>) as <see cref="McpProtocolException"/>;
 ///     any other JSON-RPC error code in a <c>400</c> body (e.g. <c>-32600</c> from a legacy server
-///     that doesn't understand the draft <c>_meta</c> envelope) threw <see cref="HttpRequestException"/>
+///     that doesn't understand the 2026-07-28 <c>_meta</c> envelope) threw <see cref="HttpRequestException"/>
 ///     and bypassed the connect-time fallback logic. Per spec PR #2844, the fallback must trigger
 ///     on ANY non-modern JSON-RPC error in a <c>400</c> body.
 ///   </item>
@@ -43,7 +43,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 ///   </item>
 /// </list>
 /// </remarks>
-public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
 
@@ -84,13 +84,13 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
     }
 
     /// <summary>
-    /// Mimics Python's <c>simple-streamablehttp-stateless</c> on a draft probe: returns
+    /// Mimics Python's <c>simple-streamablehttp-stateless</c> on a 2026-07-28 probe: returns
     /// <c>400</c> + JSON-RPC <c>-32600</c> ("Bad Request: Unsupported protocol version") for the
     /// initial <c>server/discover</c>, then performs a normal legacy <c>initialize</c> handshake
     /// when the client falls back.
     /// </summary>
     [Fact]
-    public async Task DraftClient_AgainstLegacyHttpServer_FallsBack_To_Initialize_When_400_Contains_JsonRpcError()
+    public async Task Client_AgainstLegacyHttpServer_FallsBack_To_Initialize_When_400_Contains_JsonRpcError()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -107,11 +107,11 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
                 return;
             }
 
-            // Draft probe: simulate a legacy server that rejects the unknown protocol version with
+            // 2026-07-28 probe: simulate a legacy server that rejects the unknown protocol version with
             // a -32600 envelope (matches Python's wire shape verified in cross-SDK testing).
             if (request.Method == RequestMethods.ServerDiscover)
             {
-                await WriteJsonRpcErrorAsync(context, HttpStatusCode.BadRequest, code: -32600, message: "Bad Request: Unsupported protocol version: draft");
+                await WriteJsonRpcErrorAsync(context, HttpStatusCode.BadRequest, code: -32600, message: "Bad Request: Unsupported protocol version: 2026-07-28");
                 return;
             }
 
@@ -157,10 +157,9 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
 
@@ -170,12 +169,12 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
     }
 
     /// <summary>
-    /// Mimics vanilla Go: returns <c>400</c> + JSON-RPC <c>-32004</c> with
-    /// <c>data.supported[]</c> on a draft probe so the client retries legacy
+    /// Mimics vanilla Go: returns <c>400</c> + JSON-RPC <c>-32022</c> with
+    /// <c>data.supported[]</c> on a 2026-07-28 probe so the client retries legacy
     /// <c>initialize</c> with one of the advertised versions.
     /// </summary>
     [Fact]
-    public async Task DraftClient_OnUnsupportedProtocolVersion_AdoptsStreamableHttp_NoSseFallback()
+    public async Task Client_OnUnsupportedProtocolVersion_AdoptsStreamableHttp_NoSseFallback()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -194,12 +193,12 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
 
             if (request.Method == RequestMethods.ServerDiscover)
             {
-                // -32004 with the spec-shaped data: client should retry with one of supported[].
+                // -32022 with the spec-shaped data: client should retry with one of supported[].
                 // Use the typed payload type so the source-generated serializer can handle it.
                 var data = JsonSerializer.SerializeToNode(new UnsupportedProtocolVersionErrorData
                 {
                     Supported = new List<string> { "2025-11-25" },
-                    Requested = "draft",
+                    Requested = "2026-07-28",
                 }, GetJsonTypeInfo<UnsupportedProtocolVersionErrorData>());
 
                 var rpcError = new JsonRpcError
@@ -245,20 +244,19 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
     }
 
     /// <summary>
-    /// A 400 with a JSON-RPC <c>-32001 HeaderMismatch</c> envelope must be surfaced to the
-    /// caller (no legacy fallback) — falling back wouldn't fix a malformed envelope.
+    /// A 400 with a JSON-RPC <c>-32020 HeaderMismatch</c> envelope must be surfaced to the
+    /// caller (no legacy fallback). Falling back wouldn't fix a malformed envelope.
     /// </summary>
     [Fact]
-    public async Task DraftClient_OnHeaderMismatch_400_Surfaces_McpProtocolException_NoFallback()
+    public async Task Client_OnHeaderMismatch_400_Surfaces_McpProtocolException_NoFallback()
     {
         var ct = TestContext.Current.CancellationToken;
         bool initializeReceived = false;
@@ -295,7 +293,7 @@ public class DraftHttpFallbackTests(ITestOutputHelper outputHelper) : KestrelInM
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ProtocolVersion = McpSession.DraftProtocolVersion,
+                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 

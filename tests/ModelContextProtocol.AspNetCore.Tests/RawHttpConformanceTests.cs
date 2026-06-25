@@ -15,11 +15,10 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// Wire-format conformance tests for the Streamable HTTP server driven directly via <see cref="HttpClient"/>,
 /// without going through <see cref="ModelContextProtocol.Client.McpClient"/>. These hand-craft HTTP
 /// requests and assert the exact status codes / response bodies the server emits for the SEP-2575 +
-/// SEP-2567 (sessionless, no-initialize) draft revision.
+/// SEP-2567 2026-07-28 protocol revision.
 /// </summary>
 public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
     private const string ProtocolVersionHeader = "MCP-Protocol-Version";
 
     private WebApplication? _app;
@@ -83,22 +82,22 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         return JsonNode.Parse(body)!;
     }
 
-    private static string DraftMetaFragment(string protocolVersion = DraftVersion) =>
+    private static string July2026ProtocolMetaFragment(string protocolVersion = McpHttpHeaders.July2026ProtocolVersion) =>
         @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":""" + protocolVersion +
         @""",""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
         @"""io.modelcontextprotocol/clientCapabilities"":{}}";
 
     [Fact]
-    public async Task DraftToolsCall_WithFullMeta_Succeeds_200()
+    public async Task July2026ToolsCall_WithFullMeta_Succeeds_200()
     {
         await StartAsync();
 
         var body =
             @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""hi""}," +
-            DraftMetaFragment() + "}}";
+            July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, DraftVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -107,7 +106,8 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal("echo:hi", json["result"]!["content"]![0]!["text"]!.GetValue<string>());
 
-        // Per SEP-2567 draft is sessionless: server MUST NOT issue a Mcp-Session-Id.
+        // Per SEP-2567, starting with the 2026-07-28 protocol revision Streamable HTTP no longer
+        // supports sessions: the server MUST NOT issue a Mcp-Session-Id.
         Assert.False(response.Headers.Contains("mcp-session-id"));
     }
 
@@ -116,17 +116,17 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     {
         await StartAsync();
 
-        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + DraftMetaFragment() + "}}";
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, DraftVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(DraftVersion, supported);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
 
         // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
         // safest defaults (immediately stale, not shareable) when the application hasn't customized.
@@ -136,13 +136,13 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task DraftPost_WithUnsupportedProtocolVersionHeader_Returns400_With_Minus32004()
+    public async Task July2026Post_WithUnsupportedProtocolVersionHeader_Returns400_With_Minus32022()
     {
         await StartAsync();
 
         var body =
             @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""x""}," +
-            DraftMetaFragment("9999-99-99") + "}}";
+            July2026ProtocolMetaFragment("9999-99-99") + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         request.Headers.Add(ProtocolVersionHeader, "9999-99-99");
@@ -150,7 +150,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Add("Mcp-Name", "echo");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
-        // Per spec/streamable-http.mdx the server MUST return 400 Bad Request with -32004 and a data payload
+        // Per spec/streamable-http.mdx the server MUST return 400 Bad Request with -32022 and a data payload
         // listing the supported versions. The dual-era client uses this to switch versions without fallback.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
@@ -160,25 +160,25 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(DraftVersion, supported);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
     }
 
     [Fact]
-    public async Task DraftPost_ProtocolVersionHeaderMetaMismatch_ReturnsHeaderMismatch_Minus32001()
+    public async Task July2026Post_ProtocolVersionHeaderMetaMismatch_ReturnsHeaderMismatch_Minus32020()
     {
         await StartAsync();
 
-        // The MCP-Protocol-Version header declares the draft revision, but the per-request _meta declares a
+        // The MCP-Protocol-Version header declares the 2026-07-28 protocol revision, but the per-request _meta declares a
         // different (still individually supported) version. Per SEP-2575 the server MUST reject the
-        // disagreement. It uses -32001 HeaderMismatch (the same code as the Mcp-Method/Mcp-Name header-vs-body
-        // checks) so a conformant draft client surfaces the error instead of mistaking the modern server for a
+        // disagreement. It uses -32020 HeaderMismatch (the same code as the Mcp-Method/Mcp-Name header-vs-body
+        // checks) so a conformant client on this revision surfaces the error instead of mistaking the modern server for a
         // legacy one and falling back to the initialize handshake.
         var body =
             @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" +
-            DraftMetaFragment("2025-11-25") + "}}";
+            July2026ProtocolMetaFragment("2025-11-25") + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, DraftVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 

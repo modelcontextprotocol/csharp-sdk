@@ -34,8 +34,8 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Arrange
 
         // Act
-        // ping was removed in the draft revision (SEP-2575), so pin to the latest stable protocol
-        // version to keep exercising the legacy ping RPC. Draft liveness relies on the transport.
+        // ping was removed in the 2026-07-28 protocol revision (SEP-2575), so pin to the latest stable
+        // protocol version to keep exercising the legacy ping RPC. On the 2026-07-28 protocol, liveness relies on the transport.
         await using var client = await GetClientAsync(new McpClientOptions { ProtocolVersion = "2025-11-25" });
         await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -49,8 +49,8 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Arrange
 
         // Act
-        // Stateful Streamable HTTP only provisions a session ID under the legacy handshake; the draft
-        // revision is sessionless. Pin to the latest stable version to keep covering session-ID provisioning.
+        // Stateful Streamable HTTP only provisions a session ID under the legacy handshake. Starting with the
+        // 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin to the latest stable version to keep covering session-ID provisioning.
         await using var client = await GetClientAsync(new McpClientOptions { ProtocolVersion = "2025-11-25" });
 
         // Assert

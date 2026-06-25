@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Verifies that the built-in <c>ping</c> handler is gated by protocol version.
-/// SEP-2575 (the draft 2026-07-28 revision) removes <c>ping</c>; servers must
+/// SEP-2575 (the 2026-07-28 revision) removes <c>ping</c>; servers must
 /// respond with <c>-32601 MethodNotFound</c>. Legacy protocol versions still
 /// support <c>ping</c> per the spec.
 /// </summary>
@@ -23,12 +23,12 @@ public sealed class PingProtocolGatingTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Ping_OnDraftSession_ReturnsMethodNotFound()
+    public async Task Ping_OnJuly2026ProtocolSession_ReturnsMethodNotFound()
     {
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpSession.DraftProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
         });
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>

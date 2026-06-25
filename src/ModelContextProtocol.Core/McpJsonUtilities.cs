@@ -89,7 +89,7 @@ public static partial class McpJsonUtilities
     // matching JSON Schema 2020-12: a schema may be either a JSON object (the usual form
     // with keywords like "type", "properties", etc.) or a boolean (`true` matches anything,
     // `false` matches nothing). Stricter keyword-level validation is intentionally not
-    // performed. Pre-2026-06-30 clients still receive the legacy wrapped wire shape — that
+    // performed. Pre-2026-07-28 clients still receive the legacy wrapped wire shape — that
     // wiring lives in AIFunctionMcpServerTool.CreateStructuredResponse and McpServerImpl's
     // listToolsHandler.
     internal static bool IsValidToolOutputSchema(JsonElement element) =>

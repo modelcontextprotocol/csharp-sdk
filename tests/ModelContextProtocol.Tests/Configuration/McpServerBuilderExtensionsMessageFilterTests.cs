@@ -74,7 +74,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     {
         List<string> messageTypes = [];
 
-        // Under the draft protocol the client performs a server/discover + tools/list exchange (no
+        // Under the 2026-07-28 protocol the client performs a server/discover + tools/list exchange (no
         // fire-and-forget initialized notification), so the tools/list request is a deterministic
         // synchronization point. Gate recording to it and signal once the filter finishes so a
         // regression that invokes the filter pipeline more than once per message surfaces as an extra entry.
@@ -112,7 +112,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     [Fact]
     public async Task AddIncomingMessageFilter_Multiple_Filters_Execute_In_Order()
     {
-        // Under the draft protocol the client performs a server/discover + tools/list exchange (no
+        // Under the 2026-07-28 protocol the client performs a server/discover + tools/list exchange (no
         // fire-and-forget initialized notification), so the tools/list request is a deterministic
         // synchronization point. Gate the filter logging to it and signal once the outermost filter
         // finishes so the assertions observe a complete, stable log.
@@ -393,7 +393,7 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
         var clientOptions = new McpClientOptions
         {
             // This test observes the legacy outgoing flow on the server side: the initialize response and
-            // the server->client sampling/createMessage request. Under the draft protocol those are replaced
+            // the server->client sampling/createMessage request. Under the 2026-07-28 protocol those are replaced
             // by server/discover and implicit MRTR (InputRequiredResult), which is covered by MrtrIntegrationTests.
             // Pin to the latest stable version to keep exercising the legacy server->client request path here.
             ProtocolVersion = LatestStableVersion,

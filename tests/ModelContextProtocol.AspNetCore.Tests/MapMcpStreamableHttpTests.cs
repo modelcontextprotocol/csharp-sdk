@@ -486,8 +486,8 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        // Polling via an event-stream store is a stateful-session feature. Under draft, Streamable HTTP
-        // is sessionless, so pin to the latest stable version to keep exercising the stateful path.
+        // Polling via an event-stream store is a stateful-session feature. Starting with the 2026-07-28
+        // protocol revision, Streamable HTTP no longer supports sessions, so pin to the latest stable version to keep exercising the stateful path.
         await using var mcpClient = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25");
 
         await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
@@ -541,7 +541,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         };
 
         // DELETE requests are only sent when there's a session ID to delete - a legacy stateful
-        // behavior. Under draft, Streamable HTTP is sessionless. Pin to the latest stable version.
+        // behavior. Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin to the latest stable version.
         await using var mcpClient = await ConnectAsync(transportOptions: transportOptions, configureClient: options => options.ProtocolVersion = "2025-11-25");
 
         // Do a tool call to ensure there's more than just the initialize request
@@ -722,7 +722,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         // Connect the first client and verify it works.
         // Server-side session expiry and reconnect rely on session IDs, a legacy stateful behavior.
-        // Under draft, Streamable HTTP is sessionless. Pin both clients to the latest stable version.
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin both clients to the latest stable version.
         var client1 = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25");
         var originalSessionId = client1.SessionId;
         Assert.NotNull(originalSessionId);
@@ -797,7 +797,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         // The stateful (else) branch below asserts session-ID behavior, which only exists under the
-        // legacy handshake; the draft revision is sessionless. Pin legacy only for the stateful variant.
+        // legacy handshake. Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin legacy only for the stateful variant.
         await using var client = await ConnectAsync(configureClient: options =>
         {
             if (!Stateless)

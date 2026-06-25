@@ -158,7 +158,7 @@ public static class RequestMethods
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This RPC is introduced in the draft protocol revision (SEP-2575) as the canonical way for a client
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
     /// to learn what a server supports without performing the legacy <c>initialize</c> handshake.
     /// </para>
     /// <para>
@@ -166,7 +166,7 @@ public static class RequestMethods
     /// information, and optional usage instructions.
     /// </para>
     /// <para>
-    /// Servers SHOULD implement this method. Legacy clients MAY ignore it. Draft-revision clients
+    /// Servers SHOULD implement this method. Legacy clients MAY ignore it. Clients on the 2026-07-28 revision
     /// typically call this once during connection establishment.
     /// </para>
     /// </remarks>
@@ -178,7 +178,7 @@ public static class RequestMethods
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This RPC is introduced in the draft protocol revision (SEP-2575) and replaces the unsolicited
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) and replaces the unsolicited
     /// HTTP GET endpoint and the legacy <see cref="ResourcesSubscribe"/> / <see cref="ResourcesUnsubscribe"/>
     /// request methods.
     /// </para>

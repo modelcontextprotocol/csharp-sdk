@@ -4,9 +4,9 @@ using System.Text.Json;
 namespace ModelContextProtocol.Tests.Protocol;
 
 /// <summary>
-/// Serialization tests for the error data payloads introduced by the draft protocol revision (SEP-2575).
+/// Serialization tests for the error data payloads introduced by the 2026-07-28 protocol revision (SEP-2575).
 /// </summary>
-public static class DraftErrorDataTests
+public static class July2026ProtocolErrorDataTests
 {
     [Fact]
     public static void UnsupportedProtocolVersionErrorData_SerializationRoundTrip_PreservesAllProperties()

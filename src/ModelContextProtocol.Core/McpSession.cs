@@ -28,27 +28,6 @@ namespace ModelContextProtocol;
 /// </remarks>
 public abstract partial class McpSession : IAsyncDisposable
 {
-    /// <summary>The latest stable protocol revision this SDK supports.</summary>
-    /// <remarks>
-    /// Set <see cref="McpClientOptions.ProtocolVersion"/> or <see cref="McpServerOptions.ProtocolVersion"/>
-    /// to this value to explicitly pin to the current stable revision instead of accepting whatever
-    /// the runtime negotiates.
-    /// </remarks>
-    public const string LatestProtocolVersion = McpSessionHandler.LatestProtocolVersion;
-
-    /// <summary>The in-progress draft protocol revision this SDK supports.</summary>
-    /// <remarks>
-    /// The draft revision removes the <c>initialize</c> handshake (SEP-2575) and the
-    /// <c>Mcp-Session-Id</c> header (SEP-2567), so it is sessionless on the wire and over HTTP is only
-    /// served when the server is stateless. A stateful (<c>HttpServerTransportOptions.Stateless = false</c>)
-    /// server refuses a sessionless draft request so that a dual-era client downgrades to the legacy
-    /// <c>initialize</c> flow. Clients prefer this revision by default and automatically fall back to the
-    /// legacy flow when the server does not support it; pin <see cref="McpClientOptions.ProtocolVersion"/>
-    /// to a legacy version to opt out, or set <see cref="McpClientOptions.MinProtocolVersion"/> to this
-    /// value to keep the draft preference while refusing the legacy fallback.
-    /// </remarks>
-    public const string DraftProtocolVersion = McpSessionHandler.DraftProtocolVersion;
-
     /// <summary>Gets an identifier associated with the current MCP session.</summary>
     /// <remarks>
     /// Typically populated in transports supporting multiple sessions, such as Streamable HTTP or SSE.
@@ -67,15 +46,16 @@ public abstract partial class McpSession : IAsyncDisposable
     public abstract string? NegotiatedProtocolVersion { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the negotiated protocol version is the draft revision
-    /// (<see cref="DraftProtocolVersion"/>, which carries SEP-2575 + SEP-2567 + MRTR).
+    /// Gets a value indicating whether the negotiated protocol version is <c>2026-07-28</c> or later: the
+    /// revision that removed the <c>initialize</c> handshake (SEP-2575) and <c>Mcp-Session-Id</c> (SEP-2567)
+    /// and enabled MRTR (SEP-2322).
     /// </summary>
     /// <remarks>
     /// Returns <see langword="false"/> when no version has been negotiated yet. This is the shared
-    /// definition of "is this peer speaking the draft revision" used by both the client and server.
+    /// definition of "is this peer speaking the 2026-07-28 or later revision" used by both the client and server.
     /// </remarks>
-    internal bool IsDraftProtocol() =>
-        NegotiatedProtocolVersion == DraftProtocolVersion;
+    internal bool IsJuly2026OrLaterProtocol() =>
+        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
 
     /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.

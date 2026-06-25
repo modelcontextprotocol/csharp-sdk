@@ -13,7 +13,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// Verifies that aborting an HTTP request flows cancellation into the running request handler's
 /// <see cref="CancellationToken"/>.
 /// <para>
-/// Under the draft protocol revision (SEP-2575 + SEP-2567) the HTTP request lifetime <em>is</em> the
+/// Starting with the 2026-07-28 protocol revision (SEP-2575 + SEP-2567) the HTTP request lifetime <em>is</em> the
 /// request lifetime: there are no sessions, so a dropped connection is equivalent to cancelling the
 /// in-flight request. The same holds for legacy stateless mode, where each request is independent and
 /// outlived by nothing. These tests pin that behavior so a tool's <see cref="CancellationToken"/> fires
@@ -22,7 +22,6 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </summary>
 public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
 
     private WebApplication? _app;
 
@@ -84,13 +83,14 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
     }
 
     [Fact]
-    public async Task DraftSessionlessRequest_AbortFlowsCancellationToToolHandler()
+    public async Task July2026Request_AbortFlowsCancellationToToolHandler()
     {
-        // Draft is sessionless (SEP-2567) and is served natively only on a stateless server; a
-        // Stateless=false server refuses sessionless draft so dual-era clients fall back to initialize.
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is
+        // served natively only on a stateless server; a Stateless=false server refuses these requests so dual-era
+        // clients fall back to initialize.
         await StartAsync(stateless: true);
 
-        using var request = CreateBlockingToolRequest(draft: true);
+        using var request = CreateBlockingToolRequest(july2026Protocol: true);
 
         await AssertAbortCancelsToolAsync(request);
     }
@@ -100,19 +100,19 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
     {
         await StartAsync(stateless: true);
 
-        using var request = CreateBlockingToolRequest(draft: false);
+        using var request = CreateBlockingToolRequest(july2026Protocol: false);
 
         await AssertAbortCancelsToolAsync(request);
     }
 
-    private static HttpRequestMessage CreateBlockingToolRequest(bool draft)
+    private static HttpRequestMessage CreateBlockingToolRequest(bool july2026Protocol)
     {
-        // Draft tools/call requires the SEP-2243 Mcp-Method/Mcp-Name headers and the per-request _meta
+        // A 2026-07-28 tools/call requires the SEP-2243 Mcp-Method/Mcp-Name headers and the per-request _meta
         // (protocol version, client info, capabilities) that replaces the initialize handshake (SEP-2567).
-        var body = draft
+        var body = july2026Protocol
             ? """
-              {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blockingTool","_meta":{"io.modelcontextprotocol/protocolVersion":"DRAFT_VERSION","io.modelcontextprotocol/clientInfo":{"name":"raw","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
-              """.Replace("DRAFT_VERSION", DraftVersion)
+              {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blockingTool","_meta":{"io.modelcontextprotocol/protocolVersion":"PROTOCOL_VERSION","io.modelcontextprotocol/clientInfo":{"name":"raw","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+              """.Replace("PROTOCOL_VERSION", McpHttpHeaders.July2026ProtocolVersion)
             : """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blockingTool"}}""";
 
         var request = new HttpRequestMessage(HttpMethod.Post, "")
@@ -123,9 +123,9 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-        if (draft)
+        if (july2026Protocol)
         {
-            request.Headers.Add("MCP-Protocol-Version", DraftVersion);
+            request.Headers.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
             request.Headers.Add("Mcp-Method", "tools/call");
             request.Headers.Add("Mcp-Name", "blockingTool");
         }

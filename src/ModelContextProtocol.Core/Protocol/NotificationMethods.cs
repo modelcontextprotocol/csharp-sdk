@@ -159,7 +159,7 @@ public static class NotificationMethods
     /// response stream to indicate which notification types the server agreed to deliver.
     /// </summary>
     /// <remarks>
-    /// Introduced by the draft protocol revision (SEP-2575). The notification's params mirror the shape
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). The notification's params mirror the shape
     /// of the requested notifications and include only the entries the server actually supports.
     /// </remarks>
     public const string SubscriptionsAcknowledgedNotification = "notifications/subscriptions/acknowledged";

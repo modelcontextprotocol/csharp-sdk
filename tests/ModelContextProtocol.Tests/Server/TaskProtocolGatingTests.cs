@@ -11,18 +11,18 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies that the SEP-2663 Tasks extension is gated to the draft protocol revision on both the
+/// Verifies that the SEP-2663 Tasks extension is gated to the 2026-07-28 protocol revision on both the
 /// client and the server. Explicit task operations throw on a legacy session; best-effort task
 /// augmentation silently downgrades to a direct result so that legacy peers never see a task.
 /// </summary>
-public class TaskDraftGatingTests : ClientServerTestBase
+public class TaskProtocolGatingTests : ClientServerTestBase
 {
     private const string LatestStableVersion = "2025-11-25";
 
     private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
     private const string ExtensionsKey = "extensions";
 
-    public TaskDraftGatingTests(ITestOutputHelper outputHelper)
+    public TaskProtocolGatingTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
 #if !NET
@@ -82,7 +82,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await client.GetTaskAsync("some-task-id", ct));
 
-        Assert.Contains("draft protocol revision", ex.Message);
+        Assert.Contains("newer protocol revision that supports tasks", ex.Message);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await client.UpdateTaskAsync(new UpdateTaskRequestParams { TaskId = "some-task-id" }, ct));
 
-        Assert.Contains("draft protocol revision", ex.Message);
+        Assert.Contains("newer protocol revision that supports tasks", ex.Message);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await client.CancelTaskAsync("some-task-id", ct));
 
-        Assert.Contains("draft protocol revision", ex.Message);
+        Assert.Contains("newer protocol revision that supports tasks", ex.Message);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
 
         // Forge a SEP-2575 capabilities envelope carrying the tasks extension opt-in on a legacy
         // request. The server must still refuse to create a task because the per-request protocol
-        // version is not the draft revision.
+        // version is not the 2026-07-28 protocol.
         var result = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
@@ -154,7 +154,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
         var ct = TestContext.Current.CancellationToken;
 
         // Bypass the typed GetTaskAsync client guard by sending a raw tasks/get request. The server
-        // gates tasks/* to the draft revision and must reject this legacy request with MethodNotFound.
+        // gates tasks/* to the 2026-07-28 protocol and must reject this legacy request with MethodNotFound.
         var request = new JsonRpcRequest
         {
             Method = RequestMethods.TasksGet,
@@ -170,9 +170,9 @@ public class TaskDraftGatingTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task DraftClient_CallToolRaw_CreatesTask()
+    public async Task July2026ProtocolClient_CallToolRaw_CreatesTask()
     {
-        // Sanity: the default client negotiates the draft revision, so the task flow still works.
+        // Sanity: the default client negotiates the 2026-07-28 protocol, so the task flow still works.
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
@@ -180,7 +180,7 @@ public class TaskDraftGatingTests : ClientServerTestBase
             new CallToolRequestParams
             {
                 Name = "test-tool",
-                Arguments = CreateArguments("input", "draft"),
+                Arguments = CreateArguments("input", "july2026"),
             }, ct);
 
         Assert.True(result.IsTask);

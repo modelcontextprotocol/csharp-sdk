@@ -18,7 +18,7 @@ public class McpRequestHeadersTests
     [Fact]
     public void McpErrorCode_HeaderMismatch_HasCorrectValue()
     {
-        Assert.Equal(-32001, (int)McpErrorCode.HeaderMismatch);
+        Assert.Equal(-32020, (int)McpErrorCode.HeaderMismatch);
     }
 
     [Theory]

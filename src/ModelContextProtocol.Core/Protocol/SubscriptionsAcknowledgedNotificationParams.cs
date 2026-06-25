@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Introduced by the draft protocol revision (SEP-2575). This notification is the first message on a
+/// Introduced by the 2026-07-28 protocol revision (SEP-2575). This notification is the first message on a
 /// <see cref="RequestMethods.SubscriptionsListen"/> response stream and informs the client which
 /// subset of requested notification types the server has agreed to deliver.
 /// </para>

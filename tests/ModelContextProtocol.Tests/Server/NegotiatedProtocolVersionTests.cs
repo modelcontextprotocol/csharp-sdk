@@ -53,25 +53,25 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // The first request establishes the draft version for the stateful session (null -> draft).
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpSession.DraftProtocolVersion, ct));
+        // The first request establishes the 2026-07-28 version for the stateful session (null -> 2026-07-28).
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpHttpHeaders.July2026ProtocolVersion, ct));
 
         // Re-sending the same version is an idempotent no-op, not an error.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpSession.DraftProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpHttpHeaders.July2026ProtocolVersion, ct));
 
         // Switching to a different (still-supported) version mid-session is rejected.
-        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpSession.LatestProtocolVersion, ct));
+        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpHttpHeaders.November2025ProtocolVersion, ct));
         Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
         Assert.Contains("protocol version cannot change", error.Error.Message, StringComparison.OrdinalIgnoreCase);
 
-        // The rejected request must not have mutated the negotiated version: the original draft version still works.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpSession.DraftProtocolVersion, ct));
+        // The rejected request must not have mutated the negotiated version: the original 2026-07-28 version still works.
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpHttpHeaders.July2026ProtocolVersion, ct));
     }
 
     private async Task<JsonRpcMessage> RoundTripAsync(long id, string protocolVersion, CancellationToken cancellationToken)
     {
-        // tools/list is available under both the legacy and draft revisions (unlike ping/initialize,
-        // which the draft revision removed), so it exercises the version guard rather than the
+        // tools/list is available under both the legacy and 2026-07-28 revisions (unlike ping/initialize,
+        // which the 2026-07-28 protocol removed), so it exercises the version guard rather than the
         // per-method availability gate.
         var request = new JsonRpcRequest
         {

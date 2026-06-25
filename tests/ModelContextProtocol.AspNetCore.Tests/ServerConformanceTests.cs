@@ -89,12 +89,45 @@ public class ConformanceServerFixture : IAsyncLifetime
 }
 
 /// <summary>
+/// Shared fixture that starts a single stateless ConformanceServer for the
+/// SEP-2322 MRTR scenarios in <see cref="ServerConformanceTests"/>. Those scenarios negotiate the
+/// 2026-07-28 revision, which is served only on a stateless server, so they
+/// cannot reuse the stateful <see cref="ConformanceServerFixture"/>. Reusing one server across all
+/// the MRTR theory rows avoids the TCP TIME_WAIT conflicts that per-test restarts on a single port
+/// cause on Windows. Uses a dedicated port range (303x) so it runs in parallel with the stateful
+/// fixture (300x), the caching server (301x), and the SEP-2243 servers (302x) without colliding.
+/// </summary>
+public sealed class StatelessMrtrConformanceServerFixture : IAsyncLifetime
+{
+    private StatelessConformanceServer? _server;
+
+    public string ServerUrl => _server?.ServerUrl
+        ?? throw new InvalidOperationException("The stateless conformance server has not been started.");
+
+    public async ValueTask InitializeAsync()
+    {
+        _server = await StatelessConformanceServer.StartAsync(CancellationToken.None, basePort: 3031);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_server is not null)
+        {
+            await _server.DisposeAsync();
+        }
+    }
+}
+
+/// <summary>
 /// Runs the official MCP conformance tests against the ConformanceServer.
 /// Uses a shared <see cref="ConformanceServerFixture"/> so the server is started once
 /// and reused across all tests, avoiding TCP port conflicts on Windows.
 /// </summary>
-public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutputHelper output)
-    : IClassFixture<ConformanceServerFixture>
+public class ServerConformanceTests(
+    ConformanceServerFixture fixture,
+    StatelessMrtrConformanceServerFixture statelessFixture,
+    ITestOutputHelper output)
+    : IClassFixture<ConformanceServerFixture>, IClassFixture<StatelessMrtrConformanceServerFixture>
 {
     [Fact]
     public async Task RunConformanceTests()
@@ -143,8 +176,8 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             !NodeHelpers.HasSep2243Scenarios(),
             "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
 
-        // SEP-2243 is a draft (2026-07-28) scenario that uses the stateless lifecycle, so it
-        // requires a stateless server (a stateful server rejects the un-initialized list/call
+        // SEP-2243 is a 2026-07-28 protocol revision scenario that uses the stateless
+        // lifecycle, so it requires a stateless server (a stateful server rejects the un-initialized list/call
         // requests with JSON-RPC -32000). Use a dedicated port range so it never collides with
         // the stateful class fixture (300x) or the caching stateless server (301x).
         await using var server = await StatelessConformanceServer.StartAsync(
@@ -180,18 +213,20 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts
     // (the class names predate the conformance-suite rename from "incomplete-result-*" to
     // "input-required-result-*"; the wire-level tool names now match the new convention).
-    // Each scenario uses the conformance harness's RawMcpSession, which negotiates 2026-07-28
-    // so the csharp-sdk emits InputRequiredResult on the wire. These tests skip until the
-    // installed conformance package ships SEP-2322 scenarios <em>and</em> emits this SDK's
-    // draft wire string (see <see cref="NodeHelpers.HasMrtrScenarios"/>).
+    // Each scenario uses the conformance harness's RawMcpSession, which negotiates 2026-07-28,
+    // so the csharp-sdk emits InputRequiredResult on the wire. Because the 2026-07-28 revision is
+    // served only on a stateless server, the scenarios run against a dedicated stateless server
+    // (StatelessMrtrConformanceServerFixture); a stateful server refuses these requests.
+    // These tests skip until the installed conformance package ships SEP-2322 scenarios
+    // (see <see cref="NodeHelpers.HasMrtrScenarios"/>).
     //
     // input-required-result-tampered-state and input-required-result-capability-check are
     // implemented by ConformanceServer.Tools.IncompleteResultTools.ToolWithTamperedState
     // (HMAC-protected requestState; a tampered requestState surfaces a -32602 JSON-RPC error)
     // and ToolWithCapabilityCheck (gates inputRequests on the per-request
     // _meta clientCapabilities envelope). Both behaviors also have in-process wire-level
-    // regression coverage in MrtrProtocolTests so they stay verified even while the published
-    // conformance package's draft wire string lags this SDK.
+    // regression coverage in MrtrProtocolTests so they stay verified independent of the
+    // published conformance package.
     [Theory]
     [InlineData("input-required-result-basic-elicitation")]
     [InlineData("input-required-result-basic-sampling")]
@@ -210,10 +245,10 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunMrtrConformanceTest(string scenario)
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package (or installed version uses a stale draft wire string).");
+        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package.");
 
-        var result = await RunConformanceTestsAsync(
-            $"server --url {fixture.ServerUrl} --scenario {scenario}");
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {statelessFixture.ServerUrl} --scenario {scenario} --spec-version 2026-07-28");
 
         Assert.True(result.Success,
             $"MRTR conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
@@ -227,7 +262,7 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    // For draft scenarios that pin --spec-version explicitly, suppress the
+    // For 2026-07-28 protocol scenarios that pin --spec-version explicitly, suppress the
     // MCP_CONFORMANCE_PROTOCOL_VERSION override so a duplicate --spec-version is not appended.
     private async Task<(bool Success, string Output, string Error)> RunStatelessConformanceTestAsync(string arguments)
     {

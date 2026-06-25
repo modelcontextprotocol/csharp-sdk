@@ -1174,10 +1174,10 @@ public abstract partial class McpClient : McpSession
         {
             Name = requestParams.Name,
             Arguments = requestParams.Arguments,
-            // The SEP-2663 Tasks extension is draft-only. On a legacy session, send a plain tools/call
+            // The SEP-2663 Tasks extension requires the 2026-07-28 or later protocol revision. On an older session, send a plain tools/call
             // (no task capability envelope) so the server returns a direct CallToolResult and never
             // creates a task.
-            Meta = IsDraftProtocol() ? GetMetaWithTaskCapability(requestParams.Meta) : requestParams.Meta,
+            Meta = IsJuly2026OrLaterProtocol() ? GetMetaWithTaskCapability(requestParams.Meta) : requestParams.Meta,
         };
 
         JsonRpcRequest jsonRpcRequest = new()
@@ -1405,19 +1405,18 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Throws when the negotiated protocol version is not the draft revision. The SEP-2663 Tasks
-    /// extension is draft-only, and a task id only ever exists when the session negotiated draft, so
-    /// invoking <c>tasks/get</c>, <c>tasks/update</c>, or <c>tasks/cancel</c> on a legacy session is a
-    /// programming error rather than a recoverable protocol condition.
+    /// Throws when the negotiated protocol version does not support the SEP-2663 Tasks extension. Tasks
+    /// require the 2026-07-28 or later protocol revision, and a task id only ever exists when the session
+    /// negotiated such a revision, so invoking <c>tasks/get</c>, <c>tasks/update</c>, or <c>tasks/cancel</c>
+    /// on an older session is a programming error rather than a recoverable protocol condition.
     /// </summary>
     private void ThrowIfTasksNotSupported(string operationName)
     {
-        if (!IsDraftProtocol())
+        if (!IsJuly2026OrLaterProtocol())
         {
             throw new InvalidOperationException(
-                $"'{operationName}' requires the draft protocol revision ('{DraftProtocolVersion}'). " +
-                $"The negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'. " +
-                "The Tasks extension is only available under the draft revision.");
+                $"'{operationName}' requires a newer protocol revision that supports tasks. " +
+                $"The negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.");
         }
     }
 }
