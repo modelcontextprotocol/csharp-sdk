@@ -600,7 +600,6 @@ public abstract partial class McpServer : McpSession
     /// <param name="taskId">The task ID in the store.</param>
     /// <param name="store">The task store to write input requests to.</param>
     /// <returns>An <see cref="IDisposable"/> that restores the previous context when disposed.</returns>
-    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
     public IDisposable CreateMcpTaskScope(
         string taskId,
         IMcpTaskStore store)

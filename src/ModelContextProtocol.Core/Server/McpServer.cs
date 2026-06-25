@@ -81,7 +81,6 @@ public abstract partial class McpServer : McpSession
     /// the required feature) instead of throwing <see cref="Protocol.InputRequiredException"/>.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
     public virtual bool IsMrtrSupported => false;
 
     /// <summary>

@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
@@ -54,7 +52,6 @@ namespace ModelContextProtocol.Protocol;
 /// }
 /// </code>
 /// </example>
-[Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
 public class InputRequiredException : Exception
 {
     /// <summary>

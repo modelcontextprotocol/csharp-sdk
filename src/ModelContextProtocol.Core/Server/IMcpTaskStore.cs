@@ -1,5 +1,4 @@
 using ModelContextProtocol.Protocol;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -31,7 +30,6 @@ namespace ModelContextProtocol.Server;
 /// specification for details on the tasks extension.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
 public interface IMcpTaskStore
 {
     /// <summary>
