@@ -1,7 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Server;
 
@@ -204,4 +204,20 @@ public sealed class McpServerOptions
     /// </para>
     /// </remarks>
     public IMcpTaskStore? TaskStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom request handlers to register with the server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
+    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// for methods not known to Core at compile time.
+    /// </para>
+    /// <para>
+    /// Handlers registered here take precedence over built-in handlers for the same method.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }

@@ -82,7 +82,8 @@ public abstract partial class McpClient : McpSession
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
-    private protected abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
+    public abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
         IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
 
     /// <summary>

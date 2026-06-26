@@ -42,7 +42,7 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolWithTaskFilters"/>. If both are non-empty at configuration time,
+    /// Cannot be used together with <see cref="CallToolWithAlternateFilters"/>. If both are non-empty at configuration time,
     /// an <see cref="InvalidOperationException"/> will be thrown.
     /// </para>
     /// </remarks>
@@ -57,21 +57,21 @@ public sealed class McpRequestFilters
     }
 
     /// <summary>
-    /// Gets or sets the filters for the call-tool handler pipeline with task support.
+    /// Gets or sets the filters for the call-tool handler pipeline with alternate result support.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These filters wrap the task-augmented call-tool handler whose return type is
-    /// <see cref="ResultOrCreatedTask{TResult}"/>. Use these filters when the server's tool pipeline
-    /// supports returning either an immediate <see cref="CallToolResult"/> or a <see cref="CreateTaskResult"/>
-    /// for asynchronous execution.
+    /// These filters wrap the alternate-result call-tool handler whose return type is
+    /// <see cref="ResultOrAlternate{TResult}"/>. Use these filters when the server's tool pipeline
+    /// supports returning either an immediate <see cref="CallToolResult"/> or an alternate <see cref="Result"/>
+    /// subtype for asynchronous execution.
     /// </para>
     /// <para>
     /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
     /// an <see cref="InvalidOperationException"/> will be thrown.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>>> CallToolWithTaskFilters
+    public IList<McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
         get => field ??= [];
         set

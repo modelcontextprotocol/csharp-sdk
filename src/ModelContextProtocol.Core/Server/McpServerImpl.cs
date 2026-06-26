@@ -97,6 +97,7 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureExperimentalAndExtensions(options);
         ConfigureTasks(options);
         ConfigureMrtr();
+        ConfigureCustomRequestHandlers(options);
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -865,6 +866,26 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Extensions = options.Capabilities?.Extensions;
     }
 
+    private void ConfigureCustomRequestHandlers(McpServerOptions options)
+    {
+#pragma warning disable MCPEXP002
+        if (options.RequestHandlers is not { Count: > 0 } customHandlers)
+#pragma warning restore MCPEXP002
+        {
+            return;
+        }
+
+        foreach (var entry in customHandlers)
+        {
+            SetRawHandler(entry.Method, entry.Handler);
+        }
+    }
+
+    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
+    {
+        _requestHandlers[method] = (request, ct) => handler(request, ct).AsTask();
+    }
+
     private void ConfigureResources(McpServerOptions options)
     {
         var listResourcesHandler = options.Handlers.ListResourcesHandler;
@@ -1134,11 +1155,11 @@ internal sealed partial class McpServerImpl : McpServer
     {
         var listToolsHandler = options.Handlers.ListToolsHandler;
         var callToolHandler = options.Handlers.CallToolHandler;
-        var callToolWithTaskHandler = options.Handlers.CallToolWithTaskHandler;
+        var callToolWithAlternateHandler = options.Handlers.CallToolWithAlternateHandler;
         var tools = options.ToolCollection;
         var toolsCapability = options.Capabilities?.Tools;
 
-        if (listToolsHandler is null && callToolHandler is null && callToolWithTaskHandler is null && tools is null &&
+        if (listToolsHandler is null && callToolHandler is null && callToolWithAlternateHandler is null && tools is null &&
             toolsCapability is null)
         {
             return;
@@ -1150,17 +1171,17 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = toolsCapability?.ListChanged;
 
         var callToolFilters = options.Filters.Request.CallToolFilters;
-        var callToolWithTaskFilters = options.Filters.Request.CallToolWithTaskFilters;
+        var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-task filters/handler with task filters/handler.
-        bool hasNonTaskPath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasTaskPath = callToolWithTaskHandler is not null || callToolWithTaskFilters.Count > 0;
+        // Validate: cannot mix non-alternate filters/handler with alternate filters/handler.
+        bool hasNonAlternatePath = callToolHandler is not null || callToolFilters.Count > 0;
+        bool hasAlternatePath = callToolWithAlternateHandler is not null || callToolWithAlternateFilters.Count > 0;
 
-        if (hasNonTaskPath && hasTaskPath)
+        if (hasNonAlternatePath && hasAlternatePath)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-task ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with task-based ({nameof(McpServerHandlers.CallToolWithTaskHandler)}/{nameof(McpRequestFilters.CallToolWithTaskFilters)}). Use one style or the other.");
+                $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
+                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}). Use one style or the other.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1202,32 +1223,32 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified task-augmented handler from one of the two paths.
-        if (hasTaskPath)
+        // Build the unified alternate-result handler from one of the two paths.
+        if (hasAlternatePath)
         {
-            // Case 2: task filter + task handler
-            callToolWithTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+            // Case 2: alternate filter + alternate handler
+            callToolWithAlternateHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
             if (tools is not null)
             {
-                var originalHandler = callToolWithTaskHandler;
-                callToolWithTaskHandler = (request, cancellationToken) =>
+                var originalHandler = callToolWithAlternateHandler;
+                callToolWithAlternateHandler = (request, cancellationToken) =>
                 {
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return InvokeToolAsTask(tool, request, cancellationToken);
+                        return InvokeToolWithAlternate(tool, request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
                 };
             }
 
-            callToolWithTaskHandler = BuildFilterPipeline(callToolWithTaskHandler, callToolWithTaskFilters, BuildInitialTaskToolFilter(tools));
+            callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters, BuildInitialAlternateToolFilter(tools));
         }
         else
         {
-            // Case 1: non-task filter + non-task handler → apply filters, then convert to task-based
+            // Case 1: non-alternate filter + non-alternate handler -> apply filters, then convert to alternate-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1247,9 +1268,9 @@ internal sealed partial class McpServerImpl : McpServer
 
             callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
 
-            // Convert to task-based.
+            // Convert to alternate-based.
             var finalCallToolHandler = callToolHandler;
-            callToolWithTaskHandler = async (request, cancellationToken) =>
+            callToolWithAlternateHandler = async (request, cancellationToken) =>
                 await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
         }
 
@@ -1257,8 +1278,8 @@ internal sealed partial class McpServerImpl : McpServer
         // the tool execution is offloaded to the background via the store.
         if (options.TaskStore is { } taskStore)
         {
-            var innerTaskHandler = callToolWithTaskHandler;
-            callToolWithTaskHandler = async (request, cancellationToken) =>
+            var innerAlternateHandler = callToolWithAlternateHandler;
+            callToolWithAlternateHandler = async (request, cancellationToken) =>
             {
                 // The SEP-2663 Tasks extension requires the 2026-07-28 or later revision: the task wire shapes we ship do not
                 // interoperate with legacy (<= 2025-11-25) peers. Only materialize a task when the
@@ -1285,16 +1306,16 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             try
                             {
-                                var augmented = await innerTaskHandler(request, taskCancellationToken).ConfigureAwait(false);
-                                if (augmented.IsTask)
+                                var augmented = await innerAlternateHandler(request, taskCancellationToken).ConfigureAwait(false);
+                                if (augmented.IsAlternate)
                                 {
                                     // The handler created its own task externally, but the client already holds
-                                    // the store's taskId from the synchronous return below — we can't redirect.
+                                    // the store's taskId from the synchronous return below -- we can't redirect.
                                     // Fail the store's task so the client sees a clear error instead of polling forever.
                                     var error = new JsonRpcErrorDetail
                                     {
                                         Code = (int)McpErrorCode.InternalError,
-                                        Message = $"{nameof(McpServerOptions.TaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithTaskHandler)} returned IsTask = true. Use only one mechanism to create the task.",
+                                        Message = $"{nameof(McpServerOptions.TaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithAlternateHandler)} returned IsAlternate = true. Use only one mechanism to create the task.",
                                     };
                                     var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
                                     await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
@@ -1319,7 +1340,7 @@ internal sealed partial class McpServerImpl : McpServer
                                 {
                                     Code = (int)McpErrorCode.InvalidRequest,
                                     Message = "MRTR (input requests) and tasks cannot be composed via [McpServerTool] yet; " +
-                                              $"use {nameof(McpServerHandlers.CallToolWithTaskHandler)} to manage the input-request loop manually within the task body.",
+                                              $"use {nameof(McpServerHandlers.CallToolWithAlternateHandler)} to manage the input-request loop manually within the task body.",
                                 };
                                 var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
                                 await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
@@ -1348,10 +1369,12 @@ internal sealed partial class McpServerImpl : McpServer
                         }
                     }, CancellationToken.None);
 
-                    return ToCreateTaskResult(taskInfo);
+                    return new ResultOrAlternate<CallToolResult>(
+                        ToCreateTaskResult(taskInfo),
+                        McpJsonUtilities.JsonContext.Default.CreateTaskResult);
                 }
 
-                return await innerTaskHandler(request, cancellationToken).ConfigureAwait(false);
+                return await innerAlternateHandler(request, cancellationToken).ConfigureAwait(false);
             };
         }
 
@@ -1363,12 +1386,11 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        SetTaskAugmentedHandler(
+        SetWithAlternateHandler(
             RequestMethods.ToolsCall,
-            callToolWithTaskHandler,
+            callToolWithAlternateHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult,
-            McpJsonUtilities.JsonContext.Default.CreateTaskResult);
+            McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 
     private static CreateTaskResult ToCreateTaskResult(McpTaskInfo info) => new()
@@ -1450,7 +1472,7 @@ internal sealed partial class McpServerImpl : McpServer
         _ => throw new InvalidOperationException($"Unknown task status: {info.Status}"),
     };
 
-    private static async ValueTask<ResultOrCreatedTask<CallToolResult>> InvokeToolAsTask(
+    private static async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
@@ -1501,7 +1523,7 @@ internal sealed partial class McpServerImpl : McpServer
             }
         };
 
-    private McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>> BuildInitialTaskToolFilter(
+    private McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
         McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
         async (request, cancellationToken) =>
         {
@@ -1514,7 +1536,7 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                if (!result.IsTask)
+                if (!result.IsAlternate)
                 {
                     ToolCallCompleted(request.Params?.Name ?? string.Empty, result.Result!.IsError is true);
                 }
@@ -1670,18 +1692,17 @@ internal sealed partial class McpServerImpl : McpServer
             requestTypeInfo, responseTypeInfo);
     }
 
-    private void SetTaskAugmentedHandler<TParams, TResult>(
+    private void SetWithAlternateHandler<TParams, TResult>(
         string method,
-        McpRequestHandler<TParams, ResultOrCreatedTask<TResult>> handler,
+        McpRequestHandler<TParams, ResultOrAlternate<TResult>> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
-        JsonTypeInfo<TResult> responseTypeInfo,
-        JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
+        JsonTypeInfo<TResult> responseTypeInfo)
         where TResult : Result
     {
-        _requestHandlers.SetTaskAugmented(method,
+        _requestHandlers.SetWithAlternate(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
-            requestTypeInfo, responseTypeInfo, taskResultTypeInfo);
+            requestTypeInfo, responseTypeInfo);
     }
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(

@@ -6,9 +6,10 @@ using System.Runtime.InteropServices;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies the runtime validation that fires when a handler opts into task-augmented execution
-/// (returns a <see cref="CreateTaskResult"/>) without the server having any <c>tasks/get</c>
-/// handler registered.
+/// Verifies behavior when a handler returns a <see cref="CreateTaskResult"/> alternate without
+/// the server having any <c>tasks/get</c> handler registered. After the ResultOrAlternate
+/// generalization, the Core server no longer guards against this -- the extension is responsible
+/// for ensuring lifecycle handlers are registered.
 /// </summary>
 public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 {
@@ -25,10 +26,10 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
         {
             options.Capabilities ??= new ServerCapabilities();
 
-            // Intentionally configure a task-augmented handler without TaskStore or any of the
+            // Configure a task-augmented handler without TaskStore or any of the
             // task lifecycle handlers (GetTaskHandler/UpdateTaskHandler/CancelTaskHandler).
-            options.Handlers.CallToolWithTaskHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrCreatedTask<CallToolResult>>(new CreateTaskResult
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
+                new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
                 {
                     TaskId = "orphan-task",
                     Status = McpTaskStatus.Working,
@@ -39,21 +40,15 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallTool_ReturningCreateTaskResult_WithoutTasksGetHandler_ThrowsAtRequestTime()
+    public async Task ServerAcceptsAlternateHandler_WithoutTasksGetHandler_NoStartupError()
     {
+        // The Core guard that previously threw InvalidOperationException at request time when
+        // a CallToolWithAlternateHandler returned a CreateTaskResult without tasks/get being
+        // registered has been removed. The extension is now responsible for that guarantee.
+        // This test verifies the server starts and connects successfully with such configuration.
         await using var client = await CreateMcpClientForServer();
 
-        // Client surfaces a generic protocol error (the server intentionally redacts the message
-        // on the wire), so use the base McpException type and confirm via server-side logs that
-        // the originating exception was the misconfiguration guard.
-        await Assert.ThrowsAnyAsync<McpException>(async () =>
-            await client.CallToolAsync(
-                new CallToolRequestParams { Name = "anything" },
-                cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.Exception is InvalidOperationException ioe &&
-            ioe.Message.Contains("tasks/get", StringComparison.Ordinal) &&
-            ioe.Message.Contains("CreateTaskResult", StringComparison.Ordinal));
+        // If we get here, the server accepted the handler config without error.
+        Assert.NotNull(client);
     }
 }

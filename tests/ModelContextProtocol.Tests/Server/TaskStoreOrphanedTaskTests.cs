@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Verifies that when both <see cref="McpServerOptions.TaskStore"/> and
-/// <see cref="McpServerHandlers.CallToolWithTaskHandler"/> are configured and the handler returns
+/// <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> are configured and the handler returns
 /// <see cref="CreateTaskResult"/> (IsTask = true), the store's pre-created task is failed with a
 /// clear error rather than being orphaned in <see cref="McpTaskStatus.Working"/> forever.
 /// </summary>
@@ -33,8 +33,8 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 
             // Returning IsTask = true here while TaskStore is also configured is the
             // misconfiguration the server must guard against.
-            options.Handlers.CallToolWithTaskHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrCreatedTask<CallToolResult>>(new CreateTaskResult
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
+                new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
                 {
                     TaskId = "user-task",
                     Status = McpTaskStatus.Working,
@@ -77,6 +77,6 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
         var message = failed.Error.GetProperty("message").GetString();
         Assert.NotNull(message);
         Assert.Contains(nameof(McpServerOptions.TaskStore), message);
-        Assert.Contains(nameof(McpServerHandlers.CallToolWithTaskHandler), message);
+        Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), message);
     }
 }

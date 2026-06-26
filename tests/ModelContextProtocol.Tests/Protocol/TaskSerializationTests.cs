@@ -439,10 +439,10 @@ public static class TaskSerializationTests
 
     #endregion
 
-    #region ResultOrCreatedTask
+    #region ResultOrAlternate
 
     [Fact]
-    public static void ResultOrCreatedTask_ImplicitConversion_FromResult()
+    public static void ResultOrAlternate_ImplicitConversion_FromResult()
     {
         CallToolResult callResult = new() { Content = [new TextContentBlock { Text = "hi" }] };
 
@@ -454,7 +454,7 @@ public static class TaskSerializationTests
     }
 
     [Fact]
-    public static void ResultOrCreatedTask_ImplicitConversion_FromCreateTaskResult()
+    public static void ResultOrAlternate_ImplicitConversion_FromCreateTaskResult()
     {
         CreateTaskResult taskCreated = new()
         {
@@ -472,7 +472,7 @@ public static class TaskSerializationTests
     }
 
     [Fact]
-    public static void ResultOrCreatedTask_IsTask_FalseForResult_TrueForTask()
+    public static void ResultOrAlternate_IsTask_FalseForResult_TrueForTask()
     {
         var result = new ResultOrCreatedTask<CallToolResult>(new CallToolResult());
         var task = new ResultOrCreatedTask<CallToolResult>(new CreateTaskResult

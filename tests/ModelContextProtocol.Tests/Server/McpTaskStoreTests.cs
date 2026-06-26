@@ -233,7 +233,7 @@ public class McpTaskStoreTests : ClientServerTestBase
         var message = failed.Error.GetProperty("message").GetString();
         Assert.NotNull(message);
         Assert.Contains("MRTR", message);
-        Assert.Contains(nameof(McpServerHandlers.CallToolWithTaskHandler), message);
+        Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), message);
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Pins the behavior when a client signals the SEP-2575 tasks opt-in via <c>_meta</c> but the server
-/// has neither an <see cref="McpServerOptions.TaskStore"/> nor a <see cref="McpServerHandlers.CallToolWithTaskHandler"/>
+/// has neither an <see cref="McpServerOptions.TaskStore"/> nor a <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>
 /// configured. The expected behavior is a silent synchronous fallback: the server returns the normal
 /// <see cref="CallToolResult"/> with no <c>Task</c> envelope and no exception.
 /// </summary>
@@ -25,7 +25,7 @@ public class McpServerTasksNoStoreTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        // Intentionally do NOT configure TaskStore or CallToolWithTaskHandler.
+        // Intentionally do NOT configure TaskStore or CallToolWithAlternateHandler.
         mcpServerBuilder.WithTools<NoStoreTools>();
     }
 

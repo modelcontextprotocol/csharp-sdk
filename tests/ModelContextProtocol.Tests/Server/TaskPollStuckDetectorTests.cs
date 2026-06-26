@@ -32,10 +32,10 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
 
             // CallTool always returns a CreateTaskResult with a tiny poll interval so the
             // test exercises the threshold in well under a second.
-            options.Handlers.CallToolWithTaskHandler = (context, cancellationToken) =>
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
             {
                 var taskId = Guid.NewGuid().ToString("N");
-                return new ValueTask<ResultOrCreatedTask<CallToolResult>>(new CreateTaskResult
+                return new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
                 {
                     TaskId = taskId,
                     Status = McpTaskStatus.InputRequired,

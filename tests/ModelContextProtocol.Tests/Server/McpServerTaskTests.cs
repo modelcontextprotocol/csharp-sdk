@@ -30,7 +30,7 @@ public class McpServerTaskTests : ClientServerTestBase
         {
             options.Capabilities ??= new ServerCapabilities();
 
-            options.Handlers.CallToolWithTaskHandler = async (context, cancellationToken) =>
+            options.Handlers.CallToolWithAlternateHandler = async (context, cancellationToken) =>
             {
                 _capturedMeta = context.Params?.Meta;
                 var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
@@ -376,7 +376,7 @@ public class McpServerTaskTests : ClientServerTestBase
     public async Task CallToolRawAsync_InjectsTaskCapabilityInMeta()
     {
         // Verify the server receives the task extension in _meta by intercepting
-        // the handler. The CallToolWithTaskHandler already receives the request,
+        // the handler. The CallToolWithAlternateHandler already receives the request,
         // so we can observe the meta there. We test the client-side injection indirectly
         // by confirming the server returns a task result (which requires the capability signal).
         await using var client = await CreateMcpClientForServer();
@@ -506,9 +506,9 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolWithTaskHandler_ImplicitConversion_ReturnCallToolResult()
+    public async Task CallToolWithAlternateHandler_ImplicitConversion_ReturnCallToolResult()
     {
-        // Verify that the implicit conversion from CallToolResult to ResultOrCreatedTask works
+        // Verify that the implicit conversion from CallToolResult to ResultOrAlternate works
         // in the handler context — this is already tested by "immediate-tool" working correctly.
         await using var client = await CreateMcpClientForServer();
 
@@ -520,11 +520,11 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolHandler_And_CallToolWithTaskHandler_AreMutuallyExclusive()
+    public async Task CallToolHandler_And_CallToolWithAlternateHandler_AreMutuallyExclusive()
     {
         var handlers = new McpServerHandlers();
 
-        handlers.CallToolWithTaskHandler = async (ctx, ct) => new CallToolResult();
+        handlers.CallToolWithAlternateHandler = async (ctx, ct) => new CallToolResult();
         Assert.Throws<InvalidOperationException>(() =>
             handlers.CallToolHandler = async (ctx, ct) => new CallToolResult());
 
@@ -532,7 +532,7 @@ public class McpServerTaskTests : ClientServerTestBase
 
         handlers.CallToolHandler = async (ctx, ct) => new CallToolResult();
         Assert.Throws<InvalidOperationException>(() =>
-            handlers.CallToolWithTaskHandler = async (ctx, ct) => new CallToolResult());
+            handlers.CallToolWithAlternateHandler = async (ctx, ct) => new CallToolResult());
     }
 
     [Fact]
@@ -544,8 +544,8 @@ public class McpServerTaskTests : ClientServerTestBase
         handlers.CallToolHandler = null;
 
         // Now setting the other should work
-        handlers.CallToolWithTaskHandler = async (ctx, ct) => new CallToolResult();
-        Assert.NotNull(handlers.CallToolWithTaskHandler);
+        handlers.CallToolWithAlternateHandler = async (ctx, ct) => new CallToolResult();
+        Assert.NotNull(handlers.CallToolWithAlternateHandler);
     }
 
     /// <summary>

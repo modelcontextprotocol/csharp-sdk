@@ -42,19 +42,19 @@ public sealed class McpServerHandlers
     /// <remarks>
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
-    /// Use <see cref="CallToolWithTaskHandler"/> instead if the tool may return a <see cref="CreateTaskResult"/>
-    /// for asynchronous execution.
+    /// Use <see cref="CallToolWithAlternateHandler"/> instead if the tool may return an alternate result
+    /// (such as <see cref="CreateTaskResult"/>) for asynchronous execution.
     /// </remarks>
-    /// <exception cref="InvalidOperationException"><see cref="CallToolWithTaskHandler"/> is already set.</exception>
+    /// <exception cref="InvalidOperationException"><see cref="CallToolWithAlternateHandler"/> is already set.</exception>
     public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
     {
         get;
         set
         {
-            if (value is not null && CallToolWithTaskHandler is not null)
+            if (value is not null && CallToolWithAlternateHandler is not null)
             {
                 throw new InvalidOperationException(
-                    $"Cannot set {nameof(CallToolHandler)} when {nameof(CallToolWithTaskHandler)} is already set. Only one call tool handler may be configured.");
+                    $"Cannot set {nameof(CallToolHandler)} when {nameof(CallToolWithAlternateHandler)} is already set. Only one call tool handler may be configured.");
             }
 
             field = value;
@@ -62,20 +62,20 @@ public sealed class McpServerHandlers
     }
 
     /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests with task support.
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests with alternate result support.
     /// </summary>
     /// <remarks>
     /// <para>
     /// This handler is invoked when a client makes a call to a tool, allowing the tool to return either
-    /// a <see cref="CallToolResult"/> for immediate results or a <see cref="CreateTaskResult"/> for
-    /// long-running asynchronous operations.
+    /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype
+    /// (such as <see cref="CreateTaskResult"/>) for long-running asynchronous operations.
     /// </para>
     /// <para>
     /// Cannot be set if <see cref="CallToolHandler"/> is already set.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>
-    public McpRequestHandler<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>>? CallToolWithTaskHandler
+    public McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>>? CallToolWithAlternateHandler
     {
         get;
         set
@@ -83,7 +83,7 @@ public sealed class McpServerHandlers
             if (value is not null && CallToolHandler is not null)
             {
                 throw new InvalidOperationException(
-                    $"Cannot set {nameof(CallToolWithTaskHandler)} when {nameof(CallToolHandler)} is already set. Only one call tool handler may be configured.");
+                    $"Cannot set {nameof(CallToolWithAlternateHandler)} when {nameof(CallToolHandler)} is already set. Only one call tool handler may be configured.");
             }
 
             field = value;
@@ -217,7 +217,7 @@ public sealed class McpServerHandlers
     /// Setting <see cref="McpServerOptions.TaskStore"/> is the recommended way to wire all three
     /// task lifecycle handlers (<see cref="GetTaskHandler"/>, <see cref="UpdateTaskHandler"/>,
     /// and <see cref="CancelTaskHandler"/>) from a single source while still allowing explicit
-    /// handlers to override any slot. If <see cref="CallToolWithTaskHandler"/> can return a
+    /// handlers to override any slot. If <see cref="CallToolWithAlternateHandler"/> can return a
     /// <see cref="CreateTaskResult"/> but no <see cref="GetTaskHandler"/> is configured (either
     /// directly or via a task store), the server throws <see cref="InvalidOperationException"/>
     /// when processing the request so misconfigured deployments fail loudly instead of producing

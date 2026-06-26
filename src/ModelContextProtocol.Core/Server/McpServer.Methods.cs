@@ -24,6 +24,52 @@ public abstract partial class McpServer : McpSession
     private static Dictionary<string, HashSet<string>>? s_elicitAllowedProperties = null;
 
     /// <summary>
+    /// Ambient interceptor that, when installed, redirects server-initiated requests
+    /// (<see cref="SampleAsync(CreateMessageRequestParams, CancellationToken)"/>,
+    /// <see cref="ElicitAsync(ElicitRequestParams, CancellationToken)"/>, and
+    /// <see cref="RequestRootsAsync(ListRootsRequestParams, CancellationToken)"/>) away from the
+    /// transport. The interceptor receives the request method and pre-serialized parameters and
+    /// returns the serialized result. Used by extensions (such as the Tasks extension) to surface
+    /// these requests through an alternate channel during background execution.
+    /// </summary>
+    private static readonly AsyncLocal<Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>?> s_outgoingRequestInterceptor = new();
+
+    /// <summary>
+    /// Gets the currently installed outgoing-request interceptor for the ambient execution context, if any.
+    /// </summary>
+    internal static Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? CurrentOutgoingRequestInterceptor => s_outgoingRequestInterceptor.Value;
+
+    /// <summary>
+    /// Installs an interceptor that redirects server-initiated requests for the duration of the
+    /// returned scope on the current asynchronous execution context.
+    /// </summary>
+    /// <param name="interceptor">
+    /// The interceptor invoked for each outgoing request. It receives the request method, the
+    /// pre-serialized request parameters (or <see langword="null"/>), and a cancellation token, and
+    /// returns the serialized result (or <see langword="null"/> to indicate no result).
+    /// </param>
+    /// <returns>An <see cref="IDisposable"/> that restores the previous interceptor when disposed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="interceptor"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// While an interceptor is installed, the redirected methods skip their client-capability checks,
+    /// because the alternate channel is responsible for delivering the request to the client.
+    /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IDisposable InterceptOutgoingRequests(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
+    {
+        Throw.IfNull(interceptor);
+
+        var previous = s_outgoingRequestInterceptor.Value;
+        s_outgoingRequestInterceptor.Value = interceptor;
+        return new OutgoingRequestInterceptorScope(previous);
+    }
+
+    private sealed class OutgoingRequestInterceptorScope(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? previous) : IDisposable
+    {
+        public void Dispose() => s_outgoingRequestInterceptor.Value = previous;
+    }
+
+    /// <summary>
     /// Creates a new instance of an <see cref="McpServer"/>.
     /// </summary>
     /// <param name="transport">The transport to use for the server representing an already-established MCP session.</param>
@@ -74,14 +120,13 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
 
-        // If executing inside a background task, redirect sampling through the task store.
-        // Capability checks (ThrowIfSamplingUnsupported) are intentionally skipped here because the
-        // client opted into the tasks extension when submitting the originating request, and input
-        // requests are delivered through the tasks/get response channel rather than as direct
-        // server->client requests. See SendRequestViaTaskAsync remarks.
-        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect sampling through it. Capability checks (ThrowIfSamplingUnsupported) are
+        // intentionally skipped because the interceptor's alternate channel is responsible for
+        // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
+        if (CurrentOutgoingRequestInterceptor is { } interceptor)
         {
-            return SendRequestViaTaskAsync(taskContext, RequestMethods.SamplingCreateMessage, requestParams,
+            return SendRequestViaInterceptorAsync(interceptor, RequestMethods.SamplingCreateMessage, requestParams,
                 McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
                 McpJsonUtilities.JsonContext.Default.CreateMessageResult,
                 cancellationToken);
@@ -282,14 +327,13 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
 
-        // If executing inside a background task, redirect through the task store.
-        // Capability checks (ThrowIfRootsUnsupported) are intentionally skipped here because the
-        // client opted into the tasks extension when submitting the originating request, and input
-        // requests are delivered through the tasks/get response channel rather than as direct
-        // server->client requests. See SendRequestViaTaskAsync remarks.
-        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect through it. Capability checks (ThrowIfRootsUnsupported) are intentionally skipped
+        // because the interceptor's alternate channel is responsible for delivering the request to
+        // the client. See SendRequestViaInterceptorAsync remarks.
+        if (CurrentOutgoingRequestInterceptor is { } interceptor)
         {
-            return SendRequestViaTaskAsync(taskContext, RequestMethods.RootsList, requestParams,
+            return SendRequestViaInterceptorAsync(interceptor, RequestMethods.RootsList, requestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsResult,
                 cancellationToken);
@@ -334,18 +378,15 @@ public abstract partial class McpServer : McpSession
     {
         Throw.IfNull(requestParams);
 
-        // If executing inside a background task, redirect elicitation through the task store.
-        // Capability checks (ThrowIfElicitationUnsupported) are intentionally skipped here because
-        // the client opted into the tasks extension when submitting the originating request, and
-        // input requests are delivered through the tasks/get response channel rather than as
-        // direct server->client requests. See SendRequestViaTaskAsync remarks.
-        if (McpTaskExecutionContext.Current.Value is { } taskContext)
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect elicitation through it. Capability checks (ThrowIfElicitationUnsupported) are
+        // intentionally skipped because the interceptor's alternate channel is responsible for
+        // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
+        if (CurrentOutgoingRequestInterceptor is { } interceptor)
         {
-            var taskResult = await SendRequestViaTaskAsync(taskContext, RequestMethods.ElicitationCreate, requestParams,
-                McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
-                McpJsonUtilities.JsonContext.Default.ElicitResult,
-                cancellationToken).ConfigureAwait(false);
-            return taskResult ?? new ElicitResult { Action = "cancel" };
+            var paramsNode = JsonSerializer.SerializeToNode(requestParams, McpJsonUtilities.JsonContext.Default.ElicitRequestParams);
+            var resultNode = await interceptor(RequestMethods.ElicitationCreate, paramsNode, cancellationToken).ConfigureAwait(false);
+            return resultNode?.Deserialize(McpJsonUtilities.JsonContext.Default.ElicitResult) ?? new ElicitResult { Action = "cancel" };
         }
 
         ThrowIfElicitationUnsupported(requestParams);
@@ -607,69 +648,68 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(taskId);
         Throw.IfNull(store);
 
-        var previous = McpTaskExecutionContext.Current.Value;
-        McpTaskExecutionContext.Current.Value = new McpTaskExecutionContext
+        return InterceptOutgoingRequests(async (method, paramsNode, cancellationToken) =>
         {
-            TaskId = taskId,
-            Store = store,
-        };
-        return new McpTaskExecutionContext.Scope(previous);
+            var requestId = Guid.NewGuid().ToString("N");
+
+            var inputRequest = new InputRequest
+            {
+                Method = method,
+                Params = paramsNode is null
+                    ? default
+                    : JsonSerializer.SerializeToElement(paramsNode, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
+            };
+
+            var tcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void handler(InputResponseReceivedEventArgs args)
+            {
+                if (args.TaskId == taskId && args.RequestId == requestId)
+                {
+                    tcs.TrySetResult(args.Response);
+                }
+            }
+
+            store.InputResponseReceived += handler;
+            try
+            {
+                await store.SetInputRequestsAsync(
+                    taskId,
+                    new Dictionary<string, InputRequest> { [requestId] = inputRequest },
+                    cancellationToken).ConfigureAwait(false);
+
+                var response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                return JsonNode.Parse(response.RawValue.GetRawText());
+            }
+            finally
+            {
+                store.InputResponseReceived -= handler;
+            }
+        });
     }
 
     /// <summary>
-    /// Sends a server-initiated request through the task store as an input request, then awaits the response.
+    /// Sends a server-initiated request through the installed outgoing-request interceptor, then awaits the response.
     /// </summary>
     /// <remarks>
-    /// When executing inside a task scope, capability negotiation checks (such as
+    /// When an interceptor is installed, capability negotiation checks (such as
     /// <see cref="ThrowIfSamplingUnsupported"/>, <see cref="ThrowIfRootsUnsupported"/>, and
     /// <see cref="ThrowIfElicitationUnsupported"/>) are intentionally skipped by the callers
-    /// of this helper. The task channel itself is the negotiated capability: the client opted
-    /// in to the tasks extension when it submitted the originating request, and is responsible
-    /// for handling or rejecting the input requests surfaced through <c>tasks/get</c>.
+    /// of this helper. The interceptor's alternate channel is the negotiated capability and is
+    /// responsible for delivering the request to the client or rejecting it.
     /// </remarks>
-    private async ValueTask<TResponse> SendRequestViaTaskAsync<TRequest, TResponse>(
-        McpTaskExecutionContext taskContext,
+    private async ValueTask<TResponse> SendRequestViaInterceptorAsync<TRequest, TResponse>(
+        Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor,
         string method,
         TRequest request,
         JsonTypeInfo<TRequest> requestTypeInfo,
         JsonTypeInfo<TResponse> responseTypeInfo,
         CancellationToken cancellationToken)
     {
-        var requestId = Guid.NewGuid().ToString("N");
-        var paramsJson = JsonSerializer.SerializeToElement(request, requestTypeInfo);
-
-        var inputRequest = new InputRequest
-        {
-            Method = method,
-            Params = paramsJson,
-        };
-
-        var tcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void handler(InputResponseReceivedEventArgs args)
-        {
-            if (args.TaskId == taskContext.TaskId && args.RequestId == requestId)
-            {
-                tcs.TrySetResult(args.Response);
-            }
-        }
-
-        taskContext.Store.InputResponseReceived += handler;
-        try
-        {
-            await taskContext.Store.SetInputRequestsAsync(
-                taskContext.TaskId,
-                new Dictionary<string, InputRequest> { [requestId] = inputRequest },
-                cancellationToken).ConfigureAwait(false);
-
-            var response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-            return response.Deserialize(responseTypeInfo)!;
-        }
-        finally
-        {
-            taskContext.Store.InputResponseReceived -= handler;
-        }
+        var paramsNode = JsonSerializer.SerializeToNode(request, requestTypeInfo);
+        var resultNode = await interceptor(method, paramsNode, cancellationToken).ConfigureAwait(false);
+        return resultNode is null ? default! : resultNode.Deserialize(responseTypeInfo)!;
     }
 
     private void ThrowIfElicitationUnsupported(ElicitRequestParams request)
