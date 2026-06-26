@@ -1,10 +1,13 @@
+using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -29,49 +32,66 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
             options.Capabilities ??= new ServerCapabilities();
+            options.Capabilities.Extensions ??= new Dictionary<string, object>();
+            options.Capabilities.Extensions[TasksProtocol.ExtensionId] = new JsonObject();
+            options.RequestHandlers ??= new List<McpServerRequestHandler>();
 
             // CallTool always returns a CreateTaskResult with a tiny poll interval so the
             // test exercises the threshold in well under a second.
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
             {
                 var taskId = Guid.NewGuid().ToString("N");
-                return new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
-                {
-                    TaskId = taskId,
-                    Status = McpTaskStatus.InputRequired,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    LastUpdatedAt = DateTimeOffset.UtcNow,
-                    PollIntervalMs = 5,
-                    ResultType = "task",
-                });
+                return new ValueTask<ResultOrAlternate<CallToolResult>>(
+                    new ResultOrAlternate<CallToolResult>(
+                        new CreateTaskResult
+                        {
+                            TaskId = taskId,
+                            Status = McpTaskStatus.InputRequired,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                            PollIntervalMs = 5,
+                            ResultType = "task",
+                        },
+                        McpTasksJsonContext.Default.CreateTaskResult));
             };
 
             // GetTask always reports InputRequired with NO outstanding input requests — the
             // misbehaving-server condition the stuck-detector exists to break out of.
-            options.Handlers.GetTaskHandler = (context, cancellationToken) =>
+            options.RequestHandlers.Add(new McpServerRequestHandler
             {
-                Interlocked.Increment(ref _pollCount);
-
-                return new ValueTask<GetTaskResult>(new InputRequiredTaskResult
+                Method = TasksProtocol.MethodTasksGet,
+                Handler = (request, cancellationToken) =>
                 {
-                    TaskId = context.Params!.TaskId,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    LastUpdatedAt = DateTimeOffset.UtcNow,
-                    PollIntervalMs = 5,
-                    InputRequests = new Dictionary<string, InputRequest>(),
-                    ResultType = "complete",
-                });
-            };
+                    var requestParams = JsonSerializer.Deserialize<GetTaskRequestParams>(request.Params, McpTasksJsonContext.Default.Options)
+                        ?? throw new McpProtocolException("Missing params for tasks/get", McpErrorCode.InvalidParams);
 
-            // CancelTask must succeed since the client issues a best-effort cancel when it
-            // gives up; otherwise the cancel failure would mask the real exception.
-            options.Handlers.CancelTaskHandler = (context, cancellationToken) =>
-                new ValueTask<CancelTaskResult>(new CancelTaskResult { ResultType = "complete" });
+                    Interlocked.Increment(ref _pollCount);
 
-            // UpdateTask is never invoked in this scenario (there are no input requests to resolve)
-            // but must be present so the handler-configuration validation passes.
-            options.Handlers.UpdateTaskHandler = (context, cancellationToken) =>
-                new ValueTask<UpdateTaskResult>(new UpdateTaskResult { ResultType = "complete" });
+                    return new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(new InputRequiredTaskResult
+                    {
+                        TaskId = requestParams.TaskId,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        LastUpdatedAt = DateTimeOffset.UtcNow,
+                        PollIntervalMs = 5,
+                        InputRequests = new Dictionary<string, InputRequest>(),
+                        ResultType = "complete",
+                    }, McpTasksJsonContext.Default.Options));
+                },
+            });
+
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksCancel,
+                Handler = (request, cancellationToken) =>
+                    new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(new CancelTaskResult { ResultType = "complete" }, McpTasksJsonContext.Default.Options)),
+            });
+
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksUpdate,
+                Handler = (request, cancellationToken) =>
+                    new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(new UpdateTaskResult { ResultType = "complete" }, McpTasksJsonContext.Default.Options)),
+            });
         });
     }
 
@@ -82,7 +102,7 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         var ct = TestContext.Current.CancellationToken;
 
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
-            await client.CallToolAsync(new CallToolRequestParams { Name = "any-tool" }, ct));
+            await client.CallToolWithPollingAsync(new CallToolRequestParams { Name = "any-tool" }, cancellationToken: ct));
 
         Assert.Contains(McpTaskStatus.InputRequired.ToString(), ex.Message);
         Assert.Contains("consecutive polls", ex.Message);
@@ -93,18 +113,15 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
     [Fact]
     public async Task CallToolAsync_StuckDetector_HonorsConfiguredThreshold()
     {
-        // Verifies McpClientOptions.MaxConsecutiveStuckPolls is plumbed into PollTaskToCompletionAsync:
+        // Verifies CallToolWithPollingAsync plumbs the explicit threshold into PollTaskToCompletionAsync:
         // a smaller configured threshold is surfaced verbatim in the McpException message.
         const int CustomThreshold = 3;
 
-        await using var client = await CreateMcpClientForServer(new McpClientOptions
-        {
-            MaxConsecutiveStuckPolls = CustomThreshold,
-        });
+        await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
-            await client.CallToolAsync(new CallToolRequestParams { Name = "any-tool" }, ct));
+            await client.CallToolWithPollingAsync(new CallToolRequestParams { Name = "any-tool" }, maxConsecutiveStuckPolls: CustomThreshold, cancellationToken: ct));
 
         // The message embeds the configured threshold, which is the strongest signal that the
         // option value (not the 60-default constant) is what governed the loop.
@@ -112,19 +129,4 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
         Assert.Equal(CustomThreshold, _pollCount);
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    [InlineData(int.MinValue)]
-    public void McpClientOptions_MaxConsecutiveStuckPolls_RejectsNonPositive(int value)
-    {
-        var options = new McpClientOptions();
-        Assert.Throws<ArgumentOutOfRangeException>(() => options.MaxConsecutiveStuckPolls = value);
-    }
-
-    [Fact]
-    public void McpClientOptions_MaxConsecutiveStuckPolls_DefaultsTo60()
-    {
-        Assert.Equal(60, new McpClientOptions().MaxConsecutiveStuckPolls);
-    }
 }

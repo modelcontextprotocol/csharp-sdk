@@ -107,11 +107,6 @@ public abstract partial class McpServer : McpSession
     /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
     /// the request, rather than relying on the optional standalone GET SSE stream.
     /// </para>
-    /// <para>
-    /// When called during task-augmented tool execution, this method automatically updates the task
-    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for the client response,
-    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
-    /// </para>
     /// </remarks>
     [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ValueTask<CreateMessageResult> SampleAsync(
@@ -366,11 +361,6 @@ public abstract partial class McpServer : McpSession
     /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
     /// the request, rather than relying on the optional standalone GET SSE stream.
     /// </para>
-    /// <para>
-    /// When called during task-augmented tool execution, this method automatically updates the task
-    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for user input,
-    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
-    /// </para>
     /// </remarks>
     public async ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams requestParams, 
@@ -461,26 +451,6 @@ public abstract partial class McpServer : McpSession
 
         T? typed = JsonSerializer.Deserialize(obj, serializerOptions.GetTypeInfo<T>());
         return new ElicitResult<T> { Action = raw.Action, Content = typed };
-    }
-
-    /// <summary>
-    /// Sends a task status notification to the connected client.
-    /// </summary>
-    /// <param name="notificationParams">The task status notification parameters to send.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="notificationParams"/> is <see langword="null"/>.</exception>
-    public Task SendTaskStatusNotificationAsync(
-        TaskStatusNotificationParams notificationParams,
-        CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(notificationParams);
-
-        return SendNotificationAsync(
-            NotificationMethods.TaskStatusNotification,
-            notificationParams,
-            McpJsonUtilities.JsonContext.Default.TaskStatusNotificationParams,
-            cancellationToken);
     }
 
     /// <summary>
@@ -630,63 +600,6 @@ public abstract partial class McpServer : McpSession
 
             throw new InvalidOperationException("Client does not support roots.");
         }
-    }
-
-    /// <summary>
-    /// Creates a scope that redirects server-initiated requests (elicitation, sampling, list roots) through
-    /// the task store as input requests for the duration of the scope. Use this when executing tool logic
-    /// in the background as a task, so that any server-to-client requests are surfaced to the client via
-    /// the task's <see cref="McpTaskStatus.InputRequired"/> state instead of direct JSON-RPC messages.
-    /// </summary>
-    /// <param name="taskId">The task ID in the store.</param>
-    /// <param name="store">The task store to write input requests to.</param>
-    /// <returns>An <see cref="IDisposable"/> that restores the previous context when disposed.</returns>
-    public IDisposable CreateMcpTaskScope(
-        string taskId,
-        IMcpTaskStore store)
-    {
-        Throw.IfNull(taskId);
-        Throw.IfNull(store);
-
-        return InterceptOutgoingRequests(async (method, paramsNode, cancellationToken) =>
-        {
-            var requestId = Guid.NewGuid().ToString("N");
-
-            var inputRequest = new InputRequest
-            {
-                Method = method,
-                Params = paramsNode is null
-                    ? default
-                    : JsonSerializer.SerializeToElement(paramsNode, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
-            };
-
-            var tcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void handler(InputResponseReceivedEventArgs args)
-            {
-                if (args.TaskId == taskId && args.RequestId == requestId)
-                {
-                    tcs.TrySetResult(args.Response);
-                }
-            }
-
-            store.InputResponseReceived += handler;
-            try
-            {
-                await store.SetInputRequestsAsync(
-                    taskId,
-                    new Dictionary<string, InputRequest> { [requestId] = inputRequest },
-                    cancellationToken).ConfigureAwait(false);
-
-                var response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return JsonNode.Parse(response.RawValue.GetRawText());
-            }
-            finally
-            {
-                store.InputResponseReceived -= handler;
-            }
-        });
     }
 
     /// <summary>

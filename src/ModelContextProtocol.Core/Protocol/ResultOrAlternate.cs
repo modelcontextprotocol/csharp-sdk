@@ -75,12 +75,4 @@ public class ResultOrAlternate<TResult> where TResult : Result
     /// </summary>
     /// <param name="result">The result to wrap.</param>
     public static implicit operator ResultOrAlternate<TResult>(TResult result) => new(result);
-
-    /// <summary>
-    /// Implicitly converts a <see cref="CreateTaskResult"/> to a <see cref="ResultOrAlternate{TResult}"/>
-    /// wrapping the task handle as an alternate result using the default serialization context.
-    /// </summary>
-    /// <param name="taskCreated">The task creation result to wrap.</param>
-    public static implicit operator ResultOrAlternate<TResult>(CreateTaskResult taskCreated) =>
-        new(taskCreated, McpJsonUtilities.JsonContext.Default.CreateTaskResult);
 }

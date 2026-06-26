@@ -43,7 +43,7 @@ public sealed class McpServerHandlers
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
     /// Use <see cref="CallToolWithAlternateHandler"/> instead if the tool may return an alternate result
-    /// (such as <see cref="CreateTaskResult"/>) for asynchronous execution.
+    /// for the caller to handle.
     /// </remarks>
     /// <exception cref="InvalidOperationException"><see cref="CallToolWithAlternateHandler"/> is already set.</exception>
     public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
@@ -67,8 +67,7 @@ public sealed class McpServerHandlers
     /// <remarks>
     /// <para>
     /// This handler is invoked when a client makes a call to a tool, allowing the tool to return either
-    /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype
-    /// (such as <see cref="CreateTaskResult"/>) for long-running asynchronous operations.
+    /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype.
     /// </para>
     /// <para>
     /// Cannot be set if <see cref="CallToolHandler"/> is already set.
@@ -201,74 +200,6 @@ public sealed class McpServerHandlers
     /// </remarks>
     [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
-
-    /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.TasksGet"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This handler is invoked when a client polls for the current state of a task.
-    /// The handler should return the appropriate <see cref="GetTaskResult"/> subtype
-    /// based on the task's current status (for example, <see cref="WorkingTaskResult"/>,
-    /// <see cref="InputRequiredTaskResult"/>, <see cref="CompletedTaskResult"/>,
-    /// <see cref="CancelledTaskResult"/>, or <see cref="FailedTaskResult"/>).
-    /// </para>
-    /// <para>
-    /// Setting <see cref="McpServerOptions.TaskStore"/> is the recommended way to wire all three
-    /// task lifecycle handlers (<see cref="GetTaskHandler"/>, <see cref="UpdateTaskHandler"/>,
-    /// and <see cref="CancelTaskHandler"/>) from a single source while still allowing explicit
-    /// handlers to override any slot. If <see cref="CallToolWithAlternateHandler"/> can return a
-    /// <see cref="CreateTaskResult"/> but no <see cref="GetTaskHandler"/> is configured (either
-    /// directly or via a task store), the server throws <see cref="InvalidOperationException"/>
-    /// when processing the request so misconfigured deployments fail loudly instead of producing
-    /// unpollable tasks.
-    /// </para>
-    /// </remarks>
-    public McpRequestHandler<GetTaskRequestParams, GetTaskResult>? GetTaskHandler { get; set; }
-
-    /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.TasksUpdate"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This handler is invoked when a client provides input responses for a task
-    /// that is in the <see cref="McpTaskStatus.InputRequired"/> state. Responses keyed
-    /// by an identifier that does not currently correspond to an outstanding input request
-    /// (including responses for tasks in a terminal state) should be silently ignored per
-    /// SEP-2663.
-    /// </para>
-    /// <para>
-    /// Prefer configuring <see cref="McpServerOptions.TaskStore"/> instead of setting this
-    /// handler directly; the default implementation built from the store dispatches to
-    /// <see cref="IMcpTaskStore.ResolveInputRequestsAsync"/> and raises
-    /// <see cref="IMcpTaskStore.InputResponseReceived"/> to wake any pending
-    /// <see cref="McpServer.ElicitAsync(ModelContextProtocol.Protocol.ElicitRequestParams, CancellationToken)"/>
-    /// or <see cref="McpServer.SampleAsync(ModelContextProtocol.Protocol.CreateMessageRequestParams, CancellationToken)"/>
-    /// calls executing inside a task scope.
-    /// </para>
-    /// </remarks>
-    public McpRequestHandler<UpdateTaskRequestParams, UpdateTaskResult>? UpdateTaskHandler { get; set; }
-
-    /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.TasksCancel"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This handler is invoked when a client requests cancellation of an in-progress task.
-    /// Per SEP-2663, cancellation is cooperative and eventually consistent: the handler should
-    /// always acknowledge the request with <see cref="CancelTaskResult"/>, even if the task is
-    /// unknown, already terminal, or cannot actually be stopped. Whether the task transitions
-    /// to <see cref="McpTaskStatus.Cancelled"/> is up to the implementation.
-    /// </para>
-    /// <para>
-    /// Prefer configuring <see cref="McpServerOptions.TaskStore"/> instead of setting this
-    /// handler directly; the default implementation built from the store calls
-    /// <see cref="IMcpTaskStore.SetCancelledAsync"/> and signals the per-task
-    /// <see cref="CancellationTokenSource"/> so the tool's <see cref="CancellationToken"/>
-    /// observes cancellation.
-    /// </para>
-    /// </remarks>
-    public McpRequestHandler<CancelTaskRequestParams, CancelTaskResult>? CancelTaskHandler { get; set; }
 
     /// <summary>Gets or sets notification handlers to register with the server.</summary>
     /// <remarks>

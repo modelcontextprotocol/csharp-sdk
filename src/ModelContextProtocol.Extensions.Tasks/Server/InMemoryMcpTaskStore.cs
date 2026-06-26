@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Provides an in-memory implementation of <see cref="IMcpTaskStore"/> for development and testing scenarios.

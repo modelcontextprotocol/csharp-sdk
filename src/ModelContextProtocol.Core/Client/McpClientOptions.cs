@@ -147,41 +147,4 @@ public sealed class McpClientOptions
         }
     }
 
-    /// <summary>
-    /// Gets or sets the maximum number of consecutive task polls during which a task may report
-    /// <see cref="McpTaskStatus.InputRequired"/> without publishing any new input requests, before
-    /// the client treats the task as stuck, issues a best-effort <c>tasks/cancel</c>, and throws
-    /// an <see cref="McpException"/>.
-    /// </summary>
-    /// <value>
-    /// The maximum number of consecutive stuck polls allowed. The default value is <c>60</c>.
-    /// </value>
-    /// <remarks>
-    /// <para>
-    /// This guard prevents an unbounded poll loop when the server keeps a task in
-    /// <see cref="McpTaskStatus.InputRequired"/> but never publishes new input requests after the
-    /// client has already responded to every previously surfaced request. It only affects the
-    /// long-poll path used by <see cref="McpClient.CallToolAsync(CallToolRequestParams, CancellationToken)"/>;
-    /// it does not affect direct <see cref="McpClient.GetTaskAsync(string, CancellationToken)"/> calls.
-    /// </para>
-    /// <para>
-    /// Callers should size this value with the configured server-side poll interval in mind: the
-    /// effective wall-clock timeout is roughly <c>MaxConsecutiveStuckPolls * pollIntervalMs</c>.
-    /// Setting this to a very small value can cause false positives for servers that are slow to
-    /// surface follow-up input requests; setting it too large can mask misbehaving servers.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="ArgumentOutOfRangeException">The value is less than <c>1</c>.</exception>
-    public int MaxConsecutiveStuckPolls
-    {
-        get;
-        set
-        {
-            if (value < 1)
-            {
-                throw new ArgumentOutOfRangeException(nameof(value), value, "must be greater than or equal to 1.");
-            }
-            field = value;
-        }
-    } = 60;
 }

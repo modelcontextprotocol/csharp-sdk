@@ -1,8 +1,9 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the result returned by a server when it creates a task in lieu of a standard result.

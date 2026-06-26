@@ -1,7 +1,10 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -13,6 +16,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 {
+    private static readonly JsonTypeInfo s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
+
     public TaskHandlerConfigurationValidationTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
 #if !NET
@@ -27,15 +32,18 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
             options.Capabilities ??= new ServerCapabilities();
 
             // Configure a task-augmented handler without TaskStore or any of the
-            // task lifecycle handlers (GetTaskHandler/UpdateTaskHandler/CancelTaskHandler).
+            // task lifecycle request handlers.
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
-                {
-                    TaskId = "orphan-task",
-                    Status = McpTaskStatus.Working,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    LastUpdatedAt = DateTimeOffset.UtcNow,
-                });
+                new ValueTask<ResultOrAlternate<CallToolResult>>(
+                    new ResultOrAlternate<CallToolResult>(
+                        new CreateTaskResult
+                        {
+                            TaskId = "orphan-task",
+                            Status = McpTaskStatus.Working,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                        },
+                        s_createTaskResultTypeInfo));
         });
     }
 

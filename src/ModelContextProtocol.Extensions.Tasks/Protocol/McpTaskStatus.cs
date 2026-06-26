@@ -1,6 +1,7 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the status of an MCP task.

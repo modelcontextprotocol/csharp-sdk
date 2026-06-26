@@ -1,3 +1,4 @@
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -27,8 +28,8 @@ public static class TaskSerializationTests
             Meta = new JsonObject { ["key"] = "value" }
         };
 
-        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<CreateTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         Assert.NotNull(deserialized);
         Assert.Equal("task-123", deserialized.TaskId);
@@ -57,7 +58,7 @@ public static class TaskSerializationTests
             ResultType = "task",
         };
 
-        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(result, McpTasksJsonContext.Default.Options);
 
         // Must use camelCase wire names
         Assert.Contains("\"ttlMs\":", json);
@@ -82,7 +83,7 @@ public static class TaskSerializationTests
             ResultType = "task",
         };
 
-        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(result, McpTasksJsonContext.Default.Options);
         var node = JsonNode.Parse(json)!;
 
         Assert.Equal("task", (string)node["resultType"]!);
@@ -104,8 +105,8 @@ public static class TaskSerializationTests
             PollIntervalMs = 2000,
         };
 
-        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         var working = Assert.IsType<WorkingTaskResult>(deserialized);
         Assert.Equal("w1", working.TaskId);
@@ -126,8 +127,8 @@ public static class TaskSerializationTests
             Result = resultPayload,
         };
 
-        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         var completed = Assert.IsType<CompletedTaskResult>(deserialized);
         Assert.Equal("c1", completed.TaskId);
@@ -147,8 +148,8 @@ public static class TaskSerializationTests
             Error = errorPayload,
         };
 
-        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         var failed = Assert.IsType<FailedTaskResult>(deserialized);
         Assert.Equal("f1", failed.TaskId);
@@ -167,8 +168,8 @@ public static class TaskSerializationTests
             StatusMessage = "User cancelled",
         };
 
-        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         var cancelled = Assert.IsType<CancelledTaskResult>(deserialized);
         Assert.Equal("x1", cancelled.TaskId);
@@ -195,8 +196,8 @@ public static class TaskSerializationTests
             InputRequests = inputRequests,
         };
 
-        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<GetTaskResult>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
 
         var inputRequired = Assert.IsType<InputRequiredTaskResult>(deserialized);
         Assert.Equal("i1", inputRequired.TaskId);
@@ -228,7 +229,7 @@ public static class TaskSerializationTests
                 _ => $$$"""{"taskId":"t","status":"{{{status}}}","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""",
             };
 
-            var result = JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions);
+            var result = JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options);
             Assert.NotNull(result);
             Assert.IsType(expectedType, result);
         }
@@ -238,42 +239,42 @@ public static class TaskSerializationTests
     public static void GetTaskResult_MissingTaskId_ThrowsJsonException()
     {
         var json = """{"status":"working","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Fact]
     public static void GetTaskResult_MissingStatus_ThrowsJsonException()
     {
         var json = """{"taskId":"t","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Fact]
     public static void GetTaskResult_UnknownStatus_ThrowsJsonException()
     {
         var json = """{"taskId":"t","status":"exploded","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Fact]
     public static void GetTaskResult_CompletedMissingResult_ThrowsJsonException()
     {
         var json = """{"taskId":"t","status":"completed","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Fact]
     public static void GetTaskResult_FailedMissingError_ThrowsJsonException()
     {
         var json = """{"taskId":"t","status":"failed","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Fact]
     public static void GetTaskResult_InputRequiredMissingInputRequests_ThrowsJsonException()
     {
         var json = """{"taskId":"t","status":"input_required","createdAt":"2025-01-01T00:00:00Z","lastUpdatedAt":"2025-01-01T00:00:00Z"}""";
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpJsonUtilities.DefaultOptions));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GetTaskResult>(json, McpTasksJsonContext.Default.Options));
     }
 
     [Theory]
@@ -303,14 +304,14 @@ public static class TaskSerializationTests
                     ["k"] = new InputRequest
                     {
                         Method = "test/method",
-                        Params = JsonSerializer.SerializeToElement("ask", McpJsonUtilities.DefaultOptions),
+                        Params = JsonSerializer.SerializeToElement("ask", McpTasksJsonContext.Default.Options),
                     },
                 },
             },
             _ => throw new InvalidOperationException()
         };
 
-        string json = JsonSerializer.Serialize(value, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(value, McpTasksJsonContext.Default.Options);
         var node = JsonNode.Parse(json)!;
 
         Assert.Equal("complete", (string?)node["resultType"]);
@@ -328,10 +329,10 @@ public static class TaskSerializationTests
     [InlineData(McpTaskStatus.Failed, "failed")]
     public static void McpTaskStatus_SerializesAsSnakeCase(McpTaskStatus status, string expectedWireValue)
     {
-        string json = JsonSerializer.Serialize(status, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(status, McpTasksJsonContext.Default.Options);
         Assert.Equal($"\"{expectedWireValue}\"", json);
 
-        var deserialized = JsonSerializer.Deserialize<McpTaskStatus>(json, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<McpTaskStatus>(json, McpTasksJsonContext.Default.Options);
         Assert.Equal(status, deserialized);
     }
 
@@ -350,8 +351,8 @@ public static class TaskSerializationTests
             StatusMessage = "Working on it",
         };
 
-        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpTasksJsonContext.Default.Options);
 
         var working = Assert.IsType<WorkingTaskNotificationParams>(deserialized);
         Assert.Equal("n1", working.TaskId);
@@ -370,8 +371,8 @@ public static class TaskSerializationTests
             Result = resultPayload,
         };
 
-        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpTasksJsonContext.Default.Options);
 
         var completed = Assert.IsType<CompletedTaskNotificationParams>(deserialized);
         Assert.Equal("n2", completed.TaskId);
@@ -390,8 +391,8 @@ public static class TaskSerializationTests
             Error = errorPayload,
         };
 
-        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpTasksJsonContext.Default.Options);
 
         var failed = Assert.IsType<FailedTaskNotificationParams>(deserialized);
         Assert.Equal("n3", failed.TaskId);
@@ -408,8 +409,8 @@ public static class TaskSerializationTests
             LastUpdatedAt = DateTimeOffset.UtcNow,
         };
 
-        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpTasksJsonContext.Default.Options);
 
         Assert.IsType<CancelledTaskNotificationParams>(deserialized);
     }
@@ -429,8 +430,8 @@ public static class TaskSerializationTests
             InputRequests = inputRequests,
         };
 
-        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize<TaskStatusNotificationParams>(original, McpTasksJsonContext.Default.Options);
+        var deserialized = JsonSerializer.Deserialize<TaskStatusNotificationParams>(json, McpTasksJsonContext.Default.Options);
 
         var inputRequired = Assert.IsType<InputRequiredTaskNotificationParams>(deserialized);
         Assert.NotNull(inputRequired.InputRequests);
@@ -496,7 +497,7 @@ public static class TaskSerializationTests
     {
         // SEP-2663: tasks/update responses use resultType="complete".
         var result = new UpdateTaskResult { ResultType = "complete" };
-        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(result, McpTasksJsonContext.Default.Options);
         var node = JsonNode.Parse(json)!;
 
         Assert.Equal("complete", (string?)node["resultType"]);
@@ -507,7 +508,7 @@ public static class TaskSerializationTests
     {
         // SEP-2663: tasks/cancel responses use resultType="complete".
         var result = new CancelTaskResult { ResultType = "complete" };
-        string json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+        string json = JsonSerializer.Serialize(result, McpTasksJsonContext.Default.Options);
         var node = JsonNode.Parse(json)!;
 
         Assert.Equal("complete", (string?)node["resultType"]);

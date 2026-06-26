@@ -1,24 +1,30 @@
-using System.Diagnostics.CodeAnalysis;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
-/// Represents the result of a <c>tasks/get</c> request, containing the full task state.
+/// Represents the parameters for a <c>notifications/tasks</c> notification sent by the server
+/// to push task status updates to the client.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the abstract base for status-specific task results. The concrete type returned depends on the
-/// task's current <see cref="Status"/>:
+/// Each notification carries a complete task state for the current status, identical to what
+/// <c>tasks/get</c> would have returned at that moment. The concrete type depends on the task's
+/// current status:
 /// <list type="bullet">
-///   <item><see cref="WorkingTaskResult"/> — <see cref="McpTaskStatus.Working"/></item>
-///   <item><see cref="CompletedTaskResult"/> — <see cref="McpTaskStatus.Completed"/></item>
-///   <item><see cref="FailedTaskResult"/> — <see cref="McpTaskStatus.Failed"/></item>
-///   <item><see cref="CancelledTaskResult"/> — <see cref="McpTaskStatus.Cancelled"/></item>
-///   <item><see cref="InputRequiredTaskResult"/> — <see cref="McpTaskStatus.InputRequired"/></item>
+///   <item><see cref="WorkingTaskNotificationParams"/> — <see cref="McpTaskStatus.Working"/></item>
+///   <item><see cref="CompletedTaskNotificationParams"/> — <see cref="McpTaskStatus.Completed"/></item>
+///   <item><see cref="FailedTaskNotificationParams"/> — <see cref="McpTaskStatus.Failed"/></item>
+///   <item><see cref="CancelledTaskNotificationParams"/> — <see cref="McpTaskStatus.Cancelled"/></item>
+///   <item><see cref="InputRequiredTaskNotificationParams"/> — <see cref="McpTaskStatus.InputRequired"/></item>
 /// </list>
+/// </para>
+/// <para>
+/// To receive task status notifications, clients send a <c>subscriptions/listen</c> request
+/// including the task IDs they are interested in.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
@@ -26,10 +32,10 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// </remarks>
 [JsonConverter(typeof(Converter))]
-public abstract class GetTaskResult : Result
+public abstract class TaskStatusNotificationParams : NotificationParams
 {
     /// <summary>Prevent external derivations.</summary>
-    private protected GetTaskResult()
+    private protected TaskStatusNotificationParams()
     {
     }
 
@@ -76,16 +82,16 @@ public abstract class GetTaskResult : Result
     public long? PollIntervalMs { get; set; }
 
     /// <summary>
-    /// JSON converter that deserializes <see cref="GetTaskResult"/> to the appropriate concrete subtype
-    /// based on the <c>status</c> discriminator field.
+    /// JSON converter that deserializes <see cref="TaskStatusNotificationParams"/> to the appropriate
+    /// concrete subtype based on the <c>status</c> discriminator field.
     /// </summary>
-    internal sealed class Converter : JsonConverter<GetTaskResult>
+    internal sealed class Converter : JsonConverter<TaskStatusNotificationParams>
     {
-        public override GetTaskResult? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override TaskStatusNotificationParams? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.StartObject)
             {
-                throw new JsonException("Expected StartObject token for GetTaskResult.");
+                throw new JsonException("Expected StartObject token for TaskStatusNotificationParams.");
             }
 
             string? taskId = null;
@@ -95,7 +101,6 @@ public abstract class GetTaskResult : Result
             DateTimeOffset? lastUpdatedAt = null;
             long? ttlMs = null;
             long? pollIntervalMs = null;
-            string? resultType = null;
             JsonObject? meta = null;
             JsonElement? result = null;
             JsonElement? error = null;
@@ -139,9 +144,6 @@ public abstract class GetTaskResult : Result
                     case "pollIntervalMs":
                         pollIntervalMs = reader.GetInt64();
                         break;
-                    case "resultType":
-                        resultType = reader.GetString();
-                        break;
                     case "_meta":
                         meta = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonObject>());
                         break;
@@ -169,7 +171,7 @@ public abstract class GetTaskResult : Result
                             }
                             string requestKey = reader.GetString()!;
                             reader.Read();
-                            var inputRequest = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.InputRequest)
+                            var inputRequest = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo<InputRequest>())
                                 ?? throw new JsonException($"Failed to deserialize InputRequest for key '{requestKey}'.");
                             inputRequests[requestKey] = inputRequest;
                         }
@@ -182,85 +184,79 @@ public abstract class GetTaskResult : Result
 
             if (taskId is null)
             {
-                throw new JsonException("Missing required 'taskId' property on GetTaskResult.");
+                throw new JsonException("Missing required 'taskId' property on TaskStatusNotificationParams.");
             }
 
             if (statusString is null)
             {
-                throw new JsonException("Missing required 'status' property on GetTaskResult.");
+                throw new JsonException("Missing required 'status' property on TaskStatusNotificationParams.");
             }
 
             if (createdAt is null)
             {
-                throw new JsonException("Missing required 'createdAt' property on GetTaskResult.");
+                throw new JsonException("Missing required 'createdAt' property on TaskStatusNotificationParams.");
             }
 
             if (lastUpdatedAt is null)
             {
-                throw new JsonException("Missing required 'lastUpdatedAt' property on GetTaskResult.");
+                throw new JsonException("Missing required 'lastUpdatedAt' property on TaskStatusNotificationParams.");
             }
 
-            GetTaskResult taskResult = statusString switch
+            TaskStatusNotificationParams notification = statusString switch
             {
-                "working" => new WorkingTaskResult
+                "working" => new WorkingTaskNotificationParams
                 {
                     TaskId = taskId,
                     CreatedAt = createdAt.Value,
                     LastUpdatedAt = lastUpdatedAt.Value,
                 },
                 "completed" => result is not null
-                    ? new CompletedTaskResult
+                    ? new CompletedTaskNotificationParams
                     {
                         TaskId = taskId,
                         CreatedAt = createdAt.Value,
                         LastUpdatedAt = lastUpdatedAt.Value,
                         Result = result.Value,
                     }
-                    : throw new JsonException("Completed task is missing required 'result' property."),
+                    : throw new JsonException("Completed task notification is missing required 'result' property."),
                 "failed" => error is not null
-                    ? new FailedTaskResult
+                    ? new FailedTaskNotificationParams
                     {
                         TaskId = taskId,
                         CreatedAt = createdAt.Value,
                         LastUpdatedAt = lastUpdatedAt.Value,
                         Error = error.Value,
                     }
-                    : throw new JsonException("Failed task is missing required 'error' property."),
-                "cancelled" => new CancelledTaskResult
+                    : throw new JsonException("Failed task notification is missing required 'error' property."),
+                "cancelled" => new CancelledTaskNotificationParams
                 {
                     TaskId = taskId,
                     CreatedAt = createdAt.Value,
                     LastUpdatedAt = lastUpdatedAt.Value,
                 },
                 "input_required" => inputRequests is not null
-                    ? new InputRequiredTaskResult
+                    ? new InputRequiredTaskNotificationParams
                     {
                         TaskId = taskId,
                         CreatedAt = createdAt.Value,
                         LastUpdatedAt = lastUpdatedAt.Value,
                         InputRequests = inputRequests,
                     }
-                    : throw new JsonException("Input-required task is missing required 'inputRequests' property."),
+                    : throw new JsonException("Input-required task notification is missing required 'inputRequests' property."),
                 _ => throw new JsonException($"Unknown task status: '{statusString}'.")
             };
 
-            taskResult.StatusMessage = statusMessage;
-            taskResult.TimeToLive = ttlMs is null ? null : TimeSpan.FromMilliseconds(ttlMs.Value);
-            taskResult.PollIntervalMs = pollIntervalMs;
-            taskResult.ResultType = resultType;
-            taskResult.Meta = meta;
+            notification.StatusMessage = statusMessage;
+            notification.TimeToLive = ttlMs is null ? null : TimeSpan.FromMilliseconds(ttlMs.Value);
+            notification.PollIntervalMs = pollIntervalMs;
+            notification.Meta = meta;
 
-            return taskResult;
+            return notification;
         }
 
-        public override void Write(Utf8JsonWriter writer, GetTaskResult value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, TaskStatusNotificationParams value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-
-            if (value.ResultType is not null)
-            {
-                writer.WriteString("resultType", value.ResultType);
-            }
 
             if (value.Meta is not null)
             {
@@ -299,15 +295,15 @@ public abstract class GetTaskResult : Result
 
             switch (value)
             {
-                case CompletedTaskResult completed:
+                case CompletedTaskNotificationParams completed:
                     writer.WritePropertyName("result");
                     completed.Result.WriteTo(writer);
                     break;
-                case FailedTaskResult failed:
+                case FailedTaskNotificationParams failed:
                     writer.WritePropertyName("error");
                     failed.Error.WriteTo(writer);
                     break;
-                case InputRequiredTaskResult inputRequired:
+                case InputRequiredTaskNotificationParams inputRequired:
                     writer.WritePropertyName("inputRequests");
                     writer.WriteStartObject();
                     if (inputRequired.InputRequests is { } reqs)
@@ -315,7 +311,7 @@ public abstract class GetTaskResult : Result
                         foreach (var kvp in reqs)
                         {
                             writer.WritePropertyName(kvp.Key);
-                            JsonSerializer.Serialize(writer, kvp.Value, McpJsonUtilities.JsonContext.Default.InputRequest);
+                            JsonSerializer.Serialize(writer, kvp.Value, McpJsonUtilities.DefaultOptions.GetTypeInfo<InputRequest>());
                         }
                     }
                     writer.WriteEndObject();
@@ -328,66 +324,35 @@ public abstract class GetTaskResult : Result
 }
 
 /// <summary>
-/// Represents a task that is currently being processed by the server.
+/// Task notification for a task that is currently being processed.
 /// </summary>
-/// <remarks>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-/// specification for details.
-/// </remarks>
-public sealed class WorkingTaskResult : GetTaskResult
+public sealed class WorkingTaskNotificationParams : TaskStatusNotificationParams
 {
     /// <inheritdoc/>
-    [JsonPropertyName("status")]
     public override McpTaskStatus Status => McpTaskStatus.Working;
 }
 
 /// <summary>
-/// Represents a task that has completed successfully, carrying the final result.
+/// Task notification for a task that has completed successfully.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The <see cref="Result"/> field contains the result structure matching the original request type.
-/// For example, a <c>tools/call</c> task would contain the <see cref="CallToolResult"/> structure.
-/// This includes tool calls that returned results with <c>isError: true</c>.
-/// </para>
-/// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-/// specification for details.
-/// </para>
-/// </remarks>
-public sealed class CompletedTaskResult : GetTaskResult
+public sealed class CompletedTaskNotificationParams : TaskStatusNotificationParams
 {
     /// <inheritdoc/>
-    [JsonPropertyName("status")]
     public override McpTaskStatus Status => McpTaskStatus.Completed;
 
     /// <summary>
-    /// Gets or sets the final result of the task as raw JSON.
+    /// Gets or sets the final result of the task.
     /// </summary>
-    /// <remarks>
-    /// The structure matches the result type of the original request.
-    /// </remarks>
     [JsonPropertyName("result")]
     public required JsonElement Result { get; set; }
 }
 
 /// <summary>
-/// Represents a task that failed due to a JSON-RPC error during execution.
+/// Task notification for a task that failed.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The <see cref="Error"/> field contains the JSON-RPC error object that caused the failure.
-/// This status must not be used for non-JSON-RPC errors.
-/// </para>
-/// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-/// specification for details.
-/// </para>
-/// </remarks>
-public sealed class FailedTaskResult : GetTaskResult
+public sealed class FailedTaskNotificationParams : TaskStatusNotificationParams
 {
     /// <inheritdoc/>
-    [JsonPropertyName("status")]
     public override McpTaskStatus Status => McpTaskStatus.Failed;
 
     /// <summary>
@@ -398,52 +363,29 @@ public sealed class FailedTaskResult : GetTaskResult
 }
 
 /// <summary>
-/// Represents a task that was cancelled before completion.
+/// Task notification for a task that was cancelled.
 /// </summary>
-/// <remarks>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-/// specification for details.
-/// </remarks>
-public sealed class CancelledTaskResult : GetTaskResult
+public sealed class CancelledTaskNotificationParams : TaskStatusNotificationParams
 {
     /// <inheritdoc/>
-    [JsonPropertyName("status")]
     public override McpTaskStatus Status => McpTaskStatus.Cancelled;
 }
 
 /// <summary>
-/// Represents a task that requires input from the client before it can proceed.
+/// Task notification for a task that requires input from the client.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The <see cref="InputRequests"/> field contains outstanding server-to-client requests
-/// that the client must fulfil. Each entry is keyed by an arbitrary identifier for matching
-/// requests to responses, and each value is an <see cref="InputRequest"/> wrapping the
-/// server-to-client request payload.
-/// </para>
-/// <para>
-/// Clients must treat each entry as they would the equivalent standalone server-to-client request.
-/// Clients should deduplicate keys across consecutive polls to avoid presenting the same request
-/// to the user or model more than once.
-/// </para>
-/// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
-/// specification for details.
-/// </para>
-/// </remarks>
-public sealed class InputRequiredTaskResult : GetTaskResult
+public sealed class InputRequiredTaskNotificationParams : TaskStatusNotificationParams
 {
     /// <inheritdoc/>
-    [JsonPropertyName("status")]
     public override McpTaskStatus Status => McpTaskStatus.InputRequired;
 
     /// <summary>
     /// Gets or sets the server-to-client requests that need to be fulfilled.
     /// </summary>
     /// <remarks>
-    /// Keys are arbitrary identifiers for matching requests to responses.
-    /// Each value is an <see cref="InputRequest"/> wrapping the server-to-client request
-    /// (e.g., a sampling, elicitation, or roots-list request).
+    /// Keys are arbitrary identifiers for matching requests to responses. Each value is an
+    /// <see cref="InputRequest"/> wrapping the server-to-client request payload, matching
+    /// the typed format defined by the Multi Round-Trip Requests (MRTR) extension (SEP-2322).
     /// </remarks>
     [JsonPropertyName("inputRequests")]
     public IDictionary<string, InputRequest>? InputRequests { get; set; }

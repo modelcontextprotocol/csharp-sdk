@@ -1,22 +1,26 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 #pragma warning disable MCPEXP001
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies that when both <see cref="McpServerOptions.TaskStore"/> and
+/// Verifies that when both <see cref="McpTasksBuilderExtensions.WithTasks(IMcpServerBuilder, IMcpTaskStore)"/> and
 /// <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> are configured and the handler returns
 /// <see cref="CreateTaskResult"/> (IsTask = true), the store's pre-created task is failed with a
 /// clear error rather than being orphaned in <see cref="McpTaskStatus.Working"/> forever.
 /// </summary>
 public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 {
+    private static readonly JsonTypeInfo s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
+
     public TaskStoreOrphanedTaskTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
 #if !NET
@@ -26,21 +30,25 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+        mcpServerBuilder.WithTasks(new InMemoryMcpTaskStore());
+
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
             options.Capabilities ??= new ServerCapabilities();
-            options.TaskStore = new InMemoryMcpTaskStore();
 
-            // Returning IsTask = true here while TaskStore is also configured is the
+            // Returning IsTask = true here while the tasks extension is also configured is the
             // misconfiguration the server must guard against.
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrAlternate<CallToolResult>>(new CreateTaskResult
-                {
-                    TaskId = "user-task",
-                    Status = McpTaskStatus.Working,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    LastUpdatedAt = DateTimeOffset.UtcNow,
-                });
+                new ValueTask<ResultOrAlternate<CallToolResult>>(
+                    new ResultOrAlternate<CallToolResult>(
+                        new CreateTaskResult
+                        {
+                            TaskId = "user-task",
+                            Status = McpTaskStatus.Working,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                        },
+                        s_createTaskResultTypeInfo));
         });
     }
 
@@ -51,7 +59,7 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
         var ct = TestContext.Current.CancellationToken;
 
         // The store's task is created synchronously and its taskId returned to the client.
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "anything" }, ct);
 
         Assert.True(augmented.IsTask);
@@ -76,7 +84,7 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 
         var message = failed.Error.GetProperty("message").GetString();
         Assert.NotNull(message);
-        Assert.Contains(nameof(McpServerOptions.TaskStore), message);
+        Assert.Contains(nameof(IMcpTaskStore), message);
         Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), message);
     }
 }

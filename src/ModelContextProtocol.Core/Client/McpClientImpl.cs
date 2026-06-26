@@ -179,7 +179,6 @@ internal sealed partial class McpClientImpl : McpClient
     public override Task<ClientCompletionDetails> Completion => _sessionHandler.CompletionTask;
 
     /// <inheritdoc/>
-    private protected override int MaxConsecutiveStuckPolls => _options.MaxConsecutiveStuckPolls;
 
     /// <inheritdoc/>
     public override async ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(

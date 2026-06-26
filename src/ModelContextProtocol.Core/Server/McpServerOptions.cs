@@ -191,21 +191,6 @@ public sealed class McpServerOptions
     public int MaxSamplingOutputTokens { get; set; } = 1000;
 
     /// <summary>
-    /// Gets or sets the task store for managing asynchronous task executions.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When set, the server automatically enables the <c>io.modelcontextprotocol/tasks</c> extension
-    /// and wires up <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> handlers backed by this store.
-    /// Tool executions from clients that signal task support will be wrapped in tasks via the store.
-    /// </para>
-    /// <para>
-    /// If explicit task handlers are also set on <see cref="Handlers"/>, the explicit handlers take precedence.
-    /// </para>
-    /// </remarks>
-    public IMcpTaskStore? TaskStore { get; set; }
-
-    /// <summary>
     /// Gets or sets custom request handlers to register with the server.
     /// </summary>
     /// <remarks>

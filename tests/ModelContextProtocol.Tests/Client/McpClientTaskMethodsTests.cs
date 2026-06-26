@@ -1,3 +1,4 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -11,7 +12,7 @@ namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
 /// Integration tests for the client-side task API methods: GetTaskAsync, CancelTaskAsync,
-/// UpdateTaskAsync, CallToolRawAsync, and the automatic polling in CallToolAsync.
+/// UpdateTaskAsync, CallToolAsTaskAsync, and the automatic polling in CallToolWithPollingAsync.
 /// </summary>
 public class McpClientTaskMethodsTests : ClientServerTestBase
 {
@@ -25,15 +26,12 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = new InMemoryMcpTaskStore
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            };
-        });
-
-        mcpServerBuilder.WithTools([McpServerTool.Create(
+            })
+            .WithTools([McpServerTool.Create(
             async (string input, CancellationToken ct) =>
             {
                 await Task.Delay(50, ct);
@@ -60,7 +58,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
@@ -97,12 +95,12 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_WithTaskStore_ReturnsCreatedTask()
+    public async Task CallToolAsTaskAsync_WithTaskStore_ReturnsCreatedTask()
     {
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
@@ -122,12 +120,12 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var result = await client.CallToolAsync(
+        var result = await client.CallToolWithPollingAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "hello"),
-            }, ct);
+            }, cancellationToken: ct);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Content);
@@ -141,7 +139,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
@@ -172,7 +170,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
-            await client.CancelTaskAsync((string)null!, TestContext.Current.CancellationToken));
+            await client.CancelTaskAsync((string)null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -194,7 +192,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
@@ -235,7 +233,7 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
 
         for (int i = 0; i < 5; i++)
         {
-            var augmented = await client.CallToolRawAsync(
+            var augmented = await client.CallToolAsTaskAsync(
                 new CallToolRequestParams
                 {
                     Name = "test-tool",

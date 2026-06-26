@@ -53,24 +53,4 @@ public static class MetaKeys
     /// belonging to different subscriptions on a shared channel (especially STDIO).
     /// </remarks>
     public const string SubscriptionId = "io.modelcontextprotocol/subscriptionId";
-
-    /// <summary>
-    /// The metadata key used to associate requests, responses, and notifications with a task.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This constant defines the key <c>"io.modelcontextprotocol/related-task"</c> used in the
-    /// <c>_meta</c> field to associate messages with their originating task across the entire
-    /// request lifecycle.
-    /// </para>
-    /// <para>
-    /// For example, an elicitation that a task-augmented tool call depends on must share the
-    /// same related task ID with that tool call's task.
-    /// </para>
-    /// <para>
-    /// For <c>tasks/get</c>, <c>tasks/list</c>, and <c>tasks/cancel</c> operations, this
-    /// metadata should not be included as the taskId is already present in the message structure.
-    /// </para>
-    /// </remarks>
-    public const string RelatedTask = "io.modelcontextprotocol/related-task";
 }

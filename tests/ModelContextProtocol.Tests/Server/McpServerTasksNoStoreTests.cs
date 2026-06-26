@@ -1,3 +1,4 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -10,7 +11,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Pins the behavior when a client signals the SEP-2575 tasks opt-in via <c>_meta</c> but the server
-/// has neither an <see cref="McpServerOptions.TaskStore"/> nor a <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>
+/// has neither <see cref="McpTasksBuilderExtensions.WithTasks(IMcpServerBuilder, IMcpTaskStore)"/> nor a <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>
 /// configured. The expected behavior is a silent synchronous fallback: the server returns the normal
 /// <see cref="CallToolResult"/> with no <c>Task</c> envelope and no exception.
 /// </summary>
@@ -35,8 +36,8 @@ public class McpServerTasksNoStoreTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        // CallToolRawAsync always writes the SEP-2575 tasks opt-in into _meta.
-        var augmented = await client.CallToolRawAsync(
+        // CallToolAsTaskAsync always writes the SEP-2575 tasks opt-in into _meta.
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "sync-tool" }, ct);
 
         // With no task store configured, the server must complete synchronously and return
@@ -54,8 +55,8 @@ public class McpServerTasksNoStoreTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var result = await client.CallToolAsync(
-            new CallToolRequestParams { Name = "sync-tool" }, ct);
+        var result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "sync-tool" }, cancellationToken: ct);
 
         Assert.NotNull(result);
         Assert.Equal("sync result", Assert.IsType<TextContentBlock>(result.Content[0]).Text);

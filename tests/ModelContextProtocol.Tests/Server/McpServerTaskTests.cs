@@ -1,9 +1,12 @@
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -29,74 +32,97 @@ public class McpServerTaskTests : ClientServerTestBase
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
             options.Capabilities ??= new ServerCapabilities();
+            options.Capabilities.Extensions ??= new Dictionary<string, object>();
+            options.Capabilities.Extensions[TasksProtocol.ExtensionId] = new JsonObject();
+            options.RequestHandlers ??= new List<McpServerRequestHandler>();
 
-            options.Handlers.CallToolWithAlternateHandler = async (context, cancellationToken) =>
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
             {
                 _capturedMeta = context.Params?.Meta;
                 var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
                 var toolName = context.Params!.Name;
 
-                if (toolName == "immediate-tool")
+                ResultOrAlternate<CallToolResult> result = toolName switch
                 {
-                    return new CallToolResult()
+                    "immediate-tool" => new(new CallToolResult
                     {
                         Content = [new TextContentBlock { Text = "immediate result" }],
-                    };
-                }
+                    }),
+                    "async-tool" => new(
+                        new CreateTaskResult
+                        {
+                            TaskId = store.CreateTask(),
+                            Status = McpTaskStatus.Working,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                            PollIntervalMs = 50,
+                            ResultType = "task",
+                        },
+                        McpTasksJsonContext.Default.CreateTaskResult),
+                    "input-required-tool" => new(
+                        new CreateTaskResult
+                        {
+                            TaskId = store.CreateTask(McpTaskStatus.InputRequired),
+                            Status = McpTaskStatus.InputRequired,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                            PollIntervalMs = 50,
+                            ResultType = "task",
+                        },
+                        McpTasksJsonContext.Default.CreateTaskResult),
+                    _ => throw new McpException($"Unknown tool: {toolName}"),
+                };
 
-                if (toolName == "async-tool")
+                return new ValueTask<ResultOrAlternate<CallToolResult>>(result);
+            };
+
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksGet,
+                Handler = (request, cancellationToken) =>
                 {
-                    var taskId = store.CreateTask();
-                    return new CreateTaskResult
-                    {
-                        TaskId = taskId,
-                        Status = McpTaskStatus.Working,
-                        CreatedAt = DateTimeOffset.UtcNow,
-                        LastUpdatedAt = DateTimeOffset.UtcNow,
-                        PollIntervalMs = 50,
-                        ResultType = "task",
-                    };
-                }
+                    var requestParams = JsonSerializer.Deserialize<GetTaskRequestParams>(request.Params, McpTasksJsonContext.Default.Options)
+                        ?? throw new McpProtocolException("Missing params for tasks/get", McpErrorCode.InvalidParams);
 
-                if (toolName == "input-required-tool")
+                    GetTaskResult result;
+                    try
+                    {
+                        result = _taskStore.GetTask(requestParams.TaskId);
+                    }
+                    catch (McpException ex)
+                    {
+                        throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+                    }
+
+                    return new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(result, McpTasksJsonContext.Default.Options));
+                },
+            });
+
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksUpdate,
+                Handler = (request, cancellationToken) =>
                 {
-                    var taskId = store.CreateTask(McpTaskStatus.InputRequired);
-                    return new CreateTaskResult
-                    {
-                        TaskId = taskId,
-                        Status = McpTaskStatus.InputRequired,
-                        CreatedAt = DateTimeOffset.UtcNow,
-                        LastUpdatedAt = DateTimeOffset.UtcNow,
-                        PollIntervalMs = 50,
-                        ResultType = "task",
-                    };
-                }
+                    var requestParams = JsonSerializer.Deserialize<UpdateTaskRequestParams>(request.Params, McpTasksJsonContext.Default.Options)
+                        ?? throw new McpProtocolException("Missing params for tasks/update", McpErrorCode.InvalidParams);
 
-                throw new McpException($"Unknown tool: {toolName}");
-            };
+                    _taskStore.ProvideInput(requestParams.TaskId, requestParams.InputResponses ?? new Dictionary<string, InputResponse>());
+                    return new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(new UpdateTaskResult(), McpTasksJsonContext.Default.Options));
+                },
+            });
 
-            options.Handlers.GetTaskHandler = async (context, cancellationToken) =>
+            options.RequestHandlers.Add(new McpServerRequestHandler
             {
-                var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
-                var taskId = context.Params!.TaskId;
-                return store.GetTask(taskId);
-            };
+                Method = TasksProtocol.MethodTasksCancel,
+                Handler = (request, cancellationToken) =>
+                {
+                    var requestParams = JsonSerializer.Deserialize<CancelTaskRequestParams>(request.Params, McpTasksJsonContext.Default.Options)
+                        ?? throw new McpProtocolException("Missing params for tasks/cancel", McpErrorCode.InvalidParams);
 
-            options.Handlers.UpdateTaskHandler = async (context, cancellationToken) =>
-            {
-                var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
-                var taskId = context.Params!.TaskId;
-                store.ProvideInput(taskId, context.Params.InputResponses ?? new Dictionary<string, InputResponse>());
-                return new UpdateTaskResult();
-            };
-
-            options.Handlers.CancelTaskHandler = async (context, cancellationToken) =>
-            {
-                var store = context.Server.Services!.GetRequiredService<InMemoryTaskStore>();
-                var taskId = context.Params!.TaskId;
-                store.CancelTask(taskId);
-                return new CancelTaskResult();
-            };
+                    _taskStore.CancelTask(requestParams.TaskId);
+                    return new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(new CancelTaskResult(), McpTasksJsonContext.Default.Options));
+                },
+            });
         });
     }
 
@@ -105,9 +131,9 @@ public class McpServerTaskTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
 
-        var result = await client.CallToolAsync(
+        var result = await client.CallToolWithPollingAsync(
             new CallToolRequestParams { Name = "immediate-tool" },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Content);
@@ -115,11 +141,11 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_ImmediateResult_ReturnsResultNotTask()
+    public async Task CallToolAsTaskAsync_ImmediateResult_ReturnsResultNotTask()
     {
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "immediate-tool" },
             TestContext.Current.CancellationToken);
 
@@ -130,11 +156,11 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_AsyncTool_ReturnsTaskCreated()
+    public async Task CallToolAsTaskAsync_AsyncTool_ReturnsTaskCreated()
     {
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
             TestContext.Current.CancellationToken);
 
@@ -154,7 +180,7 @@ public class McpServerTaskTests : ClientServerTestBase
         // Complete the task after a brief delay so polling finds it.
         _ = Task.Run(async () =>
         {
-            await Task.Delay(100, ct);
+            await Task.Delay(100, cancellationToken: ct);
             // The store should have exactly one task by now
             var taskId = _taskStore.GetAllTaskIds().Single();
             _taskStore.CompleteTask(taskId, new CallToolResult
@@ -163,9 +189,8 @@ public class McpServerTaskTests : ClientServerTestBase
             });
         }, ct);
 
-        var result = await client.CallToolAsync(
-            new CallToolRequestParams { Name = "async-tool" },
-            ct);
+        var result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "async-tool" }, cancellationToken: ct);
 
         Assert.NotNull(result);
         Assert.Single(result.Content);
@@ -192,9 +217,8 @@ public class McpServerTaskTests : ClientServerTestBase
         };
 
         await Assert.ThrowsAsync<McpException>(async () =>
-            await client.CallToolAsync(
-                new CallToolRequestParams { Name = "async-tool" },
-                ct));
+            await client.CallToolWithPollingAsync(
+                new CallToolRequestParams { Name = "async-tool" }, cancellationToken: ct));
 
         Assert.True(await failedTask.Task);
     }
@@ -219,9 +243,8 @@ public class McpServerTaskTests : ClientServerTestBase
         };
 
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            await client.CallToolAsync(
-                new CallToolRequestParams { Name = "async-tool" },
-                ct));
+            await client.CallToolWithPollingAsync(
+                new CallToolRequestParams { Name = "async-tool" }, cancellationToken: ct));
 
         Assert.True(await cancelledTask.Task);
     }
@@ -231,10 +254,10 @@ public class McpServerTaskTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
 
-        // Create a task via CallToolRawAsync
-        var augmented = await client.CallToolRawAsync(
+        // Create a task via CallToolAsTaskAsync
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var taskId = augmented.TaskCreated!.TaskId;
 
@@ -250,7 +273,7 @@ public class McpServerTaskTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
             TestContext.Current.CancellationToken);
 
@@ -276,7 +299,7 @@ public class McpServerTaskTests : ClientServerTestBase
         var extensions = client.ServerCapabilities.Extensions;
         #pragma warning restore MCP_EXTENSIONS
         Assert.NotNull(extensions);
-        Assert.True(extensions.ContainsKey(McpExtensions.Tasks));
+        Assert.True(extensions.ContainsKey(TasksProtocol.ExtensionId));
     }
 
     [Fact]
@@ -284,7 +307,7 @@ public class McpServerTaskTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
             TestContext.Current.CancellationToken);
 
@@ -298,7 +321,7 @@ public class McpServerTaskTests : ClientServerTestBase
         // Strong consistency: tasks/get immediately after CreateTaskResult must resolve.
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
             TestContext.Current.CancellationToken);
 
@@ -328,7 +351,7 @@ public class McpServerTaskTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" }, ct);
         var taskId = augmented.TaskCreated!.TaskId;
 
@@ -347,7 +370,7 @@ public class McpServerTaskTests : ClientServerTestBase
         var ct = TestContext.Current.CancellationToken;
 
         // Create an input-required task
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "input-required-tool" }, ct);
 
         var taskId = augmented.TaskCreated!.TaskId;
@@ -373,7 +396,7 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_InjectsTaskCapabilityInMeta()
+    public async Task CallToolAsTaskAsync_InjectsTaskCapabilityInMeta()
     {
         // Verify the server receives the task extension in _meta by intercepting
         // the handler. The CallToolWithAlternateHandler already receives the request,
@@ -381,7 +404,7 @@ public class McpServerTaskTests : ClientServerTestBase
         // by confirming the server returns a task result (which requires the capability signal).
         await using var client = await CreateMcpClientForServer();
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "async-tool" },
             TestContext.Current.CancellationToken);
 
@@ -390,14 +413,14 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_OptIn_UsesSep2575CapabilitiesEnvelope()
+    public async Task CallToolAsTaskAsync_OptIn_UsesSep2575CapabilitiesEnvelope()
     {
         // SEP-2663 §51: the per-request opt-in is the SEP-2575 capabilities envelope:
         //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
         // This test pins the literal wire path so future refactors can't regress.
         await using var client = await CreateMcpClientForServer();
 
-        await client.CallToolRawAsync(
+        await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "immediate-tool" },
             TestContext.Current.CancellationToken);
 
@@ -413,7 +436,7 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_OptIn_PreservesExistingMetaSiblings()
+    public async Task CallToolAsTaskAsync_OptIn_PreservesExistingMetaSiblings()
     {
         // User-supplied _meta entries at the root must not be clobbered, and the SEP-2575
         // envelope must be added alongside them, not in place of them.
@@ -431,7 +454,7 @@ public class McpServerTaskTests : ClientServerTestBase
             },
         };
 
-        await client.CallToolRawAsync(
+        await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "immediate-tool",
@@ -452,13 +475,13 @@ public class McpServerTaskTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task CallToolRawAsync_PreservesExistingUserMeta()
+    public async Task CallToolAsTaskAsync_PreservesExistingUserMeta()
     {
         // Verify that user-supplied meta fields are not clobbered
         await using var client = await CreateMcpClientForServer();
 
         var userMeta = new JsonObject { ["customKey"] = "customValue" };
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "immediate-tool",
@@ -494,8 +517,8 @@ public class McpServerTaskTests : ClientServerTestBase
             });
         }, ct);
 
-        var result = await client.CallToolAsync(
-            new CallToolRequestParams { Name = "async-tool" }, ct);
+        var result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "async-tool" }, cancellationToken: ct);
 
         var elapsed = DateTime.UtcNow - startTime;
 
@@ -512,9 +535,9 @@ public class McpServerTaskTests : ClientServerTestBase
         // in the handler context — this is already tested by "immediate-tool" working correctly.
         await using var client = await CreateMcpClientForServer();
 
-        var result = await client.CallToolAsync(
+        var result = await client.CallToolWithPollingAsync(
             new CallToolRequestParams { Name = "immediate-tool" },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("immediate result", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
