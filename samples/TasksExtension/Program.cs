@@ -41,6 +41,8 @@ Console.WriteLine("=== CallToolAsTaskAsync (manual poll) ===");
 var raw = await client.CallToolAsTaskAsync(new CallToolRequestParams { Name = "run-report" });
 if (!raw.IsTask)
 {
+    // Either the server doesn't advertise the tasks extension or it chose to run the call
+    // synchronously despite the client opt-in. Surface the inline result and stop.
     Console.WriteLine($"  result (inline): {((TextContentBlock)raw.Result!.Content[0]).Text}");
     return;
 }
@@ -64,6 +66,7 @@ while (true)
     switch (state)
     {
         case CompletedTaskResult completed:
+            // The Result property carries the wrapped CallToolResult as a raw JsonElement.
             var callToolResult = completed.Result.Deserialize<CallToolResult>()!;
             Console.WriteLine($"  task completed after {pollCount} poll(s): {((TextContentBlock)callToolResult.Content[0]).Text}");
             return;
@@ -91,6 +94,8 @@ internal static class SlowTools
     [Description("Runs a short simulated report and returns when it's done.")]
     public static async Task<string> RunReport(CancellationToken cancellationToken)
     {
+        // Real-world workloads would do meaningful work here; we just sleep so the polling
+        // path is observable in the console output.
         await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         return "report ready";
     }
