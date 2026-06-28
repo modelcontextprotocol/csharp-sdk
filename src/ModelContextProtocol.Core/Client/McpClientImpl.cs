@@ -25,6 +25,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _registeredToolNames = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _cacheableConformanceWarnedMethods = new(StringComparer.Ordinal);
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -762,6 +763,34 @@ internal sealed partial class McpClientImpl : McpClient
             LogInputRequiredResultOnNonMrtrSession(_endpointName, method, _negotiatedProtocolVersion);
         }
     }
+
+    /// <summary>
+    /// Logs a warning (never throws) when a server that negotiated the 2026-07-28 (or later) protocol version
+    /// omits the SEP-2549 <c>ttlMs</c>/<c>cacheScope</c> fields, which are required on cacheable results for
+    /// those versions. The warning is emitted at most once per method per session so that paginated listings do
+    /// not produce one warning per page.
+    /// </summary>
+    private protected override void ValidateCacheableResult(string method, ICacheableResult result)
+    {
+        if (!IsJuly2026OrLaterProtocol())
+        {
+            return;
+        }
+
+        bool missingTtl = result.TimeToLive is null;
+        bool missingScope = result.CacheScope is null;
+        if ((missingTtl || missingScope) && _cacheableConformanceWarnedMethods.TryAdd(method, 0))
+        {
+            string missingFields =
+                missingTtl && missingScope ? "ttlMs, cacheScope" :
+                missingTtl ? "ttlMs" :
+                "cacheScope";
+            LogCacheableResultMissingRequiredFields(_endpointName, method, missingFields, _negotiatedProtocolVersion);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received '{Method}' result missing required SEP-2549 field(s) '{MissingFields}' from a server that negotiated protocol version '{ProtocolVersion}'. The server may not be spec-compliant.")]
+    private partial void LogCacheableResultMissingRequiredFields(string endpointName, string method, string missingFields, string? protocolVersion);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received legacy '{Method}' JSON-RPC request on session that negotiated MRTR. The server should use InputRequiredResult instead of sending direct requests.")]
     private partial void LogLegacyRequestOnMrtrSession(string endpointName, string method);

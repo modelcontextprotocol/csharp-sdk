@@ -93,6 +93,20 @@ public abstract partial class McpClient : McpSession
     private protected abstract int MaxConsecutiveStuckPolls { get; }
 
     /// <summary>
+    /// Inspects a received cacheable result (<c>tools/list</c>, <c>prompts/list</c>, <c>resources/list</c>,
+    /// <c>resources/templates/list</c>, or <c>resources/read</c>) so derived clients can emit diagnostics.
+    /// </summary>
+    /// <param name="method">The request method that produced the result.</param>
+    /// <param name="result">The cacheable result returned by the server.</param>
+    /// <remarks>
+    /// This is used to warn (never throw) when a server that negotiated a protocol version requiring the
+    /// SEP-2549 <c>ttlMs</c>/<c>cacheScope</c> fields omits them. The default implementation does nothing.
+    /// </remarks>
+    private protected virtual void ValidateCacheableResult(string method, ICacheableResult result)
+    {
+    }
+
+    /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport
     /// to send <c>Mcp-Param-*</c> headers for those tools without requiring a prior <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> call.
     /// </summary>
