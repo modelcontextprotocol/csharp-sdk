@@ -95,6 +95,16 @@ public sealed class HttpClientTransportOptions
     public string? KnownSessionId { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the Streamable HTTP transport skips the standalone GET SSE stream.
+    /// </summary>
+    /// <remarks>
+    /// Set this to <see langword="true"/> for servers where the client does not need unsolicited server-to-client
+    /// messages, or when a long-lived standalone GET would block other requests under a constrained
+    /// <see cref="HttpClient"/> connection pool.
+    /// </remarks>
+    public bool DisableStandaloneStreaming { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether this transport endpoint is responsible for ending the session on dispose.
     /// </summary>
     /// <remarks>
