@@ -35,6 +35,31 @@ public sealed class DynamicClientRegistrationOptions
     public string? InitialAccessToken { get; set; }
 
     /// <summary>
+    /// Gets or sets the OIDC <c>application_type</c> sent during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When <see langword="null"/>, the SDK infers the value from the configured
+    /// <see cref="ClientOAuthOptions.RedirectUri"/>: loopback hosts (<c>localhost</c>,
+    /// <c>127.0.0.1</c>, <c>[::1]</c>) and custom-scheme URIs map to <c>"native"</c>; remote
+    /// <c>https://</c> URIs map to <c>"web"</c>.
+    /// </para>
+    /// <para>
+    /// When set explicitly, the value is validated against the inferred type. A conflicting
+    /// explicit value (for example <c>"web"</c> with a localhost redirect URI) causes the
+    /// <see cref="ClientOAuthProvider"/> constructor to throw <see cref="ArgumentException"/>.
+    /// </para>
+    /// <para>
+    /// This validation mirrors the OpenID Connect Dynamic Client Registration coupling between
+    /// <c>application_type</c> and <c>redirect_uris</c>: <c>"web"</c> clients must use remote
+    /// <c>https</c> redirect URIs, while <c>"native"</c> clients must use loopback or custom-scheme
+    /// URIs. A conflicting combination is therefore rejected rather than sent, since a conformant
+    /// authorization server would reject the registration anyway.
+    /// </para>
+    /// </remarks>
+    public string? ApplicationType { get; set; }
+
+    /// <summary>
     /// Gets or sets the delegate used for handling the dynamic client registration response.
     /// </summary>
     /// <remarks>

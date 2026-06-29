@@ -106,6 +106,9 @@ public sealed class Program
     /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
     public string? LastRegistrationScope { get; private set; }
 
+    /// <summary>Gets the <c>application_type</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastApplicationType { get; private set; }
+
     /// <summary>
     /// Entry point for the application.
     /// </summary>
@@ -665,6 +668,7 @@ public sealed class Program
             }
 
             LastRegistrationScope = registrationRequest.Scope;
+            LastApplicationType = registrationRequest.ApplicationType;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)
