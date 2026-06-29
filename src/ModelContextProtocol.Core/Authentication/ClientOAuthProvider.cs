@@ -30,6 +30,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly string? _configuredScopes;
     private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
+    private readonly Func<IReadOnlyList<string>?, string?> _tokenEndpointAuthMethodSelector;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly Uri? _clientMetadataDocumentUri;
@@ -89,6 +90,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
         _clientMetadataDocumentUri = options.ClientMetadataDocumentUri;
 
+        // Set up token endpoint authentication method selector (use default if not provided)
+        _tokenEndpointAuthMethodSelector = options.TokenEndpointAuthMethodSelector ?? DefaultTokenEndpointAuthMethodSelector;
+
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
@@ -101,6 +105,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
+
+    /// <summary>
+    /// Default token endpoint authentication method selector that selects the first supported method from the authorization server metadata.
+    /// </summary>
+    /// <param name="tokenEndpointAuthMethodsSupported">The list of supported token endpoint authentication methods.</param>
+    /// <returns>The selected token endpoint authentication method, or null if none are available.</returns>
+    private static string? DefaultTokenEndpointAuthMethodSelector(IReadOnlyList<string>? tokenEndpointAuthMethodsSupported) => tokenEndpointAuthMethodsSupported?.FirstOrDefault();
 
     /// <summary>
     /// Default authorization server selection strategy that selects the first available server.
@@ -338,7 +349,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
-        _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
+        _tokenEndpointAuthMethod ??= _tokenEndpointAuthMethodSelector(authServerMetadata.TokenEndpointAuthMethodsSupported);
 
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
