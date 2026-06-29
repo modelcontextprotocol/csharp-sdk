@@ -108,7 +108,10 @@ internal sealed class StreamableHttpHandler(
 
         if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
+            // The body was parsed before headers are validated, so the request id is known here.
+            // Echo it instead of returning id:null (JSON-RPC 2.0 §5; null is reserved for requests
+            // whose id couldn't be read).
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, GetRequestId(message));
             return;
         }
 
@@ -380,7 +383,7 @@ internal sealed class StreamableHttpHandler(
                 // A request carrying an Mcp-Session-Id is non-conformant under the 2026-07-28 revision (SEP-2567).
                 await WriteJsonRpcErrorAsync(context,
                     "Bad Request: Mcp-Session-Id is not supported by the 2026-07-28 and later protocol revisions (SEP-2567).",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: GetRequestId(message));
                 return null;
             }
 
@@ -408,7 +411,7 @@ internal sealed class StreamableHttpHandler(
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
                     "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
                     "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: GetRequestId(message));
                 return null;
             }
 
@@ -418,7 +421,7 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
-            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest);
+            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest, requestId: GetRequestId(message));
             return null;
         }
         else
@@ -568,10 +571,11 @@ internal sealed class StreamableHttpHandler(
         return eventStreamReader;
     }
 
-    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
+    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000, RequestId requestId = default)
     {
         var jsonRpcError = new JsonRpcError
         {
+            Id = requestId,
             Error = new()
             {
                 Code = errorCode,
@@ -580,6 +584,12 @@ internal sealed class StreamableHttpHandler(
         };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
     }
+
+    // Returns the request id when it was parsed from the JSON-RPC body, or default (serialized as
+    // null) for messages that carry no id. Used to correlate error responses produced after the body
+    // was parsed but before the request reaches the transport.
+    private static RequestId GetRequestId(JsonRpcMessage? message)
+        => message is JsonRpcMessageWithId withId ? withId.Id : default;
 
     internal static void InitializeSseResponse(HttpContext context)
     {
