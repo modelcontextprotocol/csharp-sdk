@@ -25,10 +25,6 @@ public sealed class HttpClientTransportOptions
             {
                 throw new ArgumentException("Endpoint must be an absolute URI.", nameof(value));
             }
-            if (value.Scheme != Uri.UriSchemeHttp && value.Scheme != Uri.UriSchemeHttps)
-            {
-                throw new ArgumentException("Endpoint must use HTTP or HTTPS scheme.", nameof(value));
-            }
 
             field = value;
         }
