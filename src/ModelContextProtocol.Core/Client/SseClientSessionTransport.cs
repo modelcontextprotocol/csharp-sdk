@@ -160,6 +160,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             if (!response.IsSuccessStatusCode)
             {
                 failureStatusCode = response.StatusCode;
+                LogHttpGetSseNonSuccessStatusCode(Name, (int)response.StatusCode);
             }
 
             await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
@@ -257,12 +258,12 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         _connectionEstablished.TrySetResult(true);
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} accepted SSE transport POST for message ID '{MessageId}'.")]
-    private partial void LogAcceptedPost(string endpointName, string messageId);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'.")]
     private partial void LogRejectedPost(string endpointName, string messageId);
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'. Server response: '{responseContent}'.")]
     private partial void LogRejectedPostSensitive(string endpointName, string messageId, string responseContent);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} HTTP GET SSE received non-success status code {StatusCode}.")]
+    private partial void LogHttpGetSseNonSuccessStatusCode(string endpointName, int statusCode);
 }
