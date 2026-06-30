@@ -4,19 +4,23 @@ This reference describes how to validate that C# code samples in README files co
 
 ## Which READMEs to Validate
 
-Validate code samples from the **package README** files — these are shipped with NuGet packages and are the primary documentation users see:
+Validate code samples from the **package README** and the root repository README:
 
-| README | Package |
-|--------|---------|
-| `README.md` (root) | ModelContextProtocol |
-| `src/ModelContextProtocol.Core/README.md` | ModelContextProtocol.Core |
-| `src/ModelContextProtocol.AspNetCore/README.md` | ModelContextProtocol.AspNetCore |
+| README | Notes |
+|--------|-------|
+| `src/PACKAGE.md` | The single shared embedded README packed into every SDK package. This is the primary documentation users see on nuget.org. |
+| `README.md` (root) | The GitHub repository readme. Not packed into packages, but visible to developers browsing the repo. |
 
-Sample README files (`samples/*/README.md`) are excluded — the samples themselves are buildable projects and are validated by CI.
+All four SDK packages (`ModelContextProtocol.Core`, `ModelContextProtocol`,
+`ModelContextProtocol.AspNetCore`, `ModelContextProtocol.Extensions.Apps`) embed
+`src/PACKAGE.md` via their `.csproj` files. There are no per-package README files;
+paths such as `src/ModelContextProtocol.Core/README.md` do not exist.
+
+Sample README files (`samples/*/README.md`) are excluded -- the samples themselves are buildable projects and are validated by CI.
 
 ## What to Extract
 
-Extract only fenced code blocks tagged as `csharp` (` ```csharp `). Skip blocks tagged as plain ` ``` ` (shell commands, install instructions) or any other language.
+Extract only fenced code blocks tagged as `csharp` (` ```csharp `) from `src/PACKAGE.md` and `README.md`. Skip blocks tagged as plain ` ``` ` (shell commands, install instructions) or any other language.
 
 ### Handling Incomplete Snippets
 
