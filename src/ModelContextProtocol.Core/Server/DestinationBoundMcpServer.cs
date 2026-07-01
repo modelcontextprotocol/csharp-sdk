@@ -5,17 +5,63 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Server;
 
 #pragma warning disable MCPEXP002
-internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport) : McpServer
+internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcRequest? jsonRpcRequest = null) : McpServer
 #pragma warning restore MCPEXP002
 {
+    private readonly bool _isJuly2026OrLaterRequest = IsJuly2026OrLaterProtocolRequest(jsonRpcRequest, server.NegotiatedProtocolVersion);
+    private readonly ClientCapabilities? _requestClientCapabilities = jsonRpcRequest?.Context?.ClientCapabilities;
+    private readonly Implementation? _requestClientInfo = jsonRpcRequest?.Context?.ClientInfo;
+
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
     public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;
-    public override ClientCapabilities? ClientCapabilities => server.ClientCapabilities;
-    public override Implementation? ClientInfo => server.ClientInfo;
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
     [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public override LoggingLevel? LoggingLevel => server.LoggingLevel;
+
+    public override ClientCapabilities? ClientCapabilities
+    {
+        get
+        {
+            // In stateless transport mode, a single request does not have a persistent bidirectional channel.
+            // Server-to-client requests (sampling, roots, elicitation) are unsupported in this mode and the
+            // capability gates rely on a null ClientCapabilities value to report that unsupported-state path.
+            if (!server.HasStatefulTransport())
+            {
+                return null;
+            }
+
+            // On protocol revision 2026-07-28+, client capabilities are request-scoped (_meta on each request)
+            // and must not be inferred from prior requests. Missing per-request capabilities therefore means
+            // "no declared capabilities for this request", represented by an empty object.
+            if (_isJuly2026OrLaterRequest)
+            {
+                return _requestClientCapabilities ?? new ClientCapabilities();
+            }
+
+            // Legacy protocol behavior uses session-scoped capabilities established during initialize (or
+            // pre-populated migration data), so ignore per-request values and return the server session state.
+            return server.ClientCapabilities;
+        }
+    }
+
+    public override Implementation? ClientInfo
+    {
+        get
+        {
+            // On protocol revision 2026-07-28+, client info is request-scoped (carried in each request's _meta),
+            // mirroring how ClientCapabilities is resolved above. Return only this request's declared value and
+            // do not fall back to shared session state, which under a stateful transport could belong to a
+            // different concurrent request.
+            if (_isJuly2026OrLaterRequest)
+            {
+                return _requestClientInfo;
+            }
+
+            // Legacy protocol behavior uses session-scoped client info established during initialize.
+            return server.ClientInfo;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MRTR context for the current request, if any.
@@ -90,4 +136,8 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             Result = JsonSerializer.SerializeToNode(inputResponse.RawValue, McpJsonUtilities.JsonContext.Default.JsonElement),
         };
     }
+
+    private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request, string? negotiatedProtocolVersion)
+        => McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
+            request?.Context?.ProtocolVersion ?? negotiatedProtocolVersion);
 }
