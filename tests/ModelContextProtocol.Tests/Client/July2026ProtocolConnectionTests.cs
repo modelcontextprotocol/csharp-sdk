@@ -67,6 +67,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
+        Assert.Equal("complete", discoverResult.ResultType);
         Assert.NotEmpty(discoverResult.SupportedVersions);
         Assert.Contains(LatestStableVersion, discoverResult.SupportedVersions);
         Assert.Equal(nameof(July2026ProtocolConnectionTests), discoverResult.ServerInfo.Name);
@@ -85,6 +86,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
+        Assert.Equal("complete", discoverResult.ResultType);
         Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, discoverResult.SupportedVersions);
     }
 }
