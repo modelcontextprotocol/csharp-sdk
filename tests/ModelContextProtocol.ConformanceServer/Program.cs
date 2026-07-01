@@ -4,6 +4,7 @@ using ConformanceServer.Tools;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace ModelContextProtocol.ConformanceServer;
@@ -25,23 +26,34 @@ public class Program
         // because .NET does not have a built-in concurrent HashSet
         ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
-        // Allow running the server in the SEP-2575 stateless lifecycle, which the 2026-07-28
-        // protocol's "caching" (SEP-2549) conformance scenario requires. A "--stateless true|false"
-        // command-line switch (read via configuration) takes precedence so an in-process test
-        // fixture can opt in or out per-instance deterministically; when it is not supplied,
-        // fall back to the MCP_CONFORMANCE_STATELESS environment variable for standalone runs.
-        // The default (no switch, no env var) remains the stateful server that serves the
-        // active conformance suite unchanged.
-        var statelessConfig = builder.Configuration["stateless"];
-        var stateless = statelessConfig is not null
-            ? string.Equals(statelessConfig, "true", StringComparison.OrdinalIgnoreCase)
-            : string.Equals(
-                Environment.GetEnvironmentVariable("MCP_CONFORMANCE_STATELESS"),
-                "true",
-                StringComparison.OrdinalIgnoreCase);
+        // Configure the default, stateful MCP server (served at "/").
+        ConfigureConformanceMcpServer(builder.Services, subscriptions, stateless: false);
 
-        builder.Services.AddDistributedMemoryCache();
-        builder.Services
+        var app = builder.Build();
+
+        // Also expose a stateless MCP server at "/stateless" so a single conformance server can
+        // serve both the legacy stateful lifecycle (at "/") and the SEP-2575 stateless lifecycle
+        // (at "/stateless", which the 2026-07-28 "caching" (SEP-2549) and MRTR (SEP-2322)
+        // scenarios require) from one Kestrel port.
+        HandleStatelessMcp(app, subscriptions);
+
+        app.MapMcp();
+
+        app.MapGet("/health", () => "Healthy");
+
+        await app.RunAsync(cancellationToken);
+    }
+
+    // Registers the conformance MCP server (tools, prompts, resources, filters, and handlers)
+    // into the given service collection. Shared by the stateful ("/") and stateless ("/stateless")
+    // servers so both expose identical behavior and differ only in their lifecycle.
+    private static void ConfigureConformanceMcpServer(
+        IServiceCollection services,
+        ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions,
+        bool stateless)
+    {
+        services.AddDistributedMemoryCache();
+        services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
@@ -157,14 +169,32 @@ public class Program
 
                 return new EmptyResult();
             });
+    }
 
-        var app = builder.Build();
+    // Maps a second MCP server, configured for the stateless lifecycle, at "/stateless". It is
+    // built in its own ServiceCollection so its DI (and HttpServerTransportOptions) stays isolated
+    // from the stateful server registered on the main host. Adapted from
+    // ModelContextProtocol.TestSseServer.Program.HandleStatelessMcp.
+    private static void HandleStatelessMcp(
+        WebApplication app,
+        ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(app.Services.GetRequiredService<ILoggerFactory>());
+        services.AddSingleton(app.Services.GetRequiredService<IHostApplicationLifetime>());
+        services.AddSingleton(app.Services.GetRequiredService<DiagnosticListener>());
+        services.AddRoutingCore();
 
-        app.MapMcp();
+        ConfigureConformanceMcpServer(services, subscriptions, stateless: true);
 
-        app.MapGet("/health", () => "Healthy");
+        var statelessApp = new ApplicationBuilder(services.BuildServiceProvider());
+        statelessApp.UseRouting();
+        statelessApp.UseEndpoints(endpoints => endpoints.MapMcp("/stateless"));
 
-        await app.RunAsync(cancellationToken);
+        // Terminal middleware that serves "/stateless" requests the main host's routing did not
+        // match. Registered before app.MapMcp() so the stateful endpoints still win for "/".
+        app.Run(statelessApp.Build());
     }
 
     public static async Task Main(string[] args)
