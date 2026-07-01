@@ -14,7 +14,7 @@ The SDK packages are:
 
 - **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore) - The library for HTTP-based MCP servers. References `ModelContextProtocol`.
 
-- **[ModelContextProtocol.Extensions.Apps](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Apps.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps) - MCP Apps extension for the .NET Model Context Protocol (MCP) SDK.
+- **[ModelContextProtocol.Extensions.Apps](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Apps.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps) - MCP Apps extension for building interactive UI applications that render inside MCP hosts.
 
 ## Getting Started
 

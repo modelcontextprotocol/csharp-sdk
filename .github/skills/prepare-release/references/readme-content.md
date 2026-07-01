@@ -5,7 +5,7 @@ This reference describes what to review and update in the shared embedded NuGet 
 
 ## The Shared Embedded README
 
-All four SDK packages embed the **same** README file: `src/PACKAGE.md`.
+All SDK packages embed the **same** README file: `src/PACKAGE.md`.
 
 Each project packs it identically:
 
