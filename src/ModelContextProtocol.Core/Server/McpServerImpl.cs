@@ -152,15 +152,16 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps <paramref name="inner"/> so that, for every JSON-RPC request, a built-in filter first
-    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>,
-    /// <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>) from the per-request <c>_meta</c>
-    /// values projected onto <see cref="JsonRpcMessageContext"/> and validates the per-request protocol
-    /// version, before delegating to the user-supplied incoming filters.
+    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientInfo"/>)
+    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/> and
+    /// validates the per-request protocol version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
     /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. For legacy clients the per-request values are absent and the built-in
-    /// filter is a no-op (the values were captured during the initialize handler).
+    /// MUST be populated per-request. Per-request client capabilities are consumed request-scoped by
+    /// <see cref="DestinationBoundMcpServer"/> and are not persisted to server-wide state. For legacy clients
+    /// the per-request values are absent and the built-in filter is a no-op (the values were captured during
+    /// the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
@@ -183,19 +184,6 @@ internal sealed partial class McpServerImpl : McpServer
                     }
 
                     SetNegotiatedProtocolVersion(protocolVersion);
-                }
-
-                if (context.ClientCapabilities is { } clientCapabilities && IsJuly2026OrLaterProtocol() && HasStatefulTransport())
-                {
-                    // Under the 2026-07-28 revision the per-request _meta envelope carries the client's FULL
-                    // capabilities (SEP-2575), so a plain overwrite is correct. The IsJuly2026OrLaterProtocol() gate
-                    // makes any legacy per-request envelope a no-op (legacy capabilities stay as the
-                    // initialize handshake established them); the HasStatefulTransport() gate keeps
-                    // _clientCapabilities null under StreamableHttpServerTransport { Stateless = true }
-                    // (where the same server instance handles every request, so persisting per-request
-                    // capability state would both leak across requests and break the StatelessServerTests
-                    // invariant that surfaces the "X is not supported in stateless mode" errors).
-                    _clientCapabilities = clientCapabilities;
                 }
 
                 if (context.ClientInfo is { } clientInfo &&
@@ -1627,7 +1615,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
     {
-        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport);
+        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport, jsonRpcRequest);
 
         if (_mrtrContextsByRequestId.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
         {
@@ -1740,7 +1728,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 // Ensure message has a Context so Items can be shared through the pipeline
                 message.Context ??= new();
-                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport), message);
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport, message as JsonRpcRequest), message);
                 await current(context, cancellationToken).ConfigureAwait(false);
             };
         };

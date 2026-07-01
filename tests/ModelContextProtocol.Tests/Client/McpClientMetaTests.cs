@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -14,6 +15,8 @@ public class McpClientMetaTests : ClientServerTestBase
     private const string LatestStableVersion = "2025-11-25";
 
     private readonly TaskCompletionSource<JsonNode?> _initializeMeta = new();
+
+    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
 
     public McpClientMetaTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
@@ -114,6 +117,85 @@ public class McpClientMetaTests : ClientServerTestBase
         var textContent = result.Content.OfType<TextContentBlock>().FirstOrDefault();
         Assert.NotNull(textContent);
         Assert.Contains("bar baz", textContent.Text);
+    }
+
+    [Fact]
+    public async Task ConcurrentToolCalls_WithPerRequestClientCapabilities_UseRequestScopedCapabilities()
+    {
+        var withSamplingReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var withoutSamplingReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowSamplingChecks = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
+            async (string requestId, RequestContext<CallToolRequestParams> context, CancellationToken cancellationToken) =>
+            {
+                if (requestId == "with")
+                {
+                    withSamplingReady.TrySetResult(true);
+                }
+                else if (requestId == "without")
+                {
+                    withoutSamplingReady.TrySetResult(true);
+                }
+                else
+                {
+                    throw new ArgumentException($"Unexpected request id '{requestId}'.");
+                }
+
+                await allowSamplingChecks.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+
+                return context.Server.ClientCapabilities?.Sampling is null ?
+                    $"{requestId}:sampling-absent" :
+                    $"{requestId}:sampling-present";
+            },
+            new() { Name = "meta_sampling_tool" }));
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var withSamplingRequest = new CallToolRequestParams
+        {
+            Name = "meta_sampling_tool",
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["requestId"] = JsonDocument.Parse("\"with\"").RootElement.Clone(),
+            },
+            Meta = new JsonObject
+            {
+                [ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(
+                    new ClientCapabilities { Sampling = new SamplingCapability() },
+                    McpJsonUtilities.DefaultOptions),
+            },
+        };
+
+        var withoutSamplingRequest = new CallToolRequestParams
+        {
+            Name = "meta_sampling_tool",
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["requestId"] = JsonDocument.Parse("\"without\"").RootElement.Clone(),
+            },
+            Meta = new JsonObject
+            {
+                [ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(
+                    new ClientCapabilities(),
+                    McpJsonUtilities.DefaultOptions),
+            },
+        };
+
+        Task<CallToolResult> withSamplingTask = client.CallToolAsync(withSamplingRequest, TestContext.Current.CancellationToken).AsTask();
+        Task<CallToolResult> withoutSamplingTask = client.CallToolAsync(withoutSamplingRequest, TestContext.Current.CancellationToken).AsTask();
+
+        await Task.WhenAll(withSamplingReady.Task, withoutSamplingReady.Task).WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        allowSamplingChecks.TrySetResult(true);
+
+        CallToolResult withSamplingResult = await withSamplingTask;
+        CallToolResult withoutSamplingResult = await withoutSamplingTask;
+
+        var withSamplingText = Assert.IsType<TextContentBlock>(Assert.Single(withSamplingResult.Content)).Text;
+        var withoutSamplingText = Assert.IsType<TextContentBlock>(Assert.Single(withoutSamplingResult.Content)).Text;
+
+        Assert.Equal("with:sampling-present", withSamplingText);
+        Assert.Equal("without:sampling-absent", withoutSamplingText);
     }
 
     [Fact]
