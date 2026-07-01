@@ -14,7 +14,6 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
 
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
     public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;
-    public override Implementation? ClientInfo => _requestClientInfo ?? server.ClientInfo;
     public override McpServerOptions ServerOptions => server.ServerOptions;
     public override IServiceProvider? Services => server.Services;
     [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
@@ -43,6 +42,24 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             // Legacy protocol behavior uses session-scoped capabilities established during initialize (or
             // pre-populated migration data), so ignore per-request values and return the server session state.
             return server.ClientCapabilities;
+        }
+    }
+
+    public override Implementation? ClientInfo
+    {
+        get
+        {
+            // On protocol revision 2026-07-28+, client info is request-scoped (carried in each request's _meta),
+            // mirroring how ClientCapabilities is resolved above. Return only this request's declared value and
+            // do not fall back to shared session state, which under a stateful transport could belong to a
+            // different concurrent request.
+            if (_isJuly2026OrLaterRequest)
+            {
+                return _requestClientInfo;
+            }
+
+            // Legacy protocol behavior uses session-scoped client info established during initialize.
+            return server.ClientInfo;
         }
     }
 

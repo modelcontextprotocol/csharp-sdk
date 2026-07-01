@@ -199,6 +199,34 @@ public class McpClientMetaTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task ToolCall_UnderJuly2026Protocol_ObservesRequestScopedClientInfo()
+    {
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
+            (RequestContext<CallToolRequestParams> context) =>
+            {
+                var clientInfo = context.Server.ClientInfo;
+                return clientInfo is null ?
+                    "client-info-absent" :
+                    $"{clientInfo.Name}:{clientInfo.Version}";
+            },
+            new() { Name = "client_info_tool" }));
+
+        // The 2026-07-28+ client stamps its ClientInfo onto every request's _meta, so the tool must observe
+        // the per-request value resolved by DestinationBoundMcpServer rather than server-only session state.
+        var clientOptions = new McpClientOptions
+        {
+            ClientInfo = new Implementation { Name = "request-scoped-client", Version = "9.9.9" },
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync("client_info_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("request-scoped-client:9.9.9", text);
+    }
+
+    [Fact]
     public async Task ResourceReadWithMetaFields()
     {
         Server.ServerOptions.ResourceCollection?.Add(McpServerResource.Create(
