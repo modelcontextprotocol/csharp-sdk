@@ -21,13 +21,8 @@ public class Program
             builder.Logging.AddProvider(loggerProvider);
         }
 
-        // Dictionary of session IDs to a set of resource URIs they are subscribed to
-        // The value is a ConcurrentDictionary used as a thread-safe HashSet
-        // because .NET does not have a built-in concurrent HashSet
-        ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
-
         // Configure the default, stateful MCP server (served at "/").
-        ConfigureConformanceMcpServer(builder.Services, subscriptions, stateless: false);
+        ConfigureConformanceMcpServer(builder.Services, stateless: false);
 
         var app = builder.Build();
 
@@ -35,7 +30,7 @@ public class Program
         // serve both the legacy stateful lifecycle (at "/") and the SEP-2575 stateless lifecycle
         // (at "/stateless", which the 2026-07-28 "caching" (SEP-2549) and MRTR (SEP-2322)
         // scenarios require) from one Kestrel port.
-        HandleStatelessMcp(app, subscriptions);
+        HandleStatelessMcp(app);
 
         app.MapMcp();
 
@@ -46,14 +41,14 @@ public class Program
 
     // Registers the conformance MCP server (tools, prompts, resources, filters, and handlers)
     // into the given service collection. Shared by the stateful ("/") and stateless ("/stateless")
-    // servers so both expose identical behavior and differ only in their lifecycle.
+    // servers, which expose identical behavior except that only the stateful server registers the
+    // resource-subscription handlers (see below).
     private static void ConfigureConformanceMcpServer(
         IServiceCollection services,
-        ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions,
         bool stateless)
     {
         services.AddDistributedMemoryCache();
-        services
+        var mcpServerBuilder = services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
@@ -115,33 +110,6 @@ public class Program
             .WithPrompts<ConformancePrompts>()
             .WithPrompts<IncompleteResultPrompts>()
             .WithResources<ConformanceResources>()
-            .WithSubscribeToResourcesHandler(async (ctx, ct) =>
-            {
-                if (ctx.Server.SessionId == null)
-                {
-                    throw new McpException("Cannot add subscription for server with null SessionId");
-                }
-                if (ctx.Params.Uri is { } uri)
-                {
-                    var sessionSubscriptions = subscriptions.GetOrAdd(ctx.Server.SessionId, _ => new());
-                    sessionSubscriptions.TryAdd(uri, 0);
-                }
-
-                return new EmptyResult();
-            })
-            .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
-            {
-                if (ctx.Server.SessionId == null)
-                {
-                    throw new McpException("Cannot remove subscription for server with null SessionId");
-                }
-                if (ctx.Params.Uri is { } uri)
-                {
-                    subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
-                }
-
-                return new EmptyResult();
-            })
             .WithCompleteHandler(async (ctx, ct) =>
             {
                 // Basic completion support - returns empty array for conformance
@@ -169,15 +137,54 @@ public class Program
 
                 return new EmptyResult();
             });
+
+        // Resource subscriptions require a stable SessionId to key the subscription table and a
+        // persistent SSE stream to deliver notifications/resources/updated, neither of which
+        // exists in the stateless lifecycle. Only the stateful server registers these handlers,
+        // so only it advertises the resources.subscribe capability.
+        if (!stateless)
+        {
+            // Dictionary of session IDs to a set of resource URIs they are subscribed to. The
+            // value is a ConcurrentDictionary used as a thread-safe HashSet because .NET does not
+            // have a built-in concurrent HashSet.
+            ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
+
+            mcpServerBuilder
+                .WithSubscribeToResourcesHandler(async (ctx, ct) =>
+                {
+                    if (ctx.Server.SessionId == null)
+                    {
+                        throw new McpException("Cannot add subscription for server with null SessionId");
+                    }
+                    if (ctx.Params.Uri is { } uri)
+                    {
+                        var sessionSubscriptions = subscriptions.GetOrAdd(ctx.Server.SessionId, _ => new());
+                        sessionSubscriptions.TryAdd(uri, 0);
+                    }
+
+                    return new EmptyResult();
+                })
+                .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
+                {
+                    if (ctx.Server.SessionId == null)
+                    {
+                        throw new McpException("Cannot remove subscription for server with null SessionId");
+                    }
+                    if (ctx.Params.Uri is { } uri)
+                    {
+                        subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
+                    }
+
+                    return new EmptyResult();
+                });
+        }
     }
 
     // Maps a second MCP server, configured for the stateless lifecycle, at "/stateless". It is
     // built in its own ServiceCollection so its DI (and HttpServerTransportOptions) stays isolated
     // from the stateful server registered on the main host. Adapted from
     // ModelContextProtocol.TestSseServer.Program.HandleStatelessMcp.
-    private static void HandleStatelessMcp(
-        WebApplication app,
-        ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions)
+    private static void HandleStatelessMcp(WebApplication app)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -186,7 +193,7 @@ public class Program
         services.AddSingleton(app.Services.GetRequiredService<DiagnosticListener>());
         services.AddRoutingCore();
 
-        ConfigureConformanceMcpServer(services, subscriptions, stateless: true);
+        ConfigureConformanceMcpServer(services, stateless: true);
 
         var statelessApp = new ApplicationBuilder(services.BuildServiceProvider());
         statelessApp.UseRouting();
