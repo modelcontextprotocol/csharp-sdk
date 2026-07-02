@@ -224,7 +224,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "")
         {
-            Content = JsonContent(EchoRequest),
+            Content = JsonContent("""{"jsonrpc":"2.0","id":4242,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hi"}}}"""),
             Headers =
             {
                 { "mcp-session-id", "fakeSession" },
@@ -232,6 +232,11 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         };
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        // The request body parsed successfully, so the JSON-RPC error MUST echo its id rather than
+        // emitting id=null (base protocol responses section; see #1677).
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(4242, doc.RootElement.GetProperty("id").GetInt64());
     }
 
     [Fact]
@@ -245,6 +250,31 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Mcp-Session-Id", body);
         Assert.Contains("Stateless", body);
+
+        // The request body parsed successfully, so the JSON-RPC error MUST echo its id (see #1677).
+        using var doc = JsonDocument.Parse(body);
+        Assert.Equal(1, doc.RootElement.GetProperty("id").GetInt64());
+    }
+
+    [Fact]
+    public async Task StatelessPostWithSessionId_Returns400_EchoesRequestId()
+    {
+        await StartAsync(stateless: true);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "")
+        {
+            Content = JsonContent("""{"jsonrpc":"2.0","id":4242,"method":"tools/list","params":{}}"""),
+            Headers =
+            {
+                { "mcp-session-id", "someSession" },
+            },
+        };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // The request body parsed successfully, so the stateless-mode rejection MUST echo its id (see #1677).
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(4242, doc.RootElement.GetProperty("id").GetInt64());
     }
 
     [Fact]
