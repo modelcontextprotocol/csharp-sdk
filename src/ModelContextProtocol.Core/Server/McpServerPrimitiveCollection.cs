@@ -12,6 +12,12 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, T> _primitives;
 
+    /// <summary>Depth counter for active <see cref="DeferChanges"/> scopes. Positive means notifications are deferred.</summary>
+    private int _deferralDepth;
+
+    /// <summary>Whether a change occurred while notifications were deferred. 1 means pending, 0 means none.</summary>
+    private int _pendingChange;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
     /// </summary>
@@ -33,8 +39,72 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Gets a value that indicates whether there are any primitives in the collection.</summary>
     public bool IsEmpty => _primitives.IsEmpty;
 
+    /// <summary>
+    /// Begins a deferred-change scope. <see cref="Changed"/> notifications are suppressed
+    /// until the returned scope is disposed, at which point a single notification is raised
+    /// if any mutation occurred during the scope. Nesting is supported; the notification
+    /// fires when the outermost scope disposes.
+    /// </summary>
+    /// <returns>An <see cref="IDisposable"/> that ends the deferral scope when disposed.</returns>
+    /// <remarks>
+    /// Use this method to batch multiple mutations (add, remove, clear) into a single
+    /// <see cref="Changed"/> notification:
+    /// <code>
+    /// using (collection.DeferChanges())
+    /// {
+    ///     foreach (var tool in tools)
+    ///         collection.TryAdd(tool);
+    /// } // one Changed notification fires here
+    /// </code>
+    /// The scope is exception-safe: even if an exception is thrown inside the <c>using</c> block,
+    /// the deferral is ended on dispose. If any mutation occurred before the exception, a single
+    /// <see cref="Changed"/> notification is raised.
+    /// </remarks>
+    public IDisposable DeferChanges()
+    {
+        Interlocked.Increment(ref _deferralDepth);
+        return new DeferralScope(this);
+    }
+
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
-    protected void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+    /// <remarks>
+    /// If a <see cref="DeferChanges"/> scope is active, the notification is deferred until the
+    /// outermost scope is disposed. Derived types that override mutation methods and call
+    /// <see cref="RaiseChanged"/> will automatically participate in deferral.
+    /// </remarks>
+    protected void RaiseChanged()
+    {
+        if (Volatile.Read(ref _deferralDepth) > 0)
+        {
+            Interlocked.Exchange(ref _pendingChange, 1);
+            return;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndDeferral()
+    {
+        if (Interlocked.Decrement(ref _deferralDepth) == 0 &&
+            Interlocked.Exchange(ref _pendingChange, 0) == 1)
+        {
+            RaiseChanged();
+        }
+    }
+
+    private sealed class DeferralScope : IDisposable
+    {
+        private McpServerPrimitiveCollection<T>? _collection;
+
+        public DeferralScope(McpServerPrimitiveCollection<T> collection) =>
+            _collection = collection;
+
+        public void Dispose()
+        {
+            McpServerPrimitiveCollection<T>? collection = Interlocked.Exchange(ref _collection, null);
+            collection?.EndDeferral();
+        }
+    }
 
     /// <summary>Gets the <typeparamref name="T"/> with the specified <paramref name="name"/> from the collection.</summary>
     /// <param name="name">The name of the primitive to retrieve.</param>
