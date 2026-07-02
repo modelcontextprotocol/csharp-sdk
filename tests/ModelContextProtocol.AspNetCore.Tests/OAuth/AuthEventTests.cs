@@ -48,7 +48,7 @@ public class AuthEventTests : OAuthTestBase
                     ClientId = "demo-client",
                     ClientSecret = "demo-secret",
                     RedirectUri = new Uri("http://localhost:1179/callback"),
-                    AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                    AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 },
             },
             HttpClient,
@@ -76,7 +76,7 @@ public class AuthEventTests : OAuthTestBase
                 OAuth = new ClientOAuthOptions()
                 {
                     RedirectUri = new Uri("http://localhost:1179/callback"),
-                    AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                    AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                     Scopes = ["mcp:tools"],
                     DynamicClientRegistration = new()
                     {

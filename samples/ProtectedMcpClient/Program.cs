@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
@@ -32,7 +33,7 @@ var transport = new HttpClientTransport(new()
     OAuth = new()
     {
         RedirectUri = new Uri("http://localhost:1179/callback"),
-        AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+        AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
         DynamicClientRegistration = new()
         {
             ClientName = "ProtectedMcpClient",
@@ -71,8 +72,8 @@ if (tools.Any(t => t.Name == "get_alerts"))
 /// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
 /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
 /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-/// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>
-static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+/// <returns>The authorization result extracted from the callback, or null if the operation failed.</returns>
+static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
 {
     Console.WriteLine("Starting OAuth authorization flow...");
     Console.WriteLine($"Opening browser to: {authorizationUrl}");
@@ -93,6 +94,7 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
         var context = await listener.GetContextAsync();
         var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
         var code = query["code"];
+        var iss = query["iss"];
         var error = query["error"];
 
         string responseHtml = "<html><body><h1>Authentication complete</h1><p>You can close this window now.</p></body></html>";
@@ -115,7 +117,7 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
         }
 
         Console.WriteLine("Authorization code received successfully.");
-        return code;
+        return new AuthorizationResult { Code = code, Iss = iss };
     }
     catch (Exception ex)
     {

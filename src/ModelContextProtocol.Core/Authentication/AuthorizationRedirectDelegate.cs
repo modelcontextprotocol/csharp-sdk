@@ -22,7 +22,11 @@ namespace ModelContextProtocol.Authentication;
 /// <para>
 /// The implementation should handle user interaction to visit the authorization URL and extract
 /// the authorization code from the callback. The authorization code is typically provided as
-/// a query parameter in the redirect URI callback.
+/// a <c>code</c> query parameter in the redirect URI callback.
+/// </para>
+/// <para>
+/// For RFC 9207 issuer validation support, use <see cref="ClientOAuthOptions.AuthorizationCallbackHandler"/>
+/// instead, which allows returning both the authorization code and the <c>iss</c> parameter.
 /// </para>
 /// </remarks>
 public delegate Task<string?> AuthorizationRedirectDelegate(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken);
