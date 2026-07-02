@@ -47,6 +47,60 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         Assert.NotNull(session);
     }
 
+    [Fact]
+    public async Task AutoDetectMode_WhenBothTransportsFail_ThrowsInvalidOperationException()
+    {
+        // Regression test: when Streamable HTTP POST fails (e.g. 403) and the SSE GET
+        // fallback also fails (e.g. 405), ConnectAsync should wrap the error in an
+        // InvalidOperationException. Previously, CloseAsync() would re-throw the
+        // HttpRequestException from the faulted _receiveTask, preempting the wrapping.
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                // Streamable HTTP POST fails with 403 (auth error)
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.Forbidden,
+                    Content = new StringContent("Forbidden")
+                });
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                // SSE GET fallback fails with 405
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.MethodNotAllowed,
+                    Content = new StringContent("Method Not Allowed")
+                });
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method}");
+        };
+
+        // ConnectAsync for AutoDetect mode just creates the transport without sending
+        // any HTTP request. The auto-detection is triggered lazily by the first
+        // SendMessageAsync call, which happens inside McpClient.CreateAsync when it
+        // sends the JSON-RPC "initialize" message.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Failed to connect transport", ex.Message);
+        Assert.IsType<HttpRequestException>(ex.InnerException);
+    }
+
     [Fact] 
     public async Task AutoDetectMode_FallsBackToSse_WhenStreamableHttpFails()
     {
