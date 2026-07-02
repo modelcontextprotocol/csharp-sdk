@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -6,6 +7,9 @@ public class McpServerPrimitiveCollectionTests
 {
     private static McpServerTool CreateTool(string name) =>
         McpServerTool.Create(() => name, new() { Name = name });
+
+    private static McpServerPrompt CreatePrompt(string name) =>
+        McpServerPrompt.Create(() => new ChatMessage(ChatRole.User, name), new() { Name = name });
 
     // -------------------------------------------------------------------------
     // Changed event without DeferChanges
@@ -354,5 +358,176 @@ public class McpServerPrimitiveCollectionTests
 
         collection.TryAdd(CreateTool("tool3"));
         Assert.Equal(3, changeCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // DeferChanges -- concurrency
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task DeferChanges_ConcurrentMutations_FiresExactlyOneChanged()
+    {
+        const int threadCount = 10;
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => Interlocked.Increment(ref changeCount);
+
+        using (collection.DeferChanges())
+        {
+            await Task.WhenAll(Enumerable.Range(0, threadCount).Select(i =>
+                Task.Run(() => collection.TryAdd(CreateTool($"tool{i}")), TestContext.Current.CancellationToken)));
+        }
+
+        Assert.Equal(1, changeCount);
+        Assert.Equal(threadCount, collection.Count);
+    }
+
+    [Fact]
+    public async Task DeferChanges_MutationRacingWithDispose_NotificationNotLost()
+    {
+        // Run many iterations to reliably exercise the race between a mutation
+        // and disposal of the outermost scope. With the lock-free implementation
+        // the race could cause the notification to be lost; the lock-based
+        // implementation must always fire exactly one notification.
+        for (int iteration = 0; iteration < 200; iteration++)
+        {
+            var collection = new McpServerPrimitiveCollection<McpServerTool>();
+            int changeCount = 0;
+            collection.Changed += (_, _) => Interlocked.Increment(ref changeCount);
+
+            var scope = collection.DeferChanges();
+
+            // Run the mutation and the dispose concurrently.
+            var addTask = Task.Run(() => collection.TryAdd(CreateTool("tool1")), TestContext.Current.CancellationToken);
+            var disposeTask = Task.Run(() => scope.Dispose(), TestContext.Current.CancellationToken);
+
+            await Task.WhenAll(addTask, disposeTask);
+
+            // Regardless of ordering: exactly one notification must have fired.
+            // - If TryAdd runs before Dispose: the mutation marks _pendingChange;
+            //   Dispose sees depth -> 0 with a pending change and fires.
+            // - If Dispose runs before TryAdd: depth is already 0 when TryAdd
+            //   calls RaiseChanged, so it fires immediately.
+            // The lock prevents the third (buggy) interleaving where Dispose
+            // sees no pending change and TryAdd sees depth > 0, dropping the event.
+            Assert.Equal(1, changeCount);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // DeferChanges -- derived-type coalescing
+    // -------------------------------------------------------------------------
+
+    private sealed class TrackingCollection : McpServerPrimitiveCollection<McpServerTool>
+    {
+        public void RaiseChangedDirectly() => RaiseChanged();
+    }
+
+    [Fact]
+    public void DeferChanges_DerivedTypeCallsRaiseChanged_Coalesces()
+    {
+        // Verify that derived types calling RaiseChanged() directly (the path
+        // McpServerResourceCollection and other subclasses rely on) are gated
+        // by the same deferral check.
+        var collection = new TrackingCollection();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        using (collection.DeferChanges())
+        {
+            collection.RaiseChangedDirectly();
+            collection.RaiseChangedDirectly();
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChanges_DerivedTypeRaisesChanged_OutsideScope_FiresImmediately()
+    {
+        var collection = new TrackingCollection();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        collection.RaiseChangedDirectly();
+        Assert.Equal(1, changeCount);
+
+        collection.RaiseChangedDirectly();
+        Assert.Equal(2, changeCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // DeferChanges -- exception safety
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void DeferChanges_ExceptionDuringScope_StillFiresChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        try
+        {
+            using (collection.DeferChanges())
+            {
+                collection.TryAdd(CreateTool("tool1"));
+                throw new InvalidOperationException("test");
+            }
+        }
+        catch (InvalidOperationException) { }
+
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChanges_ExceptionDuringScope_ResumesImmediateNotificationsAfterward()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        try
+        {
+            using (collection.DeferChanges())
+            {
+                collection.TryAdd(CreateTool("tool1"));
+                throw new InvalidOperationException("test");
+            }
+        }
+        catch (InvalidOperationException) { }
+
+        Assert.Equal(1, changeCount);
+
+        // Deferral must be fully reset: mutations outside the scope fire immediately.
+        collection.TryAdd(CreateTool("tool2"));
+        Assert.Equal(2, changeCount);
+
+        collection.TryAdd(CreateTool("tool3"));
+        Assert.Equal(3, changeCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // DeferChanges -- prompt collection coverage
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void DeferChanges_PromptCollection_MultipleMutations_FiresOneChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerPrompt>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        using (collection.DeferChanges())
+        {
+            collection.TryAdd(CreatePrompt("prompt1"));
+            collection.TryAdd(CreatePrompt("prompt2"));
+            collection.TryAdd(CreatePrompt("prompt3"));
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(1, changeCount);
+        Assert.Equal(3, collection.Count);
     }
 }

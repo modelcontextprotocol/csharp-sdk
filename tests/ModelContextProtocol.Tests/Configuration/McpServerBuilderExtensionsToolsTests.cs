@@ -233,6 +233,51 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task DeferChanges_BatchAddTools_EmitsExactlyOneNotification()
+    {
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+        });
+
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverTools = serverOptions.ToolCollection;
+        Assert.NotNull(serverTools);
+
+        int notificationCount = 0;
+        var firstNotification = new TaskCompletionSource();
+
+        await using (client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (notification, cancellationToken) =>
+            {
+                if (Interlocked.Increment(ref notificationCount) == 1)
+                {
+                    firstNotification.TrySetResult();
+                }
+                return default;
+            }))
+        {
+            using (serverTools.DeferChanges())
+            {
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool1")] () => "1"));
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool2")] () => "2"));
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool3")] () => "3"));
+            }
+
+            await firstNotification.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // Do a round-trip so that any second (erroneous) notification has time to arrive.
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Contains(tools, t => t.Name == "BatchTool1");
+            Assert.Contains(tools, t => t.Name == "BatchTool2");
+            Assert.Contains(tools, t => t.Name == "BatchTool3");
+
+            Assert.Equal(1, notificationCount);
+        }
+    }
+
+    [Fact]
     public async Task Can_Call_Registered_Tool()
     {
         await using McpClient client = await CreateMcpClientForServer();

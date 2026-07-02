@@ -12,11 +12,14 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, T> _primitives;
 
+    /// <summary>Lock protecting <see cref="_deferralDepth"/> and <see cref="_pendingChange"/>.</summary>
+    private readonly object _deferralLock = new();
+
     /// <summary>Depth counter for active <see cref="DeferChanges"/> scopes. Positive means notifications are deferred.</summary>
     private int _deferralDepth;
 
-    /// <summary>Whether a change occurred while notifications were deferred. 1 means pending, 0 means none.</summary>
-    private int _pendingChange;
+    /// <summary>Whether a change occurred while notifications were deferred.</summary>
+    private bool _pendingChange;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
@@ -59,10 +62,19 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// The scope is exception-safe: even if an exception is thrown inside the <c>using</c> block,
     /// the deferral is ended on dispose. If any mutation occurred before the exception, a single
     /// <see cref="Changed"/> notification is raised.
+    /// <para>
+    /// Mutations from any thread during an open scope are coalesced. A single <see cref="Changed"/>
+    /// notification fires on the thread that disposes the outermost scope, only if at least one
+    /// mutation occurred. All deferral state transitions are guarded by an internal lock, so
+    /// concurrent mutations and concurrent scope disposal are both safe.
+    /// </para>
     /// </remarks>
     public IDisposable DeferChanges()
     {
-        Interlocked.Increment(ref _deferralDepth);
+        lock (_deferralLock)
+        {
+            _deferralDepth++;
+        }
         return new ChangeDeferralScope(this);
     }
 
@@ -74,10 +86,13 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// </remarks>
     protected void RaiseChanged()
     {
-        if (Volatile.Read(ref _deferralDepth) > 0)
+        lock (_deferralLock)
         {
-            Interlocked.Exchange(ref _pendingChange, 1);
-            return;
+            if (_deferralDepth > 0)
+            {
+                _pendingChange = true;
+                return;
+            }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -85,10 +100,19 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     private void EndDeferral()
     {
-        if (Interlocked.Decrement(ref _deferralDepth) == 0 &&
-            Interlocked.Exchange(ref _pendingChange, 0) == 1)
+        bool raise;
+        lock (_deferralLock)
         {
-            RaiseChanged();
+            raise = --_deferralDepth == 0 && _pendingChange;
+            if (raise)
+            {
+                _pendingChange = false;
+            }
+        }
+
+        if (raise)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 
