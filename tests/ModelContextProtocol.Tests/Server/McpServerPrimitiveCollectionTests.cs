@@ -7,6 +7,114 @@ public class McpServerPrimitiveCollectionTests
     private static McpServerTool CreateTool(string name) =>
         McpServerTool.Create(() => name, new() { Name = name });
 
+    // -------------------------------------------------------------------------
+    // Preexisting behavior -- Changed event without DeferChanges
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void TryAdd_NewTool_ReturnsTrue_FiresChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        bool added = collection.TryAdd(CreateTool("tool1"));
+
+        Assert.True(added);
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void TryAdd_DuplicateName_ReturnsFalse_DoesNotFireChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.TryAdd(CreateTool("tool1"));
+
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        bool added = collection.TryAdd(CreateTool("tool1"));
+
+        Assert.False(added);
+        Assert.Equal(0, changeCount);
+    }
+
+    [Fact]
+    public void TryAdd_SameTool_TwiceInSequence_FiresOnlyOnFirst()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        bool first = collection.TryAdd(CreateTool("tool1"));
+        bool second = collection.TryAdd(CreateTool("tool1"));
+
+        Assert.True(first);
+        Assert.False(second);
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void Remove_ExistingTool_ReturnsTrue_FiresChanged()
+    {
+        var tool = CreateTool("tool1");
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.TryAdd(tool);
+
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        bool removed = collection.Remove(tool);
+
+        Assert.True(removed);
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void Remove_NonExistentTool_ReturnsFalse_DoesNotFireChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        bool removed = collection.Remove(CreateTool("tool1"));
+
+        Assert.False(removed);
+        Assert.Equal(0, changeCount);
+    }
+
+    [Fact]
+    public void Clear_NonEmptyCollection_FiresChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.TryAdd(CreateTool("tool1"));
+        collection.TryAdd(CreateTool("tool2"));
+
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        collection.Clear();
+
+        Assert.Equal(1, changeCount);
+        Assert.Empty(collection);
+    }
+
+    [Fact]
+    public void Clear_EmptyCollection_FiresChanged()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        collection.Clear();
+
+        Assert.Equal(1, changeCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // DeferChanges -- basic deferral behavior
+    // -------------------------------------------------------------------------
+
     [Fact]
     public void DeferChanges_NoMutation_DoesNotFireChanged()
     {
@@ -74,6 +182,65 @@ public class McpServerPrimitiveCollectionTests
         }
 
         Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChanges_AddThenRemoveSameTool_FiresOneChanged()
+    {
+        // Net effect is no change in contents, but a Changed notification still fires
+        // because mutations occurred during the scope.
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        using (collection.DeferChanges())
+        {
+            var tool = CreateTool("tool1");
+            collection.TryAdd(tool);
+            collection.Remove(tool);
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(1, changeCount);
+        Assert.Empty(collection);
+    }
+
+    [Fact]
+    public void DeferChanges_DuplicateTryAdd_OnlySuccessfulMutationMarksChange()
+    {
+        // The first TryAdd succeeds (mutation), the second fails (no mutation).
+        // Exactly one Changed fires on dispose.
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        using (collection.DeferChanges())
+        {
+            collection.TryAdd(CreateTool("tool1")); // succeeds
+            collection.TryAdd(CreateTool("tool1")); // fails -- duplicate name
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChanges_OnlyFailedTryAdds_DoesNotFireChanged()
+    {
+        var tool = CreateTool("tool1");
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.TryAdd(tool);
+
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        using (collection.DeferChanges())
+        {
+            collection.TryAdd(CreateTool("tool1")); // fails -- already present
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(0, changeCount);
     }
 
     [Fact]

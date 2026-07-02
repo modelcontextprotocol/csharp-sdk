@@ -63,7 +63,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public IDisposable DeferChanges()
     {
         Interlocked.Increment(ref _deferralDepth);
-        return new DeferralScope(this);
+        return new ChangeDeferralScope(this);
     }
 
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
@@ -92,11 +92,11 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         }
     }
 
-    private sealed class DeferralScope : IDisposable
+    private sealed class ChangeDeferralScope : IDisposable
     {
         private McpServerPrimitiveCollection<T>? _collection;
 
-        public DeferralScope(McpServerPrimitiveCollection<T> collection) =>
+        public ChangeDeferralScope(McpServerPrimitiveCollection<T> collection) =>
             _collection = collection;
 
         public void Dispose()
