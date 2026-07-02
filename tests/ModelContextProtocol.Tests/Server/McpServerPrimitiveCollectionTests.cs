@@ -8,7 +8,7 @@ public class McpServerPrimitiveCollectionTests
         McpServerTool.Create(() => name, new() { Name = name });
 
     // -------------------------------------------------------------------------
-    // Preexisting behavior -- Changed event without DeferChanges
+    // Changed event without DeferChanges
     // -------------------------------------------------------------------------
 
     [Fact]
