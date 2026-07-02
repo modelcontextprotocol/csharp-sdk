@@ -297,7 +297,7 @@ internal sealed partial class McpClientImpl : McpClient
                 // prefers the 2026-07-28 revision and automatically falls back to the legacy initialize
                 // handshake when the server doesn't support it. The legacy branch below runs only when
                 // the caller explicitly pins a version that still supports Streamable HTTP sessions (opting out of the default).
-                if (_options.ProtocolVersion is null || McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(_options.ProtocolVersion))
+                if (_options.ProtocolVersion is null || McpHttpHeaders.RequiresPerRequestMetadata(_options.ProtocolVersion))
                 {
                     string preferredVersion = _options.ProtocolVersion ?? McpHttpHeaders.July2026ProtocolVersion;
 
@@ -333,8 +333,8 @@ internal sealed partial class McpClientImpl : McpClient
                     catch (UnsupportedProtocolVersionException ex)
                     {
                         // Spec-recognized modern-server signal: -32022 with data.supported[]. The server is
-                        // modern but doesn't speak our preferred version. Retry with a mutually supported
-                        // version from data.supported[] instead of falling back to legacy initialize.
+                        // refusing our preferred version; if it only supports legacy versions on this path,
+                        // fall back to initialize with the highest mutually supported legacy version.
                         fallbackToLegacy = true;
                         serverSupportedVersions = (IList<string>)ex.Supported;
                     }
@@ -350,6 +350,14 @@ internal sealed partial class McpClientImpl : McpClient
                         // our request envelope (e.g., the MCP-Protocol-Version HTTP header didn't match
                         // the body _meta.io.modelcontextprotocol/protocolVersion). Surface as-is (no
                         // fallback): falling back to legacy initialize wouldn't fix a malformed envelope.
+                        throw;
+                    }
+                    catch (McpProtocolException ex) when (
+                        ex.ErrorCode == McpErrorCode.InvalidRequest &&
+                        ex.Message.Contains(McpHttpHeaders.SessionId, StringComparison.Ordinal))
+                    {
+                        // Local transport validation: a 2026-07-28+ response must not carry HTTP session state.
+                        // This is not evidence of a legacy server, so do not fall back to initialize.
                         throw;
                     }
                     catch (McpProtocolException)
@@ -375,8 +383,8 @@ internal sealed partial class McpClientImpl : McpClient
                     if (discoverResult is not null && !discoverResult.SupportedVersions.Contains(preferredVersion))
                     {
                         // Server is reachable and supports server/discover, but doesn't support the
-                        // 2026-07-28 version. Fall back to legacy initialize with the highest
-                        // mutually-supported version from supportedVersions[].
+                        // preferred version. Fall back to legacy initialize with the highest
+                        // mutually-supported legacy version from supportedVersions[].
                         fallbackToLegacy = true;
                         serverSupportedVersions = discoverResult.SupportedVersions;
                     }
@@ -388,7 +396,7 @@ internal sealed partial class McpClientImpl : McpClient
                         _sessionHandler.NegotiatedProtocolVersion = null;
 
                         string fallbackVersion = serverSupportedVersions?
-                            .Where(McpSessionHandler.SupportedProtocolVersions.Contains)
+                            .Where(McpHttpHeaders.InitializeHandshakeProtocolVersions.Contains)
                             .OrderByDescending(v => v, StringComparer.Ordinal)
                             .FirstOrDefault()
                             ?? McpHttpHeaders.November2025ProtocolVersion;
@@ -479,10 +487,8 @@ internal sealed partial class McpClientImpl : McpClient
         _serverInstructions = initializeResponse.Instructions;
 
         // When the user explicitly pinned a version that supports Streamable HTTP sessions, the server MUST respect it.
-        // When the user pinned the 2026-07-28 version but we fell back (e.g., legacy server rejected
-        // server/discover), or when no version was pinned, accept any supported response. This is the
-        // spec-mandated behavior: a 2026-07-28 client must be able to downgrade to whatever
-        // version the server advertises.
+        // When no version was pinned, accept any supported legacy response. initialize cannot negotiate
+        // the 2026-07-28 and later protocol revisions.
         bool isResponseProtocolValid;
         if (_options.ProtocolVersion is { } optionsProtocol && !McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(optionsProtocol))
         {
@@ -490,7 +496,7 @@ internal sealed partial class McpClientImpl : McpClient
         }
         else
         {
-            isResponseProtocolValid = McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+            isResponseProtocolValid = McpHttpHeaders.InitializeHandshakeProtocolVersions.Contains(initializeResponse.ProtocolVersion);
         }
         if (!isResponseProtocolValid)
         {

@@ -300,4 +300,57 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         Assert.Equal(McpErrorCode.HeaderMismatch, exception.ErrorCode);
         Assert.False(initializeReceived);
     }
+
+    [Fact]
+    public async Task Client_OnModernResponseWithMcpSessionId_RejectsSessionState()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await StartServerAsync(async context =>
+        {
+            var message = await JsonSerializer.DeserializeAsync(
+                context.Request.Body,
+                GetJsonTypeInfo<JsonRpcMessage>(),
+                ct);
+
+            if (message is JsonRpcRequest { Method: RequestMethods.ServerDiscover } request)
+            {
+                var response = new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new DiscoverResult
+                    {
+                        SupportedVersions = [McpHttpHeaders.July2026ProtocolVersion],
+                        Capabilities = new ServerCapabilities(),
+                        ServerInfo = new Implementation { Name = "bad-modern-server", Version = "1.0" },
+                        TimeToLive = TimeSpan.Zero,
+                        CacheScope = CacheScope.Private,
+                    }, McpJsonUtilities.DefaultOptions),
+                };
+
+                context.Response.Headers[McpHttpHeaders.SessionId] = "unexpected-session";
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), ct);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+        }, HttpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+            {
+                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
+        Assert.Contains(McpHttpHeaders.SessionId, exception.Message, StringComparison.Ordinal);
+    }
 }

@@ -57,7 +57,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
 
         // On a stateless server, server/discover succeeds without creating a session.
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -78,7 +78,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -108,7 +108,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -196,4 +196,8 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    private static string DiscoverRequestJuly2026Protocol => """
+        {"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"July2026HttpHandlerTestClient","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+        """;
 }

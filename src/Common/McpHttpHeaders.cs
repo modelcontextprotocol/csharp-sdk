@@ -23,10 +23,38 @@ internal static class McpHttpHeaders
     /// <summary>
     /// The 2025-11-25 MCP protocol revision: the latest revision that still supports Streamable HTTP
     /// sessions (the <c>initialize</c> handshake and <c>Mcp-Session-Id</c>); newer revisions remove them.
-    /// It is the default version for the legacy <c>initialize</c> and session-resume code paths, and the
-    /// version the server advertises when a peer requests an unsupported version on the legacy handshake.
+    /// It is the default version for the <c>initialize</c> and session-resume code paths, and the version
+    /// the server advertises when a peer requests an unsupported version on the initialize handshake.
     /// </summary>
     public const string November2025ProtocolVersion = "2025-11-25";
+
+    /// <summary>
+    /// Protocol versions that still use the <c>initialize</c> handshake.
+    /// </summary>
+    internal static readonly string[] InitializeHandshakeProtocolVersions =
+    [
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        November2025ProtocolVersion,
+    ];
+
+    /// <summary>
+    /// Protocol versions that use per-request metadata instead of the <c>initialize</c> handshake.
+    /// </summary>
+    internal static readonly string[] PerRequestMetadataProtocolVersions =
+    [
+        July2026ProtocolVersion,
+    ];
+
+    /// <summary>
+    /// All protocol versions supported by this implementation.
+    /// </summary>
+    internal static readonly string[] SupportedProtocolVersions =
+    [
+        .. InitializeHandshakeProtocolVersions,
+        .. PerRequestMetadataProtocolVersions,
+    ];
 
     /// <summary>The session identifier header.</summary>
     public const string SessionId = "Mcp-Session-Id";
@@ -81,11 +109,37 @@ internal static class McpHttpHeaders
             && StringComparer.Ordinal.Compare(protocolVersion, July2026ProtocolVersion) >= 0;
 
     /// <summary>
+    /// Returns <see langword="true"/> if the given protocol version is supported by this implementation.
+    /// </summary>
+    internal static bool IsSupportedProtocolVersion(string? protocolVersion)
+        => protocolVersion is not null && SupportedProtocolVersions.Contains(protocolVersion);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the given protocol version is available through the
+    /// <c>initialize</c> handshake.
+    /// </summary>
+    internal static bool SupportsInitializeHandshake(string? protocolVersion)
+        => protocolVersion is not null && InitializeHandshakeProtocolVersions.Contains(protocolVersion);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the given protocol version requires the handshake-free
+    /// per-request metadata path.
+    /// </summary>
+    internal static bool RequiresPerRequestMetadata(string? protocolVersion)
+        => IsJuly2026OrLaterProtocolVersion(protocolVersion);
+
+    /// <summary>
     /// Returns <see langword="true"/> if the given protocol version requires standard MCP request headers
     /// (<c>Mcp-Method</c>, <c>Mcp-Name</c>).
     /// </summary>
-    public static bool SupportsStandardHeaders(string? protocolVersion)
-        => IsJuly2026OrLaterProtocolVersion(protocolVersion);
+    public static bool RequiresStandardHeaders(string? protocolVersion)
+        => RequiresPerRequestMetadata(protocolVersion);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the given protocol version supports Streamable HTTP sessions.
+    /// </summary>
+    internal static bool SupportsHttpSessions(string? protocolVersion)
+        => !RequiresPerRequestMetadata(protocolVersion);
 
     /// <summary>
     /// Returns <see langword="true"/> if the negotiated protocol version reports unresolvable

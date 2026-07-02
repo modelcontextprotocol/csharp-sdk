@@ -483,7 +483,7 @@ public class McpClientTests : ClientServerTestBase
     [Fact]
     public async Task AsClientLoggerProvider_MessagesSentToClient()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion });
 
         ILoggerProvider loggerProvider = Server.AsClientLoggerProvider();
         Assert.Throws<ArgumentNullException>("categoryName", () => loggerProvider.CreateLogger(null!));
@@ -765,7 +765,7 @@ public class McpClientTests : ClientServerTestBase
     [Fact]
     public async Task SetLoggingLevelAsync_WithRequestParams_SetsLevel()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion });
 
         // Should not throw
         await client.SetLoggingLevelAsync(

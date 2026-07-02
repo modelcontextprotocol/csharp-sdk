@@ -214,10 +214,18 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             throw new McpException($"Streamable HTTP POST response completed without a reply to request with ID: {rpcRequest.Id}");
         }
 
+        if (McpHttpHeaders.RequiresPerRequestMetadata(protocolVersionForRequest) &&
+            response.Headers.Contains(McpHttpHeaders.SessionId))
+        {
+            throw new McpProtocolException(
+                $"The server returned '{McpHttpHeaders.SessionId}' on a response using protocol version '{protocolVersionForRequest}', but that protocol revision does not support HTTP sessions.",
+                McpErrorCode.InvalidRequest);
+        }
+
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse initResponse)
         {
             // We've successfully initialized! Copy session-id and protocol version, then start GET request if any.
-            if (response.Headers.TryGetValues("Mcp-Session-Id", out var sessionIdValues))
+            if (response.Headers.TryGetValues(McpHttpHeaders.SessionId, out var sessionIdValues))
             {
                 SessionId = sessionIdValues.FirstOrDefault();
             }

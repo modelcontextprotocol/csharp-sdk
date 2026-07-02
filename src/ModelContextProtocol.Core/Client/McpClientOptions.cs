@@ -55,7 +55,7 @@ public sealed class McpClientOptions
     /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
     /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions. It probes with
     /// <c>server/discover</c> and automatically falls back to the legacy <c>initialize</c> handshake,
-    /// downgrading to any version the server advertises, when the server does not support that revision.
+    /// downgrading to a legacy version the server advertises, when the server does not support that revision.
     /// </para>
     /// <para>
     /// When non-<see langword="null"/>, this value is both the requested version and the minimum the client

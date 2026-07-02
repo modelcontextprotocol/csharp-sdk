@@ -921,12 +921,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is served only on a stateless server.
         await StartAsync(stateless: true);
 
-        // Initialize with the 2026-07-28 protocol version to enable header validation
-        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
+        // Probe with the 2026-07-28 protocol version to enable header validation.
+        await CallDiscoverWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request without Mcp-Method header — should be rejected
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includeModernMeta: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         // Deliberately omit Mcp-Method header
 
@@ -938,11 +938,11 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     public async Task July2026ProtocolVersion_RejectsMismatchedMcpMethodHeader()
     {
         await StartAsync(stateless: true);
-        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
+        await CallDiscoverWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request but set Mcp-Method to wrong value
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"test"}"""));
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includeModernMeta: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
 
@@ -954,11 +954,11 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     public async Task July2026ProtocolVersion_AcceptsCorrectMcpMethodHeader()
     {
         await StartAsync(stateless: true);
-        await CallInitializeWithJuly2026ProtocolVersionAndValidateAsync();
+        await CallDiscoverWithJuly2026ProtocolVersionAndValidateAsync();
 
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}""", includeModernMeta: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
@@ -983,25 +983,25 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private async Task CallInitializeWithJuly2026ProtocolVersionAndValidateAsync()
+    private async Task CallDiscoverWithJuly2026ProtocolVersionAndValidateAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(InitializeRequestJuly2026Protocol);
+        request.Content = JsonContent(DiscoverRequestJuly2026Protocol);
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
-        request.Headers.Add("Mcp-Method", "initialize");
+        request.Headers.Add("Mcp-Method", "server/discover");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
-        AssertServerInfo(rpcResponse);
+        AssertDiscoverServerInfo(rpcResponse);
 
-        // Starting with the 2026-07-28 protocol revision (SEP-2567), Streamable HTTP no longer supports sessions; the server does not return mcp-session-id.
-        // Subsequent requests carry MCP-Protocol-Version=2026-07-28 so each one is handled independently.
+        // Starting with the 2026-07-28 protocol revision, clients use server/discover and per-request
+        // metadata instead of initialize.
     }
 
-    private static string InitializeRequestJuly2026Protocol => """
-        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+    private static string DiscoverRequestJuly2026Protocol => """
+        {"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
         """;
 
     #endregion
@@ -1073,10 +1073,14 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             """;
     }
 
-    private string CallTool(string toolName, string arguments = "{}") =>
-        Request("tools/call", $$"""
-            {"name":"{{toolName}}","arguments":{{arguments}}}
-            """);
+    private string CallTool(string toolName, string arguments = "{}", bool includeModernMeta = false)
+    {
+        var meta = includeModernMeta
+            ? @",""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2026-07-28"",""io.modelcontextprotocol/clientInfo"":{""name"":""IntegrationTestClient"",""version"":""1.0.0""},""io.modelcontextprotocol/clientCapabilities"":{}}"
+            : "";
+
+        return Request("tools/call", "{\"name\":\"" + toolName + "\",\"arguments\":" + arguments + meta + "}");
+    }
 
     private string CallToolWithProgressToken(string toolName, string arguments = "{}") =>
         Request("tools/call", $$$"""
@@ -1094,6 +1098,14 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(nameof(StreamableHttpServerConformanceTests), initializeResult.ServerInfo.Name);
         Assert.Equal("73", initializeResult.ServerInfo.Version);
         return initializeResult;
+    }
+
+    private static DiscoverResult AssertDiscoverServerInfo(JsonRpcResponse rpcResponse)
+    {
+        var discoverResult = AssertType<DiscoverResult>(rpcResponse.Result);
+        Assert.Equal(nameof(StreamableHttpServerConformanceTests), discoverResult.ServerInfo.Name);
+        Assert.Equal("73", discoverResult.ServerInfo.Version);
+        return discoverResult;
     }
 
     private static CallToolResult AssertEchoResponse(JsonRpcResponse rpcResponse)

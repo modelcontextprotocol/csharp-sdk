@@ -558,6 +558,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
             Handlers = new()
             {
                 NotificationHandlers =

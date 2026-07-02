@@ -337,7 +337,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         // the response headers arrive instead of waiting for the SSE stream to close.
         var callRequest = new HttpRequestMessage(HttpMethod.Post, (string?)null)
         {
-            Content = JsonContent(CallTool("backcompat-roots-tool")),
+            Content = JsonContent(CallTool("backcompat-roots-tool", includeModernMeta: false)),
         };
         callRequest.Content.Headers.Add("Mcp-Method", "tools/call");
         callRequest.Content.Headers.Add("Mcp-Name", "backcompat-roots-tool");
@@ -456,16 +456,49 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
 
     private long _lastRequestId = 1;
 
-    private string Request(string method, string parameters = "{}")
+    private string Request(string method, string parameters = "{}", bool includeModernMeta = true)
     {
         var id = Interlocked.Increment(ref _lastRequestId);
-        return $$"""
-            {"jsonrpc":"2.0","id":{{id}},"method":"{{method}}","params":{{parameters}}}
-            """;
+        var paramsObj = JsonNode.Parse(parameters) as JsonObject ?? new JsonObject();
+        if (includeModernMeta)
+        {
+            AddJuly2026ProtocolMeta(paramsObj);
+        }
+
+        var request = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = id,
+            ["method"] = method,
+            ["params"] = paramsObj,
+        };
+
+        return request.ToJsonString();
     }
 
-    private string CallTool(string toolName, string arguments = "{}") =>
+    private static void AddJuly2026ProtocolMeta(JsonObject paramsObj)
+    {
+        if (paramsObj["_meta"] is not JsonObject meta)
+        {
+            meta = [];
+            paramsObj["_meta"] = meta;
+        }
+
+        meta[MetaKeys.ProtocolVersion] = McpHttpHeaders.July2026ProtocolVersion;
+        meta[MetaKeys.ClientInfo] = new JsonObject
+        {
+            ["name"] = "MrtrTestClient",
+            ["version"] = "1.0",
+        };
+
+        if (meta[MetaKeys.ClientCapabilities] is not JsonObject)
+        {
+            meta[MetaKeys.ClientCapabilities] = new JsonObject();
+        }
+    }
+
+    private string CallTool(string toolName, string arguments = "{}", bool includeModernMeta = true) =>
         Request("tools/call", $$"""
             {"name":"{{toolName}}","arguments":{{arguments}}}
-            """);
+            """, includeModernMeta);
 }

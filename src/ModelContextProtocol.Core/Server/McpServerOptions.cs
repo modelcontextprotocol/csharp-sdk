@@ -30,14 +30,15 @@ public sealed class McpServerOptions
     public ServerCapabilities? Capabilities { get; set; }
 
     /// <summary>
-    /// Gets or sets the protocol version supported by this server, using a date-based versioning scheme.
+    /// Gets or sets the legacy protocol version used by the <c>initialize</c> handshake, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
-    /// The protocol version defines which features and message formats this server supports.
-    /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertise to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertise the latest
-    /// version supported by the server.
+    /// The protocol version defines which legacy features and message formats this server uses for
+    /// sessions established through <c>initialize</c>. This uses a date-based versioning scheme in the
+    /// format "YYYY-MM-DD". If <see langword="null"/>, the server negotiates the legacy version requested
+    /// by the client if that version is known to be supported, and otherwise uses the latest supported
+    /// legacy version. Protocol revisions starting with <c>2026-07-28</c> do not use <c>initialize</c>;
+    /// clients select them with <c>server/discover</c> and per-request metadata instead.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 

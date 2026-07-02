@@ -34,6 +34,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
         Assert.True(transport.ServerDiscoverProbed);
         Assert.True(transport.LegacyInitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
         Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
     }
 
@@ -50,7 +51,27 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.LegacyInitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task Client_OnLegacyFallback_RejectsModernInitializeResponse()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new LegacyServerTestTransport(
+            serverNegotiatedVersion: McpHttpHeaders.July2026ProtocolVersion);
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.IsType<McpException>(exception);
+        Assert.True(transport.LegacyInitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
+        Assert.Contains("mismatch", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -137,6 +158,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
         Assert.True(transport.ServerDiscoverProbed);
         Assert.True(transport.LegacyInitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         // The fallback was driven by the short probe timeout, not the 60s InitializationTimeout.
@@ -189,6 +211,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
         public bool LegacyInitializeReceived { get; private set; }
 
+        public string? LegacyInitializeProtocolVersion { get; private set; }
+
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
         {
             ITransport transport = new TransportChannel(_incomingToClient, this);
@@ -224,6 +248,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
                 case JsonRpcRequest { Method: RequestMethods.Initialize } initReq:
                     LegacyInitializeReceived = true;
+                    var initializeRequest = JsonSerializer.Deserialize<InitializeRequestParams>(initReq.Params, McpJsonUtilities.DefaultOptions);
+                    LegacyInitializeProtocolVersion = initializeRequest?.ProtocolVersion;
                     _ = WriteAsync(new JsonRpcResponse
                     {
                         Id = initReq.Id,
