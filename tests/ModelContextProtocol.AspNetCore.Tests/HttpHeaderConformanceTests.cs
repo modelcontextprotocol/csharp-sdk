@@ -268,6 +268,116 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
+    public async Task Server_EchoesRequestId_WhenMcpNameHeaderMissing()
+    {
+        await StartAsync();
+        await InitializeWithJuly2026ProtocolVersionAsync();
+
+        // The body is a well-formed JSON-RPC request with a numeric id. Header validation fails
+        // because the Mcp-Name header is omitted, but the id was already parsed from the body, so the
+        // error response MUST echo it rather than returning id:null (JSON-RPC 2.0 §5).
+        var callBody = """
+            {"jsonrpc":"2.0","id":1001,"method":"tools/call","params":{"name":"header_test","arguments":{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}}}
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callBody, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        // Mcp-Name intentionally omitted.
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var root = doc.RootElement;
+        Assert.Equal(JsonValueKind.Number, root.GetProperty("id").ValueKind);
+        Assert.Equal(1001, root.GetProperty("id").GetInt64());
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, root.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Server_EchoesRequestId_WhenMcpNameHeaderMismatchesBody()
+    {
+        await StartAsync();
+        await InitializeWithJuly2026ProtocolVersionAsync();
+
+        // Body declares the tool name "header_test" but the Mcp-Name header says something else.
+        // The id was parsed from the body, so the mismatch error must still echo it.
+        var callBody = """
+            {"jsonrpc":"2.0","id":"req-7","method":"tools/call","params":{"name":"header_test","arguments":{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}}}
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callBody, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "other_tool");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var root = doc.RootElement;
+        Assert.Equal(JsonValueKind.String, root.GetProperty("id").ValueKind);
+        Assert.Equal("req-7", root.GetProperty("id").GetString());
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, root.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
+    public async Task Server_EchoesRequestId_WhenSessionIdHeaderRejectedUnderJuly2026Protocol()
+    {
+        await StartAsync();
+        await InitializeWithJuly2026ProtocolVersionAsync();
+
+        // Under the 2026-07-28 revision (SEP-2567) an Mcp-Session-Id header is rejected. The body was
+        // parsed successfully, so this post-parse error must echo the request id too.
+        var callBody = """
+            {"jsonrpc":"2.0","id":2002,"method":"tools/call","params":{"name":"header_test","arguments":{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}}}
+            """;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callBody, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "us-west1");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+        request.Headers.Add("Mcp-Session-Id", "some-session");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var root = doc.RootElement;
+        Assert.Equal(JsonValueKind.Number, root.GetProperty("id").ValueKind);
+        Assert.Equal(2002, root.GetProperty("id").GetInt64());
+    }
+
+    [Fact]
+    public async Task Server_ReturnsNullId_WhenRequestBodyIsMalformed()
+    {
+        await StartAsync();
+        await InitializeWithJuly2026ProtocolVersionAsync();
+
+        // When the body can't be parsed the id can't be read, so id:null is the correct, conformant
+        // response. This guards against over-correcting the fix for the parsed-id case.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent("{ not valid json", Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+    }
+
+    [Fact]
     public async Task Server_AcceptsBase64EncodedHeaderWithControlChars()
     {
         await StartAsync();
