@@ -208,7 +208,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     }
 
     [Fact]
-    public async Task DeferChanges_BatchAddResources_EmitsExactlyOneNotification()
+    public async Task DeferChangedEvents_BatchAddResources_EmitsExactlyOneNotification()
     {
         // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
         // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
@@ -233,7 +233,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 return default;
             }))
         {
-            using (serverResources.DeferChanges())
+            using (serverResources.DeferChangedEvents())
             {
                 serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource1", UriTemplate = "test://batch1")] () => "1"));
                 serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource2", UriTemplate = "test://batch2")] () => "2"));

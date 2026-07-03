@@ -174,7 +174,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     }
 
     [Fact]
-    public async Task DeferChanges_BatchAddPrompts_EmitsExactlyOneNotification()
+    public async Task DeferChangedEvents_BatchAddPrompts_EmitsExactlyOneNotification()
     {
         // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
         // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
@@ -199,7 +199,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 return default;
             }))
         {
-            using (serverPrompts.DeferChanges())
+            using (serverPrompts.DeferChangedEvents())
             {
                 serverPrompts.Add(McpServerPrompt.Create([McpServerPrompt(Name = "BatchPrompt1")] () => "1"));
                 serverPrompts.Add(McpServerPrompt.Create([McpServerPrompt(Name = "BatchPrompt2")] () => "2"));

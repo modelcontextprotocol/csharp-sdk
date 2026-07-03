@@ -12,7 +12,7 @@ public class McpServerPrimitiveCollectionTests
         McpServerPrompt.Create(() => new ChatMessage(ChatRole.User, name), new() { Name = name });
 
     // -------------------------------------------------------------------------
-    // Changed event without DeferChanges
+    // Changed event without DeferChangedEvents
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -116,17 +116,17 @@ public class McpServerPrimitiveCollectionTests
     }
 
     // -------------------------------------------------------------------------
-    // DeferChanges -- basic deferral behavior
+    // DeferChangedEvents -- basic deferral behavior
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void DeferChanges_NoMutation_DoesNotFireChanged()
+    public void DeferChangedEvents_NoMutation_DoesNotFireChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             // no mutations
         }
@@ -135,13 +135,13 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_SingleMutation_FiresOneChanged()
+    public void DeferChangedEvents_SingleMutation_FiresOneChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1"));
             Assert.Equal(0, changeCount); // not fired yet
@@ -151,13 +151,13 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_MultipleMutations_FiresOneChanged()
+    public void DeferChangedEvents_MultipleMutations_FiresOneChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1"));
             collection.TryAdd(CreateTool("tool2"));
@@ -169,7 +169,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_MixedAddAndRemove_FiresOneChanged()
+    public void DeferChangedEvents_MixedAddAndRemove_FiresOneChanged()
     {
         var tool = CreateTool("tool1");
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
@@ -178,7 +178,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool2"));
             collection.Remove(tool);
@@ -189,7 +189,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_AddThenRemoveSameTool_FiresOneChanged()
+    public void DeferChangedEvents_AddThenRemoveSameTool_FiresOneChanged()
     {
         // Net effect is no change in contents, but a Changed notification still fires
         // because mutations occurred during the scope.
@@ -197,7 +197,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             var tool = CreateTool("tool1");
             collection.TryAdd(tool);
@@ -210,7 +210,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_DuplicateTryAdd_OnlySuccessfulMutationMarksChange()
+    public void DeferChangedEvents_DuplicateTryAdd_OnlySuccessfulMutationMarksChange()
     {
         // The first TryAdd succeeds (mutation), the second fails (no mutation).
         // Exactly one Changed fires on dispose.
@@ -218,7 +218,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1")); // succeeds
             collection.TryAdd(CreateTool("tool1")); // fails -- duplicate name
@@ -229,7 +229,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_OnlyFailedTryAdds_DoesNotFireChanged()
+    public void DeferChangedEvents_OnlyFailedTryAdds_DoesNotFireChanged()
     {
         var tool = CreateTool("tool1");
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
@@ -238,7 +238,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1")); // fails -- already present
             Assert.Equal(0, changeCount);
@@ -248,7 +248,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_WithClear_FiresOneChanged()
+    public void DeferChangedEvents_WithClear_FiresOneChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         collection.TryAdd(CreateTool("tool1"));
@@ -257,7 +257,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.Clear();
             Assert.Equal(0, changeCount);
@@ -267,17 +267,17 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_Nested_FiresOnceOnOutermostDispose()
+    public void DeferChangedEvents_Nested_FiresOnceOnOutermostDispose()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1"));
 
-            using (collection.DeferChanges())
+            using (collection.DeferChangedEvents())
             {
                 collection.TryAdd(CreateTool("tool2"));
                 Assert.Equal(0, changeCount);
@@ -291,13 +291,13 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_AfterScope_ResumesImmediateNotifications()
+    public void DeferChangedEvents_AfterScope_ResumesImmediateNotifications()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1"));
         }
@@ -313,13 +313,13 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_DisposeIdempotent_DoesNotFireTwice()
+    public void DeferChangedEvents_DisposeIdempotent_DoesNotFireTwice()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        var scope = collection.DeferChanges();
+        var scope = collection.DeferChangedEvents();
         collection.TryAdd(CreateTool("tool1"));
 
         scope.Dispose();
@@ -330,12 +330,12 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_ScopeWithNoHandlers_DoesNotThrow()
+    public void DeferChangedEvents_ScopeWithNoHandlers_DoesNotThrow()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         // no Changed handler registered
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreateTool("tool1"));
         }
@@ -344,7 +344,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void WithoutDeferChanges_EachMutationFiresImmediately()
+    public void WithoutDeferChangedEvents_EachMutationFiresImmediately()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
@@ -361,18 +361,18 @@ public class McpServerPrimitiveCollectionTests
     }
 
     // -------------------------------------------------------------------------
-    // DeferChanges -- concurrency
+    // DeferChangedEvents -- concurrency
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task DeferChanges_ConcurrentMutations_FiresExactlyOneChanged()
+    public async Task DeferChangedEvents_ConcurrentMutations_FiresExactlyOneChanged()
     {
         const int threadCount = 10;
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
         collection.Changed += (_, _) => Interlocked.Increment(ref changeCount);
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             await Task.WhenAll(Enumerable.Range(0, threadCount).Select(i =>
                 Task.Run(() => collection.TryAdd(CreateTool($"tool{i}")), TestContext.Current.CancellationToken)));
@@ -383,7 +383,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public async Task DeferChanges_MutationRacingWithDispose_NotificationNotLost()
+    public async Task DeferChangedEvents_MutationRacingWithDispose_NotificationNotLost()
     {
         // Run many iterations to reliably exercise the race between a mutation
         // and disposal of the outermost scope. With the lock-free implementation
@@ -395,7 +395,7 @@ public class McpServerPrimitiveCollectionTests
             int changeCount = 0;
             collection.Changed += (_, _) => Interlocked.Increment(ref changeCount);
 
-            var scope = collection.DeferChanges();
+            var scope = collection.DeferChangedEvents();
 
             // Run the mutation and the dispose concurrently.
             var addTask = Task.Run(() => collection.TryAdd(CreateTool("tool1")), TestContext.Current.CancellationToken);
@@ -415,7 +415,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     // -------------------------------------------------------------------------
-    // DeferChanges -- derived-type coalescing
+    // DeferChangedEvents -- derived-type coalescing
     // -------------------------------------------------------------------------
 
     private sealed class TrackingCollection : McpServerPrimitiveCollection<McpServerTool>
@@ -424,7 +424,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_DerivedTypeCallsRaiseChanged_Coalesces()
+    public void DeferChangedEvents_DerivedTypeCallsRaiseChanged_Coalesces()
     {
         // Verify that derived types calling RaiseChanged() directly (the path
         // McpServerResourceCollection and other subclasses rely on) are gated
@@ -433,7 +433,7 @@ public class McpServerPrimitiveCollectionTests
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.RaiseChangedDirectly();
             collection.RaiseChangedDirectly();
@@ -444,7 +444,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_DerivedTypeRaisesChanged_OutsideScope_FiresImmediately()
+    public void DeferChangedEvents_DerivedTypeRaisesChanged_OutsideScope_FiresImmediately()
     {
         var collection = new TrackingCollection();
         int changeCount = 0;
@@ -458,11 +458,11 @@ public class McpServerPrimitiveCollectionTests
     }
 
     // -------------------------------------------------------------------------
-    // DeferChanges -- exception safety
+    // DeferChangedEvents -- exception safety
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void DeferChanges_ExceptionDuringScope_StillFiresChanged()
+    public void DeferChangedEvents_ExceptionDuringScope_StillFiresChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
@@ -470,7 +470,7 @@ public class McpServerPrimitiveCollectionTests
 
         try
         {
-            using (collection.DeferChanges())
+            using (collection.DeferChangedEvents())
             {
                 collection.TryAdd(CreateTool("tool1"));
                 throw new InvalidOperationException("test");
@@ -482,7 +482,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChanges_ExceptionDuringScope_ResumesImmediateNotificationsAfterward()
+    public void DeferChangedEvents_ExceptionDuringScope_ResumesImmediateNotificationsAfterward()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
@@ -490,7 +490,7 @@ public class McpServerPrimitiveCollectionTests
 
         try
         {
-            using (collection.DeferChanges())
+            using (collection.DeferChangedEvents())
             {
                 collection.TryAdd(CreateTool("tool1"));
                 throw new InvalidOperationException("test");
@@ -509,17 +509,17 @@ public class McpServerPrimitiveCollectionTests
     }
 
     // -------------------------------------------------------------------------
-    // DeferChanges -- prompt collection coverage
+    // DeferChangedEvents -- prompt collection coverage
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void DeferChanges_PromptCollection_MultipleMutations_FiresOneChanged()
+    public void DeferChangedEvents_PromptCollection_MultipleMutations_FiresOneChanged()
     {
         var collection = new McpServerPrimitiveCollection<McpServerPrompt>();
         int changeCount = 0;
         collection.Changed += (_, _) => changeCount++;
 
-        using (collection.DeferChanges())
+        using (collection.DeferChangedEvents())
         {
             collection.TryAdd(CreatePrompt("prompt1"));
             collection.TryAdd(CreatePrompt("prompt2"));

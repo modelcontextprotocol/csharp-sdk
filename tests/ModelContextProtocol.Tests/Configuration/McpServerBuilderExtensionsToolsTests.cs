@@ -233,7 +233,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task DeferChanges_BatchAddTools_EmitsExactlyOneNotification()
+    public async Task DeferChangedEvents_BatchAddTools_EmitsExactlyOneNotification()
     {
         // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
         // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
@@ -258,7 +258,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 return default;
             }))
         {
-            using (serverTools.DeferChanges())
+            using (serverTools.DeferChangedEvents())
             {
                 serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool1")] () => "1"));
                 serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool2")] () => "2"));

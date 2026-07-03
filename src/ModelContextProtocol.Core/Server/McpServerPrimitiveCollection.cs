@@ -12,11 +12,11 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, T> _primitives;
 
-    /// <summary>Lock protecting <see cref="_deferralDepth"/> and <see cref="_pendingChange"/>.</summary>
+    /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_pendingChange"/>.</summary>
     private readonly object _deferralLock = new();
 
-    /// <summary>Depth counter for active <see cref="DeferChanges"/> scopes. Positive means notifications are deferred.</summary>
-    private int _deferralDepth;
+    /// <summary>Depth counter for active <see cref="DeferChangedEvents"/> scopes. Positive means notifications are deferred.</summary>
+    private int _activeDeferralScopes;
 
     /// <summary>Whether a change occurred while notifications were deferred.</summary>
     private bool _pendingChange;
@@ -53,7 +53,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// Use this method to batch multiple mutations (add, remove, clear) into a single
     /// <see cref="Changed"/> notification:
     /// <code>
-    /// using (collection.DeferChanges())
+    /// using (collection.DeferChangedEvents())
     /// {
     ///     foreach (var tool in tools)
     ///         collection.TryAdd(tool);
@@ -69,18 +69,18 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// concurrent mutations and concurrent scope disposal are both safe.
     /// </para>
     /// </remarks>
-    public IDisposable DeferChanges()
+    public IDisposable DeferChangedEvents()
     {
         lock (_deferralLock)
         {
-            _deferralDepth++;
+            _activeDeferralScopes++;
         }
         return new ChangeDeferralScope(this);
     }
 
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
     /// <remarks>
-    /// If a <see cref="DeferChanges"/> scope is active, the notification is deferred until the
+    /// If a <see cref="DeferChangedEvents"/> scope is active, the notification is deferred until the
     /// outermost scope is disposed. Derived types that override mutation methods and call
     /// <see cref="RaiseChanged"/> will automatically participate in deferral.
     /// </remarks>
@@ -88,7 +88,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         lock (_deferralLock)
         {
-            if (_deferralDepth > 0)
+            if (_activeDeferralScopes > 0)
             {
                 _pendingChange = true;
                 return;
@@ -103,7 +103,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         bool raise;
         lock (_deferralLock)
         {
-            raise = --_deferralDepth == 0 && _pendingChange;
+            raise = --_activeDeferralScopes == 0 && _pendingChange;
             if (raise)
             {
                 _pendingChange = false;
