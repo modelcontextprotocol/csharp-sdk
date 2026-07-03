@@ -12,14 +12,14 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, T> _primitives;
 
-    /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_pendingChange"/>.</summary>
+    /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_hasDeferredChangeEvents"/>.</summary>
     private readonly object _deferralLock = new();
 
     /// <summary>Depth counter for active <see cref="DeferChangedEvents"/> scopes. Positive means notifications are deferred.</summary>
     private int _activeDeferralScopes;
 
     /// <summary>Whether a change occurred while notifications were deferred.</summary>
-    private bool _pendingChange;
+    private bool _hasDeferredChangeEvents;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
@@ -90,7 +90,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         {
             if (_activeDeferralScopes > 0)
             {
-                _pendingChange = true;
+                _hasDeferredChangeEvents = true;
                 return;
             }
         }
@@ -103,10 +103,10 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         bool raise;
         lock (_deferralLock)
         {
-            raise = --_activeDeferralScopes == 0 && _pendingChange;
+            raise = --_activeDeferralScopes == 0 && _hasDeferredChangeEvents;
             if (raise)
             {
-                _pendingChange = false;
+                _hasDeferredChangeEvents = false;
             }
         }
 
