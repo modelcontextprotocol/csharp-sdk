@@ -50,16 +50,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// </summary>
     /// <returns>An <see cref="IDisposable"/> that ends the deferral scope when disposed.</returns>
     /// <remarks>
-    /// Use this method to batch multiple mutations (add, remove, clear) into a single
-    /// <see cref="Changed"/> notification:
-    /// <code>
-    /// using (collection.DeferChangedEvents())
-    /// {
-    ///     foreach (var tool in tools)
-    ///         collection.TryAdd(tool);
-    /// } // one Changed notification fires here
-    /// </code>
-    /// The scope is exception-safe: even if an exception is thrown inside the <c>using</c> block,
+    /// The scope is exception-safe: even if an exception is thrown inside a <c>using</c> block,
     /// the deferral is ended on dispose. If any mutation occurred before the exception, a single
     /// <see cref="Changed"/> notification is raised.
     /// <para>
