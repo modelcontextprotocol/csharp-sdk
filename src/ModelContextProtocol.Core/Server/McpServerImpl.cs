@@ -27,6 +27,9 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly NotificationHandlers _notificationHandlers;
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
+    private readonly string[] _supportedProtocolVersions;
+    private readonly string[] _initializeHandshakeProtocolVersions;
+    private readonly string[] _perRequestMetadataProtocolVersions;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _taskCancellationSources = new();
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
@@ -80,6 +83,9 @@ internal sealed partial class McpServerImpl : McpServer
         _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
+        _supportedProtocolVersions = GetConfiguredSupportedProtocolVersions(options.ProtocolVersion);
+        _initializeHandshakeProtocolVersions = [.. _supportedProtocolVersions.Where(McpHttpHeaders.SupportsInitializeHandshake)];
+        _perRequestMetadataProtocolVersions = [.. _supportedProtocolVersions.Where(McpHttpHeaders.RequiresPerRequestMetadata)];
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
@@ -167,7 +173,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// </summary>
     /// <remarks>
     /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. For legacy clients the per-request values are absent and the built-in
+    /// MUST be populated per-request. For initialize-handshake clients the per-request values are absent and the built-in
     /// filter is a no-op (the values were captured during the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
@@ -192,11 +198,11 @@ internal sealed partial class McpServerImpl : McpServer
                     // Per SEP-2575, the server MUST reject any request whose per-request
                     // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
                     // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
-                    if (!McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersion))
+                    if (!_supportedProtocolVersions.Contains(protocolVersion))
                     {
                         throw new UnsupportedProtocolVersionException(
                             requested: protocolVersion,
-                            supported: McpSessionHandler.SupportedProtocolVersions);
+                            supported: _supportedProtocolVersions);
                     }
 
                     if (McpHttpHeaders.RequiresPerRequestMetadata(protocolVersion))
@@ -213,7 +219,7 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             throw new UnsupportedProtocolVersionException(
                                 requested: protocolVersion,
-                                supported: McpHttpHeaders.PerRequestMetadataProtocolVersions,
+                                supported: _perRequestMetadataProtocolVersions,
                                 message: $"Protocol version '{protocolVersion}' requires the initialize handshake and cannot be selected through per-request metadata.");
                         }
 
@@ -236,7 +242,7 @@ internal sealed partial class McpServerImpl : McpServer
                     {
                         throw new McpProtocolException(
                             $"The '{RequestMethods.ServerDiscover}' request requires per-request metadata declaring a supported protocol version.",
-                            McpErrorCode.InvalidRequest);
+                            McpErrorCode.InvalidParams);
                     }
 
                     if (hasReservedPerRequestMeta)
@@ -255,7 +261,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     // Under the 2026-07-28 revision the per-request _meta envelope carries the client's FULL
                     // capabilities (SEP-2575), so a plain overwrite is correct. The IsJuly2026OrLaterProtocol() gate
-                    // makes any legacy per-request envelope a no-op (legacy capabilities stay as the
+                    // makes any initialize-handshake per-request envelope a no-op (capabilities stay as the
                     // initialize handshake established them); the HasStatefulTransport() gate keeps
                     // _clientCapabilities null under StreamableHttpServerTransport { Stateless = true }
                     // (where the same server instance handles every request, so persisting per-request
@@ -314,7 +320,7 @@ internal sealed partial class McpServerImpl : McpServer
     private static void ThrowMissingPerRequestMetadata(string protocolVersion, string key) =>
         throw new McpProtocolException(
             $"Requests using protocol version '{protocolVersion}' must include '_meta/{key}'.",
-            McpErrorCode.InvalidRequest);
+            McpErrorCode.InvalidParams);
 
     private static void ThrowReservedPerRequestMetadata(string? requestedProtocolVersion, string key) =>
         throw new McpProtocolException(
@@ -343,14 +349,14 @@ internal sealed partial class McpServerImpl : McpServer
         paramsObj["_meta"] is JsonObject metaObj &&
         metaObj.ContainsKey(key);
 
-    private static void ValidateInitializeRequestBoundary(JsonRpcRequest request)
+    private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
         if (request.Context?.ProtocolVersion is { } protocolVersion &&
             !McpHttpHeaders.SupportsInitializeHandshake(protocolVersion))
         {
             throw new UnsupportedProtocolVersionException(
                 requested: protocolVersion,
-                supported: McpHttpHeaders.InitializeHandshakeProtocolVersions,
+                supported: _initializeHandshakeProtocolVersions,
                 message: $"Protocol version '{protocolVersion}' is not available through the initialize handshake.");
         }
 
@@ -372,6 +378,23 @@ internal sealed partial class McpServerImpl : McpServer
         return null;
     }
 
+    private static string[] GetConfiguredSupportedProtocolVersions(string? protocolVersion)
+    {
+        if (protocolVersion is null)
+        {
+            return McpHttpHeaders.SupportedProtocolVersions;
+        }
+
+        if (!McpHttpHeaders.IsSupportedProtocolVersion(protocolVersion))
+        {
+            throw new McpException(
+                $"Unsupported server protocol version '{protocolVersion}'. Supported protocol versions: " +
+                string.Join(", ", McpHttpHeaders.SupportedProtocolVersions) + ".");
+        }
+
+        return [protocolVersion];
+    }
+
     private void ValidateNotificationBoundary(JsonRpcNotification notification)
     {
         if (notification.Method == NotificationMethods.InitializedNotification &&
@@ -391,7 +414,8 @@ internal sealed partial class McpServerImpl : McpServer
             request.Method is RequestMethods.SubscriptionsListen
                 or RequestMethods.TasksGet
                 or RequestMethods.TasksUpdate
-                or RequestMethods.TasksCancel)
+                or RequestMethods.TasksCancel
+                or RequestMethods.ServerDiscover)
         {
             throw new McpProtocolException(
                 $"The method '{request.Method}' requires a newer protocol revision that supports per-request metadata; " +
@@ -549,7 +573,7 @@ internal sealed partial class McpServerImpl : McpServer
                 UpdateEndpointNameWithClientInfo();
                 _sessionHandler.EndpointName = _endpointName;
 
-                // Negotiate a legacy protocol version. initialize is not available in the 2026-07-28
+                // Negotiate an initialize-handshake protocol version. initialize is not available in the 2026-07-28
                 // and later protocol revisions, so those versions must use server/discover with
                 // per-request _meta instead.
                 string? protocolVersion = options.ProtocolVersion;
@@ -558,8 +582,8 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     throw new UnsupportedProtocolVersionException(
                         configuredProtocolVersion,
-                        McpHttpHeaders.InitializeHandshakeProtocolVersions,
-                        $"Protocol version '{configuredProtocolVersion}' is not available through the legacy initialize handshake.");
+                        _initializeHandshakeProtocolVersions,
+                        $"Protocol version '{configuredProtocolVersion}' is not available through the initialize handshake.");
                 }
 
                 if (protocolVersion is null)
@@ -570,8 +594,8 @@ internal sealed partial class McpServerImpl : McpServer
                         {
                             throw new UnsupportedProtocolVersionException(
                                 clientProtocolVersion,
-                                McpHttpHeaders.InitializeHandshakeProtocolVersions,
-                                $"Protocol version '{clientProtocolVersion}' is not available through the legacy initialize handshake.");
+                                _initializeHandshakeProtocolVersions,
+                                $"Protocol version '{clientProtocolVersion}' is not available through the initialize handshake.");
                         }
 
                         protocolVersion = McpHttpHeaders.SupportsInitializeHandshake(clientProtocolVersion) ?
@@ -586,8 +610,8 @@ internal sealed partial class McpServerImpl : McpServer
 
                 string negotiatedProtocolVersion = protocolVersion ?? McpHttpHeaders.November2025ProtocolVersion;
 
-                // The legacy initialize handshake is authoritative: it may supersede a protocol version
-                // a prior server/discover probe established on the same connection (the dual-era
+                // The initialize handshake is authoritative: it may supersede a protocol version
+                // a prior server/discover probe established on the same connection (the dual-path
                 // fallback path a permissive client takes against an unknown server). Unlike the
                 // per-request 2026-07-28 version - which SetNegotiatedProtocolVersion locks once negotiated -
                 // initialize force-sets the version.
@@ -610,9 +634,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// Registers the <c>server/discover</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
-    /// The handler is registered unconditionally so legacy clients can probe it too. It returns the server's
-    /// supported protocol versions (<see cref="McpSessionHandler.SupportedProtocolVersions"/>), server
-    /// capabilities, server info, and optional instructions.
+    /// The handler is registered unconditionally so requests can be routed to the protocol boundary filters. Successful
+    /// <c>server/discover</c> responses advertise only protocol versions available through per-request metadata; versions
+    /// that require the <c>initialize</c> handshake are negotiated through <c>initialize</c> instead.
     /// </remarks>
     private void ConfigureDiscover(McpServerOptions options)
     {
@@ -621,7 +645,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 return new ValueTask<DiscoverResult>(new DiscoverResult
                 {
-                    SupportedVersions = [.. McpSessionHandler.SupportedProtocolVersions],
+                    SupportedVersions = [.. _perRequestMetadataProtocolVersions],
                     Capabilities = ServerCapabilities ?? new(),
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
@@ -671,7 +695,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // changes back to the client (tracked by #1662). Rather than hold the POST open forever only
                 // to deliver nothing - pinning the connection and its request scope - acknowledge the listen
                 // request granting no notifications and complete immediately. This runs after protocol
-                // negotiation, so it is not a legacy-server signal and never triggers a client fallback to the
+                // negotiation, so it is not an initialize-handshake-server signal and never triggers a client fallback to the
                 // initialize handshake.
                 if (!HasStatefulTransport())
                 {
@@ -751,7 +775,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// </remarks>
     private async Task SendListChangedNotificationAsync(string notificationMethod)
     {
-        // Legacy clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
+        // Initialize-handshake clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
         // subscriptions/listen is a SEP-2575 feature, so clients on the 2026-07-28 or later revision instead get
         // a fan-out limited to the notification types they explicitly subscribed to.
         if (!IsJuly2026OrLaterProtocol())
@@ -1034,8 +1058,8 @@ internal sealed partial class McpServerImpl : McpServer
         cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
 
         // The tasks/* methods do not exist before the 2026-07-28 revision (SEP-2663). Reject them with
-        // MethodNotFound when the request was negotiated under a legacy protocol version. The handlers
-        // stay registered so a dual-era server still serves them for 2026-07-28 requests.
+        // MethodNotFound when the request was negotiated under an initialize-handshake protocol version. The handlers
+        // stay registered so a dual-path server still serves them for 2026-07-28 requests.
         getTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(getTaskHandler, RequestMethods.TasksGet);
         updateTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(updateTaskHandler, RequestMethods.TasksUpdate);
         cancelTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(cancelTaskHandler, RequestMethods.TasksCancel);

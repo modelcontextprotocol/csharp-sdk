@@ -14,7 +14,7 @@ public sealed class McpServerOptions
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
     /// <remarks>
-    /// This information is sent to the client during initialization to identify the server.
+    /// This information is sent to the client during initialization or discovery to identify the server.
     /// It's displayed in client logs and can be used for debugging and compatibility checks.
     /// </remarks>
     public Implementation? ServerInfo { get; set; }
@@ -30,15 +30,26 @@ public sealed class McpServerOptions
     public ServerCapabilities? Capabilities { get; set; }
 
     /// <summary>
-    /// Gets or sets the legacy protocol version used by the <c>initialize</c> handshake, using a date-based versioning scheme.
+    /// Gets or sets the protocol version supported by this server, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
-    /// The protocol version defines which legacy features and message formats this server uses for
-    /// sessions established through <c>initialize</c>. This uses a date-based versioning scheme in the
-    /// format "YYYY-MM-DD". If <see langword="null"/>, the server negotiates the legacy version requested
-    /// by the client if that version is known to be supported, and otherwise uses the latest supported
-    /// legacy version. Protocol revisions starting with <c>2026-07-28</c> do not use <c>initialize</c>;
-    /// clients select them with <c>server/discover</c> and per-request metadata instead.
+    /// <para>
+    /// The protocol version defines which features and message formats this server supports. Supported
+    /// values are <c>2024-11-05</c>, <c>2025-03-26</c>, <c>2025-06-18</c>, <c>2025-11-25</c>, and
+    /// <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/>, the server supports all of the versions listed above. For clients using
+    /// the <c>initialize</c> handshake, the server returns the requested initialize-capable version when it
+    /// is supported and otherwise returns <c>2025-11-25</c>. For clients using <c>server/discover</c> and
+    /// per-request metadata, the server advertises the supported per-request metadata versions; currently
+    /// this is <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// Set this property to a specific supported value to pin the server to that version. Setting it to
+    /// <c>2026-07-28</c> makes the server reject <c>initialize</c> handshakes; setting it to an earlier
+    /// value makes the server reject <c>2026-07-28</c> per-request metadata.
+    /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -75,12 +86,13 @@ public sealed class McpServerOptions
     public bool ScopeRequests { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets preexisting knowledge about the client including its name and version to help support
-    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
+    /// Gets or sets preexisting knowledge about the client including its name and version.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientCapabilities"/>.
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
@@ -91,7 +103,8 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
     /// This is typically set during session migration in conjunction with <see cref="KnownClientInfo"/>.
     /// </para>
     /// </remarks>

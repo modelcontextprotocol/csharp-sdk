@@ -32,4 +32,5 @@ public class McpRequestHeadersTests
     {
         Assert.Equal(expected, McpHttpHeaders.RequiresStandardHeaders(version));
     }
+
 }

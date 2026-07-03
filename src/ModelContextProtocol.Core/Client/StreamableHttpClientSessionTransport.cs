@@ -67,19 +67,19 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // Per spec PR #2844 (HTTP backwards compatibility), a 400 Bad Request that carries a
         // JSON-RPC error envelope means the peer is signalling something application-level about
         // our request. Surface ANY JSON-RPC error on a 400 as McpProtocolException so the
-        // connect-time logic can react. For example, the three modern protocol error codes
+        // connect-time logic can react. For example, the three per-request metadata protocol error codes
         // (-32022 UnsupportedProtocolVersion, -32021 MissingRequiredClientCapability,
         // -32020 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
-        // legacy servers that don't understand the SEP-2575 _meta envelope) become generic
+        // initialize-handshake servers that don't understand the SEP-2575 _meta envelope) become generic
         // McpProtocolException instances and trigger the fallback-to-legacy-initialize path.
         // Other status codes (401 auth, 403 forbidden, 404 session-not-found, 5xx server) continue
         // to surface as HttpRequestException to preserve back-compat with transport-layer behaviors.
-        // The three modern protocol error codes are also surfaced for non-400 status codes
+        // The three per-request metadata protocol error codes are also surfaced for non-400 status codes
         // for robustness. Servers occasionally emit them with 4xx codes other than 400.
         if (!response.IsSuccessStatusCode &&
             await TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
             (response.StatusCode == HttpStatusCode.BadRequest ||
-             IsModernProtocolErrorCode((McpErrorCode)parsedError.Error.Code)))
+             IsPerRequestMetadataProtocolErrorCode((McpErrorCode)parsedError.Error.Code)))
         {
             throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
         }
@@ -87,7 +87,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool IsModernProtocolErrorCode(McpErrorCode code) =>
+    private static bool IsPerRequestMetadataProtocolErrorCode(McpErrorCode code) =>
         code is McpErrorCode.UnsupportedProtocolVersion
              or McpErrorCode.MissingRequiredClientCapability
              or McpErrorCode.HeaderMismatch;
@@ -212,14 +212,6 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (rpcResponseOrError is null)
         {
             throw new McpException($"Streamable HTTP POST response completed without a reply to request with ID: {rpcRequest.Id}");
-        }
-
-        if (McpHttpHeaders.RequiresPerRequestMetadata(protocolVersionForRequest) &&
-            response.Headers.Contains(McpHttpHeaders.SessionId))
-        {
-            throw new McpProtocolException(
-                $"The server returned '{McpHttpHeaders.SessionId}' on a response using protocol version '{protocolVersionForRequest}', but that protocol revision does not support HTTP sessions.",
-                McpErrorCode.InvalidRequest);
         }
 
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse initResponse)
@@ -536,7 +528,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         string? protocolVersion,
         string? lastEventId = null)
     {
-        if (sessionId is not null)
+        if (sessionId is not null && McpHttpHeaders.SupportsHttpSessions(protocolVersion))
         {
             headers.Add(McpHttpHeaders.SessionId, sessionId);
         }

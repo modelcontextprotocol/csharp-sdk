@@ -427,17 +427,17 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
-    public async Task Server_SkipsHeaderValidation_ForLegacyVersion()
+    public async Task Server_SkipsHeaderValidation_ForInitializeHandshakeVersion()
     {
         await StartAsync();
-        await InitializeWithLegacyVersionAsync();
+        await InitializeWithInitializeHandshakeVersionAsync();
 
-        // With the legacy version, Mcp-Param-* headers are NOT validated even if mismatched
-        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""", includeModernMeta: false);
+        // With the initialize-handshake version, Mcp-Param-* headers are NOT validated even if mismatched.
+        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""", includePerRequestMetadata: false);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        // Send the WRONG header value. This should still succeed because the version is legacy.
+        // Send the WRONG header value. This should still succeed because the version uses initialize.
         request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
@@ -586,14 +586,14 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         // metadata instead of initialize.
     }
 
-    private async Task InitializeWithLegacyVersionAsync()
+    private async Task InitializeWithInitializeHandshakeVersionAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // Server is stateless by default (SEP-2567), so initializing with the legacy protocol does not return
+        // Server is stateless by default (SEP-2567), so initializing with an initialize-handshake protocol does not return
         // a mcp-session-id header. Subsequent requests are independent, just like requests on the 2026-07-28 revision.
     }
 
@@ -601,10 +601,10 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
     private long _lastRequestId = 1;
 
-    private string CallTool(string toolName, string arguments = "{}", bool includeModernMeta = true)
+    private string CallTool(string toolName, string arguments = "{}", bool includePerRequestMetadata = true)
     {
         var id = Interlocked.Increment(ref _lastRequestId);
-        var meta = includeModernMeta
+        var meta = includePerRequestMetadata
             ? @",""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2026-07-28"",""io.modelcontextprotocol/clientInfo"":{""name"":""TestClient"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}"
             : "";
 

@@ -52,16 +52,20 @@ public sealed class McpClientOptions
     /// </summary>
     /// <remarks>
     /// <para>
+    /// Supported values are <c>2024-11-05</c>, <c>2025-03-26</c>, <c>2025-06-18</c>, <c>2025-11-25</c>,
+    /// and <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
     /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
     /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions. It probes with
-    /// <c>server/discover</c> and automatically falls back to the legacy <c>initialize</c> handshake,
-    /// downgrading to a legacy version the server advertises, when the server does not support that revision.
+    /// <c>server/discover</c> and automatically falls back to the <c>initialize</c> handshake,
+    /// downgrading to an initialize-capable version the server advertises, when the server does not support that revision.
     /// </para>
     /// <para>
     /// When non-<see langword="null"/>, this value is both the requested version and the minimum the client
     /// will accept: the client requests exactly this version and refuses to downgrade below it, throwing an
     /// <see cref="McpException"/> instead of falling back. Setting it to <c>2026-07-28</c> therefore disables
-    /// the automatic legacy-server fallback, and setting it to a version that still supports Streamable HTTP
+    /// the automatic initialize-handshake server fallback, and setting it to a version that still supports Streamable HTTP
     /// sessions, such as <c>2025-11-25</c>, forces the <c>initialize</c> handshake and fails if the server
     /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
     /// or retry the connection with a different value.
@@ -90,7 +94,7 @@ public sealed class McpClientOptions
 
     /// <summary>
     /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
-    /// before falling back to the legacy <c>initialize</c> handshake.
+    /// before falling back to the <c>initialize</c> handshake.
     /// </summary>
     /// <value>
     /// The probe timeout. The default value is 5 seconds. Use
@@ -102,17 +106,17 @@ public sealed class McpClientOptions
     /// This timeout only has an effect when the client prefers the <c>2026-07-28</c> protocol revision, that is,
     /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or <c>2026-07-28</c>.
     /// In that mode the client first probes the server with a
-    /// <c>server/discover</c> request. A legacy server that predates the <c>2026-07-28</c> revision may
+    /// <c>server/discover</c> request. A server that predates the <c>2026-07-28</c> revision may
     /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
-    /// client concludes the server is legacy and falls back to the <c>initialize</c> handshake on the
-    /// same connection. When the caller pins a legacy <see cref="ProtocolVersion"/>, no probe is issued
+    /// client concludes the server requires <c>initialize</c> and falls back to that handshake on the
+    /// same connection. When the caller pins an initialize-capable <see cref="ProtocolVersion"/>, no probe is issued
     /// and this value has no effect.
     /// </para>
     /// <para>
-    /// The default is intentionally short so that dual-era clients fall back quickly against legacy
+    /// The default is intentionally short so that dual-path clients fall back quickly against initialize-handshake
     /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
-    /// satellite links) where a short probe could trigger the legacy fallback before a server on the new revision
-    /// server has had a chance to respond. The probe is always also bounded by
+    /// satellite links) where a short probe could trigger the initialize fallback before a server on the
+    /// per-request metadata revision has had a chance to respond. The probe is always also bounded by
     /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.

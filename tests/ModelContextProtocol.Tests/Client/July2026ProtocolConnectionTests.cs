@@ -43,7 +43,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Client_RequestingLegacyVersion_NegotiatesLegacy()
+    public async Task Client_RequestingInitializeHandshakeVersion_NegotiatesIt()
     {
         StartServer();
 
@@ -53,23 +53,21 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LegacyClient_CanCallServerDiscover()
+    public async Task InitializeHandshakeClient_CannotCallServerDiscover()
     {
-        // server/discover is registered unconditionally, so a legacy client can probe it
-        // (e.g., to learn capabilities without doing a second initialize).
+        // server/discover is registered unconditionally so the protocol boundary filter can return a structured
+        // error, but initialize-handshake clients cannot use it after negotiating an older protocol version.
         StartServer();
 
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
-        var response = await client.SendRequestAsync(
-            new JsonRpcRequest { Method = RequestMethods.ServerDiscover },
-            TestContext.Current.CancellationToken);
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.SendRequestAsync(
+                new JsonRpcRequest { Method = RequestMethods.ServerDiscover },
+                TestContext.Current.CancellationToken));
 
-        var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
-        Assert.NotNull(discoverResult);
-        Assert.NotEmpty(discoverResult.SupportedVersions);
-        Assert.Contains(LatestStableVersion, discoverResult.SupportedVersions);
-        Assert.Equal(nameof(July2026ProtocolConnectionTests), discoverResult.ServerInfo.Name);
+        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        Assert.Contains(RequestMethods.ServerDiscover, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -85,6 +83,6 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, discoverResult.SupportedVersions);
+        Assert.Equal([McpHttpHeaders.July2026ProtocolVersion], discoverResult.SupportedVersions);
     }
 }

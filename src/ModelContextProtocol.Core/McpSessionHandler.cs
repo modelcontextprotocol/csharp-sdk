@@ -575,8 +575,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
             // populated this, validate the body _meta matches per SEP-2575. A disagreement is reported with
             // -32020 HeaderMismatch (the same code used for the Mcp-Method/Mcp-Name header-vs-body checks),
-            // which conformant 2026-07-28 clients recognize as a modern-server signal and surface as-is rather
-            // than mistaking it for a legacy server and falling back to the initialize handshake.
+            // which conformant 2026-07-28 clients recognize as a SEP-2575 signal and surface as-is rather
+            // than mistaking it for an initialize-handshake server and falling back to initialize.
             if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(

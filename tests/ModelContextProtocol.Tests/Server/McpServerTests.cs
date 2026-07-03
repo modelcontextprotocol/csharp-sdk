@@ -26,7 +26,7 @@ public class McpServerTests : LoggedTest
     {
         return new McpServerOptions
         {
-            ProtocolVersion = "2024",
+            ProtocolVersion = "2024-11-05",
             InitializationTimeout = TimeSpan.FromSeconds(30),
             Capabilities = capabilities,
         };
@@ -285,8 +285,8 @@ public class McpServerTests : LoggedTest
                 Assert.NotNull(result);
                 Assert.Equal(expectedAssemblyName.Name, result.ServerInfo.Name);
                 Assert.Equal(expectedAssemblyName.Version?.ToString() ?? "1.0.0", result.ServerInfo.Version);
-                Assert.Equal("2024", result.ProtocolVersion);
-                Assert.Equal("2024", server.NegotiatedProtocolVersion);
+                Assert.Equal("2024-11-05", result.ProtocolVersion);
+                Assert.Equal("2024-11-05", server.NegotiatedProtocolVersion);
             });
     }
 

@@ -8,17 +8,17 @@ using System.Threading.Channels;
 namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
-/// Regression tests for the fallback from the 2026-07-28 protocol revision to a legacy protocol in
+/// Regression tests for the fallback from the 2026-07-28 protocol revision to an initialize-handshake protocol in
 /// <see cref="McpClient"/>. With default options (<c>ProtocolVersion = null</c>) the client prefers
-/// 2026-07-28 but probes with <c>server/discover</c>, falls back to the legacy <c>initialize</c>
-/// handshake when the server is legacy, and accepts whatever supported protocol version the legacy
+/// 2026-07-28 but probes with <c>server/discover</c>, falls back to the <c>initialize</c>
+/// handshake when the server only supports that path, and accepts whatever supported protocol version the
 /// server negotiates. Pinning <c>ProtocolVersion</c> to <c>2026-07-28</c> instead makes it the
 /// minimum too, so the client refuses to fall back.
 /// </summary>
 /// <remarks>
-/// The originally shipped logic in <c>PerformLegacyInitializeAsync</c> compared the server's response
-/// against the requested version and threw when a legacy server downgraded to (say) <c>"2025-06-18"</c>,
-/// even though the legacy negotiation succeeded. These tests guard against that regression.
+/// The originally shipped initialize-handshake fallback logic compared the server's response
+/// against the requested version and threw when an initialize-handshake server downgraded to (say)
+/// <c>"2025-06-18"</c>, even though negotiation succeeded. These tests guard against that regression.
 /// </remarks>
 public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
@@ -26,15 +26,15 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     public async Task Client_OnMethodNotFound_FallsBackTo_Initialize_AcceptsDowngradedVersion()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
+        await using var transport = new InitializeHandshakeServerTestTransport(serverNegotiatedVersion: "2025-06-18");
 
         // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.True(transport.ServerDiscoverProbed);
-        Assert.True(transport.LegacyInitializeReceived);
-        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
+        Assert.True(transport.InitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.InitializeProtocolVersion);
         Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
     }
 
@@ -42,7 +42,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     public async Task Client_OnInvalidParams_FallsBackTo_Initialize()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(
+        await using var transport = new InitializeHandshakeServerTestTransport(
             serverNegotiatedVersion: "2025-11-25",
             probeErrorCode: (int)McpErrorCode.InvalidParams);
 
@@ -50,16 +50,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.True(transport.LegacyInitializeReceived);
-        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
+        Assert.True(transport.InitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.InitializeProtocolVersion);
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
-    public async Task Client_OnLegacyFallback_RejectsModernInitializeResponse()
+    public async Task Client_OnInitializeFallback_RejectsPerRequestMetadataInitializeResponse()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(
+        await using var transport = new InitializeHandshakeServerTestTransport(
             serverNegotiatedVersion: McpHttpHeaders.July2026ProtocolVersion);
 
         var exception = await Assert.ThrowsAnyAsync<Exception>(async () =>
@@ -69,16 +69,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         });
 
         Assert.IsType<McpException>(exception);
-        Assert.True(transport.LegacyInitializeReceived);
-        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
+        Assert.True(transport.InitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.InitializeProtocolVersion);
         Assert.Contains("mismatch", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Client_WithPinnedJuly2026Version_RefusesFallback_ToLegacyServer()
+    public async Task Client_WithPinnedJuly2026Version_RefusesFallback_ToInitializeHandshakeServer()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-06-18");
+        await using var transport = new InitializeHandshakeServerTestTransport(serverNegotiatedVersion: "2025-06-18");
 
         var exception = await Assert.ThrowsAnyAsync<Exception>(async () =>
         {
@@ -94,11 +94,11 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Fact]
-    public async Task LegacyClient_WithExplicitPin_StillRequires_ExactVersionMatch()
+    public async Task InitializeHandshakeClient_WithExplicitPin_StillRequires_ExactVersionMatch()
     {
         var ct = TestContext.Current.CancellationToken;
         // Server responds with a DIFFERENT version than the one the user pinned.
-        await using var transport = new LegacyServerTestTransport(serverNegotiatedVersion: "2025-03-26");
+        await using var transport = new InitializeHandshakeServerTestTransport(serverNegotiatedVersion: "2025-03-26");
 
         var exception = await Assert.ThrowsAnyAsync<Exception>(async () =>
         {
@@ -115,11 +115,11 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [Fact]
     public async Task Client_OnHeaderMismatch_Surfaces_NoFallback()
     {
-        // The peer is modern (returns the spec-defined -32020 HeaderMismatch on the probe).
-        // Falling back to legacy initialize would just produce another malformed envelope.
+        // The peer uses per-request metadata (returns the spec-defined -32020 HeaderMismatch on the probe).
+        // Falling back to initialize would just produce another malformed envelope.
         // Verify the connect-time logic surfaces the error to the caller instead of falling back.
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(
+        await using var transport = new InitializeHandshakeServerTestTransport(
             serverNegotiatedVersion: "2025-11-25",
             probeErrorCode: (int)McpErrorCode.HeaderMismatch);
 
@@ -132,18 +132,18 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         });
 
         Assert.True(transport.ServerDiscoverProbed);
-        Assert.False(transport.LegacyInitializeReceived);
+        Assert.False(transport.InitializeReceived);
         Assert.Equal(McpErrorCode.HeaderMismatch, ((McpProtocolException)exception).ErrorCode);
     }
 
     [Fact]
     public async Task Client_OnSilentProbe_FallsBackTo_Initialize_AfterConfiguredProbeTimeout()
     {
-        // Simulate a legacy server that silently drops the unknown server/discover method (it never
-        // responds to the probe). The client must fall back to legacy initialize once the configured
+        // Simulate an initialize-handshake server that silently drops the unknown server/discover method (it never
+        // responds to the probe). The client must fall back to initialize once the configured
         // DiscoverProbeTimeout elapses, well before the much larger InitializationTimeout.
         var ct = TestContext.Current.CancellationToken;
-        await using var transport = new LegacyServerTestTransport(
+        await using var transport = new InitializeHandshakeServerTestTransport(
             serverNegotiatedVersion: "2025-11-25",
             silentDiscoverProbe: true);
 
@@ -157,8 +157,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         stopwatch.Stop();
 
         Assert.True(transport.ServerDiscoverProbed);
-        Assert.True(transport.LegacyInitializeReceived);
-        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.LegacyInitializeProtocolVersion);
+        Assert.True(transport.InitializeReceived);
+        Assert.Equal(McpHttpHeaders.November2025ProtocolVersion, transport.InitializeProtocolVersion);
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
         // The fallback was driven by the short probe timeout, not the 60s InitializationTimeout.
@@ -193,25 +193,25 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     /// <summary>
-    /// Minimal in-memory transport that simulates a legacy server: rejects
+    /// Minimal in-memory transport that simulates an initialize-handshake server: rejects
     /// <c>server/discover</c> (with a configurable JSON-RPC error code, or by
     /// silently dropping the request) and responds to <c>initialize</c> with a
     /// configurable protocol version.
     /// </summary>
-    private sealed class LegacyServerTestTransport(
+    private sealed class InitializeHandshakeServerTestTransport(
         string serverNegotiatedVersion,
         int probeErrorCode = (int)McpErrorCode.MethodNotFound,
         bool silentDiscoverProbe = false) : IClientTransport
     {
         private readonly Channel<JsonRpcMessage> _incomingToClient = Channel.CreateUnbounded<JsonRpcMessage>();
 
-        public string Name => "legacy-server-test-transport";
+        public string Name => "initialize-handshake-server-test-transport";
 
         public bool ServerDiscoverProbed { get; private set; }
 
-        public bool LegacyInitializeReceived { get; private set; }
+        public bool InitializeReceived { get; private set; }
 
-        public string? LegacyInitializeProtocolVersion { get; private set; }
+        public string? InitializeProtocolVersion { get; private set; }
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
         {
@@ -229,7 +229,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                     ServerDiscoverProbed = true;
                     if (silentDiscoverProbe)
                     {
-                        // Model a legacy server that drops the unknown method without replying.
+                        // Model an initialize-handshake server that drops the unknown method without replying.
                         break;
                     }
 
@@ -247,9 +247,9 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                     break;
 
                 case JsonRpcRequest { Method: RequestMethods.Initialize } initReq:
-                    LegacyInitializeReceived = true;
+                    InitializeReceived = true;
                     var initializeRequest = JsonSerializer.Deserialize<InitializeRequestParams>(initReq.Params, McpJsonUtilities.DefaultOptions);
-                    LegacyInitializeProtocolVersion = initializeRequest?.ProtocolVersion;
+                    InitializeProtocolVersion = initializeRequest?.ProtocolVersion;
                     _ = WriteAsync(new JsonRpcResponse
                     {
                         Id = initReq.Id,
@@ -257,7 +257,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                         {
                             ProtocolVersion = serverNegotiatedVersion,
                             Capabilities = new ServerCapabilities(),
-                            ServerInfo = new Implementation { Name = "legacy-test-server", Version = "1.0.0" },
+                            ServerInfo = new Implementation { Name = "initialize-handshake-test-server", Version = "1.0.0" },
                         }, McpJsonUtilities.DefaultOptions),
                     });
                     break;
@@ -269,7 +269,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
         private sealed class TransportChannel(
             Channel<JsonRpcMessage> incoming,
-            LegacyServerTestTransport parent) : ITransport
+            InitializeHandshakeServerTestTransport parent) : ITransport
         {
             public ChannelReader<JsonRpcMessage> MessageReader => incoming.Reader;
             public bool IsConnected { get; private set; } = true;

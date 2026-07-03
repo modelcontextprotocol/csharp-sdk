@@ -926,7 +926,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Send a tools/call request without Mcp-Method header — should be rejected
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includeModernMeta: true));
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includePerRequestMetadata: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         // Deliberately omit Mcp-Method header
 
@@ -942,7 +942,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Send a tools/call request but set Mcp-Method to wrong value
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includeModernMeta: true));
+        request.Content = JsonContent(CallTool("echo", """{"message":"test"}""", includePerRequestMetadata: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "resources/read"); // Wrong method
 
@@ -958,7 +958,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Send a tools/call request with correct Mcp-Method and Mcp-Name headers
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}""", includeModernMeta: true));
+        request.Content = JsonContent(CallTool("echo", """{"message":"hello"}""", includePerRequestMetadata: true));
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
@@ -968,12 +968,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task LegacyVersion_DoesNotRequireMcpMethodHeader()
+    public async Task InitializeHandshakeVersion_DoesNotRequireMcpMethodHeader()
     {
         await StartAsync();
         await CallInitializeAndValidateAsync();
 
-        // With the legacy version, Mcp-Method header is not required
+        // With the initialize-handshake version, Mcp-Method header is not required.
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(CallTool("echo", """{"message":"hello"}"""));
         request.Headers.Add("MCP-Protocol-Version", "2025-03-26");
@@ -1073,9 +1073,9 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             """;
     }
 
-    private string CallTool(string toolName, string arguments = "{}", bool includeModernMeta = false)
+    private string CallTool(string toolName, string arguments = "{}", bool includePerRequestMetadata = false)
     {
-        var meta = includeModernMeta
+        var meta = includePerRequestMetadata
             ? @",""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2026-07-28"",""io.modelcontextprotocol/clientInfo"":{""name"":""IntegrationTestClient"",""version"":""1.0.0""},""io.modelcontextprotocol/clientCapabilities"":{}}"
             : "";
 

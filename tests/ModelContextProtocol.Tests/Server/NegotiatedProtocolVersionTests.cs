@@ -69,7 +69,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task PerRequestProtocolVersion_RejectsLegacyVersionBeforeInitialize()
+    public async Task PerRequestMetadata_RejectsInitializeHandshakeVersionBeforeInitialize()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -77,12 +77,12 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
         Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
 
-        // The rejected legacy _meta request must not have established session state.
+        // The rejected initialize-handshake _meta request must not have established session state.
         Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpHttpHeaders.July2026ProtocolVersion, ct));
     }
 
     [Fact]
-    public async Task PerRequestProtocolVersion_RejectsModernRequestMissingRequiredMetadata()
+    public async Task PerRequestMetadata_RejectsRequestMissingRequiredMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -93,7 +93,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
                 ct,
                 includeClientInfo: false));
 
-        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
         Assert.Contains(MetaKeys.ClientInfo, error.Error.Message, StringComparison.Ordinal);
     }
 
@@ -110,12 +110,12 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         };
 
         var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
-        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
         Assert.Contains(RequestMethods.ServerDiscover, error.Error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Initialize_WithModernProtocolVersion_IsRejected()
+    public async Task Initialize_WithPerRequestMetadataProtocolVersion_IsRejected()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -144,7 +144,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
                 {
                     [MetaKeys.ClientInfo] = new JsonObject
                     {
-                        ["name"] = "modern-meta-client",
+                        ["name"] = "per-request-meta-client",
                         ["version"] = "1.0.0",
                     },
                 },
@@ -188,7 +188,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
             Params = new JsonObject
             {
                 ["level"] = "info",
-                ["_meta"] = ModernMeta(),
+                ["_meta"] = PerRequestMetadata(),
             },
         };
 
@@ -204,7 +204,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         bool includeClientInfo = true,
         bool includeClientCapabilities = true)
     {
-        // tools/list is available under both the legacy and 2026-07-28 revisions (unlike ping/initialize,
+        // tools/list is available under both the initialize-handshake and 2026-07-28 revisions (unlike ping/initialize,
         // which the 2026-07-28 protocol removed), so it exercises the version guard rather than the
         // per-method availability gate.
         var meta = new JsonObject
@@ -242,7 +242,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         return await SendAndReceiveAsync(request, cancellationToken);
     }
 
-    private static JsonObject ModernMeta() => new()
+    private static JsonObject PerRequestMetadata() => new()
     {
         [MetaKeys.ProtocolVersion] = McpHttpHeaders.July2026ProtocolVersion,
         [MetaKeys.ClientInfo] = new JsonObject

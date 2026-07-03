@@ -315,7 +315,7 @@ public static class NodeHelpers
             await process.WaitForExitAsync(cts.Token);
 #else
             // net472 lacks the CancellationToken overload; fall back to the timeout-based polyfill
-            // extension and surface a timeout the same way the modern path does.
+            // extension and surface a timeout the same way the current target-framework path does.
             await process.WaitForExitAsync(TimeSpan.FromMinutes(5));
             if (!process.HasExited)
             {

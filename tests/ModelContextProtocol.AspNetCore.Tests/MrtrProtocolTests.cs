@@ -261,7 +261,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
     public async Task BackcompatResolver_SendsServerRequestOverPostStream_WithoutGetStream()
     {
         // Configure a server that does NOT pin 2026-07-28 so it can negotiate the current
-        // protocol with a legacy client. The backcompat resolver path only runs when the
+        // initialize-handshake protocol. The backcompat resolver path only runs when the
         // negotiated version is not 2026-07-28.
         Builder.Services.AddMcpServer(options =>
         {
@@ -302,7 +302,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
 
-        // Initialize with the current legacy protocol so the server's backcompat resolver runs.
+        // Initialize with the current initialize-handshake protocol so the server's backcompat resolver runs.
         var initJson = """
             {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{}},"clientInfo":{"name":"BackcompatTestClient","version":"1.0.0"}}}
             """;
@@ -337,7 +337,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         // the response headers arrive instead of waiting for the SSE stream to close.
         var callRequest = new HttpRequestMessage(HttpMethod.Post, (string?)null)
         {
-            Content = JsonContent(CallTool("backcompat-roots-tool", includeModernMeta: false)),
+            Content = JsonContent(CallTool("backcompat-roots-tool", includePerRequestMetadata: false)),
         };
         callRequest.Content.Headers.Add("Mcp-Method", "tools/call");
         callRequest.Content.Headers.Add("Mcp-Name", "backcompat-roots-tool");
@@ -456,11 +456,11 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
 
     private long _lastRequestId = 1;
 
-    private string Request(string method, string parameters = "{}", bool includeModernMeta = true)
+    private string Request(string method, string parameters = "{}", bool includePerRequestMetadata = true)
     {
         var id = Interlocked.Increment(ref _lastRequestId);
         var paramsObj = JsonNode.Parse(parameters) as JsonObject ?? new JsonObject();
-        if (includeModernMeta)
+        if (includePerRequestMetadata)
         {
             AddJuly2026ProtocolMeta(paramsObj);
         }
@@ -497,8 +497,8 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         }
     }
 
-    private string CallTool(string toolName, string arguments = "{}", bool includeModernMeta = true) =>
+    private string CallTool(string toolName, string arguments = "{}", bool includePerRequestMetadata = true) =>
         Request("tools/call", $$"""
             {"name":"{{toolName}}","arguments":{{arguments}}}
-            """, includeModernMeta);
+            """, includePerRequestMetadata);
 }
