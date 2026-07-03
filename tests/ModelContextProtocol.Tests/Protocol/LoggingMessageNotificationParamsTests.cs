@@ -23,8 +23,7 @@ public static class LoggingMessageNotificationParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal(LoggingLevel.Warning, deserialized.Level);
         Assert.Equal("MyApp.Services", deserialized.Logger);
-        Assert.NotNull(deserialized.Data);
-        Assert.Equal("Something went wrong", deserialized.Data.Value.GetString());
+        Assert.Equal("Something went wrong", deserialized.Data.GetString());
         Assert.NotNull(deserialized.Meta);
         Assert.Equal("value", (string)deserialized.Meta["key"]!);
     }
@@ -34,7 +33,8 @@ public static class LoggingMessageNotificationParamsTests
     {
         var original = new LoggingMessageNotificationParams
         {
-            Level = LoggingLevel.Error
+            Level = LoggingLevel.Error,
+            Data = JsonDocument.Parse("\"error occurred\"").RootElement.Clone(),
         };
 
         string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
@@ -43,7 +43,7 @@ public static class LoggingMessageNotificationParamsTests
         Assert.NotNull(deserialized);
         Assert.Equal(LoggingLevel.Error, deserialized.Level);
         Assert.Null(deserialized.Logger);
-        Assert.Null(deserialized.Data);
+        Assert.Equal("error occurred", deserialized.Data.GetString());
         Assert.Null(deserialized.Meta);
     }
 }

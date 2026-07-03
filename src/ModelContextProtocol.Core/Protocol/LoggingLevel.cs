@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -6,9 +6,10 @@ namespace ModelContextProtocol.Protocol;
 /// Indicates the severity of a log message.
 /// </summary>
 /// <remarks>
-/// These value map to syslog message severities, as specified in <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1">RFC-5424</see>.
+/// These values map to syslog message severities, as specified in <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1">RFC-5424</see>.
 /// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<LoggingLevel>))]
+[Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public enum LoggingLevel
 {
     /// <summary>Detailed debug information, typically only valuable to developers.</summary>

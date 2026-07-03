@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
@@ -13,7 +13,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
-    private readonly bool _structuredOutputRequiresWrapping;
     private readonly IReadOnlyList<object> _metadata;
 
     /// <summary>
@@ -120,9 +119,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? function.Name,
             Description = GetToolDescription(function, options),
             InputSchema = function.JsonSchema,
-            OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
+            OutputSchema = CreateOutputSchema(function, options),
             Icons = options?.Icons,
         };
+
+        // Add x-mcp-header extensions to the input schema based on McpHeaderAttribute on parameters
+        if (function.UnderlyingMethod is { } method)
+        {
+            tool.InputSchema = AddMcpHeaderExtensions(tool.InputSchema, method);
+        }
 
         if (options is not null)
         {
@@ -148,26 +153,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             tool.Meta = function.UnderlyingMethod is not null ?
                 CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta) :
                 options.Meta;
-
-            // Apply user-specified Execution settings if provided
-            if (options.Execution is not null)
-            {
-                tool.Execution = options.Execution;
-            }
         }
 
-        // Auto-detect async methods and mark with taskSupport = "optional" unless explicitly configured.
-        // This enables implicit task support for async tools: clients can choose to invoke them
-        // synchronously (wait for completion) or as a task (receive taskId, poll for result).
-        if (function.UnderlyingMethod is not null && 
-            IsAsyncMethod(function.UnderlyingMethod) &&
-            tool.Execution?.TaskSupport is null)
-        {
-            tool.Execution ??= new ToolExecution();
-            tool.Execution.TaskSupport = ToolTaskSupport.Optional;
-        }
-
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? []);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -206,10 +194,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
 
-            if (toolAttr._taskSupport is { } taskSupport)
+            if (toolAttr.OutputSchemaType is Type outputSchemaType)
             {
-                newOptions.Execution ??= new ToolExecution();
-                newOptions.Execution.TaskSupport ??= taskSupport;
+                newOptions.OutputSchema ??= AIJsonUtilities.CreateJsonSchema(outputSchemaType,
+                    serializerOptions: newOptions.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+                    inferenceOptions: newOptions.SchemaCreateOptions);
             }
         }
 
@@ -228,15 +217,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata)
     {
         ValidateToolName(tool.Name);
 
         AIFunction = function;
         ProtocolTool = tool;
-        ProtocolTool.McpServerTool = this;
 
-        _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
         _metadata = metadata;
     }
 
@@ -245,6 +232,40 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <inheritdoc />
     public override IReadOnlyList<object> Metadata => _metadata;
+
+    /// <summary>
+    /// Returns a <see cref="Tool"/> clone whose <see cref="Tool.OutputSchema"/> is rewritten
+    /// into the wire shape required by clients on protocol versions older than
+    /// <c>"2026-07-28"</c>. Those versions require <c>outputSchema.type == "object"</c>;
+    /// SEP-2106 (negotiated at <c>"2026-07-28"</c> and later) widens that to any JSON
+    /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
+    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
+    /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
+    /// before emission. Returns <see cref="ProtocolTool"/> unchanged when there is no
+    /// output schema. Callers must gate the call on the negotiated version — this method
+    /// is unconditional; the gate lives at the emission site.
+    /// </summary>
+    internal Tool BuildLegacyWireProtocolTool()
+    {
+        if (ProtocolTool.OutputSchema is not { } natural)
+        {
+            return ProtocolTool;
+        }
+
+        JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(natural);
+
+        return new Tool
+        {
+            Name = ProtocolTool.Name,
+            Title = ProtocolTool.Title,
+            Description = ProtocolTool.Description,
+            InputSchema = ProtocolTool.InputSchema,
+            OutputSchema = legacyOutputSchema,
+            Annotations = ProtocolTool.Annotations,
+            Icons = ProtocolTool.Icons,
+            Meta = ProtocolTool.Meta,
+        };
+    }
 
     /// <inheritdoc />
     public override async ValueTask<CallToolResult> InvokeAsync(
@@ -267,7 +288,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        JsonNode? structuredContent = CreateStructuredResponse(result);
+        JsonElement? structuredContent = CreateStructuredResponse(result, request.Server.NegotiatedProtocolVersion);
         return result switch
         {
             AIContent aiContent => new()
@@ -338,27 +359,27 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         // Case the name based on the provided naming policy.
         return (policy ?? JsonNamingPolicy.SnakeCaseLower).ConvertName(name) ?? name;
-    }
 
-    private static bool IsAsyncMethod(MethodInfo method)
-    {
-        Type t = method.ReturnType;
-
-        if (t == typeof(Task) || t == typeof(ValueTask))
+        static bool IsAsyncMethod(MethodInfo method)
         {
-            return true;
-        }
+            Type t = method.ReturnType;
 
-        if (t.IsGenericType)
-        {
-            t = t.GetGenericTypeDefinition();
-            if (t == typeof(Task<>) || t == typeof(ValueTask<>) || t == typeof(IAsyncEnumerable<>))
+            if (t == typeof(Task) || t == typeof(ValueTask))
             {
                 return true;
             }
-        }
 
-        return false;
+            if (t.IsGenericType)
+            {
+                t = t.GetGenericTypeDefinition();
+                if (t == typeof(Task<>) || t == typeof(ValueTask<>) || t == typeof(IAsyncEnumerable<>))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>Creates metadata from attributes on the specified method and its declaring class, with the MethodInfo as the first item.</summary>
@@ -479,38 +500,102 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return descriptionElement.GetString();
     }
 
-    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
+    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions)
     {
-        structuredOutputRequiresWrapping = false;
-
         if (toolCreateOptions?.UseStructuredContent is not true)
         {
             return null;
         }
 
-        if (function.ReturnJsonSchema is not JsonElement outputSchema)
+        // Per SEP-2106, any valid JSON Schema document is acceptable for outputSchema —
+        // arrays, primitives, compositions, and nullable types pass through unchanged.
+        // Explicit OutputSchema takes precedence over AIFunction's return schema.
+        // Back-compat for pre-2026-07-28 clients is applied at the wire emission sites
+        // (CreateStructuredResponse for tools/call, listToolsHandler for tools/list).
+        if (toolCreateOptions.OutputSchema is { } explicitSchema)
         {
-            return null;
+            return explicitSchema;
         }
 
-        if (outputSchema.ValueKind is not JsonValueKind.Object ||
-            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+        if (function.ReturnJsonSchema is { } returnSchema)
+        {
+            return returnSchema;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> iff the structured-content value must be wrapped in
+    /// the <c>{"result": &lt;value&gt;}</c> envelope on the wire — i.e., the output schema
+    /// is neither plain object-typed (<c>type:"object"</c>) nor the
+    /// <c>type:["object","null"]</c> array form. Used by <see cref="CreateStructuredResponse"/>
+    /// to decide whether to apply the envelope when emitting to a client that negotiated a
+    /// protocol version older than <c>"2026-07-28"</c> (those versions pre-date SEP-2106's
+    /// allowance of non-object output schemas). The inner <c>type:["object","null"]</c>
+    /// check is hoisted into a named bool to keep the surrounding control flow free of
+    /// empty branches.
+    /// </summary>
+    internal static bool ShouldWrapValueForLegacyWire(JsonElement schema)
+    {
+        bool structuredOutputRequiresWrapping = false;
+
+        if (schema.ValueKind is not JsonValueKind.Object ||
+            !schema.TryGetProperty("type", out JsonElement typeProperty) ||
             typeProperty.ValueKind is not JsonValueKind.String ||
             typeProperty.GetString() is not "object")
         {
-            // If the output schema is not an object, need to modify to be a valid MCP output schema.
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(schema, McpJsonUtilities.JsonContext.Default.JsonElement);
+
+            bool isNullableObjectArray =
+                schemaNode is JsonObject objSchema &&
+                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
+                typeNode is JsonArray { Count: 2 } typeArray &&
+                typeArray.Any(type => (string?)type is "object") &&
+                typeArray.Any(type => (string?)type is "null");
+
+            if (!isNullableObjectArray)
+            {
+                structuredOutputRequiresWrapping = true;
+            }
+        }
+
+        return structuredOutputRequiresWrapping;
+    }
+
+    /// <summary>
+    /// Transforms <paramref name="naturalSchema"/> into the wire shape required by clients
+    /// on protocol versions older than <c>"2026-07-28"</c>: non-object schemas are wrapped
+    /// in <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>,
+    /// the <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>,
+    /// and plain object-typed schemas pass through unchanged. SEP-2106 clients
+    /// (<c>"2026-07-28"</c>+) see the natural schema and never need this transform.
+    /// Dispatches on <see cref="ShouldWrapValueForLegacyWire"/> so the wrap decision lives
+    /// in one place.
+    /// </summary>
+    /// <param name="naturalSchema">The natural JSON Schema 2020-12 document.</param>
+    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema)
+    {
+        if (naturalSchema.ValueKind is not JsonValueKind.Object ||
+            !naturalSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+            typeProperty.ValueKind is not JsonValueKind.String ||
+            typeProperty.GetString() is not "object")
+        {
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
 
             if (schemaNode is JsonObject objSchema &&
                 objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
+                typeNode is JsonArray { Count: 2 } typeArray &&
+                typeArray.Any(type => (string?)type is "object") &&
+                typeArray.Any(type => (string?)type is "null"))
             {
-                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
+                // type:["object","null"] → normalize to plain "object". No envelope.
                 objSchema["type"] = "object";
             }
             else
             {
-                // For anything else, wrap the schema in an envelope with a "result" property.
+                // Anything else (string, integer, array, boolean schemas, missing type,
+                // compositions). Wrap in the {"result": <schema>} envelope.
                 schemaNode = new JsonObject
                 {
                     ["type"] = "object",
@@ -521,16 +606,65 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ["required"] = new JsonArray { (JsonNode)"result" }
                 };
 
-                structuredOutputRequiresWrapping = true;
+                // After wrapping, any internal $ref pointers that used absolute JSON Pointer
+                // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
+                // has moved under "#/properties/result". Rewrite them to account for the new location.
+                RewriteRefPointers(schemaNode["properties"]!["result"]);
             }
 
-            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+            return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
         }
 
-        return outputSchema;
+        return naturalSchema;
     }
 
-    private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
+    /// <summary>
+    /// Recursively rewrites all <c>$ref</c> JSON Pointer values in the given node
+    /// to account for the schema having been wrapped under <c>properties.result</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>System.Text.Json</c>'s <see cref="System.Text.Json.Schema.JsonSchemaExporter"/> uses absolute
+    /// JSON Pointer paths (e.g., <c>#/items/properties/foo</c>) to deduplicate types that appear at
+    /// multiple locations in the schema. When the original schema is moved under
+    /// <c>#/properties/result</c> by the wrapping logic above, these pointers become unresolvable.
+    /// This method prepends <c>/properties/result</c> to every <c>$ref</c> that starts with <c>#/</c>,
+    /// and rewrites bare <c>#</c> (root self-references from recursive types) to <c>#/properties/result</c>,
+    /// so the pointers remain valid after wrapping.
+    /// </remarks>
+    private static void RewriteRefPointers(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
+                refNode?.GetValue<string>() is string refValue)
+            {
+                if (refValue == "#")
+                {
+                    obj["$ref"] = "#/properties/result";
+                }
+                else if (refValue.StartsWith("#/", StringComparison.Ordinal))
+                {
+                    obj["$ref"] = "#/properties/result" + refValue.Substring(1);
+                }
+            }
+
+            // Safe to iterate without snapshot: the $ref assignment above completes before
+            // this enumerator is created, and recursive calls only mutate descendant objects.
+            foreach (var property in obj)
+            {
+                RewriteRefPointers(property.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                RewriteRefPointers(item);
+            }
+        }
+    }
+
+    private JsonElement? CreateStructuredResponse(object? aiFunctionResult, string? negotiatedProtocolVersion)
     {
         if (ProtocolTool.OutputSchema is null)
         {
@@ -538,25 +672,33 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonNode? nodeResult = aiFunctionResult switch
+        JsonElement? elementResult = aiFunctionResult switch
         {
-            JsonNode node => node,
-            JsonElement jsonElement => JsonSerializer.SerializeToNode(jsonElement, McpJsonUtilities.JsonContext.Default.JsonElement),
-            _ => JsonSerializer.SerializeToNode(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+            JsonElement jsonElement => jsonElement,
+            JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
+            null => null,
+            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
 
-        if (_structuredOutputRequiresWrapping)
+        // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
+        // schemas. SEP-2106 clients see the natural shape. The classification is decided
+        // fresh per request from the stored natural schema.
+        if (!McpSessionHandler.SupportsNaturalOutputSchemas(negotiatedProtocolVersion) &&
+            ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema.Value))
         {
-            return new JsonObject
+            JsonNode? resultNode = elementResult is { } v
+                ? JsonSerializer.SerializeToNode(v, McpJsonUtilities.JsonContext.Default.JsonElement)
+                : null;
+            return JsonSerializer.SerializeToElement(new JsonObject
             {
-                ["result"] = nodeResult
-            };
+                ["result"] = resultNode
+            }, McpJsonUtilities.JsonContext.Default.JsonObject);
         }
 
-        return nodeResult;
+        return elementResult;
     }
 
-    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
+    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
     {
         List<ContentBlock> contentList = [];
         bool allErrorContent = true;
@@ -579,5 +721,88 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    /// <summary>
+    /// Post-processes the input schema to add <c>x-mcp-header</c> extensions based on
+    /// <see cref="McpHeaderAttribute"/> on method parameters.
+    /// </summary>
+    private static JsonElement AddMcpHeaderExtensions(JsonElement inputSchema, MethodInfo method)
+    {
+        // Collect parameters with McpHeaderAttribute
+        var headerParams = new List<(string ParameterName, string HeaderName, ParameterInfo Parameter)>();
+        var headerNamesSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var param in method.GetParameters())
+        {
+            var attr = param.GetCustomAttribute<McpHeaderAttribute>();
+            if (attr is null)
+            {
+                continue;
+            }
+
+            // Validate primitive type only
+            var paramType = Nullable.GetUnderlyingType(param.ParameterType) ?? param.ParameterType;
+            if (!IsPrimitiveHeaderType(paramType))
+            {
+                throw new InvalidOperationException(
+                    $"Parameter '{param.Name}' on method '{method.Name}' has [McpHeader] but is not a supported type. " +
+                    "Only string, integer, and boolean types may be annotated with [McpHeader].");
+            }
+
+            // Validate case-insensitive uniqueness
+            if (!headerNamesSet.Add(attr.Name))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate x-mcp-header name '{attr.Name}' (case-insensitive) found on method '{method.Name}'. " +
+                    "Header names must be case-insensitively unique within a tool's input schema.");
+            }
+
+            headerParams.Add((param.Name!, attr.Name, param));
+        }
+
+        if (headerParams.Count == 0)
+        {
+            return inputSchema;
+        }
+
+        // Parse the schema to a mutable JsonNode, add extensions, and convert back
+        var schemaNode = JsonNode.Parse(inputSchema.GetRawText());
+        if (schemaNode is not JsonObject schemaObj ||
+            !schemaObj.TryGetPropertyValue("properties", out var propertiesNode) ||
+            propertiesNode is not JsonObject propertiesObj)
+        {
+            return inputSchema;
+        }
+
+        foreach (var (parameterName, headerName, _) in headerParams)
+        {
+            if (propertiesObj.TryGetPropertyValue(parameterName, out var propNode) &&
+                propNode is JsonObject propObj)
+            {
+                propObj["x-mcp-header"] = headerName;
+            }
+        }
+
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+    }
+
+    private static bool IsPrimitiveHeaderType(Type type)
+    {
+        // Per SEP-2243, x-mcp-header may only be applied to integer, string, or boolean parameters,
+        // and integer values must stay within the JavaScript safe integer range (-2^53+1 to 2^53-1).
+        // ulong is excluded because its upper range (above long.MaxValue) cannot be represented as a
+        // signed integer and the bulk of its domain falls outside the safe range. Remaining integer
+        // types are allowed here; long values are additionally range-checked per value when emitted
+        // (client) and validated (server).
+        return type == typeof(string) ||
+               type == typeof(bool) ||
+               type == typeof(byte) ||
+               type == typeof(sbyte) ||
+               type == typeof(short) ||
+               type == typeof(ushort) ||
+               type == typeof(int) ||
+               type == typeof(uint) ||
+               type == typeof(long);
     }
 }

@@ -26,9 +26,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithListToolsHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.ListToolsHandler);
+        Assert.Equal(handler, options.Handlers.ListToolsHandler);
     }
 
     [Fact]
@@ -39,9 +39,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithCallToolHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.CallToolHandler);
+        Assert.Equal(handler, options.Handlers.CallToolHandler);
     }
 
     [Fact]
@@ -52,9 +52,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithListPromptsHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.ListPromptsHandler);
+        Assert.Equal(handler, options.Handlers.ListPromptsHandler);
     }
 
     [Fact]
@@ -65,9 +65,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithGetPromptHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.GetPromptHandler);
+        Assert.Equal(handler, options.Handlers.GetPromptHandler);
     }
 
     [Fact]
@@ -78,9 +78,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithListResourceTemplatesHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.ListResourceTemplatesHandler);
+        Assert.Equal(handler, options.Handlers.ListResourceTemplatesHandler);
     }
 
     [Fact]
@@ -91,9 +91,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithListResourcesHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.ListResourcesHandler);
+        Assert.Equal(handler, options.Handlers.ListResourcesHandler);
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithReadResourceHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.ReadResourceHandler);
+        Assert.Equal(handler, options.Handlers.ReadResourceHandler);
     }
 
     [Fact]
@@ -117,9 +117,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithCompleteHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.CompleteHandler);
+        Assert.Equal(handler, options.Handlers.CompleteHandler);
     }
 
     [Fact]
@@ -130,9 +130,9 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithSubscribeToResourcesHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.SubscribeToResourcesHandler);
+        Assert.Equal(handler, options.Handlers.SubscribeToResourcesHandler);
     }
 
     [Fact]
@@ -143,8 +143,8 @@ public class McpServerBuilderExtensionsHandlerTests
         _builder.Object.WithUnsubscribeFromResourcesHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Equal(handler, options.UnsubscribeFromResourcesHandler);
+        Assert.Equal(handler, options.Handlers.UnsubscribeFromResourcesHandler);
     }
 }

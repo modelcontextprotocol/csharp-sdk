@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -18,17 +18,30 @@ internal sealed partial class IdleTrackingBackgroundService : BackgroundService
         ILogger<IdleTrackingBackgroundService> logger)
     {
         // Still run loop given infinite IdleTimeout to enforce the MaxIdleSessionCount and assist graceful shutdown.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP options are obsolete but still wired up internally.
         if (options.Value.IdleTimeout != Timeout.InfiniteTimeSpan)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.IdleTimeout, TimeSpan.Zero);
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.MaxIdleSessionCount, 0);
+#pragma warning restore MCP9006
 
         _sessions = sessions;
         _options = options;
         _appLifetime = appLifetime;
         _logger = logger;
+    }
+
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        // In stateless mode there are no sessions to track, so skip starting the periodic timer entirely.
+        if (_options.Value.Stateless)
+        {
+            return Task.CompletedTask;
+        }
+
+        return base.StartAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

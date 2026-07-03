@@ -36,7 +36,7 @@ public class ConformanceTools
     {
         return new ImageContentBlock
         {
-            Data = TestImageBase64,
+            Data = System.Text.Encoding.UTF8.GetBytes(TestImageBase64),
             MimeType = "image/png"
         };
     }
@@ -50,7 +50,7 @@ public class ConformanceTools
     {
         return new AudioContentBlock
         {
-            Data = TestAudioBase64,
+            Data = System.Text.Encoding.UTF8.GetBytes(TestAudioBase64),
             MimeType = "audio/wav"
         };
     }
@@ -83,7 +83,7 @@ public class ConformanceTools
         return
         [
             new TextContentBlock { Text = "Multiple content types test:" },
-            new ImageContentBlock { Data = TestImageBase64, MimeType = "image/png" },
+            new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes(TestImageBase64), MimeType = "image/png" },
             new EmbeddedResourceBlock
             {
                 Resource = new TextResourceContents
@@ -132,7 +132,7 @@ public class ConformanceTools
         RequestContext<CallToolRequestParams> context,
         CancellationToken cancellationToken)
     {
-        var progressToken = context.Params?.ProgressToken;
+        var progressToken = context.Params.ProgressToken;
 
         if (progressToken is not null)
         {
@@ -441,5 +441,14 @@ public class ConformanceTools
         // This tool doesn't need to do anything - the call filter will close the stream after this tool runs,
         // and the client must reconnect to get the result.
         return "Reconnection test completed successfully";
+    }
+
+    [McpServerTool(Name = "test_header_tool")]
+    [Description("A tool with x-mcp-header annotations for conformance testing")]
+    public static string TestHeaderTool(
+        [McpHeader("Region"), Description("The deployment region")] string region,
+        [Description("The query to execute")] string query)
+    {
+        return $"Executed in region {region}: {query}";
     }
 }

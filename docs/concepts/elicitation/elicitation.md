@@ -34,6 +34,80 @@ For enum types, the SDK supports several schema formats:
 - **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option.
 - **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility.
 
+#### Default values
+
+Each schema type supports a `Default` property that specifies a pre-populated value for the form field.
+Clients should use defaults to pre-fill form fields, making it easier for users to accept common values or see expected input formats.
+
+```csharp
+var result = await server.ElicitAsync(new ElicitRequestParams
+{
+    Message = "Configure your preferences",
+    RequestedSchema = new ElicitRequestParams.RequestSchema
+    {
+        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+        {
+            ["name"] = new ElicitRequestParams.StringSchema
+            {
+                Description = "Your display name",
+                Default = "User"
+            },
+            ["maxResults"] = new ElicitRequestParams.NumberSchema
+            {
+                Description = "Maximum number of results",
+                Default = 25
+            },
+            ["enableNotifications"] = new ElicitRequestParams.BooleanSchema
+            {
+                Description = "Enable push notifications",
+                Default = true
+            },
+            ["theme"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema
+            {
+                Description = "UI theme",
+                Enum = ["light", "dark", "system"],
+                Default = "system"
+            }
+        }
+    }
+}, cancellationToken);
+```
+
+#### Enum schema formats
+
+Enum schemas allow the server to present a set of choices to the user.
+
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.UntitledSingleSelectEnumSchema>: Simple single-select where enum values serve as both the value and display text.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.TitledSingleSelectEnumSchema>: Single-select with separate display titles for each option using JSON Schema `oneOf` with `const` and `title`.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.UntitledMultiSelectEnumSchema>: Multi-select allowing multiple values.
+- <xref:ModelContextProtocol.Protocol.ElicitRequestParams.TitledMultiSelectEnumSchema>: Multi-select with display titles.
+
+```csharp
+// Titled single-select: display titles differ from values
+["priority"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+{
+    Description = "Task priority",
+    OneOf =
+    [
+        new() { Const = "p0", Title = "Critical (P0)" },
+        new() { Const = "p1", Title = "High (P1)" },
+        new() { Const = "p2", Title = "Normal (P2)" },
+    ],
+    Default = "p2"
+},
+
+// Multi-select: user can select multiple values
+["tags"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
+{
+    Description = "Tags to apply",
+    Items = new()
+    {
+        Enum = ["bug", "feature", "docs", "test"]
+    },
+    Default = ["bug"]
+}
+```
+
 The server can request a single input or multiple inputs at once.
 To help distinguish multiple inputs, each input has a unique name.
 
@@ -96,9 +170,64 @@ Here's an example implementation of how a console application might handle elici
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
 
+### Multi Round-Trip Requests (MRTR)
+
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `elicitation/create` request method is removed; the recommended way to ask the user for input from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
+
+> [!IMPORTANT]
+> `ElicitAsync` throws `InvalidOperationException("Elicitation is not supported in stateless mode.")` whenever the server is running stateless — which includes every Streamable HTTP server under `2026-07-28` once that revision is forced to stateless-only in a future PR. Stdio servers and current-protocol stateful Streamable HTTP servers continue to work via the legacy server-to-client `elicitation/create` request flow. For code that needs to run on stateless servers — including all `2026-07-28` Streamable HTTP servers going forward — throw `InputRequiredException` from your handler instead. It works under both protocols and both session modes.
+
+For example:
+
+```csharp
+[McpServerTool, Description("Tool that elicits via MRTR")]
+public static string ElicitWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's elicitation response
+    if (context.Params!.InputResponses?.TryGetValue("user_input", out var response) is true)
+    {
+        var elicitResult = response.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+        return elicitResult?.Action == "accept"
+            ? $"User accepted: {elicitResult.Content?.FirstOrDefault().Value}"
+            : "User declined.";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+    }
+
+    // First call — request user input
+    throw new InputRequiredException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["user_input"] = InputRequest.ForElicitation(new ElicitRequestParams
+            {
+                Message = "Please confirm the action",
+                RequestedSchema = new()
+                {
+                    Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                    {
+                        ["confirm"] = new ElicitRequestParams.BooleanSchema
+                        {
+                            Description = "Confirm the action"
+                        }
+                    }
+                }
+            })
+        },
+        requestState: "awaiting-confirmation");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix.
+
 ### URL Elicitation Required Error
 
-When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in <xref: ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is enabled disabling server-to-client requests), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
+When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in [stateless](xref:stateless) mode where server-to-client requests are disabled), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
 
 #### Throwing UrlElicitationRequiredException on the Server
 

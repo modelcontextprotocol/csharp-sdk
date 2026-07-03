@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Client;
 
 internal class McpHttpClient(HttpClient httpClient)
 {
-    internal static readonly MediaTypeHeaderValue s_applicationJsonContentType = new("application/json") { CharSet = "utf-8" };
+    internal static readonly MediaTypeHeaderValue s_applicationJsonContentType = new("application/json");
 
     internal virtual async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
     {
@@ -32,7 +32,7 @@ internal class McpHttpClient(HttpClient httpClient)
         }
 
 #if NET
-        return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+        return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage, s_applicationJsonContentType);
 #else
         var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
         var content = new ByteArrayContent(bytes);

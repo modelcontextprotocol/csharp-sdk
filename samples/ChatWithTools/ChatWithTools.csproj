@@ -5,6 +5,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- This sample demonstrates the Sampling feature, which SEP-2577 deprecates (MCP9005) but
+         which continues to work. Suppress the deprecation warning for this sample only. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
     <!--
     Anthropic SDK isn't AOT compatible yet
     <PublishAot>true</PublishAot>
@@ -19,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenTelemetry" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
   </ItemGroup>
 

@@ -34,7 +34,7 @@ public class ConformanceResources
         {
             Uri = "test://static-binary",
             MimeType = "image/png",
-            Blob = TestImageBase64
+            Blob = System.Text.Encoding.UTF8.GetBytes(TestImageBase64)
         };
     }
 

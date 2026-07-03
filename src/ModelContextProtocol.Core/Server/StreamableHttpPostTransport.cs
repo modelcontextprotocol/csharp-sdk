@@ -22,7 +22,9 @@ internal sealed partial class StreamableHttpPostTransport(
     private readonly SseEventWriter _httpSseWriter = new(responseStream);
 
     private TaskCompletionSource<bool>? _storeStreamTcs;
+#pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
     private ISseEventStreamWriter? _storeSseWriter;
+#pragma warning restore MCP9006
 
     private RequestId _pendingRequest;
     private bool _finalResponseMessageSent;
@@ -52,7 +54,7 @@ internal sealed partial class StreamableHttpPostTransport(
             if (request.Method == RequestMethods.Initialize)
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                await parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
+                await parentTransport.HandleInitializeRequestAsync(initializeRequest).ConfigureAwait(false);
             }
         }
 
@@ -176,7 +178,9 @@ internal sealed partial class StreamableHttpPostTransport(
 
         // Set the mode to 'Polling' so that the replay stream ends as soon as all available messages have been sent.
         // This prevents the client from immediately establishing another long-lived connection.
+#pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
         await _storeSseWriter.SetModeAsync(SseEventStreamMode.Polling, cancellationToken).ConfigureAwait(false);
+#pragma warning restore MCP9006
 
         // Signal completion so HandlePostAsync can return.
         _httpResponseTcs.TrySetResult(true);

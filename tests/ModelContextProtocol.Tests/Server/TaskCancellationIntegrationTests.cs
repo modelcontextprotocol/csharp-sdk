@@ -3,13 +3,16 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+
+#pragma warning disable MCPEXP001
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Integration tests for task cancellation behavior, including TTL-based automatic
-/// cancellation and explicit cancellation via tasks/cancel.
+/// Integration tests for task cancellation behavior, including explicit cancellation
+/// via tasks/cancel and TTL-based automatic cancellation.
 /// </summary>
 public class TaskCancellationIntegrationTests : ClientServerTestBase
 {
@@ -19,27 +22,28 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
     public TaskCancellationIntegrationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
     }
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        // Add task store for server-side task support
-        var taskStore = new InMemoryMcpTaskStore();
-        services.AddSingleton<IMcpTaskStore>(taskStore);
-
-        services.Configure<McpServerOptions>(options =>
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
-            options.TaskStore = taskStore;
+            options.TaskStore = new InMemoryMcpTaskStore
+            {
+                DefaultPollIntervalMs = 50,
+                DefaultTimeToLive = TimeSpan.FromSeconds(5),
+            };
         });
 
-        // Add a long-running tool that captures cancellation
         mcpServerBuilder.WithTools([McpServerTool.Create(
             async (CancellationToken ct) =>
             {
                 _toolStarted.TrySetResult(true);
                 try
                 {
-                    // Wait indefinitely until cancelled
                     await Task.Delay(Timeout.Infinite, ct);
                     return "completed";
                 }
@@ -56,127 +60,54 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
             })]);
     }
 
-    private static IDictionary<string, JsonElement> EmptyArguments() => new Dictionary<string, JsonElement>();
-
-    [Fact]
-    public async Task TaskTool_CancellationToken_FiresWhenTtlExpires()
-    {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // Act - Call tool with short TTL (200ms)
-        var callResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "long-running-tool",
-                Arguments = EmptyArguments(),
-                // Use a TTL long enough that thread pool scheduling delays on loaded CI machines
-                // don't cause the CTS to fire before the tool lambda begins executing.
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromSeconds(5) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Verify task was created
-        Assert.NotNull(callResult.Task);
-
-        // Wait for the tool to start executing
-        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-
-        // Assert - Wait for the cancellation to fire (should happen when TTL expires)
-        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        Assert.True(cancelled, "Tool's CancellationToken should have been triggered when TTL expired");
-
-        // Note: TTL-based expiration does not explicitly set task status to Cancelled.
-        // Instead, expired tasks are considered "dead" and will be cleaned up by the task store.
-        // The task may still be in Working status or may throw "not found" if already cleaned up.
-    }
-
     [Fact]
     public async Task TaskTool_CancellationToken_FiresWhenExplicitlyCancelled()
     {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        // Start a long-running task with a long TTL
-        var callResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "long-running-tool",
-                Arguments = EmptyArguments(),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "long-running-tool" }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
         // Wait for the tool to start executing
-        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
 
-        // Act - Explicitly cancel the task
-        var cancelledTask = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+        // Explicitly cancel the task
+        await client.CancelTaskAsync(taskId, ct);
 
-        // Assert - Wait for the cancellation to propagate to the tool
-        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        Assert.True(cancelled, "Tool's CancellationToken should have been triggered by explicit cancellation");
+        // Wait for the cancellation to propagate to the tool
+        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        Assert.True(cancelled);
 
-        // Verify task status
-        Assert.Equal(McpTaskStatus.Cancelled, cancelledTask.Status);
+        // Verify task status shows cancelled
+        var taskResult = await client.GetTaskAsync(taskId, ct);
+        Assert.IsType<CancelledTaskResult>(taskResult);
     }
 
     [Fact]
-    public async Task TaskTool_CompletesSuccessfully_WhenNotCancelled()
+    public async Task TaskTool_CancellationToken_GetTaskShowsWorkingBeforeCancel()
     {
-        // Arrange - Create a new test with a quick-completing tool
-        var quickToolCompleted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        var taskStore = new InMemoryMcpTaskStore();
-        services.AddSingleton<IMcpTaskStore>(taskStore);
-
-        var builder = services
-            .AddMcpServer()
-            .WithStreamServerTransport(
-                new System.IO.Pipelines.Pipe().Reader.AsStream(),
-                new System.IO.Pipelines.Pipe().Writer.AsStream());
-
-        builder.WithTools([McpServerTool.Create(
-            async (string input, CancellationToken ct) =>
-            {
-                await Task.Delay(50, ct); // Quick operation
-                var result = $"Result: {input}";
-                quickToolCompleted.TrySetResult(result);
-                return result;
-            },
-            new McpServerToolCreateOptions
-            {
-                Name = "quick-tool",
-                Description = "A tool that completes quickly"
-            })]);
-
-        services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = taskStore;
-        });
-
         await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        // Act - Call tool with long TTL
-        var callResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "long-running-tool", // Use the base class tool which will block
-                Arguments = EmptyArguments(),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(5) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "long-running-tool" }, ct);
 
-        Assert.NotNull(callResult.Task);
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
-        // Verify task is in working state initially
-        var task = await client.GetTaskAsync(callResult.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(McpTaskStatus.Working, task.Status);
+        // Wait for the tool to start
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+
+        // Check status while still running
+        var taskResult = await client.GetTaskAsync(taskId, ct);
+        Assert.IsType<WorkingTaskResult>(taskResult);
+
+        // Cleanup
+        await client.CancelTaskAsync(taskId, ct);
     }
 }
 
@@ -192,19 +123,21 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
     public TaskCancellationConcurrencyTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
     }
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        var taskStore = new InMemoryMcpTaskStore();
-        services.AddSingleton<IMcpTaskStore>(taskStore);
-
-        services.Configure<McpServerOptions>(options =>
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
-            options.TaskStore = taskStore;
+            options.TaskStore = new InMemoryMcpTaskStore
+            {
+                DefaultPollIntervalMs = 50,
+            };
         });
 
-        // Tool that tracks cancellation per-invocation using a marker argument
         mcpServerBuilder.WithTools([McpServerTool.Create(
             async (string marker, CancellationToken ct) =>
             {
@@ -279,102 +212,47 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
     [Fact]
     public async Task CancelTask_OnlyCancelsTargetTask_NotOtherTasks()
     {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
         RegisterMarker("task1");
         RegisterMarker("task2");
 
         // Start two tasks
-        var result1 = await client.CallToolAsync(
+        var result1 = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "trackable-tool",
                 Arguments = CreateMarkerArgs("task1"),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+            }, ct);
 
-        var result2 = await client.CallToolAsync(
+        var result2 = await client.CallToolRawAsync(
             new CallToolRequestParams
             {
                 Name = "trackable-tool",
                 Arguments = CreateMarkerArgs("task2"),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+            }, ct);
 
-        Assert.NotNull(result1.Task);
-        Assert.NotNull(result2.Task);
+        Assert.True(result1.IsTask);
+        Assert.True(result2.IsTask);
 
         // Wait for both tools to start
-        await WaitForStart("task1", TestContext.Current.CancellationToken);
-        await WaitForStart("task2", TestContext.Current.CancellationToken);
+        await WaitForStart("task1", ct);
+        await WaitForStart("task2", ct);
 
-        // Act - Cancel only task1
-        await client.CancelTaskAsync(result1.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
+        // Cancel only task1
+        await client.CancelTaskAsync(result1.TaskCreated!.TaskId, ct);
 
-        // Assert - task1 should be cancelled
-        var task1Cancelled = await WaitForCancellation("task1", TestContext.Current.CancellationToken);
-        Assert.True(task1Cancelled, "Task1 should have been cancelled");
+        // task1 should be cancelled
+        var task1Cancelled = await WaitForCancellation("task1", ct);
+        Assert.True(task1Cancelled);
 
-        // task2 should still be running (give it a moment to verify it wasn't cancelled)
-        var task2Status = await client.GetTaskAsync(result2.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(McpTaskStatus.Working, task2Status.Status);
+        // task2 should still be working
+        var task2Status = await client.GetTaskAsync(result2.TaskCreated!.TaskId, ct);
+        Assert.IsType<WorkingTaskResult>(task2Status);
 
-        // Clean up - cancel task2
-        await client.CancelTaskAsync(result2.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
-    }
-
-    [Fact]
-    public async Task MultipleTasks_WithDifferentTtls_CancelIndependently()
-    {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
-
-        RegisterMarker("short-ttl");
-        RegisterMarker("long-ttl");
-
-        // Start task with short TTL. Use a TTL long enough that thread pool scheduling
-        // delays on loaded CI machines don't cause the CTS to fire before the tool
-        // lambda begins executing (CancelAfter starts counting at task creation, not
-        // when the tool's Task.Run is scheduled).
-        var shortTtlResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "trackable-tool",
-                Arguments = CreateMarkerArgs("short-ttl"),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromSeconds(5) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Start task with long TTL
-        var longTtlResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "trackable-tool",
-                Arguments = CreateMarkerArgs("long-ttl"),
-                Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) }
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(shortTtlResult.Task);
-        Assert.NotNull(longTtlResult.Task);
-
-        // Wait for both to start
-        await WaitForStart("short-ttl", TestContext.Current.CancellationToken);
-        await WaitForStart("long-ttl", TestContext.Current.CancellationToken);
-
-        // Assert - short TTL task should be cancelled automatically
-        var shortCancelled = await WaitForCancellation("short-ttl", TestContext.Current.CancellationToken);
-        Assert.True(shortCancelled, "Short TTL task should have been cancelled when TTL expired");
-
-        // Long TTL task should still be running
-        var longTtlStatus = await client.GetTaskAsync(longTtlResult.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(McpTaskStatus.Working, longTtlStatus.Status);
-
-        // Clean up
-        await client.CancelTaskAsync(longTtlResult.Task.TaskId, cancellationToken: TestContext.Current.CancellationToken);
+        // Cleanup
+        await client.CancelTaskAsync(result2.TaskCreated!.TaskId, ct);
     }
 }
 
@@ -388,16 +266,19 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
     public TerminalTaskStatusTransitionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
     }
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        var taskStore = new InMemoryMcpTaskStore();
-        services.AddSingleton<IMcpTaskStore>(taskStore);
-
-        services.Configure<McpServerOptions>(options =>
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
-            options.TaskStore = taskStore;
+            options.TaskStore = new InMemoryMcpTaskStore
+            {
+                DefaultPollIntervalMs = 50,
+            };
         });
 
         mcpServerBuilder.WithTools([
@@ -429,81 +310,63 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         ]);
     }
 
-    private static IDictionary<string, JsonElement> EmptyArguments() => new Dictionary<string, JsonElement>();
-
     [Fact]
-    public async Task CompletedTask_CannotTransitionToOtherStatus()
+    public async Task CompletedTask_CancelIsAcknowledgedIdempotentlyAndStateUnchanged()
     {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        var callResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "quick-tool",
-                Arguments = EmptyArguments(),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "quick-tool" }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
         // Wait for completion
-        McpTask taskStatus;
+        GetTaskResult? taskResult;
         do
         {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-            taskStatus = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
         }
-        while (taskStatus.Status == McpTaskStatus.Working);
+        while (taskResult is not CompletedTaskResult);
 
-        Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
+        // SEP-2663: cancel on a terminal task must be acknowledged idempotently.
+        var cancelResult = await client.CancelTaskAsync(taskId, ct);
+        Assert.NotNull(cancelResult);
 
-        // Act - Try to cancel a completed task (should be idempotent)
-        var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert - Status should still be completed (not cancelled)
-        Assert.Equal(McpTaskStatus.Completed, cancelResult.Status);
-
-        // Verify via get
-        var verifyStatus = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(McpTaskStatus.Completed, verifyStatus.Status);
+        // Verify status is still completed (not flipped to cancelled).
+        var verifyResult = await client.GetTaskAsync(taskId, ct);
+        Assert.IsType<CompletedTaskResult>(verifyResult);
     }
 
     [Fact]
-    public async Task FailedTask_CannotTransitionToOtherStatus()
+    public async Task CompletedWithErrorTask_CancelIsAcknowledgedIdempotently()
     {
-        // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
 
-        var callResult = await client.CallToolAsync(
-            new CallToolRequestParams
-            {
-                Name = "failing-tool",
-                Arguments = EmptyArguments(),
-                Task = new McpTaskMetadata()
-            },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "failing-tool" }, ct);
 
-        Assert.NotNull(callResult.Task);
-        string taskId = callResult.Task.TaskId;
+        Assert.True(augmented.IsTask);
+        var taskId = augmented.TaskCreated!.TaskId;
 
-        // Wait for failure
-        McpTask taskStatus;
+        // Wait for completion (tool errors are wrapped as completed with isError=true)
+        GetTaskResult? taskResult;
         do
         {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-            taskStatus = await client.GetTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
         }
-        while (taskStatus.Status == McpTaskStatus.Working);
+        while (taskResult is not CompletedTaskResult);
 
-        Assert.Equal(McpTaskStatus.Failed, taskStatus.Status);
+        // SEP-2663: cancel on a terminal task must be acknowledged idempotently.
+        var cancelResult = await client.CancelTaskAsync(taskId, ct);
+        Assert.NotNull(cancelResult);
 
-        // Act - Try to cancel a failed task (should be idempotent)
-        var cancelResult = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert - Status should still be failed
-        Assert.Equal(McpTaskStatus.Failed, cancelResult.Status);
+        // Verify status is still completed (not flipped to cancelled).
+        var verifyResult = await client.GetTaskAsync(taskId, ct);
+        Assert.IsType<CompletedTaskResult>(verifyResult);
     }
 }

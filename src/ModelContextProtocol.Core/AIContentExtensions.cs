@@ -1,9 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-#if !NET
-using System.Runtime.InteropServices;
-#endif
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -36,6 +34,7 @@ public static class AIContentExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
         this IChatClient chatClient,
         JsonSerializerOptions? serializerOptions = null)
@@ -281,9 +280,9 @@ public static class AIContentExtensions
         {
             TextContentBlock textContent => new TextContent(textContent.Text),
             
-            ImageContentBlock imageContent => new DataContent(Convert.FromBase64String(imageContent.Data), imageContent.MimeType),
+            ImageContentBlock imageContent => new DataContent(imageContent.DecodedData, imageContent.MimeType),
             
-            AudioContentBlock audioContent => new DataContent(Convert.FromBase64String(audioContent.Data), audioContent.MimeType),
+            AudioContentBlock audioContent => new DataContent(audioContent.DecodedData, audioContent.MimeType),
             
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
             
@@ -324,7 +323,7 @@ public static class AIContentExtensions
 
         AIContent ac = content switch
         {
-            BlobResourceContents blobResource => new DataContent(Convert.FromBase64String(blobResource.Blob), blobResource.MimeType ?? "application/octet-stream"),
+            BlobResourceContents blobResource => new DataContent(blobResource.DecodedData, blobResource.MimeType ?? "application/octet-stream"),
             TextResourceContents textResource => new TextContent(textResource.Text),
             _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
         };
@@ -369,7 +368,7 @@ public static class AIContentExtensions
     /// </para>
     /// <para>
     /// Each <see cref="ResourceContents"/> object is converted using <see cref="ToAIContent(ResourceContents)"/>,
-    /// preserving the type-specific conversion logic: text resources become <see cref="TextContentBlock"/> objects and
+    /// preserving the type-specific conversion logic: text resources become <see cref="TextContent"/> objects and
     /// binary resources become <see cref="DataContent"/> objects.
     /// </para>
     /// </remarks>
@@ -401,13 +400,13 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
@@ -415,7 +414,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = dataContent.Base64Data.ToString(),
+                    Blob = EncodingUtilities.GetUtf8Bytes(dataContent.Base64Data.Span),
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }

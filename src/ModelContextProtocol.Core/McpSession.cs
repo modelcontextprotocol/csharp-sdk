@@ -17,8 +17,8 @@ namespace ModelContextProtocol;
 /// </list>
 /// </para>
 /// <para>
-/// <see cref="McpSession"/> serves as the base interface for both <see cref="McpClient"/> and
-/// <see cref="McpServer"/> interfaces, providing the common functionality needed for MCP protocol
+/// <see cref="McpSession"/> serves as the base class for both <see cref="McpClient"/> and
+/// <see cref="McpServer"/>, providing the common functionality needed for MCP protocol
 /// communication. Most applications will use these more specific interfaces rather than working with
 /// <see cref="McpSession"/> directly.
 /// </para>
@@ -46,6 +46,18 @@ public abstract partial class McpSession : IAsyncDisposable
     public abstract string? NegotiatedProtocolVersion { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the negotiated protocol version is <c>2026-07-28</c> or later: the
+    /// revision that removed the <c>initialize</c> handshake (SEP-2575) and <c>Mcp-Session-Id</c> (SEP-2567)
+    /// and enabled MRTR (SEP-2322).
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="false"/> when no version has been negotiated yet. This is the shared
+    /// definition of "is this peer speaking the 2026-07-28 or later revision" used by both the client and server.
+    /// </remarks>
+    internal bool IsJuly2026OrLaterProtocol() =>
+        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
+
+    /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
@@ -68,7 +80,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="InvalidOperationException">The transport is not connected.</exception>
+    /// <exception cref="InvalidOperationException">The transport is not connected, or <paramref name="message"/> is a <see cref="JsonRpcRequest"/>. Use <see cref="SendRequestAsync"/> for requests.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
@@ -85,7 +97,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <summary>Registers a handler to be invoked when a notification for the specified method is received.</summary>
     /// <param name="method">The notification method.</param>
     /// <param name="handler">The handler to be invoked.</param>
-    /// <returns>An <see cref="IDisposable"/> that will remove the registered handler when disposed.</returns>
+    /// <returns>An <see cref="IAsyncDisposable"/> that will remove the registered handler when disposed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     public abstract IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler);

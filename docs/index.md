@@ -8,8 +8,8 @@ This SDK is the official C# SDK for the [Model Context Protocol](https://modelco
 
 For more details on available functionality, see:
 
-- [Conceptual documentation](https://modelcontextprotocol.github.io/csharp-sdk/concepts/index.html)
-- [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html).
+- [Conceptual documentation](https://csharp.sdk.modelcontextprotocol.io/concepts/index.html)
+- [API documentation](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.html).
 
 ## About MCP
 

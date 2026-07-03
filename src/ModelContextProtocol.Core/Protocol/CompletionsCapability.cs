@@ -22,7 +22,7 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// This class is intentionally empty as the Model Context Protocol specification does not
-/// currently define additional properties for sampling capabilities. Future versions of the
+/// currently define additional properties for completions capabilities. Future versions of the
 /// specification might extend this capability with additional configuration options.
 /// </para>
 /// </remarks>

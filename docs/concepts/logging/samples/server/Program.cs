@@ -6,8 +6,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
-        options.IdleTimeout = Timeout.InfiniteTimeSpan // Never timeout
-    )
+    {
+        // Log streaming requires stateful mode because the server pushes log notifications
+        // to clients. Set Stateless = false explicitly for forward compatibility.
+        options.Stateless = false;
+    })
     .WithTools<LoggingTools>();
     // .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 

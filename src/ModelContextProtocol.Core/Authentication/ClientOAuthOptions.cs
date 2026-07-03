@@ -35,18 +35,39 @@ public sealed class ClientOAuthOptions
     public Uri? ClientMetadataDocumentUri { get; set; }
 
     /// <summary>
-    /// Gets or sets the OAuth scopes to request.
+    /// Gets or sets the OAuth scopes to request as a fallback.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When specified, these scopes will be used instead of the scopes advertised by the protected resource.
-    /// If not specified, the provider will use the scopes from the protected resource metadata.
+    /// These scopes are used only when the server does not provide scope information via the
+    /// WWW-Authenticate header or Protected Resource Metadata (<c>scopes_supported</c>). This
+    /// matches the MCP scope selection strategy: WWW-Authenticate scope → PRM scopes_supported →
+    /// client-configured scopes → omit scope parameter.
     /// </para>
     /// <para>
-    /// Common OAuth scopes include "openid", "profile", and "email".
+    /// To filter or customize scopes when the server <em>does</em> provide scope information,
+    /// use <see cref="ScopeSelector"/> instead.
     /// </para>
     /// </remarks>
     public IEnumerable<string>? Scopes { get; set; }
+
+    /// <summary>
+    /// Gets or sets a delegate that selects or filters the OAuth scopes to request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this delegate is called after the MCP scope selection strategy has determined the
+    /// candidate scopes (WWW-Authenticate → PRM <c>scopes_supported</c> → <see cref="Scopes"/> fallback)
+    /// and after <c>offline_access</c> has been automatically appended when advertised by the
+    /// authorization server. The return value replaces the candidate scopes in the authorization request.
+    /// </para>
+    /// <para>
+    /// Use this to request only a subset of the scopes offered by the server, or to append a custom
+    /// scope that is not advertised in the server metadata. Return <see langword="null"/> or an empty
+    /// enumerable to omit the <c>scope</c> parameter entirely.
+    /// </para>
+    /// </remarks>
+    public ScopeSelectorDelegate? ScopeSelector { get; set; }
 
     /// <summary>
     /// Gets or sets the authorization redirect delegate for handling the OAuth authorization flow.

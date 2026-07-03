@@ -23,7 +23,7 @@ public static class ReadResourceResultTests
                 {
                     Uri = "file:///image.png",
                     MimeType = "image/png",
-                    Blob = "base64data"
+                    Blob = System.Text.Encoding.UTF8.GetBytes("base64data")
                 }
             ],
             Meta = new JsonObject { ["key"] = "value" }
@@ -43,7 +43,7 @@ public static class ReadResourceResultTests
         var blobContent = Assert.IsType<BlobResourceContents>(deserialized.Contents[1]);
         Assert.Equal("file:///image.png", blobContent.Uri);
         Assert.Equal("image/png", blobContent.MimeType);
-        Assert.Equal("base64data", blobContent.Blob);
+        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(blobContent.Blob.ToArray()));
 
         Assert.NotNull(deserialized.Meta);
         Assert.Equal("value", (string)deserialized.Meta["key"]!);

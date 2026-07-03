@@ -27,6 +27,9 @@ public abstract class DelegatingMcpServerResource : McpServerResource
     public override ResourceTemplate ProtocolResourceTemplate => _innerResource.ProtocolResourceTemplate;
 
     /// <inheritdoc />
+    public override IReadOnlyList<object> Metadata => _innerResource.Metadata;
+
+    /// <inheritdoc />
     public override bool IsMatch(string uri) => _innerResource.IsMatch(uri);
 
     /// <inheritdoc />

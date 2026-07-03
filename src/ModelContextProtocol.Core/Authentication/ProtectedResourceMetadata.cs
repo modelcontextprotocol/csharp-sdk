@@ -4,8 +4,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Represents the resource metadata for OAuth authorization as defined in RFC 9396.
-/// Defined by <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
+/// Represents the resource metadata for OAuth authorization as defined in <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
 /// </summary>
 public sealed class ProtectedResourceMetadata
 {
@@ -35,7 +34,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
-    public List<string> AuthorizationServers { get; set; } = [];
+    public IList<string> AuthorizationServers { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the supported bearer token methods.
@@ -48,7 +47,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
-    public List<string> BearerMethodsSupported { get; set; } = ["header"];
+    public IList<string> BearerMethodsSupported { get; set; } = ["header"];
 
     /// <summary>
     /// Gets or sets the supported scopes.
@@ -61,7 +60,7 @@ public sealed class ProtectedResourceMetadata
     /// RECOMMENDED.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
-    public List<string> ScopesSupported { get; set; } = [];
+    public IList<string> ScopesSupported { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the URL of the protected resource's JSON Web Key (JWK) Set document.
@@ -85,7 +84,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL. No default algorithms are implied if this entry is omitted. The value "none" MUST NOT be used.
     /// </remarks>
     [JsonPropertyName("resource_signing_alg_values_supported")]
-    public List<string>? ResourceSigningAlgValuesSupported { get; set; }
+    public IList<string>? ResourceSigningAlgValuesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets the human-readable name of the protected resource intended for display to the end user.
@@ -157,7 +156,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_details_types_supported")]
-    public List<string>? AuthorizationDetailsTypesSupported { get; set; }
+    public IList<string>? AuthorizationDetailsTypesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets the list of the JWS algorithm values supported by the resource server for validating DPoP proof JWTs.
@@ -170,7 +169,7 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("dpop_signing_alg_values_supported")]
-    public List<string>? DpopSigningAlgValuesSupported { get; set; }
+    public IList<string>? DpopSigningAlgValuesSupported { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether the protected resource always requires the use of DPoP-bound access tokens.
@@ -191,7 +190,8 @@ public sealed class ProtectedResourceMetadata
     /// The scopes included in the WWW-Authenticate challenge MAY match scopes_supported, be a subset or superset of it,
     /// or an alternative collection that is neither a strict subset nor superset. Clients MUST NOT assume any particular
     /// set relationship between the challenged scope set and scopes_supported. Clients MUST treat the scopes provided
-    /// in the challenge as authoritative for satisfying the current request.
+    /// in the challenge as authoritative for the current operation. When re-authorizing, clients SHOULD include these
+    /// scopes alongside any previously granted scopes to avoid losing permissions needed for other operations (SEP-2350).
     ///
     /// https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
     /// </summary>

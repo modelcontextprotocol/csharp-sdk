@@ -20,6 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class LoggingMessageNotificationParams : NotificationParams
 {
     /// <summary>
@@ -45,8 +46,9 @@ public sealed class LoggingMessageNotificationParams : NotificationParams
     public string? Logger { get; set; }
 
     /// <summary>
-    /// Gets or sets the data to be logged, such as a string message.
+    /// Gets or sets the data to be logged, such as a string message or an object.
+    /// Any JSON serializable type is allowed here.
     /// </summary>
     [JsonPropertyName("data")]
-    public JsonElement? Data { get; set; }
+    public required JsonElement Data { get; set; }
 }

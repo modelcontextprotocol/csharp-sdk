@@ -181,9 +181,10 @@ public class McpServerOptionsSetupTests
             };
         })
         .WithResources<SimpleResourceType>()
-        .WithStdioServerTransport();
+        .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
+        await using var sp = services.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
         
         // The options should preserve the user's manually set capabilities
         Assert.NotNull(options.Capabilities?.Resources);

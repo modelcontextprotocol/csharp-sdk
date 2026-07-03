@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
@@ -20,7 +21,7 @@ public static class HttpMcpServerBuilderExtensions
     /// <see cref="McpServerOptions"/> and running logic before and after a session.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <remarks>For more information on configuring the underlying HTTP server
-    /// to control things like port binding custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
+    /// to control things like port binding and custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
@@ -33,6 +34,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
         {
@@ -64,4 +66,40 @@ public static class HttpMcpServerBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Registers a <see cref="DistributedCacheEventStreamStore"/> as the <see cref="ISseEventStreamStore"/> for SSE resumability.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureOptions">An optional action to configure <see cref="DistributedCacheEventStreamStoreOptions"/>.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// An <see cref="IDistributedCache"/> implementation must be registered in the service collection before calling this method.
+    /// The registered cache is automatically assigned to <see cref="DistributedCacheEventStreamStoreOptions.Cache"/>.
+    /// </para>
+    /// <para>
+    /// To use a specific <see cref="IDistributedCache"/> instance instead of the one registered in DI,
+    /// set the <see cref="DistributedCacheEventStreamStoreOptions.Cache"/> property in the <paramref name="configureOptions"/> callback.
+    /// </para>
+    /// </remarks>
+    [Obsolete(ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Url)]
+#pragma warning disable MCP9006 // The method is itself obsolete and intentionally wires up the legacy resumability store.
+    public static IMcpServerBuilder WithDistributedCacheEventStreamStore(this IMcpServerBuilder builder, Action<DistributedCacheEventStreamStoreOptions>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DistributedCacheEventStreamStoreOptions>, DistributedCacheEventStreamStoreOptionsValidator>());
+        builder.Services.AddSingleton<ISseEventStreamStore, DistributedCacheEventStreamStore>();
+
+        if (configureOptions is not null)
+        {
+            builder.Services.Configure(configureOptions);
+        }
+
+        return builder;
+    }
+#pragma warning restore MCP9006
 }

@@ -15,7 +15,7 @@ This document describes how to implement logging in MCP servers and how clients 
 
 ### Logging Levels
 
-MCP uses the logging levels defined in [RFC 5424](https://tools.ietf.org/html/rfc5424).
+MCP uses the logging levels defined in [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424).
 
 The MCP C# SDK uses the standard .NET [ILogger] and [ILoggerProvider] abstractions, which support a slightly
 different set of logging levels. The following table shows the levels and how they map to standard .NET logging levels.
@@ -46,7 +46,7 @@ MCP servers that implement the Logging utility must declare this in the capabili
 [Initialization]: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#initialization
 
 Servers built with the C# SDK always declare the logging capability. Doing so does not obligate the server
-to send log messages&mdash;only allows it. Note that stateless MCP servers might not be capable of sending log
+to send log messages&mdash;only allows it. Note that [stateless](xref:stateless) MCP servers might not be capable of sending log
 messages as there might not be an open connection to the client on which the log messages could be sent.
 
 The C# SDK provides an extension method <xref:Microsoft.Extensions.DependencyInjection.McpServerBuilderExtensions.WithSetLoggingLevelHandler*> on <xref:Microsoft.Extensions.DependencyInjection.IMcpServerBuilder> to allow the
@@ -54,7 +54,7 @@ server to perform any special logic it wants to perform when a client sets the l
 SDK already takes care of setting the <xref:ModelContextProtocol.Server.McpServer.LoggingLevel> in the <xref:ModelContextProtocol.Server.McpServer>, so most servers will not need to
 implement this.
 
-MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider) from the IMcpServer <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> extension method,
+MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider) from the <xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider> method on <xref:ModelContextProtocol.Server.McpServer>,
 and from that can create an [ILogger](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger) instance for logging messages that should be sent to the MCP client.
 
 [!code-csharp[](samples/server/Tools/LoggingTools.cs?name=snippet_LoggingConfiguration)]

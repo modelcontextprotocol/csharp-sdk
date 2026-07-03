@@ -130,6 +130,26 @@ public sealed class McpServerToolCreateOptions
     public bool UseStructuredContent { get; set; }
 
     /// <summary>
+    /// Gets or sets an explicit JSON schema to use as the tool's output schema.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the output schema is inferred from the return type.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set, this schema is used as the <see cref="Tool.OutputSchema"/> instead of the schema
+    /// inferred from the tool method's return type. This is particularly useful when a tool method
+    /// returns <see cref="CallToolResult"/> directly (to control properties like <see cref="Result.Meta"/>,
+    /// <see cref="CallToolResult.IsError"/>, or <see cref="CallToolResult.StructuredContent"/>) but still
+    /// needs to advertise a meaningful output schema to clients.
+    /// </para>
+    /// <para>
+    /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
+    /// </para>
+    /// </remarks>
+    public JsonElement? OutputSchema { get; set; }
+
+    /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
     /// </summary>
     /// <value>
@@ -178,23 +198,6 @@ public sealed class McpServerToolCreateOptions
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets the execution hints for this tool.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Execution hints provide information about how the tool should be invoked, including
-    /// task support level (<see cref="ToolTaskSupport"/>).
-    /// </para>
-    /// <para>
-    /// If <see langword="null"/>, the tool's execution settings are determined automatically based on
-    /// the method signature (async methods get <see cref="ToolTaskSupport.Optional"/>; sync methods
-    /// get <see cref="ToolTaskSupport.Forbidden"/>).
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public ToolExecution? Execution { get; set; }
-
-    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -209,11 +212,11 @@ public sealed class McpServerToolCreateOptions
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
             UseStructuredContent = UseStructuredContent,
+            OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
             Icons = Icons,
             Meta = Meta,
-            Execution = Execution,
         };
 }

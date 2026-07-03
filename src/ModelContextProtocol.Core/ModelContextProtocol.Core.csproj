@@ -7,8 +7,13 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Suppress the experimental tasks warning -->
+    <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
+         The deprecated types remain in the source-generated JsonSerializerContext and are used throughout
+         the implementation, so the obsolete-usage diagnostic is suppressed project-wide here while staying
+         active for external consumers of the package. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
@@ -25,6 +30,8 @@
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\EncodingUtilities.cs" Link="EncodingUtilities.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
     <Compile Include="..\Common\HttpResponseMessageExtensions.cs" Link="HttpResponseMessageExtensions.cs" />
     <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
   </ItemGroup>
@@ -33,6 +40,7 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
+    <PackageReference Include="System.Collections.Immutable" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" />
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="System.Threading.Channels" />
@@ -72,7 +80,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="README.md" pack="true" PackagePath="\" />
+    <None Include="..\PACKAGE.md" Pack="true" PackagePath="\README.md" />
   </ItemGroup>
 
 </Project>

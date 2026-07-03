@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -23,6 +24,23 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     }
 
     /// <summary>
+    /// Starts the server with the specified resources, pins both the server's and the
+    /// client's protocol version to <paramref name="protocolVersion"/>, and returns a
+    /// connected client. Both ends must be pinned because <see cref="McpClient"/> strictly
+    /// compares the server's negotiated version against the client's requested version and
+    /// refuses to connect on mismatch.
+    /// </summary>
+    private async Task<McpClient> CreateClientWithResourcesAndServerVersionAsync(
+        string protocolVersion,
+        params McpServerResource[] resources)
+    {
+        McpServerBuilder.WithResources(resources);
+        McpServerBuilder.Services.Configure<McpServerOptions>(o => o.ProtocolVersion = protocolVersion);
+        StartServer();
+        return await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = protocolVersion });
+    }
+
+    /// <summary>
     /// Asserts that the given URI matches the template and produces the expected text result.
     /// </summary>
     private async Task AssertMatchAsync(
@@ -40,7 +58,11 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     }
 
     /// <summary>
-    /// Asserts that the given URI does NOT match the template.
+    /// Asserts that the given URI does NOT match the template. Uses the default client, which
+    /// negotiates the 2026-07-28 protocol revision, so the unknown-resource response carries the
+    /// standard JSON-RPC <see cref="McpErrorCode.InvalidParams"/> (-32602). The version-gated
+    /// legacy mapping to <see cref="McpErrorCode.ResourceNotFound"/> (-32002) is covered by
+    /// <see cref="ResourceNotFound_ErrorCode_IsVersionGated"/>.
     /// </summary>
     private async Task AssertNoMatchAsync(
         string uriTemplate,
@@ -53,7 +75,27 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.ReadResourceAsync(uri, null, TestContext.Current.CancellationToken));
 
-        Assert.Equal(McpErrorCode.ResourceNotFound, ex.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    // Unknown-resource-URI responses are version-gated: older clients keep the legacy
+    // -32002 (McpErrorCode.ResourceNotFound), and clients on the 2026-07-28 protocol version that
+    // moves to the standard JSON-RPC code see -32602 (McpErrorCode.InvalidParams).
+    [Theory]
+    [InlineData("2025-11-25", McpErrorCode.ResourceNotFound)]
+    [InlineData("2026-07-28", McpErrorCode.InvalidParams)]
+    public async Task ResourceNotFound_ErrorCode_IsVersionGated(string serverProtocolVersion, McpErrorCode expectedCode)
+    {
+        var resource = McpServerResource.Create(
+            options: new() { UriTemplate = "test://known/{id}" },
+            method: (string id) => $"ok: {id}");
+
+        var client = await CreateClientWithResourcesAndServerVersionAsync(serverProtocolVersion, resource);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.ReadResourceAsync("test://unknown", null, TestContext.Current.CancellationToken));
+
+        Assert.Equal(expectedCode, ex.ErrorCode);
     }
 
     /// <summary>
@@ -92,7 +134,9 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
 
         // Literal template braces in URI should not match (template literal is not a valid URI)
         var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
-        Assert.Equal(McpErrorCode.ResourceNotFound, mcpEx.ErrorCode);
+        // The 2026-07-28 protocol maps an unmatched resource URI to InvalidParams (-32602); the legacy -32002 ResourceNotFound
+        // mapping is covered by the version-gated ResourceNotFound_ErrorCode_IsVersionGated theory.
+        Assert.Equal(McpErrorCode.InvalidParams, mcpEx.ErrorCode);
         Assert.Equal("Request failed (remote): Unknown resource URI: 'test://params{?a1,a2,a3}'", mcpEx.Message);
     }
 

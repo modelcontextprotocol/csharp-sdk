@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,7 +25,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         mcpServerBuilder
                 .WithListResourcesHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -67,7 +67,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     })
                 .WithListResourceTemplatesHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -96,7 +96,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     })
         .WithReadResourceHandler(async (request, cancellationToken) =>
         {
-            switch (request.Params?.Uri)
+            switch (request.Params.Uri)
             {
                 case "test://Resource1":
                 case "test://Resource2":
@@ -105,11 +105,11 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://ResourceTemplate2":
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)", Uri = request.Params?.Uri ?? "(null)" }]
+                        Contents = [new TextResourceContents { Text = request.Params.Uri ?? "(null)", Uri = request.Params.Uri ?? "(null)" }]
                     };
             }
 
-            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}", McpErrorCode.ResourceNotFound);
+            throw new McpProtocolException($"Resource not found: {request.Params.Uri}", McpErrorCode.InvalidParams);
         })
         .WithResources<SimpleResources>();
     }
@@ -162,7 +162,14 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_Be_Notified_Of_Resource_Changes()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
+        // legacy revision to keep coverage of the session-wide broadcast that legacy clients still rely on.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+        });
+
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(7, resources.Count);
@@ -317,7 +324,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource not found", e.Message);
-        Assert.Equal(McpErrorCode.ResourceNotFound, e.ErrorCode);
+        Assert.Equal(McpErrorCode.InvalidParams, e.ErrorCode);
     }
 
     [Fact]
@@ -345,13 +352,10 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResources(target);
 
         McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
-        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }, new()
         {
-            Params = new()
-            {
-                Uri = "returns://string"
-            }
-        }, TestContext.Current.CancellationToken);
+            Uri = "returns://string"
+        }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString(), (result?.Contents[0] as TextResourceContents)?.Text);
     }

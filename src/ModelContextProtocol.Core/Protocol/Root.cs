@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -9,10 +9,12 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// Root URIs serve as entry points for resource navigation, typically representing
-/// top-level directories or container resources that can be accessed and traversed.
-/// Roots provide a hierarchical structure for organizing and accessing resources within the protocol.
-/// Each root has a URI that uniquely identifies it and optional metadata like a human-readable name.
+/// top-level directories or container resources that are relevant to the current session.
+/// Roots inform servers which locations the client considers important, providing informational
+/// guidance rather than an access-control mechanism. Each root has a URI that uniquely identifies
+/// it and optional metadata like a human-readable name.
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class Root
 {
     /// <summary>
@@ -35,5 +37,5 @@ public sealed class Root
     /// This is reserved by the protocol for future use.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonElement? Meta { get; set; }
+    public JsonObject? Meta { get; set; }
 }

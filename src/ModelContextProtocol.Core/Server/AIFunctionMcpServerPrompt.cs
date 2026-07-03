@@ -182,7 +182,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     {
         AIFunction = function;
         ProtocolPrompt = prompt;
-        ProtocolPrompt.McpServerPrompt = this;
         _metadata = metadata;
     }
 

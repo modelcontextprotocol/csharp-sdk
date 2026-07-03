@@ -6,10 +6,11 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This notification can be issued by servers without any previous subscription from the client.
+/// This notification can be issued by clients without any previous subscription from the server.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class RootsListChangedNotificationParams : NotificationParams;

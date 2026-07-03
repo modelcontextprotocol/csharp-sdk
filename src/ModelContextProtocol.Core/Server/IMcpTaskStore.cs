@@ -1,168 +1,154 @@
 using ModelContextProtocol.Protocol;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
-namespace ModelContextProtocol;
+namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Provides an interface for pluggable task storage implementations in MCP servers.
+/// Provides an interface for storing and managing the lifecycle of MCP tasks.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The task store is responsible for managing the lifecycle of tasks, including creation,
-/// status updates, result storage, and retrieval. Implementations must be thread-safe and
-/// may support session-based isolation for multi-session scenarios.
+/// The task store manages the state of tasks created by the server's request handling pipeline.
+/// When a client signals support for the <c>io.modelcontextprotocol/tasks</c> extension on a request,
+/// the server creates a task in the store, executes the work in the background, and stores the result
+/// upon completion.
 /// </para>
 /// <para>
-/// TTL (Time To Live) Management: Implementations may override the requested TTL value in
-/// <see cref="McpTaskMetadata.TimeToLive"/> to enforce resource limits. The actual TTL
-/// used is returned in the <see cref="McpTask.TimeToLive"/> property. A null TTL indicates
-/// unlimited lifetime. Tasks may be deleted after their TTL expires, regardless of status.
+/// Implementations must be thread-safe. The store also provides the backing implementation for
+/// <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> protocol methods.
+/// </para>
+/// <para>
+/// <b>Lifetime under stateless HTTP:</b> when the server is configured for stateless HTTP
+/// (each request creates a fresh server instance), the same <see cref="IMcpTaskStore"/> instance
+/// MUST be shared across requests — either by registering the store as a singleton in the DI
+/// container, or by backing it with external storage (database, distributed cache, etc.) that
+/// every server instance can reach. Otherwise <c>tasks/get</c> polls issued on subsequent
+/// requests will see an empty in-memory store and never find the task they are polling for.
+/// </para>
+/// <para>
+/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md">SEP-2663</see>
+/// specification for details on the tasks extension.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
 public interface IMcpTaskStore
 {
     /// <summary>
-    /// Creates a new task for tracking an asynchronous operation.
+    /// Creates a new task for tracking an asynchronous execution.
     /// </summary>
-    /// <param name="taskParams">Metadata for the task, including requested TTL.</param>
-    /// <param name="requestId">The JSON-RPC request ID that initiated this task.</param>
-    /// <param name="request">The original JSON-RPC request that triggered task creation.</param>
-    /// <param name="sessionId">Optional session identifier for multi-session isolation.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>
-    /// A new <see cref="McpTask"/> with a unique task ID, initial status of <see cref="McpTaskStatus.Working"/>,
-    /// and the actual TTL that will be used (which may differ from the requested TTL).
+    /// A <see cref="McpTaskInfo"/> with a unique task ID, initial status of <see cref="McpTaskStatus.Working"/>,
+    /// and timing metadata (TTL, poll interval).
     /// </returns>
     /// <remarks>
-    /// Implementations must generate a unique task ID and set the <see cref="McpTask.CreatedAt"/>
-    /// and <see cref="McpTask.LastUpdatedAt"/> timestamps. The implementation may override the
-    /// requested TTL to enforce storage limits.
+    /// <para>
+    /// Implementations must generate a unique task ID and set appropriate timestamps.
+    /// The server infrastructure maps the returned <see cref="McpTaskInfo"/> to the appropriate
+    /// protocol response type when communicating with clients.
+    /// </para>
+    /// <para>
+    /// Per the MCP specification (SEP-2663 §306), the returned task MUST be durably created
+    /// before this method completes: a subsequent <see cref="GetTaskAsync"/> with the returned
+    /// <see cref="McpTaskInfo.TaskId"/> MUST resolve, even if it runs on a different process or
+    /// node. Implementations backed by eventually-consistent storage must therefore wait for the
+    /// write to be visible (e.g., quorum acknowledgement, write-through, or an equivalent
+    /// barrier) before returning.
+    /// </para>
     /// </remarks>
-    Task<McpTask> CreateTaskAsync(
-        McpTaskMetadata taskParams,
-        RequestId requestId,
-        JsonRpcRequest request,
-        string? sessionId = null,
-        CancellationToken cancellationToken = default);
+    Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves a task by its unique identifier.
+    /// Retrieves the current state of a task.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task to retrieve.</param>
-    /// <param name="sessionId">Optional session identifier for access control.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>
-    /// The <see cref="McpTask"/> if found and accessible, otherwise <see langword="null"/>.
+    /// A <see cref="McpTaskInfo"/> representing the current task state,
+    /// or <see langword="null"/> if the task does not exist.
     /// </returns>
-    /// <remarks>
-    /// Returns null if the task does not exist or if session-based access control denies access.
-    /// </remarks>
-    Task<McpTask?> GetTaskAsync(string taskId, string? sessionId = null, CancellationToken cancellationToken = default);
+    Task<McpTaskInfo?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores the final result of a task that has reached a terminal status.
+    /// Stores the result of a completed execution, transitioning the task to <see cref="McpTaskStatus.Completed"/>.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task.</param>
-    /// <param name="status">The terminal status: <see cref="McpTaskStatus.Completed"/> or <see cref="McpTaskStatus.Failed"/>.</param>
-    /// <param name="result">The operation result to store as a JSON element.</param>
-    /// <param name="sessionId">Optional session identifier for access control.</param>
+    /// <param name="result">The serialized result payload.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// <para>
-    /// The <paramref name="status"/> must be either <see cref="McpTaskStatus.Completed"/> or
-    /// <see cref="McpTaskStatus.Failed"/>. This method updates the task status and stores
-    /// the result for later retrieval via <see cref="GetTaskResultAsync"/>.
-    /// </para>
-    /// <para>
-    /// Implementations should throw <see cref="InvalidOperationException"/> if called on a task
-    /// that is already in a terminal state, to prevent result overwrites.
-    /// </para>
-    /// </remarks>
-    /// <returns>The updated <see cref="McpTask"/> with the new status and result stored.</returns>
-    Task<McpTask> StoreTaskResultAsync(
-        string taskId,
-        McpTaskStatus status,
-        JsonElement result,
-        string? sessionId = null,
-        CancellationToken cancellationToken = default);
+    Task SetCompletedAsync(string taskId, JsonElement result, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves the stored result of a completed or failed task.
+    /// Marks a task as failed, transitioning it to <see cref="McpTaskStatus.Failed"/>.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task.</param>
-    /// <param name="sessionId">Optional session identifier for access control.</param>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>The stored operation result as a JSON element.</returns>
-    /// <remarks>
-    /// This method should only be called on tasks in terminal states (<see cref="McpTaskStatus.Completed"/>
-    /// or <see cref="McpTaskStatus.Failed"/>). The result contains the JSON representation of the
-    /// original operation result (e.g., <see cref="CallToolResult"/> for tools/call).
-    /// </remarks>
-    Task<JsonElement> GetTaskResultAsync(string taskId, string? sessionId = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Updates the status and optional status message of a task.
-    /// </summary>
-    /// <param name="taskId">The unique identifier of the task.</param>
-    /// <param name="status">The new status to set.</param>
-    /// <param name="statusMessage">Optional diagnostic message describing the status change.</param>
-    /// <param name="sessionId">Optional session identifier for access control.</param>
+    /// <param name="error">The serialized error information.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// This method updates the task's <see cref="McpTask.Status"/>, <see cref="McpTask.StatusMessage"/>,
-    /// and <see cref="McpTask.LastUpdatedAt"/> properties. Common uses include transitioning to
-    /// <see cref="McpTaskStatus.Cancelled"/>, <see cref="McpTaskStatus.InputRequired"/>, or updating
-    /// progress messages while in <see cref="McpTaskStatus.Working"/> status.
-    /// </remarks>
-    /// <returns>The updated <see cref="McpTask"/> with the new status applied.</returns>
-    Task<McpTask> UpdateTaskStatusAsync(
-        string taskId,
-        McpTaskStatus status,
-        string? statusMessage,
-        string? sessionId = null,
-        CancellationToken cancellationToken = default);
+    Task SetFailedAsync(string taskId, JsonElement error, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists tasks with pagination support.
-    /// </summary>
-    /// <param name="cursor">Optional cursor for pagination, from a previous call's nextCursor value.</param>
-    /// <param name="sessionId">Optional session identifier for filtering tasks by session.</param>
-    /// <param name="cancellationToken">Cancellation token for the operation.</param>
-    /// <returns>A <see cref="ListTasksResult"/> containing the tasks and an optional cursor for the next page.</returns>
-    /// <remarks>
-    /// When <paramref name="sessionId"/> is provided, implementations should filter to only return
-    /// tasks associated with that session. The cursor format is implementation-specific.
-    /// </remarks>
-    Task<ListTasksResult> ListTasksAsync(
-        string? cursor = null,
-        string? sessionId = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Attempts to cancel a task, transitioning it to <see cref="McpTaskStatus.Cancelled"/> status.
+    /// Transitions the task to <see cref="McpTaskStatus.Cancelled"/>.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task to cancel.</param>
-    /// <param name="sessionId">Optional session identifier for access control.</param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>
-    /// The updated <see cref="McpTask"/>. If the task is already in a terminal state
-    /// (<see cref="McpTaskStatus.Completed"/>, <see cref="McpTaskStatus.Failed"/>, or
-    /// <see cref="McpTaskStatus.Cancelled"/>), the task is returned unchanged.
+    /// <see langword="true"/> if the task was successfully cancelled;
+    /// <see langword="false"/> if the task does not exist or was already in a terminal state.
     /// </returns>
+    Task<bool> SetCancelledAsync(string taskId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes input requests that have been satisfied by the provided responses and
+    /// raises <see cref="InputResponseReceived"/> for each resolved entry.
+    /// </summary>
+    /// <param name="taskId">The unique identifier of the task.</param>
+    /// <param name="inputResponses">
+    /// The input responses keyed by the original request identifier.
+    /// Matched input requests are removed from the task's pending set.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <remarks>
     /// <para>
-    /// This method must be idempotent. If called on a task that is already in a terminal state,
-    /// it returns the current task without error. This behavior differs from the MCP specification
-    /// but ensures idempotency and avoids race conditions between cancellation and task completion.
+    /// After removing the satisfied requests, if no pending input requests remain the task
+    /// transitions back to <see cref="McpTaskStatus.Working"/>. Otherwise it remains in
+    /// <see cref="McpTaskStatus.InputRequired"/>.
     /// </para>
     /// <para>
-    /// For tasks not in a terminal state, the implementation should attempt to stop the underlying
-    /// operation and transition the task to <see cref="McpTaskStatus.Cancelled"/> status before returning.
+    /// Implementations must raise <see cref="InputResponseReceived"/> for each entry in
+    /// <paramref name="inputResponses"/> after updating the store state. In distributed
+    /// deployments, this event enables the originating server to be notified even if a
+    /// different server instance processes the <c>tasks/update</c> request.
     /// </para>
     /// </remarks>
-    Task<McpTask> CancelTaskAsync(string taskId, string? sessionId = null, CancellationToken cancellationToken = default);
+    Task ResolveInputRequestsAsync(
+        string taskId,
+        IDictionary<string, InputResponse> inputResponses,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Occurs when an input response is resolved for a task.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must raise this event for each input response resolved in
+    /// <see cref="ResolveInputRequestsAsync"/>. Subscribers use this to complete
+    /// pending input request waiters (e.g., elicitation or sampling calls that are
+    /// awaiting a client response).
+    /// </remarks>
+    event Action<InputResponseReceivedEventArgs>? InputResponseReceived;
+
+    /// <summary>
+    /// Adds input requests to a task, transitioning it to <see cref="McpTaskStatus.InputRequired"/>.
+    /// </summary>
+    /// <param name="taskId">The unique identifier of the task.</param>
+    /// <param name="inputRequests">
+    /// The input requests to add. Keys are arbitrary identifiers for matching requests to responses.
+    /// Each value is an <see cref="InputRequest"/> wrapping the server-to-client request payload.
+    /// New requests are merged with any existing pending requests.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task SetInputRequestsAsync(
+        string taskId,
+        IDictionary<string, InputRequest> inputRequests,
+        CancellationToken cancellationToken = default);
 }

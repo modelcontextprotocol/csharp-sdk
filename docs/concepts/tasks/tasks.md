@@ -1,599 +1,375 @@
 ---
 title: Tasks
-author: eiriktsarpalis
-description: MCP Tasks for Long-Running Operations
+description: Run long-running tool invocations asynchronously with status polling and input requests.
 uid: tasks
 ---
 
-# MCP Tasks
+## Tasks
 
-> [!WARNING]
-> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases.
+Tasks let an MCP server run a request asynchronously and report its result to the client later. The
+primary use case today is long-running tool invocations: the tool is offloaded to a background task,
+and the client polls for status, optionally exchanging additional input along the way.
 
-The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
+> **Status**: Experimental — diagnostic ID `MCPEXP001`. The implementation tracks
+> [SEP-2663 (Tasks Extension)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md).
+> See [Experimental APIs](xref:experimental) for how to opt in.
 
-[task-based execution]: https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks
+### Overview
 
-## Overview
+A client opts into tasks on a per-request basis by including the `io.modelcontextprotocol/tasks`
+extension key in the request's `_meta`. When that opt-in is present, the server **may** respond
+with a <xref:ModelContextProtocol.Protocol.CreateTaskResult> instead of the standard result
+(e.g., <xref:ModelContextProtocol.Protocol.CallToolResult>). The client then polls `tasks/get`
+until the task reaches a terminal state.
 
-Tasks are useful when operations may take a long time to complete, such as:
+Per the SEP, the server **must not** return `CreateTaskResult` for a request that did not include
+the extension opt-in. The SDK enforces this on the server side.
 
-- Large dataset processing or analysis
-- Complex report generation
-- Code migration or refactoring operations
-- Machine learning inference or training
-- Batch data transformations
+#### Task lifecycle
 
-Without tasks, clients must keep connections open for the entire duration of long-running operations. Tasks allow clients to:
+```text
+                  ┌─────────────────────────┐
+                  ▼                         │
+   (start) → Working ──→ InputRequired      │
+              │              │              │
+              │              └──────────────┘  (client responds via tasks/update)
+              │
+              ├──→ Completed   (terminal — includes tool results with isError: true)
+              ├──→ Cancelled   (terminal)
+              └──→ Failed      (terminal — JSON-RPC errors only)
+```
 
-1. Initiate an operation and receive a task ID immediately
-2. Disconnect and reconnect later
-3. Poll for status updates
-4. Retrieve results when complete
-5. Cancel operations if needed
+<xref:ModelContextProtocol.Protocol.McpTaskStatus> wire values are serialized in snake_case:
+`working`, `input_required`, `completed`, `cancelled`, `failed`.
 
-## Task Lifecycle
+The discriminator field <xref:ModelContextProtocol.Protocol.Result.ResultType?displayProperty=nameWithType>
+on the response payload is `"task"` for <xref:ModelContextProtocol.Protocol.CreateTaskResult>
+and `"complete"` for ordinary results.
 
-Tasks follow a defined lifecycle through these status values:
+### Server configuration
 
-| Status | Description |
-|--------|-------------|
-| `working` | Task is actively being processed |
-| `input_required` | Task is waiting for additional input (e.g., elicitation) |
-| `completed` | Task finished successfully; results are available |
-| `failed` | Task encountered an error |
-| `cancelled` | Task was cancelled by the client |
+#### Using the task store
 
-Tasks begin in the `working` status and transition to one of the terminal states (`completed`, `failed`, or `cancelled`). Once in a terminal state, the status cannot change.
-
-## Server Implementation
-
-### Configuring Task Support
-
-To enable task support on a server, configure a task store when setting up the MCP server:
+The easiest way to enable tasks is to set an <xref:ModelContextProtocol.Server.IMcpTaskStore>
+on <xref:ModelContextProtocol.Server.McpServerOptions.TaskStore?displayProperty=nameWithType>.
+The SDK ships <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> for development and tests:
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-// Create a task store for managing task state
-var taskStore = new InMemoryMcpTaskStore();
+#pragma warning disable MCPEXP001
 
 builder.Services.AddMcpServer(options =>
 {
-    // Enable tasks by providing a task store
-    options.TaskStore = taskStore;
+    options.TaskStore = new InMemoryMcpTaskStore();
 })
-.WithHttpTransport()
 .WithTools<MyTools>();
 ```
 
-The <xref:ModelContextProtocol.InMemoryMcpTaskStore> is a reference implementation suitable for development and single-server deployments. For production multi-server scenarios, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store (database, Redis, etc.).
+When a `TaskStore` is configured the SDK automatically:
 
-### Task Store Configuration
+- Wires `tasks/get`, `tasks/update`, and `tasks/cancel` handlers from the store. Explicit
+  handlers in <xref:ModelContextProtocol.Server.McpServerOptions.Handlers> still take precedence
+  for any slot they fill.
+- Advertises the `io.modelcontextprotocol/tasks` extension in
+  <xref:ModelContextProtocol.Protocol.ServerCapabilities.Extensions?displayProperty=nameWithType>.
+- Wraps each `[McpServerTool]` invocation so that, when the client opts in to the extension,
+  the tool is offloaded to a background task tracked by the store.
+- Establishes a task scope so that <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>,
+  <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, and
+  <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*> called from inside the tool
+  surface as entries in the task's `inputRequests` instead of as direct JSON-RPC requests.
+- Plumbs a `CancellationToken` through to the tool that fires when the client invokes
+  `tasks/cancel`, so cancellation propagates cooperatively.
 
-The `InMemoryMcpTaskStore` constructor accepts several optional parameters:
+For production scenarios that need durability, session isolation, multi-process routing, or
+TTL-based cleanup, implement <xref:ModelContextProtocol.Server.IMcpTaskStore> yourself
+(see [Implementing a custom task store](#implementing-a-custom-task-store) below).
+
+#### Custom task handlers
+
+For full control without a store, set the handlers directly. Each handler is an
+<xref:ModelContextProtocol.Server.McpRequestHandler`2> that receives an
+<xref:ModelContextProtocol.Server.RequestContext`1> with typed parameters:
 
 ```csharp
-var taskStore = new InMemoryMcpTaskStore(
-    defaultTtl: TimeSpan.FromHours(1),      // Default task retention time
-    maxTtl: TimeSpan.FromHours(24),         // Maximum allowed TTL
-    pollInterval: TimeSpan.FromSeconds(1),  // Suggested client poll interval
-    cleanupInterval: TimeSpan.FromMinutes(5), // Background cleanup frequency
-    pageSize: 100                           // Tasks per page for listing
-);
-```
-
-### Tool Task Support
-
-Tools automatically advertise task support when they return `Task`, `ValueTask`, `Task<T>`, or `ValueTask<T>`:
-
-```csharp
-[McpServerToolType]
-public class MyTools
+options.Handlers.GetTaskHandler = (context, ct) =>
 {
-    // This tool automatically supports task-augmented calls
-    // because it returns Task<string> (async method)
-    [McpServerTool, Description("Processes a large dataset")]
-    public static async Task<string> ProcessDataset(
-        int recordCount,
-        CancellationToken cancellationToken)
-    {
-        // Long-running operation
-        await Task.Delay(5000, cancellationToken);
-        return $"Processed {recordCount} records";
-    }
-
-    // Synchronous tools don't support task augmentation by default
-    [McpServerTool, Description("Quick operation")]
-    public static string QuickOperation(string input) => $"Result: {input}";
-}
-```
-
-You can explicitly control task support using <xref:ModelContextProtocol.Server.McpServerToolCreateOptions>:
-
-```csharp
-// In Program.cs or configuration
-builder.Services.AddMcpServer()
-    .WithTools([
-        McpServerTool.Create(
-            (int count, CancellationToken ct) => ProcessAsync(count, ct),
-            new McpServerToolCreateOptions
-            {
-                Name = "requiredTaskTool",
-                Execution = new ToolExecution
-                {
-                    // Require clients to use task augmentation
-                    TaskSupport = ToolTaskSupport.Required
-                }
-            })
-    ]);
-```
-
-Task support levels:
-- `Forbidden` (default for sync methods): Tool cannot be called with task augmentation
-- `Optional` (default for async methods): Tool can be called with or without task augmentation
-- `Required`: Tool must be called with task augmentation
-
-### Explicit Task Creation with `IMcpTaskStore`
-
-For more control over task lifecycle, tools can directly interact with <xref:ModelContextProtocol.IMcpTaskStore> and return an `McpTask`. This approach allows you to:
-
-- Create a task and return immediately while work continues in the background
-- Control exactly when and how task status and results are updated
-- Integrate with external systems for task execution
-
-Here's a simple example using `Task.Run` to schedule background work:
-
-```csharp
-[McpServerToolType]
-public class MyTools(IMcpTaskStore taskStore)
-{
-    [McpServerTool]
-    [Description("Starts a background job and returns a task for polling.")]
-    public async Task<McpTask> StartBackgroundJob(
-        [Description("Number of items to process")] int itemCount,
-        RequestContext<CallToolRequestParams> context,
-        CancellationToken cancellationToken)
-    {
-        // Create a task in the store - this records the task metadata
-        var task = await taskStore.CreateTaskAsync(
-            new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(30) },
-            context.JsonRpcRequest.Id!,
-            context.JsonRpcRequest,
-            context.Server.SessionId,
-            cancellationToken);
-
-        // Schedule work to run in the background (fire-and-forget)
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // Simulate long-running work
-                await Task.Delay(TimeSpan.FromSeconds(10));
-                var result = $"Processed {itemCount} items successfully";
-
-                // Store the completed result
-                await taskStore.StoreTaskResultAsync(
-                    task.TaskId,
-                    McpTaskStatus.Completed,
-                    JsonSerializer.SerializeToElement(new CallToolResult
-                    {
-                        Content = [new TextContentBlock { Text = result }]
-                    }),
-                    context.Server.SessionId);
-            }
-            catch (Exception ex)
-            {
-                // Mark task as failed on error
-                await taskStore.StoreTaskResultAsync(
-                    task.TaskId,
-                    McpTaskStatus.Failed,
-                    JsonSerializer.SerializeToElement(new CallToolResult
-                    {
-                        Content = [new TextContentBlock { Text = ex.Message }],
-                        IsError = true
-                    }),
-                    context.Server.SessionId);
-            }
-        }, CancellationToken.None);
-
-        // Return immediately - client will poll for completion
-        return task;
-    }
-}
-```
-
-When a tool returns `McpTask`, the SDK bypasses automatic task wrapping and returns the task directly to the client.
-
-> [!IMPORTANT]
-> **No Fault Tolerance Guarantees**: Both `InMemoryMcpTaskStore` and the automatic task support for `Task`-returning tool methods do **not** provide fault tolerance. Task state and execution are bounded by the memory of the server process. If the server crashes or restarts:
-> - All in-memory task metadata is lost
-> - Any in-flight task execution is terminated
-> - Clients will receive errors when polling for previously created tasks
->
-> For fault-tolerant task execution, see the [Fault-Tolerant Task Implementations](#fault-tolerant-task-implementations) section.
-
-### Task Status Notifications
-
-When `SendTaskStatusNotifications` is enabled, the server automatically sends status updates to connected clients:
-
-```csharp
-builder.Services.AddMcpServer(options =>
-{
-    options.TaskStore = taskStore;
-    options.SendTaskStatusNotifications = true; // Enable notifications
-});
-```
-
-Clients receive `notifications/tasks/status` messages when task status changes.
-
-## Client Implementation
-
-### Calling Tools as Tasks
-
-To execute a tool as a task, include the `Task` property in the request:
-
-```csharp
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
-
-var client = await McpClient.CreateAsync(transport);
-
-// Call tool with task augmentation
-var result = await client.CallToolAsync(
-    new CallToolRequestParams
-    {
-        Name = "processDataset",
-        Arguments = new Dictionary<string, JsonElement>
-        {
-            ["recordCount"] = JsonSerializer.SerializeToElement(1000)
-        },
-        Task = new McpTaskMetadata
-        {
-            TimeToLive = TimeSpan.FromHours(2) // Request 2-hour retention
-        }
-    },
-    cancellationToken);
-
-// Check if a task was created
-if (result.Task != null)
-{
-    Console.WriteLine($"Task created: {result.Task.TaskId}");
-    Console.WriteLine($"Status: {result.Task.Status}");
-}
-```
-
-### Polling for Task Status
-
-Use <xref:ModelContextProtocol.Client.McpClient.GetTaskAsync*> to check task status:
-
-```csharp
-var task = await client.GetTaskAsync(taskId, cancellationToken: cancellationToken);
-Console.WriteLine($"Status: {task.Status}");
-Console.WriteLine($"Last Updated: {task.LastUpdatedAt}");
-
-if (task.StatusMessage != null)
-{
-    Console.WriteLine($"Message: {task.StatusMessage}");
-}
-```
-
-### Waiting for Completion
-
-The SDK provides helper methods for polling until a task completes:
-
-```csharp
-// Poll until task reaches terminal state
-var completedTask = await client.PollTaskUntilCompleteAsync(
-    taskId,
-    cancellationToken: cancellationToken);
-
-if (completedTask.Status == McpTaskStatus.Completed)
-{
-    // Get the result as raw JSON
-    var resultJson = await client.GetTaskResultAsync(
-        taskId,
-        cancellationToken: cancellationToken);
-
-    // Deserialize to the expected type
-    var result = resultJson.Deserialize<CallToolResult>(McpJsonUtilities.DefaultOptions);
-
-    foreach (var content in result?.Content ?? [])
-    {
-        if (content is TextContentBlock text)
-        {
-            Console.WriteLine(text.Text);
-        }
-    }
-}
-else if (completedTask.Status == McpTaskStatus.Failed)
-{
-    Console.WriteLine($"Task failed: {completedTask.StatusMessage}");
-}
-```
-
-### Listing Tasks
-
-List all tasks for the current session:
-
-```csharp
-var tasks = await client.ListTasksAsync(cancellationToken: cancellationToken);
-
-foreach (var task in tasks)
-{
-    Console.WriteLine($"{task.TaskId}: {task.Status}");
-}
-```
-
-### Cancelling Tasks
-
-Cancel a running task:
-
-```csharp
-var cancelledTask = await client.CancelTaskAsync(
-    taskId,
-    cancellationToken: cancellationToken);
-
-Console.WriteLine($"Task status: {cancelledTask.Status}"); // Cancelled
-```
-
-### Handling Status Notifications
-
-Register a handler to receive real-time status updates:
-
-```csharp
-var options = new McpClientOptions
-{
-    Handlers = new McpClientHandlers
-    {
-        TaskStatusHandler = (task, cancellationToken) =>
-        {
-            Console.WriteLine($"Task {task.TaskId} status changed to {task.Status}");
-            return ValueTask.CompletedTask;
-        }
-    }
+    var taskId = context.Params!.TaskId;
+    // … look up state and return one of the GetTaskResult subtypes.
+    return new ValueTask<GetTaskResult>(new WorkingTaskResult { TaskId = taskId, /* … */ });
 };
 
-var client = await McpClient.CreateAsync(transport, options);
+options.Handlers.UpdateTaskHandler = (context, ct) => /* return ValueTask<UpdateTaskResult> */;
+options.Handlers.CancelTaskHandler = (context, ct) => /* return ValueTask<CancelTaskResult> */;
 ```
 
-> [!NOTE]
-> Clients should not rely on receiving status notifications. Notifications are optional and may not be sent in all scenarios. Always use polling as the primary mechanism for tracking task status.
+> **Important**: configure all three lifecycle handlers (or use a `TaskStore`) before opting
+> into task responses. If a tool handler returns a `CreateTaskResult` but no `tasks/get`
+> handler is wired, the server throws `InvalidOperationException` at request time so misconfigured
+> deployments fail loudly instead of shipping unpollable tasks.
 
-## Implementing a Custom Task Store
+#### Returning a task from a tool handler
 
-For production deployments, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store:
+<xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithTaskHandler?displayProperty=nameWithType>
+returns <xref:ModelContextProtocol.Protocol.ResultOrCreatedTask`1>, so each invocation can choose
+between an immediate result and a background task:
 
 ```csharp
-public class DatabaseTaskStore : IMcpTaskStore
+options.Handlers.CallToolWithTaskHandler = async (context, ct) =>
 {
-    private readonly IDbConnection _db;
-
-    public DatabaseTaskStore(IDbConnection db) => _db = db;
-
-    public async Task<McpTask> CreateTaskAsync(
-        McpTaskMetadata taskMetadata,
-        RequestId requestId,
-        JsonRpcRequest request,
-        string? sessionId,
-        CancellationToken cancellationToken)
+    if (ShouldRunInline(context.Params!))
     {
-        var task = new McpTask
-        {
-            TaskId = Guid.NewGuid().ToString(),
-            Status = McpTaskStatus.Working,
-            CreatedAt = DateTimeOffset.UtcNow,
-            LastUpdatedAt = DateTimeOffset.UtcNow,
-            TimeToLive = taskMetadata.TimeToLive ?? TimeSpan.FromHours(1)
-        };
-
-        // Store in database
-        await _db.ExecuteAsync(
-            "INSERT INTO Tasks (TaskId, SessionId, Status, ...) VALUES (@TaskId, @SessionId, @Status, ...)",
-            new { task.TaskId, sessionId, task.Status, ... });
-
-        return task;
+        return new CallToolResult { Content = [/* … */] };
     }
 
-    public async Task<McpTask?> GetTaskAsync(
+    var taskId = await StartBackgroundWorkAsync(context.Params!, ct);
+    return new CreateTaskResult
+    {
+        TaskId = taskId,
+        Status = McpTaskStatus.Working,
+        CreatedAt = DateTimeOffset.UtcNow,
+        LastUpdatedAt = DateTimeOffset.UtcNow,
+        PollIntervalMs = 1000,
+    };
+};
+```
+
+> <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolHandler?displayProperty=nameWithType>
+> and <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithTaskHandler?displayProperty=nameWithType>
+> are mutually exclusive. Setting one while the other is already non-null throws
+> `InvalidOperationException` at the property setter.
+
+#### Task scope for server-initiated requests
+
+When you start background work from a custom <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithTaskHandler?displayProperty=nameWithType>
+(rather than the SDK's auto-wrapping), use <xref:ModelContextProtocol.Server.McpServer.CreateMcpTaskScope*>
+to route elicitation, sampling, and `roots/list` calls through the task store as input requests
+instead of direct JSON-RPC messages:
+
+```csharp
+using (server.CreateMcpTaskScope(taskId, taskStore))
+{
+    // ElicitAsync/SampleAsync/RequestRootsAsync calls in here are surfaced as
+    // entries in the task's inputRequests, then await client responses via tasks/update.
+    var elicit = await server.ElicitAsync(elicitParams, ct);
+}
+```
+
+`CreateMcpTaskScope` returns an `IDisposable` that restores the prior ambient context on
+`Dispose`. The scope is established automatically for `[McpServerTool]` methods that run via
+`McpServerOptions.TaskStore`, so this API is only needed for custom handlers.
+
+### Client usage
+
+#### Automatic polling
+
+<xref:ModelContextProtocol.Client.McpClient.CallToolAsync(ModelContextProtocol.Protocol.CallToolRequestParams,System.Threading.CancellationToken)>
+handles the full task lifecycle automatically:
+
+- Injects the `io.modelcontextprotocol/tasks` extension capability into the request's `_meta`.
+- Polls `tasks/get` at the cadence the server suggests via `pollIntervalMs`.
+- Dispatches input requests through the client's registered handlers
+  (<xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> and
+  <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler>).
+- Deduplicates already-resolved input request keys across polls so each request is handled at
+  most once.
+- Returns the final <xref:ModelContextProtocol.Protocol.CallToolResult> when the task completes,
+  or throws <xref:ModelContextProtocol.McpException> on `Failed`/`Cancelled`.
+
+```csharp
+var result = await client.CallToolAsync(
+    new CallToolRequestParams { Name = "long-running-tool", Arguments = arguments },
+    cancellationToken);
+```
+
+#### Manual control
+
+Use <xref:ModelContextProtocol.Client.McpClient.CallToolRawAsync*> to receive the raw
+<xref:ModelContextProtocol.Protocol.ResultOrCreatedTask`1> without auto-polling, then drive the
+lifecycle yourself using <xref:ModelContextProtocol.Client.McpClient.GetTaskAsync*>,
+<xref:ModelContextProtocol.Client.McpClient.UpdateTaskAsync*>, and
+<xref:ModelContextProtocol.Client.McpClient.CancelTaskAsync*>:
+
+```csharp
+var raw = await client.CallToolRawAsync(requestParams, cancellationToken);
+if (raw.IsTask)
+{
+    var taskId = raw.TaskCreated!.TaskId;
+    while (true)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(raw.TaskCreated.PollIntervalMs ?? 1000), cancellationToken);
+        var state = await client.GetTaskAsync(taskId, cancellationToken);
+        // Handle InputRequiredTaskResult by calling UpdateTaskAsync,
+        // CompletedTaskResult by deserializing its Result property, etc.
+    }
+}
+```
+
+#### Stuck-task detector
+
+`CallToolAsync` includes a safety net for misbehaving servers: if the task stays in
+<xref:ModelContextProtocol.Protocol.McpTaskStatus.InputRequired> across many consecutive polls
+without exposing any new input request keys (i.e. every previously requested input has already
+been resolved by the client and yet the server keeps returning `InputRequired`), the client
+gives up, issues a best-effort `tasks/cancel`, and throws
+<xref:ModelContextProtocol.McpException>. This guards against a server that never transitions
+out of `InputRequired` and prevents an unbounded poll loop.
+
+The threshold defaults to `60` consecutive stuck polls and is configurable via
+<xref:ModelContextProtocol.Client.McpClientOptions.MaxConsecutiveStuckPolls>. The effective
+wall-clock timeout is roughly `MaxConsecutiveStuckPolls * pollIntervalMs`, so tune the option
+with the server-side poll cadence in mind. Setting it too low risks false positives for servers
+that are slow to surface follow-up input requests; setting it too high can mask misbehaving
+servers.
+
+### Input requests (multi-round-trip)
+
+When a task needs additional input from the client, the server transitions it to
+<xref:ModelContextProtocol.Protocol.McpTaskStatus.InputRequired> and returns the outstanding
+requests in <xref:ModelContextProtocol.Protocol.InputRequiredTaskResult.InputRequests>. Each
+entry is an arbitrary key paired with a `{ method, params }` envelope representing an
+equivalent standalone server-to-client request. The client provides answers via
+<xref:ModelContextProtocol.Client.McpClient.UpdateTaskAsync*>, keyed by the same identifiers.
+
+Supported input request methods:
+
+| Method | Dispatched to the client handler |
+| --- | --- |
+| `elicitation/create` | <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler> |
+| `sampling/createMessage` | <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> |
+
+Per SEP-2663:
+
+- Each input request key **must** be unique over the lifetime of the task.
+- Clients **should** deduplicate keys across polls so a request is only presented to the user
+  or model once. `CallToolAsync` does this automatically.
+- Servers **should** ignore `inputResponses` entries whose key does not currently correspond to
+  an outstanding request, including responses for terminal-state tasks.
+  <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> follows this rule.
+
+### Implementing a custom task store
+
+Implement <xref:ModelContextProtocol.Server.IMcpTaskStore> for production scenarios. Key
+requirements drawn from the SEP and the SDK contract:
+
+1. **Thread safety** — every method may be called concurrently.
+2. **Idempotent terminal transitions** —
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.SetCompletedAsync*>,
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.SetFailedAsync*>, and
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.SetCancelledAsync*> must be no-ops on a task
+   that is already in a terminal state so a late cancellation cannot overwrite a result.
+3. **`InputResponseReceived` event** — after persisting an input response inside
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.ResolveInputRequestsAsync*>, raise
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.InputResponseReceived?displayProperty=nameWithType>
+   for each resolved entry. This is the only mechanism that wakes a pending
+   `server.ElicitAsync`/`server.SampleAsync` call waiting inside a task scope. In distributed
+   deployments where a different server instance receives the `tasks/update`, the event must
+   be propagated to the originating server (for example via Redis pub/sub, SignalR, or a custom
+   transport).
+4. **Strong-consistency on `CreateTaskAsync`** —
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.CreateTaskAsync*> must not return until the
+   task is durably persisted, so that a subsequent
+   <xref:ModelContextProtocol.Server.IMcpTaskStore.GetTaskAsync*> with the returned task ID
+   resolves immediately — even from a different process or node. Stores backed by
+   eventually-consistent storage must wait for the write to become visible (quorum
+   acknowledgement, write-through, etc.) before returning. Required by SEP-2663 §306.
+5. **Singleton under stateless HTTP** — when the server runs in stateless mode (each request
+   spins up a fresh server instance), the same `IMcpTaskStore` instance must be shared across
+   requests — either by registering it as a singleton in DI, or by backing it with external
+   storage that every instance can reach. Otherwise `tasks/get` polls from subsequent requests
+   will see an empty in-memory store and never find the task.
+
+```csharp
+public sealed class MyTaskStore : IMcpTaskStore
+{
+    public event Action<InputResponseReceivedEventArgs>? InputResponseReceived;
+
+    public async Task ResolveInputRequestsAsync(
         string taskId,
-        string? sessionId,
-        CancellationToken cancellationToken)
+        IDictionary<string, InputResponse> inputResponses,
+        CancellationToken cancellationToken = default)
     {
-        // Retrieve from database with session isolation
-        return await _db.QuerySingleOrDefaultAsync<McpTask>(
-            "SELECT * FROM Tasks WHERE TaskId = @TaskId AND SessionId = @SessionId",
-            new { taskId, sessionId });
-    }
+        // 1. Atomically persist the resolved requests, ignoring keys that are no longer
+        //    outstanding or that target a terminal task.
+        await PersistResolvedResponsesAsync(taskId, inputResponses, cancellationToken);
 
-    // Implement other interface methods...
-}
-```
-
-### Task Store Best Practices
-
-1. **Session Isolation**: Always filter tasks by session ID to prevent cross-session access
-2. **TTL Enforcement**: Implement background cleanup of expired tasks
-3. **Thread Safety**: Ensure all operations are thread-safe for concurrent access
-4. **Atomic Updates**: Use database transactions for status transitions
-5. **Optimistic Concurrency**: Prevent lost updates with version checking or row locks
-
-## Error Handling
-
-Task operations may throw <xref:ModelContextProtocol.McpException> with these error codes:
-
-| Error Code | Scenario |
-|------------|----------|
-| `InvalidParams` | Invalid or nonexistent task ID or invalid cursor |
-| `InvalidParams` | Tool with `taskSupport: forbidden` called with task metadata, or tool with `taskSupport: required` called without task metadata |
-| `InternalError` | Task execution failure or result unavailable |
-
-Example error handling:
-
-```csharp
-try
-{
-    var task = await client.GetTaskAsync(taskId, cancellationToken: ct);
-}
-catch (McpException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
-{
-    Console.WriteLine($"Task not found: {taskId}");
-}
-```
-
-## Complete Example
-
-<!-- TODO: Remove mlc-disable block after merging to main -->
-<!-- mlc-disable -->
-See the [LongRunningTasks sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/LongRunningTasks) for a complete working example demonstrating:
-<!-- mlc-enable -->
-
-- Server setup with a file-based `IMcpTaskStore` for durability
-- Explicit task creation via `IMcpTaskStore` in tools returning `McpTask`
-- Task polling and result retrieval across server restarts
-- Cancellation support
-
-## Fault-Tolerant Task Implementations
-
-The default `InMemoryMcpTaskStore` and automatic task support for async tools are convenient for development, but they provide no durability or fault tolerance. When the server process terminates—whether due to a crash, deployment, or scaling event—all task state and in-flight computations are lost.
-
-### Why Fault Tolerance Requires External Systems
-
-True fault tolerance for long-running tasks requires two key capabilities that cannot be provided by an in-process solution:
-
-1. **Durable Task State**: Task metadata (ID, status, results) must survive process termination. This requires an external persistent store such as a database, Redis, or distributed cache.
-
-2. **Resumable Compute**: The actual work being performed must be executed by an external system that can continue running independently of the MCP server process—such as a job queue (Azure Service Bus, RabbitMQ), workflow engine (Temporal, Azure Durable Functions), or batch processing system (Azure Batch, Kubernetes Jobs).
-
-### Explicit Task Creation with `IMcpTaskStore`
-
-To implement fault-tolerant tasks, tools can directly interact with `IMcpTaskStore` and return an `McpTask` instead of relying on automatic task wrapping. This approach gives you full control over task lifecycle and enables integration with external compute fabrics:
-
-```csharp
-[McpServerToolType]
-public class FaultTolerantTools(IMcpTaskStore taskStore, IJobQueue jobQueue)
-{
-    [McpServerTool]
-    [Description("Submits a long-running job with fault-tolerant execution.")]
-    public async Task<McpTask> SubmitJob(
-        [Description("The job parameters")] string jobInput,
-        RequestContext<CallToolRequestParams> context,
-        CancellationToken cancellationToken)
-    {
-        // 1. Create a task in the durable store
-        var task = await taskStore.CreateTaskAsync(
-            new McpTaskMetadata { TimeToLive = TimeSpan.FromHours(24) },
-            context.JsonRpcRequest.Id!,
-            context.JsonRpcRequest,
-            context.Server.SessionId,
-            cancellationToken);
-
-        // 2. Submit work to an external compute fabric
-        // The job queue handles execution independently of this process
-        await jobQueue.EnqueueAsync(new JobMessage
+        // 2. Then notify subscribers so any awaiting server.ElicitAsync/SampleAsync resumes.
+        foreach (var kvp in inputResponses)
         {
-            TaskId = task.TaskId,
-            SessionId = context.Server.SessionId,
-            Input = jobInput
-        }, cancellationToken);
-
-        // 3. Return the task immediately - client will poll for completion
-        return task;
-    }
-}
-```
-
-The external job processor updates the task store when work completes:
-
-```csharp
-// In a separate worker process or Azure Function
-public class JobProcessor(IMcpTaskStore taskStore)
-{
-    public async Task ProcessJobAsync(JobMessage job, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Perform the actual long-running work
-            var result = await DoExpensiveWorkAsync(job.Input, cancellationToken);
-
-            // Store the result in the durable task store
-            await taskStore.StoreTaskResultAsync(
-                job.TaskId,
-                McpTaskStatus.Completed,
-                JsonSerializer.SerializeToElement(new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = result }]
-                }),
-                job.SessionId,
-                cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            // Mark task as failed
-            await taskStore.StoreTaskResultAsync(
-                job.TaskId,
-                McpTaskStatus.Failed,
-                JsonSerializer.SerializeToElement(new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = ex.Message }],
-                    IsError = true
-                }),
-                job.SessionId,
-                cancellationToken);
+            InputResponseReceived?.Invoke(new InputResponseReceivedEventArgs
+            {
+                TaskId = taskId,
+                RequestId = kvp.Key,
+                Response = kvp.Value,
+            });
         }
     }
+
+    // … other IMcpTaskStore members
 }
 ```
 
-### Simplified Example: File-Based Task Store
+### Status semantics
 
-<!-- TODO: Remove mlc-disable block after merging to main -->
-<!-- mlc-disable -->
-The [LongRunningTasks sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/LongRunningTasks) demonstrates a simplified fault-tolerant approach using the file system. The `FileBasedMcpTaskStore` persists task state to disk, allowing tasks to survive server restarts:
-<!-- mlc-enable -->
+<xref:ModelContextProtocol.Protocol.McpTaskStatus.Completed> is the terminal status whenever the
+underlying request produced its standard result, *including a
+<xref:ModelContextProtocol.Protocol.CallToolResult> with `IsError = true`*. Per SEP-2663,
+tool-level error results are not promoted to `Failed`.
 
-```csharp
-// Use a file-based task store for durability
-var taskStorePath = Path.Combine(Path.GetTempPath(), "mcp-tasks");
-var taskStore = new FileBasedMcpTaskStore(taskStorePath);
+<xref:ModelContextProtocol.Protocol.McpTaskStatus.Failed> is reserved for JSON-RPC protocol-level
+errors during execution — for example, a malformed request, or an unhandled exception in a custom
+handler that the SDK converts to a JSON-RPC error. Use
+<xref:ModelContextProtocol.Protocol.CallToolResult.IsError?displayProperty=nameWithType> for
+domain-level errors the model should see.
 
-builder.Services.AddMcpServer(options =>
-{
-    options.TaskStore = taskStore;
-})
-.WithHttpTransport()
-.WithTools<TaskTools>();
-```
+### Cancellation semantics
 
-The sample's tool returns an `McpTask` directly by calling `CreateTaskAsync`:
+Per SEP-2663, `tasks/cancel` is **eventually consistent and cooperative**: the server acknowledges
+the request immediately, but is not required to actually stop the work or to transition to
+`Cancelled`. The notifications-cancelled mechanism (used for plain JSON-RPC requests) is not used
+for task cancellation; clients must use `tasks/cancel`.
 
-```csharp
-[McpServerToolType]
-public class TaskTools(IMcpTaskStore taskStore)
-{
-    [McpServerTool]
-    [Description("Submits a job and returns a task that can be polled for completion.")]
-    public async Task<McpTask> SubmitJob(
-        [Description("A label for the job")] string jobName,
-        RequestContext<CallToolRequestParams> context,
-        CancellationToken cancellationToken)
-    {
-        return await taskStore.CreateTaskAsync(
-            new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) },
-            context.JsonRpcRequest.Id!,
-            context.JsonRpcRequest,
-            context.Server.SessionId,
-            cancellationToken);
-    }
-}
-```
+In the built-in SDK pipeline, when a task is wrapped by a configured `TaskStore`:
 
-While this file-based approach demonstrates the pattern, production systems should use proper distributed storage and compute infrastructure for true fault tolerance and scalability.
+1. The store's `SetCancelledAsync` transitions the task to `Cancelled` (a no-op if the task is
+   already terminal).
+2. The associated `CancellationTokenSource` is signaled, propagating cancellation to the tool's
+   `CancellationToken` so cooperative cleanup can run.
+3. Whichever side (the cancel handler or the background runner's `finally` block) wins
+   `TryRemove` on the cancellation source owns disposal, avoiding `ObjectDisposedException`.
 
-## See Also
+### Architecture notes
 
-- <xref:ModelContextProtocol.IMcpTaskStore>
-- <xref:ModelContextProtocol.InMemoryMcpTaskStore>
-- <xref:ModelContextProtocol.Protocol.McpTask>
-- <xref:ModelContextProtocol.Protocol.McpTaskStatus>
-- [MCP Tasks Specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)
+#### Immutable store design
+
+<xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> uses immutable record snapshots with
+compare-and-swap updates for lock-free thread safety. `InputRequests` and `InputResponses` are
+exposed as `ImmutableDictionary<,>` so observers cannot mutate internal state.
+
+#### Capability bypass inside a task scope
+
+When `server.ElicitAsync`/`server.SampleAsync`/`server.RequestRootsAsync` execute inside a task
+scope, the SDK intentionally skips the normal client-capability negotiation checks
+(`ThrowIfElicitationUnsupported`, etc.). The tasks extension itself is the negotiated capability:
+the client opted in by including the extension marker in the originating request, so it is
+responsible for handling — or rejecting — the input requests surfaced through `tasks/get`.
+
+### Known limitations
+
+- **Server-push task status notifications (SEP-2575)**: not yet implemented. Clients rely on
+  polling exclusively.
+- **Lazy task creation**: when a tool runs through `TaskStore`, the store's
+  <xref:ModelContextProtocol.Server.IMcpTaskStore.CreateTaskAsync*> is invoked eagerly before
+  the inner handler runs, so tools that complete inline still incur a store write. There is
+  currently no built-in deferral.
+- **Mid-execution promotion to task**: an `[McpServerTool]` method cannot start executing
+  synchronously and then transition its remaining work to a background task. Use a custom
+  <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithTaskHandler?displayProperty=nameWithType>
+  if you need that pattern.
+- **`roots/list` as an input request**: the server SDK routes `RequestRootsAsync` through the
+  task channel when called from inside a task scope, but the client SDK does not currently
+  dispatch a handler for that method. Avoid calling `server.RequestRootsAsync` from within a
+  task scope until client-side support is added.
+- **`ServerCapabilities.Extensions` round-trip**: the dictionary is typed as
+  `IDictionary<string, object>` so its values cannot be deserialized by the source generator.
+  The negotiated extension surfaces correctly at the wire level, but round-tripping arbitrary
+  extension payloads in-process is not supported.

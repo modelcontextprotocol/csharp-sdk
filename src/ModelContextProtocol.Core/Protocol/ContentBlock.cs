@@ -1,6 +1,9 @@
+using System.Buffers;
+using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -66,8 +69,10 @@ public abstract class ContentBlock
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
-    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// <remarks>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't require
     /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ContentBlock>
     {
@@ -87,11 +92,14 @@ public abstract class ContentBlock
             string? type = null;
             string? text = null;
             string? name = null;
-            string? data = null;
+            string? title = null;
+            ReadOnlyMemory<byte>? data = null;
+            ReadOnlyMemory<byte>? decodedData = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
             long? size = null;
+            IList<Icon>? icons = null;
             ResourceContents? resource = null;
             Annotations? annotations = null;
             JsonObject? meta = null;
@@ -127,8 +135,19 @@ public abstract class ContentBlock
                         name = reader.GetString();
                         break;
 
+                    case "title":
+                        title = reader.GetString();
+                        break;
+
                     case "data":
-                        data = reader.GetString();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            decodedData = reader.GetBytesFromBase64();
+                        }
                         break;
 
                     case "mimeType":
@@ -145,6 +164,18 @@ public abstract class ContentBlock
 
                     case "size":
                         size = reader.GetInt64();
+                        break;
+
+                    case "icons":
+                        if (reader.TokenType == JsonTokenType.StartArray)
+                        {
+                            icons = [];
+                            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                            {
+                                icons.Add(JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Icon) ??
+                                    throw new JsonException("Unexpected null item in icons array."));
+                            }
+                        }
                         break;
 
                     case "resource":
@@ -209,17 +240,23 @@ public abstract class ContentBlock
                     Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
                 },
 
-                "image" => new ImageContentBlock
-                {
-                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                },
+                "image" => decodedData is not null ?
+                    ImageContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'image' type.")) :
+                    new ImageContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
+                    },
 
-                "audio" => new AudioContentBlock
-                {
-                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
-                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                },
+                "audio" => decodedData is not null ?
+                    AudioContentBlock.FromBytes(decodedData.Value,
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type.")) :
+                    new AudioContentBlock
+                    {
+                        Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
+                    },
 
                 "resource" => new EmbeddedResourceBlock
                 {
@@ -230,9 +267,11 @@ public abstract class ContentBlock
                 {
                     Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
                     Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
+                    Title = title,
                     Description = description,
                     MimeType = mimeType,
                     Size = size,
+                    Icons = icons,
                 },
 
                 "tool_use" => new ToolUseContentBlock
@@ -279,12 +318,12 @@ public abstract class ContentBlock
                     break;
 
                 case ImageContentBlock imageContent:
-                    writer.WriteString("data", imageContent.Data);
+                    writer.WriteString("data", imageContent.Data.Span);
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    writer.WriteString("data", audioContent.Data);
+                    writer.WriteString("data", audioContent.Data.Span);
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;
 
@@ -296,6 +335,10 @@ public abstract class ContentBlock
                 case ResourceLinkBlock resourceLink:
                     writer.WriteString("uri", resourceLink.Uri);
                     writer.WriteString("name", resourceLink.Name);
+                    if (resourceLink.Title is not null)
+                    {
+                        writer.WriteString("title", resourceLink.Title);
+                    }
                     if (resourceLink.Description is not null)
                     {
                         writer.WriteString("description", resourceLink.Description);
@@ -307,6 +350,16 @@ public abstract class ContentBlock
                     if (resourceLink.Size.HasValue)
                     {
                         writer.WriteNumber("size", resourceLink.Size.Value);
+                    }
+                    if (resourceLink.Icons is { Count: > 0 })
+                    {
+                        writer.WritePropertyName("icons");
+                        writer.WriteStartArray();
+                        foreach (var icon in resourceLink.Icons)
+                        {
+                            JsonSerializer.Serialize(writer, icon, McpJsonUtilities.JsonContext.Default.Icon);
+                        }
+                        writer.WriteEndArray();
                     }
                     break;
 
@@ -376,14 +429,90 @@ public sealed class TextContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte>? _decodedData;
+    private ReadOnlyMemory<byte>? _data;
+
+    /// <summary>
+    /// Creates an <see cref="ImageContentBlock"/> from decoded image bytes.
+    /// </summary>
+    /// <param name="bytes">The unencoded image bytes.</param>
+    /// <param name="mimeType">The MIME type of the image.</param>
+    /// <returns>A new <see cref="ImageContentBlock"/> instance.</returns>
+    /// <remarks>
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and lazily encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
+    public static ImageContentBlock FromBytes(ReadOnlyMemory<byte> bytes, string mimeType)
+    {
+        Throw.IfNullOrWhiteSpace(mimeType);
+
+        return new(bytes, mimeType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="ImageContentBlock"/> class.</summary>
+    public ImageContentBlock()
+    {
+    }
+
+    [SetsRequiredMembers]
+    private ImageContentBlock(ReadOnlyMemory<byte> decodedData, string mimeType)
+    {
+        _decodedData = decodedData;
+        MimeType = mimeType;
+    }
+
     /// <inheritdoc/>
     public override string Type => "image";
 
     /// <summary>
-    /// Gets or sets the base64-encoded image data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the image data.
     /// </summary>
+    /// <remarks>
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get
+        {
+            if (_data is null)
+            {
+                Debug.Assert(_decodedData is not null);
+                _data = EncodingUtilities.EncodeToBase64Utf8(_decodedData!.Value);
+            }
+
+            return _data.Value;
+        }
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded image data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+                _decodedData = EncodingUtilities.DecodeFromBase64Utf8(Data);
+            }
+
+            return _decodedData.Value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -395,21 +524,104 @@ public sealed class ImageContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = _decodedData is not null ? $"{_decodedData.Value.Length} bytes" : DebuggerDisplayHelper.GetBase64LengthDisplay(Data);
+            return $"MimeType = {MimeType}, Length = {lengthDisplay}";
+        }
+    }
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte>? _decodedData;
+    private ReadOnlyMemory<byte>? _data;
+
+    /// <summary>
+    /// Creates an <see cref="AudioContentBlock"/> from decoded audio bytes.
+    /// </summary>
+    /// <param name="bytes">The unencoded audio bytes.</param>
+    /// <param name="mimeType">The MIME type of the audio.</param>
+    /// <returns>A new <see cref="AudioContentBlock"/> instance.</returns>
+    /// <remarks>
+    /// This method stores the provided bytes as <see cref="DecodedData"/> and lazily encodes them to base64 UTF-8 bytes for <see cref="Data"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="mimeType"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="mimeType"/> is empty or composed entirely of whitespace.</exception>
+    public static AudioContentBlock FromBytes(ReadOnlyMemory<byte> bytes, string mimeType)
+    {
+        Throw.IfNullOrWhiteSpace(mimeType);
+
+        return new(bytes, mimeType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="AudioContentBlock"/> class.</summary>
+    public AudioContentBlock()
+    {
+    }
+
+    [SetsRequiredMembers]
+    private AudioContentBlock(ReadOnlyMemory<byte> decodedData, string mimeType)
+    {
+        _decodedData = decodedData;
+        MimeType = mimeType;
+    }
+
     /// <inheritdoc/>
     public override string Type => "audio";
 
     /// <summary>
-    /// Gets or sets the base64-encoded audio data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the audio data.
     /// </summary>
+    /// <remarks>
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get
+        {
+            if (_data is null)
+            {
+                Debug.Assert(_decodedData is not null);
+                _data = EncodingUtilities.EncodeToBase64Utf8(_decodedData!.Value);
+            }
+
+            return _data.Value;
+        }
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded audio data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When getting, this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+                _decodedData = EncodingUtilities.DecodeFromBase64Utf8(Data);
+            }
+
+            return _decodedData.Value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -421,7 +633,14 @@ public sealed class AudioContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = _decodedData is not null ? $"{_decodedData.Value.Length} bytes" : DebuggerDisplayHelper.GetBase64LengthDisplay(Data);
+            return $"MimeType = {MimeType}, Length = {lengthDisplay}";
+        }
+    }
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
@@ -475,6 +694,17 @@ public sealed class ResourceLinkBlock : ContentBlock
     public required string Name { get; set; }
 
     /// <summary>
+    /// Gets or sets a title for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This is intended for UI and end-user contexts. It is optimized to be human-readable and easily understood,
+    /// even by those unfamiliar with domain-specific terminology.
+    /// If not provided, <see cref="Name"/> can be used for display.
+    /// </remarks>
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or sets a description of what this resource represents.
     /// </summary>
     /// <remarks>
@@ -517,10 +747,22 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("size")]
     public long? Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional list of icons for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the resource's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>
 [DebuggerDisplay("Name = {Name}, Id = {Id}")]
+// Sampling support type: this content block only appears inside sampling messages (an assistant tool call),
+// so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ToolUseContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -550,6 +792,9 @@ public sealed class ToolUseContentBlock : ContentBlock
 
 /// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
+// Sampling support type: this content block only appears inside sampling messages (a tool result returned to
+// the assistant), so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ToolResultContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -572,7 +817,7 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// audio, resource links, and embedded resources.
     /// </remarks>
     [JsonPropertyName("content")]
-    public required List<ContentBlock> Content { get; set; }
+    public required IList<ContentBlock> Content { get; set; }
 
     /// <summary>
     /// Gets or sets an optional structured result object.

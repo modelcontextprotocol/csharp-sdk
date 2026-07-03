@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Tests.Utils;
 
@@ -49,9 +51,12 @@ public static class NodeHelpers
 
             var repoRoot = FindRepoRoot();
             var nodeModulesPath = Path.Combine(repoRoot, "node_modules");
+            var lockFilePath = Path.Combine(repoRoot, "package-lock.json");
 
-            // Use 'npm ci' if node_modules doesn't exist, otherwise assume it's up to date.
-            if (!Directory.Exists(nodeModulesPath))
+            // Run 'npm ci' if node_modules doesn't exist or is outdated
+            // (package-lock.json is newer than node_modules).
+            if (!Directory.Exists(nodeModulesPath) ||
+                File.GetLastWriteTimeUtc(lockFilePath) > Directory.GetLastWriteTimeUtc(nodeModulesPath))
             {
                 var startInfo = NpmStartInfo("ci", repoRoot);
                 using var process = Process.Start(startInfo)
@@ -75,10 +80,26 @@ public static class NodeHelpers
     /// </summary>
     /// <param name="binaryName">The name of the binary in node_modules/.bin (e.g. "conformance").</param>
     /// <param name="arguments">The arguments to pass to the binary.</param>
+    /// <param name="appendProtocolVersionFromEnv">
+    /// When <see langword="true"/> (the default) and the MCP_CONFORMANCE_PROTOCOL_VERSION
+    /// environment variable is set, a "--spec-version &lt;value&gt;" argument is appended.
+    /// Pass <see langword="false"/> for scenarios that pin their own spec version (e.g. the
+    /// caching scenario specific to the 2026-07-28 protocol) to avoid a conflicting duplicate flag.
+    /// </param>
     /// <returns>A configured ProcessStartInfo for running the binary.</returns>
-    public static ProcessStartInfo ConformanceTestStartInfo(string arguments)
+    public static ProcessStartInfo ConformanceTestStartInfo(string arguments, bool appendProtocolVersionFromEnv = true)
     {
         EnsureNpmDependenciesInstalled();
+
+        // If MCP_CONFORMANCE_PROTOCOL_VERSION is set, pass it as --spec-version to the runner.
+        if (appendProtocolVersionFromEnv)
+        {
+            var protocolVersion = Environment.GetEnvironmentVariable("MCP_CONFORMANCE_PROTOCOL_VERSION");
+            if (!string.IsNullOrEmpty(protocolVersion))
+            {
+                arguments += $" --spec-version {protocolVersion}";
+            }
+        }
 
         var repoRoot = FindRepoRoot();
         var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
@@ -156,6 +177,215 @@ public static class NodeHelpers
             return false;
         }
     }
+
+    /// <summary>
+    /// Checks whether the SEP-2243 conformance scenarios are available, by reading the
+    /// <em>installed</em> conformance package version from node_modules.
+    /// The http-standard-headers, http-custom-headers, http-invalid-tool-headers,
+    /// http-header-validation, and http-custom-header-server-validation scenarios were
+    /// introduced in conformance package 0.2.0. Reading the installed version (rather than
+    /// the pinned version in package.json) means this also returns <see langword="true"/>
+    /// when a newer private build has been installed locally via
+    /// <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// </summary>
+    public static bool HasSep2243Scenarios()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+
+    /// <summary>
+    /// Checks whether the SEP-2549 "caching" conformance scenario (added in conformance
+    /// PR #275) is available, by reading the <em>installed</em> conformance package version
+    /// from node_modules. The caching scenario was introduced in conformance package 0.2.0.
+    /// Reading the installed version (rather than the pinned version in package.json) means
+    /// this also returns <see langword="true"/> when a newer private build has been installed
+    /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// </summary>
+    public static bool HasCachingScenario()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the conformance package installed in node_modules
+    /// has a version greater than or equal to <paramref name="minimumVersion"/>.
+    /// </summary>
+    private static bool HasInstalledConformanceVersionAtLeast(Version minimumVersion)
+    {
+        var version = GetInstalledConformanceVersion();
+        return version is not null && version >= minimumVersion;
+    }
+
+    /// <summary>
+    /// Reads the version of the conformance package actually installed in node_modules,
+    /// stripping any prerelease/build suffix (e.g. "0.2.0-alpha.1" -> "0.2.0") so it can be
+    /// parsed as a <see cref="Version"/>. Returns <see langword="null"/> if it cannot be
+    /// determined.
+    /// </summary>
+    private static Version? GetInstalledConformanceVersion()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var packageJsonPath = Path.Combine(
+                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "package.json");
+
+            // This is a skip gate for version-conditional conformance scenarios, so it must stay
+            // side-effect-free. If the conformance package isn't installed, report no version (the
+            // scenario is simply gated off); the actual scenario run path restores npm dependencies
+            // separately via ConformanceTestStartInfo.
+            if (!File.Exists(packageJsonPath))
+            {
+                return null;
+            }
+
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (json.RootElement.TryGetProperty("version", out var versionElement) &&
+                versionElement.GetString() is { } versionStr)
+            {
+                // Strip any prerelease/build suffix so System.Version can parse it.
+                var core = versionStr.Split('-', '+')[0];
+                if (Version.TryParse(core, out var version))
+                {
+                    return version;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs the conformance runner ("conformance &lt;arguments&gt;") in server mode and returns
+    /// whether it succeeded along with the captured stdout/stderr. Centralizes the process
+    /// plumbing (output capture, a 5-minute timeout, and the Windows libuv-shutdown fallback)
+    /// shared by the server-side conformance tests.
+    /// </summary>
+    /// <param name="arguments">Arguments to pass to the conformance runner.</param>
+    /// <param name="onLine">Optional callback invoked for each captured stdout/stderr line.</param>
+    /// <param name="appendProtocolVersionFromEnv">
+    /// Forwarded to <see cref="ConformanceTestStartInfo(string, bool)"/>.
+    /// </param>
+    /// <param name="cancellationToken">Token used to cancel the run.</param>
+    public static async Task<(bool Success, string Output, string Error)> RunServerConformanceAsync(
+        string arguments,
+        Action<string>? onLine = null,
+        bool appendProtocolVersionFromEnv = true,
+        CancellationToken cancellationToken = default)
+    {
+        var startInfo = ConformanceTestStartInfo(arguments, appendProtocolVersionFromEnv);
+
+        var outputBuilder = new StringBuilder();
+        var errorBuilder = new StringBuilder();
+
+        using var process = new Process { StartInfo = startInfo };
+
+        // Protect callbacks with try/catch so a callback that throws on a background thread
+        // (e.g. ITestOutputHelper after the test completes) does not crash the test host.
+        DataReceivedEventHandler outputHandler = (sender, e) =>
+        {
+            if (e.Data != null)
+            {
+                try { onLine?.Invoke(e.Data); } catch { }
+                outputBuilder.AppendLine(e.Data);
+            }
+        };
+
+        DataReceivedEventHandler errorHandler = (sender, e) =>
+        {
+            if (e.Data != null)
+            {
+                try { onLine?.Invoke(e.Data); } catch { }
+                errorBuilder.AppendLine(e.Data);
+            }
+        };
+
+        process.OutputDataReceived += outputHandler;
+        process.ErrorDataReceived += errorHandler;
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromMinutes(5));
+        try
+        {
+#if NET
+            await process.WaitForExitAsync(cts.Token);
+#else
+            // net472 lacks the CancellationToken overload; fall back to the timeout-based polyfill
+            // extension and surface a timeout the same way the modern path does.
+            await process.WaitForExitAsync(TimeSpan.FromMinutes(5));
+            if (!process.HasExited)
+            {
+                throw new OperationCanceledException();
+            }
+#endif
+        }
+        catch (OperationCanceledException)
+        {
+#if NET
+            process.Kill(entireProcessTree: true);
+#else
+            process.Kill();
+#endif
+            process.OutputDataReceived -= outputHandler;
+            process.ErrorDataReceived -= errorHandler;
+            return (
+                false,
+                outputBuilder.ToString(),
+                errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed.");
+        }
+
+        process.OutputDataReceived -= outputHandler;
+        process.ErrorDataReceived -= errorHandler;
+
+        var stdoutText = outputBuilder.ToString();
+        var stderrText = errorBuilder.ToString();
+
+        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
+        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
+        // code even though every conformance check passed. When that happens, fall back to
+        // parsing the "Test Results:" summary in stdout to decide success.
+        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
+
+        return (success, stdoutText, stderrText);
+    }
+
+    /// <summary>
+    /// Parses the conformance runner output for a "Test Results:" line such as
+    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
+    /// and none failed.
+    /// </summary>
+    private static bool ConformanceOutputIndicatesSuccess(string output)
+    {
+        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
+        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        int passed = int.Parse(match.Groups[1].Value);
+        int total = int.Parse(match.Groups[2].Value);
+        int failed = int.Parse(match.Groups[3].Value);
+
+        return passed == total && failed == 0 && total > 0;
+    }
+
+    /// <summary>
+    /// Checks whether the SEP-2322 (Multi Round-Trip Requests / InputRequiredResult)
+    /// conformance scenarios are available, by reading the <em>installed</em> conformance
+    /// package version from node_modules. The <c>incomplete-result-*</c> scenarios were
+    /// introduced in conformance package 0.2.0 (see
+    /// https://github.com/modelcontextprotocol/conformance/pull/188).
+    /// Reading the installed version (rather than the pinned version in package.json) means
+    /// this also returns <see langword="true"/> when a newer private build has been installed
+    /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// </summary>
+    public static bool HasMrtrScenarios()
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {

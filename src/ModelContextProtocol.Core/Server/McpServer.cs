@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -7,6 +8,14 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public abstract partial class McpServer : McpSession
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpServer"/> class.
+    /// </summary>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    protected McpServer()
+    {
+    }
+
     /// <summary>
     /// Gets the capabilities supported by the client.
     /// </summary>
@@ -53,7 +62,26 @@ public abstract partial class McpServer : McpSession
     public abstract IServiceProvider? Services { get; }
 
     /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public abstract LoggingLevel? LoggingLevel { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the connected client supports Multi Round-Trip Requests (MRTR).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When this property returns <see langword="true"/>, tool handlers can throw
+    /// <see cref="Protocol.InputRequiredException"/> to return an <see cref="Protocol.InputRequiredResult"/>
+    /// with <see cref="Protocol.InputRequiredResult.InputRequests"/> and/or
+    /// <see cref="Protocol.InputRequiredResult.RequestState"/> to the client.
+    /// </para>
+    /// <para>
+    /// When this property returns <see langword="false"/>, tool handlers should provide a fallback
+    /// experience (for example, returning a text message explaining that the client does not support
+    /// the required feature) instead of throwing <see cref="Protocol.InputRequiredException"/>.
+    /// </para>
+    /// </remarks>
+    public virtual bool IsMrtrSupported => false;
 
     /// <summary>
     /// Runs the server, listening for and handling client requests.

@@ -18,6 +18,14 @@ namespace ModelContextProtocol.Server;
 /// This transport is used in scenarios where the server needs to push messages to the client in real-time,
 /// such as when streaming completion results or providing progress updates during long-running operations.
 /// </para>
+/// <para>
+/// <b>Backpressure consideration:</b> The SSE transport separates request and response channels — the client POSTs
+/// messages to a separate endpoint while responses flow over the SSE stream. If the HTTP handler for incoming
+/// messages returns immediately (e.g., <c>202 Accepted</c>) after calling <see cref="OnMessageReceivedAsync"/>,
+/// there is no HTTP-level backpressure on handler concurrency. The ASP.NET Core integration disables legacy SSE
+/// endpoints by default for this reason. If you are using this type directly, consider holding the POST response
+/// open until the handler completes, or applying rate-limiting at the HTTP layer.
+/// </para>
 /// </remarks>
 /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
 /// <param name="messageEndpoint">

@@ -58,7 +58,7 @@ namespace ModelContextProtocol.Server;
 ///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerToolCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
 ///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved
-///       from the <see cref="IServiceProvider"/> provided to when the tool is invoked rather than from the argument collection.
+///       from the <see cref="IServiceProvider"/> provided when the tool is invoked rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
@@ -157,7 +157,6 @@ public sealed class McpServerToolAttribute : Attribute
     internal bool? _idempotent;
     internal bool? _openWorld;
     internal bool? _readOnly;
-    internal ToolTaskSupport? _taskSupport;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerToolAttribute"/> class.
@@ -266,6 +265,27 @@ public sealed class McpServerToolAttribute : Attribute
     public bool UseStructuredContent { get; set; }
 
     /// <summary>
+    /// Gets or sets a <see cref="Type"/> from which to generate the tool's output schema.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the output schema is inferred from the return type.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set, a JSON schema is generated from the specified <see cref="Type"/> and used as the
+    /// <see cref="Tool.OutputSchema"/> instead of the schema inferred from the tool method's return type.
+    /// This is particularly useful when a tool method returns <see cref="CallToolResult"/> directly
+    /// (to control properties like <see cref="Result.Meta"/>, <see cref="CallToolResult.IsError"/>,
+    /// or <see cref="CallToolResult.StructuredContent"/>) but still needs to advertise a meaningful output
+    /// schema to clients.
+    /// </para>
+    /// <para>
+    /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
+    /// </para>
+    /// </remarks>
+    public Type? OutputSchemaType { get; set; }
+
+    /// <summary>
     /// Gets or sets the source URI for the tool's icon.
     /// </summary>
     /// <remarks>
@@ -279,29 +299,4 @@ public sealed class McpServerToolAttribute : Attribute
     /// </para>
     /// </remarks>
     public string? IconSource { get; set; }
-
-    /// <summary>
-    /// Gets or sets the task support configuration for the tool.
-    /// </summary>
-    /// <value>
-    /// A <see cref="ToolTaskSupport"/> value indicating how the tool supports task-based invocation.
-    /// The default value is <see cref="ToolTaskSupport.Forbidden"/>.
-    /// </value>
-    /// <remarks>
-    /// <para>
-    /// When set to <see cref="ToolTaskSupport.Forbidden"/>, clients must not attempt to invoke the tool as a task.
-    /// When set to <see cref="ToolTaskSupport.Optional"/>, clients may invoke the tool as a task or as a normal request.
-    /// When set to <see cref="ToolTaskSupport.Required"/>, clients must invoke the tool as a task.
-    /// </para>
-    /// <para>
-    /// If this property is not explicitly set on the attribute, the task support behavior will be determined 
-    /// automatically based on the tool's characteristics (e.g., async methods default to <see cref="ToolTaskSupport.Optional"/>).
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public ToolTaskSupport TaskSupport
-    {
-        get => _taskSupport ?? ToolTaskSupport.Forbidden;
-        set => _taskSupport = value;
-    }
 }

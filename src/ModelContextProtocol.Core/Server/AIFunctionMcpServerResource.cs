@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -293,7 +294,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     {
         AIFunction = function;
         ProtocolResourceTemplate = resourceTemplate;
-        ProtocolResourceTemplate.McpServerResource = this;
         ProtocolResource = resourceTemplate.AsResource();
         _metadata = metadata;
 
@@ -386,17 +386,22 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             TextContent tc => new()
             {
-                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
+                Contents = [new TextResourceContents { Uri = request.Params.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
             },
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.Base64Data.ToString() }],
+                Contents = [new BlobResourceContents 
+                { 
+                    Uri = request.Params.Uri, 
+                    MimeType = dc.MediaType, 
+                    Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
+                }],
             },
 
             string text => new()
             {
-                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
+                Contents = [new TextResourceContents { Uri = request.Params.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
             },
 
             IEnumerable<ResourceContents> contents => new()
@@ -411,16 +416,16 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     {
                         TextContent tc => new TextResourceContents
                         {
-                            Uri = request.Params!.Uri,
+                            Uri = request.Params.Uri,
                             MimeType = ProtocolResourceTemplate.MimeType,
                             Text = tc.Text
                         },
 
                         DataContent dc => new BlobResourceContents
                         {
-                            Uri = request.Params!.Uri,
+                            Uri = request.Params.Uri,
                             MimeType = dc.MediaType,
-                            Blob = dc.Base64Data.ToString()
+                            Blob = EncodingUtilities.GetUtf8Bytes(dc.Base64Data.Span)
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
@@ -431,7 +436,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             {
                 Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents
                 {
-                    Uri = request.Params!.Uri,
+                    Uri = request.Params.Uri,
                     MimeType = ProtocolResourceTemplate.MimeType,
                     Text = text
                 }).ToList(),

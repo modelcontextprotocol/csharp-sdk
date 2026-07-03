@@ -33,7 +33,10 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // Arrange
 
         // Act
-        await using var client = await _fixture.CreateClientAsync(clientId);
+        // ping was removed in the 2026-07-28 protocol (SEP-2575), so pin to the latest stable
+        // protocol version to keep exercising the legacy ping RPC. The 2026-07-28 protocol relies on
+        // the transport/request lifecycle instead of an explicit ping.
+        await using var client = await _fixture.CreateClientAsync(clientId, new McpClientOptions { ProtocolVersion = "2025-11-25" });
         await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -260,7 +263,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Single(result.Contents);
 
         BlobResourceContents blobResource = Assert.IsType<BlobResourceContents>(result.Contents[0]);
-        Assert.NotNull(blobResource.Blob);
+        Assert.False(blobResource.Blob.IsEmpty);
     }
 
     // Not supported by "everything" server version on npx
@@ -777,4 +780,43 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
     [JsonSerializable(typeof(TestNotification))]
     partial class JsonContext3 : JsonSerializerContext;
+
+    [Fact]
+    public async Task Completion_Stdio_GracefulDisposal_ReturnsStdioDetails()
+    {
+        var client = await _fixture.CreateClientAsync("test_server");
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var stdioDetails = Assert.IsType<StdioClientCompletionDetails>(details);
+        Assert.Null(stdioDetails.Exception);
+        Assert.NotNull(stdioDetails.ProcessId);
+        Assert.True(stdioDetails.ProcessId > 0);
+        Assert.NotNull(stdioDetails.ExitCode);
+    }
+
+    [Fact]
+    public async Task Completion_Stdio_ServerCrash_ReturnsExitCodeAndStderr()
+    {
+        var client = await _fixture.CreateClientAsync("test_server");
+
+        // Tell the server to crash with a specific exit code.
+        // CallToolAsync will throw because the server exits before responding.
+        await Assert.ThrowsAnyAsync<Exception>(async () => await client.CallToolAsync(
+            "crash",
+            new Dictionary<string, object?> { ["exitCode"] = 42 },
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        var details = await client.Completion.WaitAsync(TestContext.Current.CancellationToken);
+        var stdioDetails = Assert.IsType<StdioClientCompletionDetails>(details);
+
+        Assert.NotNull(stdioDetails.ProcessId);
+        Assert.True(stdioDetails.ProcessId > 0);
+        Assert.Equal(42, stdioDetails.ExitCode);
+        Assert.NotNull(stdioDetails.StandardErrorTail);
+        Assert.Contains(stdioDetails.StandardErrorTail, line => line.Contains("Crashing with exit code 42"));
+    }
 }

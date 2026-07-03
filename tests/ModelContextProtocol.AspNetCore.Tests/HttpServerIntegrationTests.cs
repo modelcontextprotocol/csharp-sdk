@@ -34,7 +34,9 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Arrange
 
         // Act
-        await using var client = await GetClientAsync();
+        // ping was removed in the 2026-07-28 protocol revision (SEP-2575), so pin to the latest stable
+        // protocol version to keep exercising the legacy ping RPC. On the 2026-07-28 protocol, liveness relies on the transport.
+        await using var client = await GetClientAsync(new McpClientOptions { ProtocolVersion = "2025-11-25" });
         await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -47,7 +49,9 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Arrange
 
         // Act
-        await using var client = await GetClientAsync();
+        // Stateful Streamable HTTP only provisions a session ID under the legacy handshake. Starting with the
+        // 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin to the latest stable version to keep covering session-ID provisioning.
+        await using var client = await GetClientAsync(new McpClientOptions { ProtocolVersion = "2025-11-25" });
 
         // Assert
         Assert.NotNull(client.ServerCapabilities);
@@ -180,7 +184,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.Single(result.Contents);
 
         BlobResourceContents blobContent = Assert.IsType<BlobResourceContents>(result.Contents[0]);
-        Assert.NotNull(blobContent.Blob);
+        Assert.False(blobContent.Blob.IsEmpty);
     }
 
     [Fact]
@@ -302,5 +306,20 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
+    }
+
+    [Fact]
+    public async Task Completion_GracefulDisposal_ReturnsCompletionDetails()
+    {
+        var client = await GetClientAsync();
+        Assert.False(client.Completion.IsCompleted);
+
+        await client.DisposeAsync();
+        Assert.True(client.Completion.IsCompleted);
+
+        var details = await client.Completion;
+        var httpDetails = Assert.IsType<HttpClientCompletionDetails>(details);
+        Assert.Null(httpDetails.Exception);
+        Assert.Null(httpDetails.HttpStatusCode);
     }
 }

@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 public static class NotificationMethods
 {
     /// <summary>
-    /// The name of notification sent by a server when the list of available tools changes.
+    /// The name of the notification sent by a server when the list of available tools changes.
     /// </summary>
     /// <remarks>
     /// This notification informs clients that the set of available tools has been modified.
@@ -53,15 +53,17 @@ public static class NotificationMethods
     /// <remarks>
     /// <para>
     /// This notification informs the server that the client's "roots" have changed.
-    /// Roots define the boundaries of where servers can operate within the filesystem,
-    /// allowing them to understand which directories and files they have access to. Servers
-    /// can request the list of roots from supporting clients and receive notifications when that list changes.
+    /// Roots inform servers about the directories and files the client considers relevant,
+    /// so that servers can focus their operations accordingly. They are informational guidance
+    /// rather than an access-control mechanism; the protocol does not enforce that servers stay within roots.
+    /// Servers can request the list of roots from supporting clients and receive notifications when that list changes.
     /// </para>
     /// <para>
     /// After receiving this notification, servers can refresh their knowledge of roots by calling the appropriate
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsListChangedNotification = "notifications/roots/list_changed";
 
     /// <summary>
@@ -79,6 +81,7 @@ public static class NotificationMethods
     /// the server can determine which messages to send based on its own configuration.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingMessageNotification = "notifications/message";
 
     /// <summary>
@@ -142,39 +145,22 @@ public static class NotificationMethods
     public const string CancelledNotification = "notifications/cancelled";
 
     /// <summary>
-    /// The name of the notification sent when a task status changes.
+    /// The name of the notification sent by the server to push task status updates to subscribed clients.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// When a task status changes, receivers may send this notification to inform the requestor
-    /// of the change. This notification includes the full task state.
-    /// </para>
-    /// <para>
-    /// Requestors must not rely on receiving this notification, as it is optional. Receivers
-    /// are not required to send status notifications and may choose to only send them for
-    /// certain status transitions. Requestors should continue to poll via tasks/get to ensure
-    /// they receive status updates.
-    /// </para>
+    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
+    /// Each notification carries a complete task state for the current status, identical to what
+    /// <c>tasks/get</c> would have returned at that moment.
     /// </remarks>
     public const string TaskStatusNotification = "notifications/tasks/status";
 
     /// <summary>
-    /// The metadata key used to associate requests, responses, and notifications with a task.
+    /// The name of the notification sent first on a <see cref="RequestMethods.SubscriptionsListen"/>
+    /// response stream to indicate which notification types the server agreed to deliver.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This constant defines the key <c>"io.modelcontextprotocol/related-task"</c> used in the
-    /// <c>_meta</c> field to associate messages with their originating task across the entire
-    /// request lifecycle.
-    /// </para>
-    /// <para>
-    /// For example, an elicitation that a task-augmented tool call depends on must share the
-    /// same related task ID with that tool call's task.
-    /// </para>
-    /// <para>
-    /// For <c>tasks/get</c>, <c>tasks/list</c>, and <c>tasks/cancel</c> operations, this
-    /// metadata should not be included as the taskId is already present in the message structure.
-    /// </para>
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). The notification's params mirror the shape
+    /// of the requested notifications and include only the entries the server actually supports.
     /// </remarks>
-    public const string RelatedTaskMetaKey = "io.modelcontextprotocol/related-task";
+    public const string SubscriptionsAcknowledgedNotification = "notifications/subscriptions/acknowledged";
 }

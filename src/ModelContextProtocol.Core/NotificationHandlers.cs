@@ -152,7 +152,7 @@ internal sealed class NotificationHandlers
         /// by that handler are no longer in use and may be cleaned up. If <see cref="DisposeAsync"/> were to be invoked
         /// and its task awaited from within the invocation of the handler, however, that would result in deadlock, since
         /// the task wouldn't complete until the invocation completed, and the invocation wouldn't complete until the task
-        /// completed. To circument that, we track via an <see cref="AsyncLocal{Int32}"/> in-flight invocations. If
+        /// completed. To circumvent that, we track via an <see cref="AsyncLocal{Int32}"/> in-flight invocations. If
         /// <see cref="DisposeAsync"/> detects it's being invoked from within an invocation, it will avoid waiting. For
         /// simplicity, we don't require that it's the same handler.
         /// </remarks>

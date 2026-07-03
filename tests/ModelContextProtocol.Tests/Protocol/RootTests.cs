@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Protocol;
 
@@ -12,7 +13,7 @@ public static class RootTests
         {
             Uri = "file:///home/user/project",
             Name = "My Project",
-            Meta = JsonDocument.Parse("""{"custom":"data"}""").RootElement.Clone()
+            Meta = new JsonObject { ["custom"] = "data" }
         };
 
         string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
@@ -22,7 +23,7 @@ public static class RootTests
         Assert.Equal("file:///home/user/project", deserialized.Uri);
         Assert.Equal("My Project", deserialized.Name);
         Assert.NotNull(deserialized.Meta);
-        Assert.Equal("data", deserialized.Meta.Value.GetProperty("custom").GetString());
+        Assert.Equal("data", (string?)deserialized.Meta["custom"]);
     }
 
     [Fact]
