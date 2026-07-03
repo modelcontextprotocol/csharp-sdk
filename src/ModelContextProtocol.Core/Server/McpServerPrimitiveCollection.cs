@@ -45,8 +45,8 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>
     /// Begins a deferred-change scope. <see cref="Changed"/> notifications are suppressed
     /// until the returned scope is disposed, at which point a single notification is raised
-    /// if any mutation occurred during the scope. Nesting is supported; the notification
-    /// fires when the outermost scope disposes.
+    /// if any mutation occurred during the scope. Multiple scopes may be active simultaneously;
+    /// the notification fires once all active scopes have been disposed.
     /// </summary>
     /// <returns>An <see cref="IDisposable"/> that ends the deferral scope when disposed.</returns>
     /// <remarks>
@@ -55,9 +55,10 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <see cref="Changed"/> notification is raised.
     /// <para>
     /// Mutations from any thread during an open scope are coalesced. A single <see cref="Changed"/>
-    /// notification fires on the thread that disposes the outermost scope, only if at least one
+    /// notification fires on the thread that disposes the last active scope, only if at least one
     /// mutation occurred. All deferral state transitions are guarded by an internal lock, so
-    /// concurrent mutations and concurrent scope disposal are both safe.
+    /// concurrent mutations and concurrent scope disposal are both safe. Disposing the same scope
+    /// instance more than once is safe and has no additional effect.
     /// </para>
     /// </remarks>
     public IDisposable DeferChangedEvents()
@@ -71,8 +72,8 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
     /// <remarks>
-    /// If a <see cref="DeferChangedEvents"/> scope is active, the notification is deferred until the
-    /// outermost scope is disposed. Derived types that override mutation methods and call
+    /// If a <see cref="DeferChangedEvents"/> scope is active, the notification is deferred until all
+    /// active scopes are disposed. Derived types that override mutation methods and call
     /// <see cref="RaiseChanged"/> will automatically participate in deferral.
     /// </remarks>
     protected void RaiseChanged()

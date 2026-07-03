@@ -267,7 +267,7 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
-    public void DeferChangedEvents_Nested_FiresOnceOnOutermostDispose()
+    public void DeferChangedEvents_Nested_FiresOnceWhenAllScopesDisposed()
     {
         var collection = new McpServerPrimitiveCollection<McpServerTool>();
         int changeCount = 0;
@@ -288,6 +288,68 @@ public class McpServerPrimitiveCollectionTests
         }
 
         Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChangedEvents_OutOfOrderDisposal_FiresOnceWhenAllScopesDisposed()
+    {
+        // Scopes created in order 1, 2 but disposed in reverse order 2, 1.
+        // Changed should NOT fire when scope 2 is disposed (scope 1 still active).
+        // Changed SHOULD fire when scope 1 is disposed (last active scope gone).
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        var scope1 = collection.DeferChangedEvents();
+        var scope2 = collection.DeferChangedEvents();
+        collection.TryAdd(CreateTool("tool1"));
+
+        Assert.Equal(0, changeCount);
+        scope2.Dispose(); // out-of-order dispose; scope1 still active
+        Assert.Equal(0, changeCount);
+
+        scope1.Dispose(); // last scope disposed; Changed fires now
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChangedEvents_DoubleDisposeSingleScope_DoesNotDecrementCountTwice()
+    {
+        // Double-disposing scope1 must not decrement _activeDeferralScopes more than once,
+        // which would cause Changed to fire while scope2 is still active.
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        var scope1 = collection.DeferChangedEvents();
+        var scope2 = collection.DeferChangedEvents();
+        collection.TryAdd(CreateTool("tool1"));
+
+        scope1.Dispose();
+        Assert.Equal(0, changeCount); // scope2 still active
+
+        scope1.Dispose(); // second dispose of scope1 -- must be a no-op
+        Assert.Equal(0, changeCount); // scope2 is still active; Changed must NOT fire yet
+
+        scope2.Dispose(); // now all scopes are disposed; Changed fires
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void DeferChangedEvents_OutOfOrderDisposalNoMutation_DoesNotFireChanged()
+    {
+        // Same out-of-order pattern but with no mutations -- verifies no spurious Changed.
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        int changeCount = 0;
+        collection.Changed += (_, _) => changeCount++;
+
+        var scope1 = collection.DeferChangedEvents();
+        var scope2 = collection.DeferChangedEvents();
+
+        scope2.Dispose();
+        scope1.Dispose();
+
+        Assert.Equal(0, changeCount);
     }
 
     [Fact]
