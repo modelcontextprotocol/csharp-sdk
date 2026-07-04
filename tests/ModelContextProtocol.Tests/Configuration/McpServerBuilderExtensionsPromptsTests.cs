@@ -188,13 +188,13 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         Assert.NotNull(serverPrompts);
 
         int notificationCount = 0;
-        var firstNotification = new TaskCompletionSource();
+        var firstNotification = new TaskCompletionSource<bool>();
 
         await using (client.RegisterNotificationHandler(NotificationMethods.PromptListChangedNotification, (notification, cancellationToken) =>
             {
                 if (Interlocked.Increment(ref notificationCount) == 1)
                 {
-                    firstNotification.TrySetResult();
+                    firstNotification.TrySetResult(true);
                 }
                 return default;
             }))

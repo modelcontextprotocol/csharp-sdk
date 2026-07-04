@@ -247,13 +247,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(serverTools);
 
         int notificationCount = 0;
-        var firstNotification = new TaskCompletionSource();
+        var firstNotification = new TaskCompletionSource<bool>();
 
         await using (client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (notification, cancellationToken) =>
             {
                 if (Interlocked.Increment(ref notificationCount) == 1)
                 {
-                    firstNotification.TrySetResult();
+                    firstNotification.TrySetResult(true);
                 }
                 return default;
             }))

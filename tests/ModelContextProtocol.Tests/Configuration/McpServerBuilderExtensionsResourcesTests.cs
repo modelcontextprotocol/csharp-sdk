@@ -222,13 +222,13 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         Assert.NotNull(serverResources);
 
         int notificationCount = 0;
-        var firstNotification = new TaskCompletionSource();
+        var firstNotification = new TaskCompletionSource<bool>();
 
         await using (client.RegisterNotificationHandler(NotificationMethods.ResourceListChangedNotification, (notification, cancellationToken) =>
             {
                 if (Interlocked.Increment(ref notificationCount) == 1)
                 {
-                    firstNotification.TrySetResult();
+                    firstNotification.TrySetResult(true);
                 }
                 return default;
             }))
