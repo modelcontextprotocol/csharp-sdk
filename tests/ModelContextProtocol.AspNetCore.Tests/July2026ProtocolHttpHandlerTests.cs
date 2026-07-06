@@ -9,26 +9,24 @@ using System.Text.Json;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// HTTP-level tests for the draft protocol revision (SEP-2575 + SEP-2567): verify that the server
-/// suppresses the <c>Mcp-Session-Id</c> header for draft requests and returns structured
+/// HTTP-level tests for the 2026-07-28 protocol revision (SEP-2575 + SEP-2567): verify that the server
+/// suppresses the <c>Mcp-Session-Id</c> header for those requests and returns structured
 /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/> errors instead of plain 400s.
 /// </summary>
-public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
-
     private WebApplication? _app;
 
     private async Task StartAsync(bool stateless = false)
     {
         Builder.Services.AddMcpServer(options =>
         {
-            options.ServerInfo = new Implementation { Name = nameof(DraftHttpHandlerTests), Version = "1" };
+            options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolHttpHandlerTests), Version = "1" };
         }).WithHttpTransport(options =>
         {
-            // Stateless = false maps the GET/DELETE endpoints and opts the author into sessions, which the
-            // draft revision cannot honor (so sessionless draft requests are refused). Stateless = true (the
-            // default) serves sessionless draft natively.
+            // Stateless = false maps the GET/DELETE endpoints and opts the author into sessions. Starting with
+            // the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions, so such a request is
+            // refused on a session-enabled server. Stateless = true (the default) serves them natively.
             options.Stateless = stateless;
         });
 
@@ -50,33 +48,33 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftRequest_OnStatelessServer_Succeeds_WithoutMcpSessionIdHeader()
+    public async Task Request_OnStatelessServer_Succeeds_WithoutMcpSessionIdHeader()
     {
         await StartAsync(stateless: true);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
-        // On a stateless server, sessionless draft server/discover succeeds without creating a session.
+        // On a stateless server, server/discover succeeds without creating a session.
         var content = new StringContent(
             """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.False(response.Headers.Contains("Mcp-Session-Id"), "Draft responses must not include Mcp-Session-Id");
+        Assert.False(response.Headers.Contains("Mcp-Session-Id"), "Responses on the 2026-07-28 revision must not include Mcp-Session-Id");
     }
 
     [Fact]
-    public async Task DraftRequest_OnStatefulServer_IsRefused_WithUnsupportedProtocolVersionError()
+    public async Task Request_OnStatefulServer_IsRefused_WithUnsupportedProtocolVersionError()
     {
-        // The draft revision is sessionless (SEP-2567), so it cannot honor a server configured with
-        // sessions (Stateless = false). The server refuses the draft version with
-        // UnsupportedProtocolVersion (excluding draft from Supported) so a dual-era client falls back
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567),
+        // so the server cannot honor it when configured with sessions (Stateless = false). The server refuses that
+        // version with UnsupportedProtocolVersion (excluding it from Supported) so a dual-era client falls back
         // to the legacy initialize handshake.
         await StartAsync(stateless: false);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
@@ -95,10 +93,10 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
         var dataElement = (JsonElement)rpcError.Error.Data!;
         var errorData = dataElement.Deserialize<UnsupportedProtocolVersionErrorData>(McpJsonUtilities.DefaultOptions);
         Assert.NotNull(errorData);
-        Assert.Equal(DraftVersion, errorData.Requested);
-        // The draft version is excluded from Supported so the client downgrades to a legacy version.
+        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, errorData.Requested);
+        // The 2026-07-28 protocol version is excluded from Supported so the client downgrades to a legacy version.
         Assert.NotEmpty(errorData.Supported);
-        Assert.DoesNotContain(DraftVersion, errorData.Supported);
+        Assert.DoesNotContain(McpHttpHeaders.July2026ProtocolVersion, errorData.Supported);
     }
 
     [Fact]
@@ -130,13 +128,14 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftRequest_WithMcpSessionIdHeader_IsRejected()
+    public async Task Request_WithMcpSessionIdHeader_IsRejected()
     {
-        // The draft revision is sessionless (SEP-2567): a draft request carrying an Mcp-Session-Id is
-        // non-conformant and is rejected with 400 regardless of the Stateless setting.
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567):
+        // a request carrying an Mcp-Session-Id is non-conformant and is rejected with 400 regardless of the
+        // Stateless setting.
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
@@ -149,11 +148,11 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftGet_WithoutSessionId_IsRejected()
+    public async Task Get_WithoutSessionId_IsRejected()
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
@@ -161,11 +160,11 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftGet_WithSessionId_IsRejected()
+    public async Task Get_WithSessionId_IsRejected()
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
@@ -174,11 +173,11 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftDelete_WithoutSessionId_IsRejected()
+    public async Task Delete_WithoutSessionId_IsRejected()
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
@@ -186,11 +185,11 @@ public class DraftHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMe
     }
 
     [Fact]
-    public async Task DraftDelete_WithSessionId_IsRejected()
+    public async Task Delete_WithSessionId_IsRejected()
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", DraftVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);

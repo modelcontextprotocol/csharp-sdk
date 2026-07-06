@@ -10,12 +10,12 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public abstract partial class MapMcpTests
 {
-    // Draft is sessionless (SEP-2567): the Streamable HTTP handler refuses a sessionless draft request
-    // when the server opted into sessions (Stateless = false), so a draft-pinned client downgrades to
-    // legacy instead of negotiating 2026-07-28. These draft MRTR tests therefore can't run on the
-    // stateful Streamable HTTP fixture; the same coverage runs on the stateless and legacy-SSE fixtures.
-    private const string DraftStatefulStreamableHttpSkipReason =
-        "Draft is sessionless (SEP-2567); stateful Streamable HTTP refuses sessionless draft. Covered by the stateless and SSE fixtures.";
+    // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567):
+    // the handler refuses a request when the server opted into sessions (Stateless = false), so a client pinned
+    // to that revision downgrades to legacy instead of negotiating 2026-07-28. These MRTR tests therefore can't
+    // run on the stateful Streamable HTTP fixture; the same coverage runs on the stateless and legacy-SSE fixtures.
+    private const string July2026StatefulStreamableHttpSkipReason =
+        "Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567); stateful Streamable HTTP refuses it. Covered by the stateless and SSE fixtures.";
 
     private ServerMessageTracker ConfigureServer(params Delegate[] tools)
     {
@@ -25,7 +25,7 @@ public abstract partial class MapMcpTests
             options.ServerInfo = new Implementation { Name = "MrtrTestServer", Version = "1" };
             // Do not pin a protocol version - let it be negotiated based on what the client requests.
             // 2026-07-28 is in SupportedProtocolVersions, so an opt-in client gets it; others get
-            // the latest non-draft.
+            // the latest legacy version.
             messageTracker.AddFilters(options.Filters.Message);
         })
         .WithHttpTransport(ConfigureStateless)
@@ -40,8 +40,8 @@ public abstract partial class MapMcpTests
             options.ProtocolVersion = "2026-07-28";
         });
 
-    // The default client now negotiates draft (2026-07-28). The legacy JSON-RPC MRTR back-compat
-    // resolver only applies to legacy clients, so pin these to the latest non-draft version.
+    // The default client now negotiates the 2026-07-28 protocol revision. The legacy
+    // JSON-RPC MRTR back-compat resolver only applies to legacy clients, so pin these to the latest legacy version.
     private Task<McpClient> ConnectLegacyAsync() =>
         ConnectAsync(configureClient: options =>
         {
@@ -169,16 +169,16 @@ public abstract partial class MapMcpTests
     [InlineData(true)]
     public async Task Mrtr_MixedExceptionAndAwaitStyle(bool experimentalClient)
     {
-        // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3,
-        // which requires server-to-client requests - only available in stateful sessions. Under
-        // the draft protocol revision (SEP-2567), Streamable HTTP is implicitly stateless, so the
+        // the await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3,
+        // which requires server-to-client requests - only available in stateful sessions. Starting with
+        // the 2026-07-28 protocol revision (SEP-2567), Streamable HTTP is implicitly stateless, so the
         // experimental-client + HTTP combination cannot resolve the await-style portion. Stdio
-        // coverage for this scenario lives in DraftProtocolBackcompatTests.
-        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; draft protocol revision (SEP-2567) makes Streamable HTTP sessionless. See DraftProtocolBackcompatTests for stdio coverage.");
+        // coverage for this scenario lives in July2026ProtocolBackcompatTests.
+        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; starting with the 2026-07-28 protocol revision (SEP-2567) Streamable HTTP no longer supports sessions. See July2026ProtocolBackcompatTests for stdio coverage.");
 
         // The server always supports 2026-07-28 (it's in SupportedProtocolVersions). The
         // client opts in by pinning ProtocolVersion = "2026-07-28"; otherwise it negotiates
-        // the latest non-draft version and the server falls back to the exception path with
+        // the latest legacy version and the server falls back to the exception path with
         // legacy JSON-RPC resolution.
         var messageTracker = ConfigureServer(MrtrMixed);
 
@@ -188,7 +188,7 @@ public abstract partial class MapMcpTests
 
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            // ProtocolVersion null now defaults to the 2026-07-28 protocol revision, so pin the legacy client explicitly to keep dual-era coverage.
             : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
 
         // The await-style portion of this tool calls server.SampleAsync/ElicitAsync on round 3.
@@ -289,10 +289,10 @@ public abstract partial class MapMcpTests
         // Parallel awaits work with regular JSON-RPC but fail with MRTR because
         // MrtrContext only supports one exchange at a time (TrySetResult gate).
         Assert.SkipWhen(Stateless, "Await-style API requires handler suspension (stateful only).");
-        // Under the draft protocol revision (SEP-2567), the server is implicitly stateless for draft
-        // clients, so parallel-await MRTR can't reach its concurrency gate. Skip the experimental-client
+        // Starting with the 2026-07-28 protocol revision (SEP-2567), the server is implicitly stateless for
+        // clients on that revision, so parallel-await MRTR can't reach its concurrency gate. Skip the experimental-client
         // case for the same reason as Mrtr_MixedExceptionAndAwaitStyle.
-        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; draft protocol revision (SEP-2567) is sessionless.");
+        Assert.SkipWhen(experimentalClient, "Await-style MRTR requires session affinity; starting with the 2026-07-28 protocol revision (SEP-2567) Streamable HTTP no longer supports sessions.");
 
         ConfigureServer(MrtrParallelAwait);
         await using var app = Builder.Build();
@@ -301,7 +301,7 @@ public abstract partial class MapMcpTests
 
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            // ProtocolVersion null now defaults to the 2026-07-28 protocol revision, so pin the legacy client explicitly to keep dual-era coverage.
             : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
 
         await using var client = await ConnectAsync(configureClient: configureClient);
@@ -357,7 +357,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_Roots_CompletesViaMrtr()
     {
-        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
 
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-roots")] (RequestContext<CallToolRequestParams> context) =>
@@ -435,7 +435,7 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_MultiRoundTrip_Completes(bool experimentalClient)
     {
-        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
 
         var messageTracker = ConfigureServer(MrtrMulti);
         await using var app = Builder.Build();
@@ -445,7 +445,7 @@ public abstract partial class MapMcpTests
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            // ProtocolVersion null now defaults to the 2026-07-28 protocol revision, so pin the legacy client explicitly to keep dual-era coverage.
             : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
         await using var client = await ConnectAsync(configureClient: configureClient);
 
@@ -484,7 +484,7 @@ public abstract partial class MapMcpTests
     [InlineData(false)]
     public async Task Mrtr_IsMrtrSupported(bool experimentalClient)
     {
-        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+        Assert.SkipWhen(experimentalClient && UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
 
         ConfigureServer([McpServerTool(Name = "mrtr-check")] (McpServer server) => server.IsMrtrSupported.ToString());
         await using var app = Builder.Build();
@@ -494,7 +494,7 @@ public abstract partial class MapMcpTests
         // Configure client - experimental or default based on parameter.
         Action<McpClientOptions> configureClient = experimentalClient
             ? options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2026-07-28"; }
-            // ProtocolVersion null now defaults to draft, so pin the legacy client explicitly to keep dual-era coverage.
+            // ProtocolVersion null now defaults to the 2026-07-28 protocol revision, so pin the legacy client explicitly to keep dual-era coverage.
             : options => { ConfigureMrtrHandlers(options); options.ProtocolVersion = "2025-11-25"; };
         await using var client = await ConnectAsync(configureClient: configureClient);
         Assert.Equal(experimentalClient ? "2026-07-28" : "2025-11-25", client.NegotiatedProtocolVersion);
@@ -550,7 +550,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_ConcurrentThreeInputs_ResolvedSimultaneously()
     {
-        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
 
         var messageTracker = ConfigureServer(MrtrConcurrentThree);
         await using var app = Builder.Build();
@@ -604,7 +604,7 @@ public abstract partial class MapMcpTests
     [Fact]
     public async Task Mrtr_LoadShedding_RequestStateOnly_CompletesViaMrtr()
     {
-        Assert.SkipWhen(UseStreamableHttp && !Stateless, DraftStatefulStreamableHttpSkipReason);
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
 
         var messageTracker = ConfigureServer(
             [McpServerTool(Name = "mrtr-loadshed")] (RequestContext<CallToolRequestParams> context) =>

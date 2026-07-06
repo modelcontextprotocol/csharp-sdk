@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// <summary>
 /// End-to-end tests for the SEP-2575 <c>subscriptions/listen</c> list-changed delivery over an
 /// in-memory stream transport (the stdio-shaped path exercised by <see cref="ClientServerTestBase"/>).
-/// Validates that a draft client receives only the change notifications it subscribed to, each tagged
+/// Validates that a client on the 2026-07-28 protocol receives only the change notifications it subscribed to, each tagged
 /// with the subscription id, and that legacy sessions keep receiving the session-wide broadcast.
 /// </summary>
 public class SubscriptionsListenTests : ClientServerTestBase
@@ -31,7 +31,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Draft_ToolsListChangedSubscription_DeliversTaggedNotification_AndWithholdsUnsubscribed()
+    public async Task July2026Protocol_ToolsListChangedSubscription_DeliversTaggedNotification_AndWithholdsUnsubscribed()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -80,7 +80,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Draft_WithoutSubscription_DoesNotBroadcastListChanged()
+    public async Task July2026Protocol_WithoutSubscription_DoesNotBroadcastListChanged()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -91,7 +91,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         serverOptions.ToolCollection!.Add(McpServerTool.Create([McpServerTool(Name = "AddedTool")] () => "42"));
 
-        // The change notification must not be broadcast to a draft client that never opened a
+        // The change notification must not be broadcast to a client on the 2026-07-28 protocol that never opened a
         // subscriptions/listen stream. The list-changed handler runs synchronously during Add (before
         // the ListTools round-trip below completes), so any erroneous broadcast would already be
         // buffered once the round-trip returns.
@@ -108,7 +108,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpSession.LatestProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
         });
 
         var toolsChannel = Channel.CreateUnbounded<JsonRpcNotification>();

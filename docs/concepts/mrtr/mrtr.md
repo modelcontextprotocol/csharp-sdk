@@ -33,10 +33,10 @@ MRTR is useful when:
 
 ## Opting in
 
-MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers the draft revision by default — it probes with `server/discover` and falls back to a legacy `initialize` handshake only when the server doesn't support draft. Servers accept the draft automatically when a client offers it. No experimental flags are required; pinning `ProtocolVersion` to a legacy revision opts back out.
+MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers `2026-07-28` by default — it probes with `server/discover` and falls back to a legacy `initialize` handshake only when the server doesn't support it. Servers accept `2026-07-28` automatically when a client offers it. No experimental flags are required; pinning `ProtocolVersion` to a legacy revision opts back out.
 
 ```csharp
-// Client — the SDK prefers the 2026-07-28 draft (and therefore MRTR) by default.
+// Client — the SDK prefers 2026-07-28 (and therefore MRTR) by default.
 var clientOptions = new McpClientOptions
 {
     Handlers = new McpClientHandlers
@@ -47,7 +47,7 @@ var clientOptions = new McpClientOptions
 };
 ```
 
-Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (which is stateless-only under the draft revision) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — that's how stdio servers keep working under draft today — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on any stateless session, current or draft.
+Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (where Streamable HTTP no longer supports sessions) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — that's how stdio servers keep working on `2026-07-28` today — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on any stateless session, current or `2026-07-28`.
 
 Under the current protocol revision (`2025-06-18` and earlier), `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see [Compatibility](#compatibility) below.
 
@@ -281,6 +281,6 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 
 `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Stateless servers don't have a persistent session to wait on, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")` (the check is `McpServer.ClientCapabilities is null`, which is the SDK's proxy for stateless).
 
-Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on draft stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
+Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
-Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP runs statelessly whenever a client speaks the draft. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies only to stdio — a server explicitly set to `Stateless = false` still serves draft requests sessionlessly and creates a legacy session only when an older client falls back to `initialize`.
+Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP runs statelessly whenever a client speaks `2026-07-28`. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies only to stdio — a server explicitly set to `Stateless = false` still serves `2026-07-28` requests without a session and creates a legacy session only when an older client falls back to `initialize`.

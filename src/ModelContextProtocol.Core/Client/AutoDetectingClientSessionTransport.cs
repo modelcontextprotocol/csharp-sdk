@@ -76,9 +76,9 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             }
             else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError)
             {
-                // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server
-                // — it just rejected our specific request (e.g., -32004 UnsupportedProtocolVersion,
-                // -32003 MissingRequiredClientCapability, -32001 HeaderMismatch, or any other
+                // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server.
+                // It just rejected our specific request (e.g., -32022 UnsupportedProtocolVersion,
+                // -32021 MissingRequiredClientCapability, -32020 HeaderMismatch, or any other
                 // application-level error). Don't fall back to SSE — that would mask the real signal
                 // and surface a misleading "session id required" error from the SSE GET path.
                 // Adopt the Streamable HTTP transport and throw the structured exception so the

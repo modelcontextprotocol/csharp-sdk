@@ -1,4 +1,4 @@
-﻿#if !NET472
+#if !NET472
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// <summary>
 /// Wire-format conformance tests for <see cref="McpServer"/> driven directly against the underlying
 /// stream — without going through <see cref="ModelContextProtocol.Client.McpClient"/>. This exercises the
-/// SEP-2575 (sessionless / no-initialize) and SEP-2567 (server/discover) flows by hand-crafting JSON-RPC
+/// SEP-2575 (no initialize handshake) and SEP-2567 (server/discover, no session id) flows by hand-crafting JSON-RPC
 /// messages and asserting on the exact responses the server emits.
 /// </summary>
 /// <remarks>
@@ -24,7 +24,6 @@ namespace ModelContextProtocol.Tests.Server;
 /// </remarks>
 public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
 
     private readonly Pipe _clientToServer = new();
     private readonly Pipe _serverToClient = new();
@@ -77,15 +76,15 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         return JsonNode.Parse(line!)!;
     }
 
-    private static string DraftMetaFragment(string protocolVersion = DraftVersion) =>
+    private static string July2026ProtocolMetaFragment(string protocolVersion = McpHttpHeaders.July2026ProtocolVersion) =>
         @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":""" + protocolVersion +
         @""",""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
         @"""io.modelcontextprotocol/clientCapabilities"":{}}";
 
     [Fact]
-    public async Task ServerDiscover_ReturnsSupportedVersionsIncludingDraft()
+    public async Task ServerDiscover_ReturnsSupportedVersionsIncludingJuly2026Protocol()
     {
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + DraftMetaFragment() + "}}");
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
 
         var response = await ReadAsync();
         Assert.Equal("2.0", response["jsonrpc"]!.GetValue<string>());
@@ -97,7 +96,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var supportedVersions = result!["supportedVersions"]!.AsArray()
             .Select(n => n!.GetValue<string>())
             .ToList();
-        Assert.Contains(DraftVersion, supportedVersions);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supportedVersions);
 
         // Capabilities and serverInfo are mandatory in DiscoverResult per SEP-2575.
         Assert.NotNull(result["capabilities"]);
@@ -112,13 +111,13 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     }
 
     [Fact]
-    public async Task DraftToolsCall_WithoutInitialize_Succeeds_WhenFullMetaProvided()
+    public async Task July2026ProtocolToolsCall_WithoutInitialize_Succeeds_WhenFullMetaProvided()
     {
         // Spec: under SEP-2575 the client may skip server/discover and go straight to a normal RPC, as long
         // as every request carries the full _meta envelope with protocolVersion, clientInfo and capabilities.
         await SendAsync(
             @"{""jsonrpc"":""2.0"",""id"":42,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""hello""}," +
-            DraftMetaFragment() + "}}");
+            July2026ProtocolMetaFragment() + "}}");
 
         var response = await ReadAsync();
         Assert.Equal(42, response["id"]!.GetValue<int>());
@@ -130,12 +129,12 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     }
 
     [Fact]
-    public async Task DraftRequest_WithUnsupportedProtocolVersion_ReturnsMinus32004WithSupported()
+    public async Task July2026ProtocolRequest_WithUnsupportedProtocolVersion_ReturnsMinus32022WithSupported()
     {
-        // Server should respond with UnsupportedProtocolVersionError (-32004) and a data.supported[] list.
+        // Server should respond with UnsupportedProtocolVersionError (-32022) and a data.supported[] list.
         await SendAsync(
             @"{""jsonrpc"":""2.0"",""id"":7,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""x""}," +
-            DraftMetaFragment("9999-99-99") + "}}");
+            July2026ProtocolMetaFragment("9999-99-99") + "}}");
 
         var response = await ReadAsync();
         Assert.Equal(7, response["id"]!.GetValue<int>());
@@ -147,13 +146,13 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(DraftVersion, supported);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
     }
 
     [Fact]
-    public async Task LegacyInitialize_StillWorks_OnDraftDefaultServer()
+    public async Task LegacyInitialize_StillWorks_OnJuly2026ProtocolDefaultServer()
     {
-        // Dual-era: a draft-default server (ProtocolVersion = DraftVersion in McpServerOptions) must still
+        // Dual-era: a server defaulting to the 2026-07-28 protocol (ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion in McpServerOptions) must still
         // accept the legacy initialize handshake from clients that don't speak the new protocol.
         await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""legacy"",""version"":""1.0""}}}");
 
@@ -167,9 +166,9 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task MixedSequence_Discover_Then_Initialize_Then_ToolsCall_AllSucceed()
     {
-        // Dual-era servers must accept draft and legacy traffic on the same connection. The exact mix below
+        // Dual-era servers must accept 2026-07-28 and legacy traffic on the same connection. The exact mix below
         // is what a permissive client running against an unknown server would emit while probing.
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + DraftMetaFragment() + "}}");
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
         var discover = await ReadAsync();
         Assert.NotNull(discover["result"]);
 

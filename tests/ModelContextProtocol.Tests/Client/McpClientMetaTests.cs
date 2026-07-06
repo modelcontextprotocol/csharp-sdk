@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Tests.Client;
 
 public class McpClientMetaTests : ClientServerTestBase
 {
-    // InitializeMeta is carried on the legacy initialize request, which the draft revision removes.
+    // InitializeMeta is carried on the legacy initialize request, which the 2026-07-28 protocol removes.
     // The two InitializeMeta_* tests pin to the latest stable version so the handshake actually runs.
     private const string LatestStableVersion = "2025-11-25";
 

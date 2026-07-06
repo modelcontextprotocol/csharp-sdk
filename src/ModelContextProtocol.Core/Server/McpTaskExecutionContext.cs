@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -9,7 +7,6 @@ namespace ModelContextProtocol.Server;
 /// and <see cref="McpServer.RequestRootsAsync(ModelContextProtocol.Protocol.ListRootsRequestParams, CancellationToken)"/>
 /// are redirected through the task store as input requests rather than sent directly to the client.
 /// </summary>
-[Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
 internal sealed class McpTaskExecutionContext
 {
     internal static readonly AsyncLocal<McpTaskExecutionContext?> Current = new();

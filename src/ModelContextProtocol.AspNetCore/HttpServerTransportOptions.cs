@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.AspNetCore;
@@ -51,7 +51,7 @@ public class HttpServerTransportOptions
     /// </summary>
     /// <value>
     /// <see langword="true"/> if the server runs in a stateless mode; <see langword="false"/> if the server tracks state between requests.
-    /// The default is <see langword="true"/> as of the <c>2026-07-28</c> draft protocol revision (SEP-2567);
+    /// The default is <see langword="true"/> as of the <c>2026-07-28</c> protocol revision (SEP-2567);
     /// set to <see langword="false"/> only when you need to support legacy clients that rely on session affinity.
     /// </value>
     /// <remarks>
@@ -61,12 +61,13 @@ public class HttpServerTransportOptions
     /// might arrive at another ASP.NET Core application process.
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// <para>
-    /// The <c>2026-07-28</c> draft protocol revision is sessionless and removes <c>Mcp-Session-Id</c> entirely
-    /// (SEP-2567), so over HTTP draft requests are only ever served when <see langword="true"/>. When this
-    /// property is <see langword="false"/>, a sessionless draft request is refused with a
-    /// <c>-32004 UnsupportedProtocolVersion</c> error so that a dual-era client downgrades to the legacy
-    /// <c>initialize</c> handshake and obtains the session that the server was configured to provide. A draft
-    /// request that carries an <c>Mcp-Session-Id</c> is always rejected, regardless of this property's value.
+    /// Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports sessions:
+    /// the revision removed <c>Mcp-Session-Id</c> (SEP-2567), so over HTTP its requests are only ever served
+    /// when this property is <see langword="true"/>. When it is <see langword="false"/>, such a request is
+    /// refused with a <c>-32022 UnsupportedProtocolVersion</c> error so that a dual-era client downgrades to
+    /// the legacy <c>initialize</c> handshake and obtains the session the server was configured to provide.
+    /// A request that carries an <c>Mcp-Session-Id</c> is always rejected by the <c>2026-07-28</c> and later
+    /// revisions, regardless of this property's value.
     /// </para>
     /// </remarks>
     public bool Stateless { get; set; } = true;

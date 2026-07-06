@@ -1,12 +1,10 @@
 using ModelContextProtocol.Protocol;
-using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>
 /// Provides data for the <see cref="IMcpTaskStore.InputResponseReceived"/> event.
 /// </summary>
-[Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
 public sealed class InputResponseReceivedEventArgs
 {
     /// <summary>

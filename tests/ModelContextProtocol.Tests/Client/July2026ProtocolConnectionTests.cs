@@ -7,17 +7,16 @@ using System.Text.Json;
 namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
-/// Tests for the draft protocol revision (SEP-2575 + SEP-2567) connection flow on
-/// <see cref="McpClient"/> — the client should call <c>server/discover</c> instead of
-/// <c>initialize</c> when <see cref="McpClientOptions.ProtocolVersion"/> is set to
-/// <see cref="McpSessionHandler.DraftProtocolVersion"/>.
+/// Connection-flow tests for the 2026-07-28 protocol revision (SEP-2575 + SEP-2567)
+/// on <see cref="McpClient"/>. A client that requests
+/// <see cref="McpHttpHeaders.July2026ProtocolVersion"/> calls <c>server/discover</c> rather than
+/// <c>initialize</c>.
 /// </summary>
-public class DraftConnectionTests : ClientServerTestBase
+public class July2026ProtocolConnectionTests : ClientServerTestBase
 {
-    private const string DraftVersion = McpHttpHeaders.DraftProtocolVersion;
     private const string LatestStableVersion = "2025-11-25";
 
-    public DraftConnectionTests(ITestOutputHelper testOutputHelper)
+    public July2026ProtocolConnectionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
     }
@@ -26,31 +25,31 @@ public class DraftConnectionTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ServerInfo = new Implementation { Name = nameof(DraftConnectionTests), Version = "1.0" };
+            options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolConnectionTests), Version = "1.0" };
         });
     }
 
     [Fact]
-    public async Task DraftClient_ConnectingToDraftServer_NegotiatesDraftVersion()
+    public async Task Client_RequestingJuly2026Protocol_NegotiatesIt()
     {
         StartServer();
 
-        var options = new McpClientOptions { ProtocolVersion = DraftVersion };
+        var options = new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion };
         await using var client = await CreateMcpClientForServer(options);
 
-        Assert.Equal(DraftVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
         Assert.NotNull(client.ServerCapabilities);
-        Assert.Equal(nameof(DraftConnectionTests), client.ServerInfo.Name);
+        Assert.Equal(nameof(July2026ProtocolConnectionTests), client.ServerInfo.Name);
     }
 
     [Fact]
-    public async Task LegacyClient_ConnectingToDraftServer_NegotiatesLegacyVersion()
+    public async Task Client_RequestingLegacyVersion_NegotiatesLegacy()
     {
         StartServer();
 
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
-        Assert.NotEqual(DraftVersion, client.NegotiatedProtocolVersion);
+        Assert.NotEqual(McpHttpHeaders.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -70,11 +69,11 @@ public class DraftConnectionTests : ClientServerTestBase
         Assert.NotNull(discoverResult);
         Assert.NotEmpty(discoverResult.SupportedVersions);
         Assert.Contains(LatestStableVersion, discoverResult.SupportedVersions);
-        Assert.Equal(nameof(DraftConnectionTests), discoverResult.ServerInfo.Name);
+        Assert.Equal(nameof(July2026ProtocolConnectionTests), discoverResult.ServerInfo.Name);
     }
 
     [Fact]
-    public async Task DraftServer_DiscoverIncludesDraftVersion()
+    public async Task ServerDiscover_IncludesJuly2026ProtocolVersion()
     {
         StartServer();
 
@@ -86,6 +85,6 @@ public class DraftConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
-        Assert.Contains(DraftVersion, discoverResult.SupportedVersions);
+        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, discoverResult.SupportedVersions);
     }
 }

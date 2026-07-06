@@ -517,9 +517,9 @@ public abstract class ResumabilityIntegrationTestsBase(ITestOutputHelper testOut
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        // Resumability (Last-Event-ID) and Mcp-Session-Id are removed in the draft revision
-        // (SEP-2567). Pin the client to the latest stable version so it negotiates the stateful,
-        // resumable legacy handshake instead of the sessionless draft default.
+        // Resumability (Last-Event-ID) and Mcp-Session-Id are removed in the 2026-07-28 protocol
+        // revision (SEP-2567). Pin the client to the latest stable version so it negotiates the stateful,
+        // resumable legacy handshake instead of the 2026-07-28 default.
         return await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" },
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);

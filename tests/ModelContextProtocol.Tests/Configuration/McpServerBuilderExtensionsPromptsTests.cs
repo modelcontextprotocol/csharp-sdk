@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -128,12 +128,12 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Can_Be_Notified_Of_Prompt_Changes()
     {
-        // Under the draft revision, list-changed notifications are delivered only over a
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
         // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
         // legacy revision to keep coverage of the session-wide broadcast that legacy clients still rely on.
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpSession.LatestProtocolVersion,
+            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
         });
 
 

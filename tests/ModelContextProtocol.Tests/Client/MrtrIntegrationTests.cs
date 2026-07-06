@@ -165,7 +165,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
                 Model = "test-model"
             });
 
-        // Start the client task — it will send server/discover (draft) and block waiting for response
+        // Start the client task. It will send server/discover (2026-07-28 protocol) and block waiting for response
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
@@ -180,7 +180,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var serverReader = new StreamReader(clientToServer.Reader.AsStream());
         var serverWriter = serverToClient.Writer.AsStream();
 
-        // Read the server/discover request from client (draft revision skips initialize per SEP-2575).
+        // Read the server/discover request from client (the 2026-07-28 protocol skips initialize per SEP-2575).
         var discoverLine = await serverReader.ReadLineAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(discoverLine);
         var discoverRequest = JsonSerializer.Deserialize<JsonRpcRequest>(discoverLine, McpJsonUtilities.DefaultOptions);
@@ -200,7 +200,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         };
         await WriteJsonRpcAsync(serverWriter, discoverResponse);
 
-        // Client is now connected with MRTR negotiated (no initialized notification under draft).
+        // Client is now connected with MRTR negotiated (no initialized notification under the 2026-07-28 protocol).
         await using var client = await clientTask;
         Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
@@ -406,7 +406,7 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        // Pin to the draft revision so the client performs the server/discover handshake and
+        // Pin to the 2026-07-28 protocol so the client performs the server/discover handshake and
         // treats InputRequiredResult as an MRTR round-trip.
         var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (_, _) =>

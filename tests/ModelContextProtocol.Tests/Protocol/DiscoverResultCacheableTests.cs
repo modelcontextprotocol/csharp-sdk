@@ -17,7 +17,7 @@ public static class DiscoverResultCacheableTests
 {
     private static DiscoverResult NewDiscoverResult() => new()
     {
-        SupportedVersions = ["2025-11-25", McpSession.DraftProtocolVersion],
+        SupportedVersions = [McpHttpHeaders.November2025ProtocolVersion, McpHttpHeaders.July2026ProtocolVersion],
         Capabilities = new ServerCapabilities(),
         ServerInfo = new Implementation { Name = "test-server", Version = "1.0" },
     };

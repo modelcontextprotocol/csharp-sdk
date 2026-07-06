@@ -25,8 +25,8 @@ public class Program
         // because .NET does not have a built-in concurrent HashSet
         ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
-        // Allow running the server in the SEP-2575 stateless lifecycle, which the draft
-        // "caching" (SEP-2549) conformance scenario requires. A "--stateless true|false"
+        // Allow running the server in the SEP-2575 stateless lifecycle, which the 2026-07-28
+        // protocol's "caching" (SEP-2549) conformance scenario requires. A "--stateless true|false"
         // command-line switch (read via configuration) takes precedence so an in-process test
         // fixture can opt in or out per-instance deterministically; when it is not supplied,
         // fall back to the MCP_CONFORMANCE_STATELESS environment variable for standalone runs.

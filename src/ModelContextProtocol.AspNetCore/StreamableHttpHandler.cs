@@ -39,17 +39,17 @@ internal sealed class StreamableHttpHandler(
         "2024-11-05",
         "2025-03-26",
         "2025-06-18",
-        "2025-11-25",
-        McpHttpHeaders.DraftProtocolVersion,
+        McpHttpHeaders.November2025ProtocolVersion,
+        McpHttpHeaders.July2026ProtocolVersion,
     ];
 
     /// <summary>
-    /// The supported protocol versions excluding the draft revision. Used when refusing a sessionless
-    /// draft request on a stateful (Stateless = false) server so a dual-era client falls back to a
-    /// legacy initialize handshake instead of retrying the draft version.
+    /// The supported protocol versions that still allow Streamable HTTP sessions (excluding 2026-07-28 and
+    /// later). Used when refusing a 2026-07-28 request on a stateful (Stateless = false) server so a dual-era
+    /// client falls back to a legacy initialize handshake instead of retrying the 2026-07-28 version.
     /// </summary>
-    private static readonly string[] s_supportedProtocolVersionsExcludingDraft =
-        [.. s_supportedProtocolVersions.Where(static v => !string.Equals(v, McpHttpHeaders.DraftProtocolVersion, StringComparison.Ordinal))];
+    private static readonly string[] s_sessionSupportingProtocolVersions =
+        [.. s_supportedProtocolVersions.Where(static v => !McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(v))];
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
@@ -106,13 +106,18 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
+        // Once the body has been parsed into a request with a readable id, every JSON-RPC error response
+        // for this request MUST echo that id (base protocol responses section; SEP-2243 error format).
+        // Notifications carry no id, so this stays default (null), which is correct.
+        var requestId = message is JsonRpcRequest jsonRpcRequest ? jsonRpcRequest.Id : default;
+
         if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
             return;
         }
 
-        var session = await GetOrCreateSessionAsync(context, message);
+        var session = await GetOrCreateSessionAsync(context, message, requestId);
         if (session is null)
         {
             return;
@@ -140,14 +145,13 @@ internal sealed class StreamableHttpHandler(
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
-        // Under the draft protocol revision the standalone HTTP GET endpoint for unsolicited
-        // server-to-client messages is removed (SEP-2575); clients use subscriptions/listen (POST)
-        // instead. The draft is also sessionless (SEP-2567), so a draft GET is invalid whether or
-        // not it carries an Mcp-Session-Id.
-        if (IsDraftProtocolRequest(context))
+        // The 2026-07-28 revision (SEP-2575) removes the standalone HTTP GET endpoint for unsolicited
+        // server-to-client messages; clients use subscriptions/listen (POST) instead. Because Streamable HTTP
+        // no longer has sessions (SEP-2567), the GET is invalid whether or not it carries an Mcp-Session-Id.
+        if (IsJuly2026OrLaterProtocol(context))
         {
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The GET endpoint is not supported by the draft protocol revision. Use subscriptions/listen via POST instead.",
+                "Bad Request: The GET endpoint is not supported by the 2026-07-28 and later protocol revisions. Use subscriptions/listen via POST instead.",
                 StatusCodes.Status400BadRequest);
             return;
         }
@@ -258,12 +262,12 @@ internal sealed class StreamableHttpHandler(
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
-        // Under the draft revision there are no sessions to terminate (SEP-2567). A draft DELETE is
-        // invalid whether or not it carries an Mcp-Session-Id.
-        if (IsDraftProtocolRequest(context))
+        // Starting with the 2026-07-28 revision, Streamable HTTP has no sessions to terminate (SEP-2567),
+        // so the DELETE is invalid whether or not it carries an Mcp-Session-Id.
+        if (IsJuly2026OrLaterProtocol(context))
         {
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The DELETE endpoint is not supported by the draft protocol revision (the draft protocol is sessionless).",
+                "Bad Request: The DELETE endpoint is not supported by the 2026-07-28 and later protocol revisions.",
                 StatusCodes.Status400BadRequest);
             return;
         }
@@ -287,7 +291,7 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId, RequestId requestId = default)
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -295,7 +299,7 @@ internal sealed class StreamableHttpHandler(
                 "Bad Request: Mcp-Session-Id header is required for GET and DELETE requests when the server is using sessions. " +
                 "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.Stateless = true. " +
                 "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                StatusCodes.Status400BadRequest);
+                StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
 
@@ -310,7 +314,7 @@ internal sealed class StreamableHttpHandler(
                 // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
                 // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
                 // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
-                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001);
+                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001, requestId);
                 return null;
             }
         }
@@ -319,7 +323,7 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context,
                 "Forbidden: The currently authenticated user does not match the user who initiated the session.",
-                StatusCodes.Status403Forbidden);
+                StatusCodes.Status403Forbidden, requestId: requestId);
             return null;
         }
 
@@ -368,36 +372,34 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message)
+    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message, RequestId requestId = default)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        bool isDraftRequest = IsDraftProtocolRequest(context);
 
-        // Under the draft protocol revision, the draft is sessionless: SEP-2567 removes the
-        // Mcp-Session-Id header (and the session concept) and SEP-2575 removes the initialize
-        // handshake. So over HTTP, draft <=> sessionless, with no exceptions:
-        if (isDraftRequest)
+        // The 2026-07-28 revision removes the Mcp-Session-Id header and the session concept (SEP-2567)
+        // and the initialize handshake (SEP-2575), so over HTTP it never has a session, with no exceptions:
+        if (IsJuly2026OrLaterProtocol(context))
         {
             if (!string.IsNullOrEmpty(sessionId))
             {
-                // A draft request carrying an Mcp-Session-Id is non-conformant (SEP-2567).
+                // A request carrying an Mcp-Session-Id is non-conformant under the 2026-07-28 revision (SEP-2567).
                 await WriteJsonRpcErrorAsync(context,
-                    "Bad Request: Mcp-Session-Id is not supported under the draft protocol revision; the draft protocol is sessionless (SEP-2567).",
-                    StatusCodes.Status400BadRequest);
+                    "Bad Request: Mcp-Session-Id is not supported by the 2026-07-28 and later protocol revisions (SEP-2567).",
+                    StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
-            if (HttpServerTransportOptions.Stateless)
+            if (!HttpServerTransportOptions.Stateless)
             {
-                // The default (stateless) HTTP transport serves sessionless draft requests natively.
-                return await StartNewSessionAsync(context);
+                // The author explicitly opted into sessions (Stateless = false), which the 2026-07-28
+                // revision cannot provide. Refuse it so a dual-era client falls back to the legacy
+                // initialize handshake and gets the session it asked for (SEP-2575 fallback semantics).
+                await WriteUnsupportedProtocolVersionErrorAsync(context, requestId);
+                return null;
             }
 
-            // The author explicitly opted into sessions (Stateless = false), which the draft revision
-            // cannot provide. Refuse the draft version so a dual-era client falls back to the legacy
-            // initialize handshake and gets the session it asked for (SEP-2575 fallback semantics).
-            await WriteUnsupportedDraftVersionErrorAsync(context);
-            return null;
+            // The default (stateless) HTTP transport serves these requests natively.
+            return await StartNewSessionAsync(context);
         }
 
         if (string.IsNullOrEmpty(sessionId))
@@ -411,7 +413,7 @@ internal sealed class StreamableHttpHandler(
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
                     "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
                     "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
@@ -421,24 +423,25 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
-            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest);
+            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
         else
         {
-            return await GetSessionAsync(context, sessionId);
+            return await GetSessionAsync(context, sessionId, requestId);
         }
     }
 
     /// <summary>
-    /// Returns <see langword="true"/> when the request declares the draft protocol revision via
-    /// the <c>MCP-Protocol-Version</c> header. Draft requests are always sessionless and do not perform
-    /// the legacy <c>initialize</c> handshake (SEP-2575 + SEP-2567).
+    /// Returns <see langword="true"/> when the request's <c>MCP-Protocol-Version</c> header declares a
+    /// revision that operates without sessions, so the server must serve it statelessly. Such requests
+    /// never carry an Mcp-Session-Id and never perform the legacy <c>initialize</c> handshake
+    /// (SEP-2575 + SEP-2567).
     /// </summary>
-    private static bool IsDraftProtocolRequest(HttpContext context)
+    private static bool IsJuly2026OrLaterProtocol(HttpContext context)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        return string.Equals(protocolVersionHeader, McpHttpHeaders.DraftProtocolVersion, StringComparison.Ordinal);
+        return McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(protocolVersionHeader);
     }
 
     private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
@@ -446,9 +449,7 @@ internal sealed class StreamableHttpHandler(
         string sessionId;
         StreamableHttpServerTransport transport;
 
-        bool isStateless = HttpServerTransportOptions.Stateless;
-
-        if (!isStateless)
+        if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
 #pragma warning disable MCP9006 // Stateful Streamable HTTP options are obsolete but still wired up internally.
@@ -467,7 +468,7 @@ internal sealed class StreamableHttpHandler(
         }
         else
         {
-            // In stateless mode (legacy or draft), each request is independent. Don't set any session ID on the transport.
+            // In stateless mode, each request is independent. Don't set any session ID on the transport.
             // If in the future we support resuming stateless requests, we should populate
             // the event stream store and retry interval here as well.
             sessionId = "";
@@ -488,13 +489,12 @@ internal sealed class StreamableHttpHandler(
     {
         var mcpServerServices = applicationServices;
         var mcpServerOptions = mcpServerOptionsSnapshot.Value;
-        bool effectivelyStateless = HttpServerTransportOptions.Stateless;
 
-        if (effectivelyStateless || HttpServerTransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
+        if (HttpServerTransportOptions.Stateless || HttpServerTransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
         {
             mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
 
-            if (effectivelyStateless)
+            if (HttpServerTransportOptions.Stateless)
             {
                 // The session does not outlive the request in stateless mode.
                 mcpServerServices = context.RequestServices;
@@ -573,10 +573,11 @@ internal sealed class StreamableHttpHandler(
         return eventStreamReader;
     }
 
-    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
+    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000, RequestId requestId = default)
     {
         var jsonRpcError = new JsonRpcError
         {
+            Id = requestId,
             Error = new()
             {
                 Code = errorCode,
@@ -690,28 +691,30 @@ internal sealed class StreamableHttpHandler(
     }
 
     /// <summary>
-    /// Refuses a sessionless draft request on a stateful (Stateless = false) server. The draft revision
-    /// is sessionless (SEP-2567) and cannot honor the author's opt-in to sessions, so we return
-    /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/> with a supported-versions list that excludes
-    /// the draft. A dual-era client then falls back to the legacy initialize handshake (SEP-2575).
+    /// Refuses a 2026-07-28 (or later) request on a stateful (Stateless = false) server. Starting with that
+    /// revision, Streamable HTTP no longer has sessions (SEP-2567), so it cannot honor the author's opt-in to
+    /// sessions; we return <see cref="McpErrorCode.UnsupportedProtocolVersion"/> with a supported-versions list
+    /// that excludes 2026-07-28 and later. A dual-era client then falls back to the legacy initialize handshake
+    /// (SEP-2575).
     /// </summary>
-    private static Task WriteUnsupportedDraftVersionErrorAsync(HttpContext context)
+    private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context, RequestId requestId = default)
     {
+        var requestedProtocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         var errorDetail = new JsonRpcErrorDetail
         {
             Code = (int)McpErrorCode.UnsupportedProtocolVersion,
-            Message = $"Bad Request: The draft protocol revision '{McpHttpHeaders.DraftProtocolVersion}' is sessionless and is not supported when the server is configured with sessions (HttpServerTransportOptions.Stateless = false). " +
-                "Use the initialize handshake with a supported non-draft protocol version instead.",
+            Message = $"Bad Request: Starting with protocol version '{McpHttpHeaders.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
+                "Use the initialize handshake with a protocol version that still supports sessions instead.",
             Data = JsonSerializer.SerializeToNode(
                 new UnsupportedProtocolVersionErrorData
                 {
-                    Supported = s_supportedProtocolVersionsExcludingDraft,
-                    Requested = McpHttpHeaders.DraftProtocolVersion,
+                    Supported = s_sessionSupportingProtocolVersions,
+                    Requested = requestedProtocolVersion,
                 },
                 GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
         };
 
-        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest);
+        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest, requestId);
     }
 
     /// <summary>
@@ -1153,9 +1156,9 @@ internal sealed class StreamableHttpHandler(
         return SafeIntegerParse.NotNumeric;
     }
 
-    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode)
+    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode, RequestId requestId = default)
     {
-        var jsonRpcError = new JsonRpcError { Error = detail };
+        var jsonRpcError = new JsonRpcError { Id = requestId, Error = detail };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
     }
 

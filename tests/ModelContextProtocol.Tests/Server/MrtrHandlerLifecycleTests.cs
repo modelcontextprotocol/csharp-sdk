@@ -253,7 +253,8 @@ public class MrtrHandlerLifecycleTests : ClientServerTestBase
 
         // Disposing the server while a continuation is suspended should log the cancellation of the
         // pending MRTR continuation once at Debug level (this is the only path that reaches the
-        // continuation-cancellation log now that HTTP draft is always sessionless). Poll for the
+        // continuation-cancellation log now that the HTTP transport no longer supports sessions starting with the
+        // 2026-07-28 protocol). Poll for the
         // async cancellation to propagate through the handler task.
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (!MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("pending MRTR continuation"))

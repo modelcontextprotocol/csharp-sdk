@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests.Utils;
 
@@ -85,7 +84,7 @@ public static class NodeHelpers
     /// When <see langword="true"/> (the default) and the MCP_CONFORMANCE_PROTOCOL_VERSION
     /// environment variable is set, a "--spec-version &lt;value&gt;" argument is appended.
     /// Pass <see langword="false"/> for scenarios that pin their own spec version (e.g. the
-    /// draft-only caching scenario) to avoid a conflicting duplicate flag.
+    /// caching scenario specific to the 2026-07-28 protocol) to avoid a conflicting duplicate flag.
     /// </param>
     /// <returns>A configured ProcessStartInfo for running the binary.</returns>
     public static ProcessStartInfo ConformanceTestStartInfo(string arguments, bool appendProtocolVersionFromEnv = true)
@@ -188,12 +187,9 @@ public static class NodeHelpers
     /// the pinned version in package.json) means this also returns <see langword="true"/>
     /// when a newer private build has been installed locally via
     /// <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
-    /// Additionally requires that the installed conformance package emits the draft wire
-    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
     public static bool HasSep2243Scenarios()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
-        && HasMatchingDraftWireVersion();
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     /// <summary>
     /// Checks whether the SEP-2549 "caching" conformance scenario (added in conformance
@@ -202,47 +198,9 @@ public static class NodeHelpers
     /// Reading the installed version (rather than the pinned version in package.json) means
     /// this also returns <see langword="true"/> when a newer private build has been installed
     /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
-    /// Additionally requires that the installed conformance package emits the draft wire
-    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
     public static bool HasCachingScenario()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
-        && HasMatchingDraftWireVersion();
-
-    /// <summary>
-    /// Returns <see langword="true"/> when the installed conformance package's bundled
-    /// dist emits the same draft protocol version string as this SDK
-    /// (<see cref="McpHttpHeaders.DraftProtocolVersion"/>). Used to suppress draft-only
-    /// conformance scenarios when the published conformance binary is still pinned to a
-    /// stale wire string (for example, conformance 0.2.0-alpha.2 ships
-    /// <c>"DRAFT-2026-v1"</c> while this SDK speaks <c>"2026-07-28"</c>).
-    /// </summary>
-    /// <remarks>
-    /// This check is a pragmatic alternative to inspecting the conformance package's
-    /// internal constants: the bundled <c>dist/index.js</c> is minified so we can't grep
-    /// the constant name, but the literal version string survives bundling and is unique
-    /// enough to be a reliable signal.
-    /// </remarks>
-    public static bool HasMatchingDraftWireVersion()
-    {
-        try
-        {
-            var repoRoot = FindRepoRoot();
-            var distPath = Path.Combine(
-                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "dist", "index.js");
-            if (!File.Exists(distPath))
-            {
-                return false;
-            }
-
-            var bundled = File.ReadAllText(distPath);
-            return bundled.Contains(McpHttpHeaders.DraftProtocolVersion, StringComparison.Ordinal);
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     /// <summary>
     /// Returns <see langword="true"/> when the conformance package installed in node_modules
@@ -425,12 +383,9 @@ public static class NodeHelpers
     /// Reading the installed version (rather than the pinned version in package.json) means
     /// this also returns <see langword="true"/> when a newer private build has been installed
     /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
-    /// Additionally requires that the installed conformance package emits the draft wire
-    /// version this SDK speaks — see <see cref="HasMatchingDraftWireVersion"/>.
     /// </summary>
     public static bool HasMrtrScenarios()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0))
-        && HasMatchingDraftWireVersion();
+        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {

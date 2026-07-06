@@ -107,7 +107,7 @@ internal sealed partial class McpServerImpl : McpServer
         // A stateful session can push unsolicited list-changed notifications, so subscribe to the
         // collection change events. A stateless HTTP server cannot send unsolicited notifications, so
         // instead suppress the listChanged capability it would otherwise advertise.
-        if (IsStatefulSession())
+        if (HasStatefulTransport())
         {
             Register(ServerOptions.ToolCollection, NotificationMethods.ToolListChangedNotification);
             Register(ServerOptions.PromptCollection, NotificationMethods.PromptListChangedNotification);
@@ -134,9 +134,9 @@ internal sealed partial class McpServerImpl : McpServer
                 ServerCapabilities.Resources.ListChanged = null;
         }
 
-        // And initialize the session. The built-in draft state-sync filter runs ahead of any
-        // user-supplied incoming filters; see PrependDraftStateSyncFilter for what it records and why.
-        var incomingMessageFilter = PrependDraftStateSyncFilter(BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters));
+        // And initialize the session. The built-in meta-reading filter runs ahead of any
+        // user-supplied incoming filters; see PrependMetaReadingFilter for what it records and why.
+        var incomingMessageFilter = PrependMetaReadingFilter(BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters));
         var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
 
         _sessionHandler = new McpSessionHandler(
@@ -158,13 +158,13 @@ internal sealed partial class McpServerImpl : McpServer
     /// version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
-    /// Under the draft protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
+    /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
     /// MUST be populated per-request. For legacy clients the per-request values are absent and the built-in
     /// filter is a no-op (the values were captured during the initialize handler).
     /// </remarks>
-    private JsonRpcMessageFilter PrependDraftStateSyncFilter(JsonRpcMessageFilter inner)
+    private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
-        JsonRpcMessageFilter draftStateSync = next => async (message, cancellationToken) =>
+        JsonRpcMessageFilter metaReadingFilter = next => async (message, cancellationToken) =>
         {
             if (message is JsonRpcRequest { Method: not RequestMethods.Initialize } request && request.Context is { } context)
             {
@@ -174,7 +174,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     // Per SEP-2575, the server MUST reject any request whose per-request
                     // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
-                    // with an UnsupportedProtocolVersionError (-32004) carrying the supported list.
+                    // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
                     if (!McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersion))
                     {
                         throw new UnsupportedProtocolVersionException(
@@ -185,12 +185,12 @@ internal sealed partial class McpServerImpl : McpServer
                     SetNegotiatedProtocolVersion(protocolVersion);
                 }
 
-                if (context.ClientCapabilities is { } clientCapabilities && IsDraftProtocol() && IsStatefulSession())
+                if (context.ClientCapabilities is { } clientCapabilities && IsJuly2026OrLaterProtocol() && HasStatefulTransport())
                 {
-                    // Under the draft revision the per-request _meta envelope carries the client's FULL
-                    // capabilities (SEP-2575), so a plain overwrite is correct. The IsDraftProtocol() gate
+                    // Under the 2026-07-28 revision the per-request _meta envelope carries the client's FULL
+                    // capabilities (SEP-2575), so a plain overwrite is correct. The IsJuly2026OrLaterProtocol() gate
                     // makes any legacy per-request envelope a no-op (legacy capabilities stay as the
-                    // initialize handshake established them); the IsStatefulSession() gate keeps
+                    // initialize handshake established them); the HasStatefulTransport() gate keeps
                     // _clientCapabilities null under StreamableHttpServerTransport { Stateless = true }
                     // (where the same server instance handles every request, so persisting per-request
                     // capability state would both leak across requests and break the StatelessServerTests
@@ -216,7 +216,7 @@ internal sealed partial class McpServerImpl : McpServer
             await next(message, cancellationToken).ConfigureAwait(false);
         };
 
-        return next => draftStateSync(inner(next));
+        return next => metaReadingFilter(inner(next));
     }
 
     /// <inheritdoc/>
@@ -368,12 +368,12 @@ internal sealed partial class McpServerImpl : McpServer
                 protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion &&
                     McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
                     clientProtocolVersion :
-                    McpSessionHandler.LatestProtocolVersion;
+                    McpHttpHeaders.November2025ProtocolVersion;
 
                 // The legacy initialize handshake is authoritative: it may supersede a protocol version
-                // a prior draft server/discover probe established on the same connection (the dual-era
+                // a prior server/discover probe established on the same connection (the dual-era
                 // fallback path a permissive client takes against an unknown server). Unlike the
-                // per-request draft version - which SetNegotiatedProtocolVersion locks once negotiated -
+                // per-request 2026-07-28 version - which SetNegotiatedProtocolVersion locks once negotiated -
                 // initialize force-sets the version.
                 _negotiatedProtocolVersion = protocolVersion;
                 _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
@@ -391,7 +391,7 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Registers the <c>server/discover</c> request handler introduced by the draft protocol revision (SEP-2575).
+    /// Registers the <c>server/discover</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
     /// The handler is registered unconditionally so legacy clients can probe it too. It returns the server's
@@ -421,7 +421,7 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
-    /// Registers the <c>subscriptions/listen</c> request handler introduced by the draft protocol revision (SEP-2575).
+    /// Registers the <c>subscriptions/listen</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -449,7 +449,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // request granting no notifications and complete immediately. This runs after protocol
                 // negotiation, so it is not a legacy-server signal and never triggers a client fallback to the
                 // initialize handshake.
-                if (!IsStatefulSession())
+                if (!HasStatefulTransport())
                 {
                     var statelessSubscription = new ActiveSubscription(
                         jsonRpcRequest.Id,
@@ -521,16 +521,16 @@ internal sealed partial class McpServerImpl : McpServer
     /// </summary>
     /// <remarks>
     /// Pre-SEP-2575 clients do not open <c>subscriptions/listen</c> streams, so they keep receiving a single
-    /// session-wide broadcast. Draft clients instead receive only the change notifications they explicitly
+    /// session-wide broadcast. Clients on the 2026-07-28 or later revision instead receive only the change notifications they explicitly
     /// requested, each routed back over the originating subscription stream and tagged with its id; the server
-    /// <b>MUST NOT</b> send a draft client notification types it never subscribed to.
+    /// <b>MUST NOT</b> send such a client notification types it never subscribed to.
     /// </remarks>
     private async Task SendListChangedNotificationAsync(string notificationMethod)
     {
         // Legacy clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
-        // subscriptions/listen is a SEP-2575 draft feature, so draft clients instead get a fan-out limited
-        // to the notification types they explicitly subscribed to.
-        if (!IsDraftProtocol())
+        // subscriptions/listen is a SEP-2575 feature, so clients on the 2026-07-28 or later revision instead get
+        // a fan-out limited to the notification types they explicitly subscribed to.
+        if (!IsJuly2026OrLaterProtocol())
         {
             await this.SendNotificationAsync(notificationMethod).ConfigureAwait(false);
             return;
@@ -809,12 +809,12 @@ internal sealed partial class McpServerImpl : McpServer
         updateTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
         cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
 
-        // The tasks/* methods do not exist before the draft revision (SEP-2663). Reject them with
+        // The tasks/* methods do not exist before the 2026-07-28 revision (SEP-2663). Reject them with
         // MethodNotFound when the request was negotiated under a legacy protocol version. The handlers
-        // stay registered so a dual-era server still serves them for draft requests.
-        getTaskHandler = GateTaskMethodToDraft(getTaskHandler, RequestMethods.TasksGet);
-        updateTaskHandler = GateTaskMethodToDraft(updateTaskHandler, RequestMethods.TasksUpdate);
-        cancelTaskHandler = GateTaskMethodToDraft(cancelTaskHandler, RequestMethods.TasksCancel);
+        // stay registered so a dual-era server still serves them for 2026-07-28 requests.
+        getTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(getTaskHandler, RequestMethods.TasksGet);
+        updateTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(updateTaskHandler, RequestMethods.TasksUpdate);
+        cancelTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(cancelTaskHandler, RequestMethods.TasksCancel);
 
         // Advertise tasks extension in server capabilities.
         ServerCapabilities.Extensions ??= new Dictionary<string, object>();
@@ -841,17 +841,17 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps a tasks/* request handler so it throws <see cref="McpErrorCode.MethodNotFound"/> unless the
-    /// request was negotiated under the draft revision. The tasks extension (SEP-2663) only interoperates
-    /// under draft, and these methods don't exist on legacy peers.
+    /// request was negotiated under the 2026-07-28 or later revision. The tasks extension (SEP-2663) only
+    /// interoperates on the 2026-07-28 revision, and these methods don't exist on older peers.
     /// </summary>
-    private McpRequestHandler<TParams, TResult> GateTaskMethodToDraft<TParams, TResult>(
+    private McpRequestHandler<TParams, TResult> GateTaskMethodToJuly2026OrLaterProtocol<TParams, TResult>(
         McpRequestHandler<TParams, TResult> inner, string method)
         => (request, cancellationToken) =>
         {
-            if (!IsDraftProtocolRequest(request.JsonRpcRequest))
+            if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
             {
                 throw new McpProtocolException(
-                    $"The method '{method}' requires the draft protocol revision ('{DraftProtocolVersion}'); " +
+                    $"The method '{method}' requires a newer protocol revision that supports tasks; " +
                     $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
                     McpErrorCode.MethodNotFound);
             }
@@ -1176,11 +1176,11 @@ internal sealed partial class McpServerImpl : McpServer
                 if (request.Params?.Cursor is null)
                 {
                     // SEP-2106 wire shaping: clients on protocol versions older than
-                    // 2026-06-30 require outputSchema.type == "object", so the natural
+                    // 2026-07-28 require outputSchema.type == "object", so the natural
                     // schema is reshaped before emission (type:["object","null"] normalized
                     // to "object", any other non-object schema wrapped in
                     // {"type":"object","properties":{"result":<schema>}}). Clients on
-                    // 2026-06-30+ receive the natural JSON Schema 2020-12 document stored
+                    // 2026-07-28+ receive the natural JSON Schema 2020-12 document stored
                     // on Tool.OutputSchema. Only AIFunctionMcpServerTool tools go through
                     // reshaping; custom McpServerTool subclasses build their Tool directly
                     // and pass through unchanged at every protocol version.
@@ -1260,12 +1260,12 @@ internal sealed partial class McpServerImpl : McpServer
             var innerTaskHandler = callToolWithTaskHandler;
             callToolWithTaskHandler = async (request, cancellationToken) =>
             {
-                // The SEP-2663 Tasks extension is draft-only: the task wire shapes we ship do not
+                // The SEP-2663 Tasks extension requires the 2026-07-28 or later revision: the task wire shapes we ship do not
                 // interoperate with legacy (<= 2025-11-25) peers. Only materialize a task when the
-                // request was negotiated under the draft revision AND the client opted in; otherwise
+                // request was negotiated under the 2026-07-28 or later revision AND the client opted in; otherwise
                 // run the inner handler and return the direct result (best-effort downgrade, which also
                 // defends against a non-conformant legacy client that forges the opt-in envelope).
-                if (IsDraftProtocolRequest(request.JsonRpcRequest) && HasTaskExtensionOptIn(request.Params?.Meta))
+                if (IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) && HasTaskExtensionOptIn(request.Params?.Meta))
                 {
                     var taskInfo = await taskStore.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
                     var taskId = taskInfo.TaskId;
@@ -1770,12 +1770,13 @@ internal sealed partial class McpServerImpl : McpServer
         };
 
     /// <summary>
-    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (2026-07-28). MRTR rides on
-    /// the draft revision, so this is the MRTR-meaning alias of <see cref="McpSession.IsDraftProtocol"/> -
-    /// use it at the input-required/handler-suspension sites where the intent is "the client understands
-    /// <see cref="InputRequiredResult"/>" rather than "the peer speaks the draft revision".
+    /// Checks whether the negotiated protocol version enables MRTR per SEP-2322 (first available in the
+    /// 2026-07-28 revision). MRTR rides on the 2026-07-28 revision, so this is the MRTR-meaning alias of
+    /// <see cref="McpSession.IsJuly2026OrLaterProtocol"/> - use it at the input-required/handler-suspension
+    /// sites where the intent is "the client understands <see cref="InputRequiredResult"/>" rather than
+    /// "the peer speaks the 2026-07-28 or later revision".
     /// </summary>
-    internal bool ClientSupportsMrtr() => IsDraftProtocol();
+    internal bool ClientSupportsMrtr() => IsJuly2026OrLaterProtocol();
 
     /// <summary>
     /// Returns <see langword="true"/> when the session is stateful - the same server instance handles
@@ -1784,23 +1785,21 @@ internal sealed partial class McpServerImpl : McpServer
     /// <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> to the client and
     /// retry the handler with the responses.
     /// </summary>
-    internal bool IsStatefulSession() =>
+    internal bool HasStatefulTransport() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
 
     /// <summary>
-    /// Returns <see langword="true"/> when the given request was negotiated under the draft protocol
+    /// Returns <see langword="true"/> when the given request was negotiated under the 2026-07-28 or later protocol
     /// revision, derived from the per-request <c>_meta</c>/<c>MCP-Protocol-Version</c> value (so it works
-    /// for sessionless draft over stateless HTTP) and falling back to the session-negotiated version.
-    /// Used to gate the SEP-2663 Tasks extension, which only interoperates under the draft revision.
+    /// for requests over stateless HTTP) and falling back to the session-negotiated version.
+    /// Used to gate the SEP-2663 Tasks extension, which only interoperates on the 2026-07-28 revision.
     /// </summary>
-    private bool IsDraftProtocolRequest(JsonRpcRequest? request) =>
-        string.Equals(
-            request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion,
-            DraftProtocolVersion,
-            StringComparison.Ordinal);
+    private bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
+        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
+            request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />
-    public override bool IsMrtrSupported => ClientSupportsMrtr() || IsStatefulSession();
+    public override bool IsMrtrSupported => ClientSupportsMrtr() || HasStatefulTransport();
 
     /// <summary>
     /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an
@@ -1834,7 +1833,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // In stateless mode without MRTR, the server can't resolve input requests via
                 // JSON-RPC (no persistent session for server-to-client requests), and the client
                 // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-                if (!IsStatefulSession())
+                if (!HasStatefulTransport())
                 {
                     throw new McpException(
                         "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
@@ -2056,7 +2055,7 @@ internal sealed partial class McpServerImpl : McpServer
             // For all other cases - legacy clients, stateless sessions - fall through to the
             // exception-based path, which transparently resolves InputRequiredException via
             // legacy JSON-RPC requests when the client doesn't speak MRTR.
-            if (!ClientSupportsMrtr() || !IsStatefulSession())
+            if (!ClientSupportsMrtr() || !HasStatefulTransport())
             {
                 return await InvokeWithInputRequiredResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
