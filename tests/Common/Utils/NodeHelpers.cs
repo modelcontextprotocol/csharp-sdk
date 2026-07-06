@@ -387,8 +387,8 @@ public static class NodeHelpers
     /// </summary>
     private static (Version Core, string[] Prerelease) SplitSemVer(string version)
     {
-        var withoutBuild = version.Split('+', 2)[0];
-        var parts = withoutBuild.Split('-', 2);
+        var withoutBuild = version.Split(new[] { '+' }, 2)[0];
+        var parts = withoutBuild.Split(new[] { '-' }, 2);
         var prerelease = parts.Length > 1 && parts[1].Length > 0
             ? parts[1].Split('.')
             : Array.Empty<string>();
