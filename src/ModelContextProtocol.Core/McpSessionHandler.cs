@@ -32,7 +32,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// All protocol versions supported by this implementation. The era-specific lists live on
     /// <see cref="McpHttpHeaders"/> so the shared source file is the single source of truth.
     /// </summary>
-    internal static readonly string[] SupportedProtocolVersions = McpHttpHeaders.SupportedProtocolVersions;
+    internal static readonly string[] SupportedProtocolVersions = McpProtocolVersions.SupportedProtocolVersions;
 
     /// <summary>
     /// Checks if the given protocol version supports priming events.
@@ -45,7 +45,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// </remarks>
     internal static bool SupportsPrimingEvent(string? protocolVersion)
     {
-        const string MinResumabilityProtocolVersion = McpHttpHeaders.November2025ProtocolVersion;
+        const string MinResumabilityProtocolVersion = McpProtocolVersions.November2025ProtocolVersion;
 
         if (protocolVersion is null)
         {
@@ -73,7 +73,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             return false;
         }
 
-        return string.Compare(protocolVersion, McpHttpHeaders.July2026ProtocolVersion, StringComparison.Ordinal) >= 0;
+        return string.Compare(protocolVersion, McpProtocolVersions.July2026ProtocolVersion, StringComparison.Ordinal) >= 0;
     }
 
     private readonly bool _isServer;
@@ -154,7 +154,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             (request, jsonRpcRequest, cancellationToken) =>
             {
                 string? perRequestVersion = jsonRpcRequest?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion;
-                if (McpHttpHeaders.RequiresPerRequestMetadata(perRequestVersion))
+                if (McpProtocolVersions.RequiresPerRequestMetadata(perRequestVersion))
                 {
                     throw new McpProtocolException(
                         $"Method '{RequestMethods.Ping}' is not available on protocol version '{perRequestVersion}'.",
@@ -610,7 +610,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Used by <see cref="Client.McpClient"/> on a 2026-07-28 or later session to carry protocol version, client
-    /// info, and client capabilities on every outgoing request (replacing what the legacy
+    /// info, and client capabilities on every outgoing request (replacing what the
     /// <c>initialize</c> handshake previously negotiated once).
     /// </remarks>
     internal static void InjectRequestMeta(

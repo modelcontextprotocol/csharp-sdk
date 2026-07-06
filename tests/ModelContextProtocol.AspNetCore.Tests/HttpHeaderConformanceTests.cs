@@ -563,7 +563,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     [InlineData("", false)]
     public void RequiresStandardHeaders_CorrectlyGatesVersions(string? version, bool expected)
     {
-        Assert.Equal(expected, McpHttpHeaders.RequiresStandardHeaders(version));
+        Assert.Equal(expected, McpProtocolVersions.RequiresStandardHeaders(version));
     }
 
     #endregion

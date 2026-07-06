@@ -22,12 +22,12 @@ namespace ModelContextProtocol.Protocol;
 public sealed class InitializeResult : Result
 {
     /// <summary>
-    /// Gets or sets the legacy Model Context Protocol version that the server will use for this session.
+    /// Gets or sets the initialize-handshake Model Context Protocol version that the server will use for this session.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the legacy protocol version the server has agreed to use, which should match the client's
-    /// requested legacy version. If there's a mismatch, the client should throw an exception to prevent
+    /// This is the initialize-capable protocol version the server has agreed to use, which should match the client's
+    /// requested version. If there's a mismatch, the client should throw an exception to prevent
     /// communication issues due to incompatible protocol versions.
     /// </para>
     /// <para>

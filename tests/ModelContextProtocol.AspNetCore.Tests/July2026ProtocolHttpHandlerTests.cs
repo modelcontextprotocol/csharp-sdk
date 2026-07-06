@@ -52,7 +52,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync(stateless: true);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         // On a stateless server, server/discover succeeds without creating a session.
@@ -74,7 +74,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         // to the initialize handshake.
         await StartAsync(stateless: false);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
@@ -93,10 +93,10 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         var dataElement = (JsonElement)rpcError.Error.Data!;
         var errorData = dataElement.Deserialize<UnsupportedProtocolVersionErrorData>(McpJsonUtilities.DefaultOptions);
         Assert.NotNull(errorData);
-        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, errorData.Requested);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, errorData.Requested);
         // The 2026-07-28 protocol version is excluded from Supported so the client downgrades to an initialize-capable version.
         Assert.NotEmpty(errorData.Supported);
-        Assert.DoesNotContain(McpHttpHeaders.July2026ProtocolVersion, errorData.Supported);
+        Assert.DoesNotContain(McpProtocolVersions.July2026ProtocolVersion, errorData.Supported);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         // a request carrying an Mcp-Session-Id is ignored, and the server must not mint or echo session IDs.
         await StartAsync(stateless: true);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
@@ -152,7 +152,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
@@ -164,7 +164,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
@@ -177,7 +177,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
@@ -189,7 +189,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);

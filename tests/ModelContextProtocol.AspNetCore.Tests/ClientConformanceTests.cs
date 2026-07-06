@@ -17,6 +17,7 @@ public class ClientConformanceTests
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
     public static bool HasSep2243Scenarios => NodeHelpers.HasSep2243Scenarios();
+    public static bool HasRequestMetadataScenario => NodeHelpers.HasRequestMetadataScenario();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
@@ -44,7 +45,7 @@ public class ClientConformanceTests
     [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
 
-    // Backcompat: Legacy 2025-03-26 OAuth flows (no PRM, root-location metadata).
+    // Backcompat: 2025-03-26 OAuth flows (no per-request metadata, root-location metadata).
     [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
     [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
 
@@ -62,8 +63,18 @@ public class ClientConformanceTests
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    // Per-request metadata (SEP-2575)
+    [Fact(Skip = "SEP-2575 request-metadata conformance scenario is not available in the installed conformance package.", SkipUnless = nameof(HasRequestMetadataScenario))]
+    public async Task RunConformanceTest_RequestMetadata()
+    {
+        var result = await RunClientConformanceScenario("request-metadata");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     // HTTP Standardization (SEP-2243)
-    [Theory(Skip = "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).", SkipUnless = nameof(HasSep2243Scenarios))]
+    [Theory(Skip = "SEP-2243 conformance scenarios are not available in the installed conformance package.", SkipUnless = nameof(HasSep2243Scenarios))]
     [InlineData("http-standard-headers")]
     [InlineData("http-invalid-tool-headers")]
     // Commented out: the upstream scenario annotates a "number"-typed parameter with x-mcp-header,

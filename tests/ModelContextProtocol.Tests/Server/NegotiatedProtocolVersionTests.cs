@@ -54,18 +54,18 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var ct = TestContext.Current.CancellationToken;
 
         // The first request establishes the 2026-07-28 version for the stateful session (null -> 2026-07-28).
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpProtocolVersions.July2026ProtocolVersion, ct));
 
         // Re-sending the same version is an idempotent no-op, not an error.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
 
         // Switching to a different (still-supported) version mid-session is rejected.
-        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpHttpHeaders.November2025ProtocolVersion, ct));
+        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpProtocolVersions.November2025ProtocolVersion, ct));
         Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
         Assert.Contains("protocol version cannot change", error.Error.Message, StringComparison.OrdinalIgnoreCase);
 
         // The rejected request must not have mutated the negotiated version: the original 2026-07-28 version still works.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpProtocolVersions.July2026ProtocolVersion, ct));
     }
 
     [Fact]
@@ -73,12 +73,12 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 1, McpHttpHeaders.November2025ProtocolVersion, ct));
+        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
         Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
         Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
 
         // The rejected initialize-handshake _meta request must not have established session state.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var error = Assert.IsType<JsonRpcError>(
             await RoundTripAsync(
                 id: 1,
-                McpHttpHeaders.July2026ProtocolVersion,
+                McpProtocolVersions.July2026ProtocolVersion,
                 ct,
                 includeClientInfo: false));
 
@@ -120,7 +120,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var ct = TestContext.Current.CancellationToken;
 
         var error = Assert.IsType<JsonRpcError>(
-            await RoundTripInitializeAsync(id: 1, McpHttpHeaders.July2026ProtocolVersion, ct));
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.July2026ProtocolVersion, ct));
 
         Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
         Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
@@ -137,7 +137,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
             Method = RequestMethods.Initialize,
             Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
             {
-                ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
                 Capabilities = new ClientCapabilities(),
                 ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
                 Meta = new JsonObject
@@ -162,7 +162,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var ct = TestContext.Current.CancellationToken;
 
         Assert.IsType<JsonRpcResponse>(
-            await RoundTripInitializeAsync(id: 1, McpHttpHeaders.November2025ProtocolVersion, ct));
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
 
         var request = new JsonRpcRequest
         {
@@ -212,7 +212,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
             [MetaKeys.ProtocolVersion] = protocolVersion,
         };
 
-        if (McpHttpHeaders.RequiresPerRequestMetadata(protocolVersion))
+        if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
         {
             if (includeClientInfo)
             {
@@ -244,7 +244,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
 
     private static JsonObject PerRequestMetadata() => new()
     {
-        [MetaKeys.ProtocolVersion] = McpHttpHeaders.July2026ProtocolVersion,
+        [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
         [MetaKeys.ClientInfo] = new JsonObject
         {
             ["name"] = "test-client",

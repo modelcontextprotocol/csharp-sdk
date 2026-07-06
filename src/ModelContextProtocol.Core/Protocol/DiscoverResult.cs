@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// Introduced by the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
-/// to learn what a server supports without performing the legacy <c>initialize</c> handshake.
+/// to learn what a server supports without performing the <c>initialize</c> handshake.
 /// </para>
 /// </remarks>
 public sealed class DiscoverResult : Result, ICacheableResult

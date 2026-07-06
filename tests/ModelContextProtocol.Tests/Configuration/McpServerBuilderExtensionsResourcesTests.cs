@@ -164,10 +164,10 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
         // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
-        // legacy revision to keep coverage of the session-wide broadcast that legacy clients still rely on.
+        // initialize-handshake revision to keep coverage of the session-wide broadcast that older clients still rely on.
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
         });
 
 

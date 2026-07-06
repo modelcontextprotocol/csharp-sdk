@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// End-to-end tests for the SEP-2575 <c>subscriptions/listen</c> list-changed delivery over an
 /// in-memory stream transport (the stdio-shaped path exercised by <see cref="ClientServerTestBase"/>).
 /// Validates that a client on the 2026-07-28 protocol receives only the change notifications it subscribed to, each tagged
-/// with the subscription id, and that legacy sessions keep receiving the session-wide broadcast.
+/// with the subscription id, and that initialize-handshake sessions keep receiving the session-wide broadcast.
 /// </summary>
 public class SubscriptionsListenTests : ClientServerTestBase
 {
@@ -104,11 +104,11 @@ public class SubscriptionsListenTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Legacy_ListChanged_IsBroadcast_WithoutSubscription()
+    public async Task InitializeHandshake_ListChanged_IsBroadcast_WithoutSubscription()
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion,
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
         });
 
         var toolsChannel = Channel.CreateUnbounded<JsonRpcNotification>();
@@ -118,7 +118,7 @@ public class SubscriptionsListenTests : ClientServerTestBase
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         serverOptions.ToolCollection!.Add(McpServerTool.Create([McpServerTool(Name = "AddedTool")] () => "42"));
 
-        // Legacy sessions keep the session-wide broadcast and the notification carries no subscription id.
+        // Initialize-handshake sessions keep the session-wide broadcast and the notification carries no subscription id.
         var notification = await toolsChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.Null(GetSubscriptionId(notification));
     }

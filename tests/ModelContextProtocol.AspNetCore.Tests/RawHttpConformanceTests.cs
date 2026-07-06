@@ -83,7 +83,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         return JsonNode.Parse(body)!;
     }
 
-    private static string July2026ProtocolMetaFragment(string protocolVersion = McpHttpHeaders.July2026ProtocolVersion) =>
+    private static string July2026ProtocolMetaFragment(string protocolVersion = McpProtocolVersions.July2026ProtocolVersion) =>
         @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":""" + protocolVersion +
         @""",""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
         @"""io.modelcontextprotocol/clientCapabilities"":{}}";
@@ -98,7 +98,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
             July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -120,14 +120,14 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Equal([McpHttpHeaders.July2026ProtocolVersion], supported);
+        Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
 
         // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
         // safest defaults (immediately stale, not shareable) when the application hasn't customized.
@@ -139,19 +139,19 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     [Fact]
     public async Task ServerDiscover_WithConfiguredPerRequestMetadataProtocol_ReturnsOnlyConfiguredVersion()
     {
-        await StartAsync(McpHttpHeaders.July2026ProtocolVersion);
+        await StartAsync(McpProtocolVersions.July2026ProtocolVersion);
 
         var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Equal([McpHttpHeaders.July2026ProtocolVersion], supported);
+        Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supported);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
             July2026ProtocolMetaFragment("2025-11-25") + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -209,14 +209,14 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     [Fact]
     public async Task July2026Post_WithServerPinnedToInitializeHandshakeVersion_ReturnsUnsupportedProtocolVersion()
     {
-        await StartAsync(McpHttpHeaders.November2025ProtocolVersion);
+        await StartAsync(McpProtocolVersions.November2025ProtocolVersion);
 
         var body =
             @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""x""}," +
             July2026ProtocolMetaFragment() + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "echo");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -224,10 +224,10 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, json["error"]!["code"]!.GetValue<int>());
-        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, json["error"]!["data"]!["requested"]!.GetValue<string>());
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, json["error"]!["data"]!["requested"]!.GetValue<string>());
 
         var supported = json["error"]!["data"]!["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Equal([McpHttpHeaders.November2025ProtocolVersion], supported);
+        Assert.Equal([McpProtocolVersions.November2025ProtocolVersion], supported);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{""_meta"":{""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -273,7 +273,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
-        request.Headers.Add(ProtocolVersionHeader, McpHttpHeaders.July2026ProtocolVersion);
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", RequestMethods.Initialize);
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 

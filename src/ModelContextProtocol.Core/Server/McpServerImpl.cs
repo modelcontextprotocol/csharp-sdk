@@ -84,8 +84,8 @@ internal sealed partial class McpServerImpl : McpServer
         ServerOptions = options;
         Services = serviceProvider;
         _supportedProtocolVersions = GetConfiguredSupportedProtocolVersions(options.ProtocolVersion);
-        _initializeHandshakeProtocolVersions = [.. _supportedProtocolVersions.Where(McpHttpHeaders.SupportsInitializeHandshake)];
-        _perRequestMetadataProtocolVersions = [.. _supportedProtocolVersions.Where(McpHttpHeaders.RequiresPerRequestMetadata)];
+        _initializeHandshakeProtocolVersions = [.. _supportedProtocolVersions.Where(McpProtocolVersions.SupportsInitializeHandshake)];
+        _perRequestMetadataProtocolVersions = [.. _supportedProtocolVersions.Where(McpProtocolVersions.RequiresPerRequestMetadata)];
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
@@ -205,7 +205,7 @@ internal sealed partial class McpServerImpl : McpServer
                             supported: _supportedProtocolVersions);
                     }
 
-                    if (McpHttpHeaders.RequiresPerRequestMetadata(protocolVersion))
+                    if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
                     {
                         ValidateRequiredPerRequestMetadata(
                             protocolVersion,
@@ -213,7 +213,7 @@ internal sealed partial class McpServerImpl : McpServer
                             context.ClientInfo is not null,
                             context.ClientCapabilities is not null);
                     }
-                    else if (McpHttpHeaders.SupportsInitializeHandshake(protocolVersion))
+                    else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
                     {
                         if (_negotiatedProtocolVersion is null && hasProtocolVersionMeta)
                         {
@@ -250,7 +250,7 @@ internal sealed partial class McpServerImpl : McpServer
                         ThrowReservedPerRequestMetadata(requestedProtocolVersion: null, reservedPerRequestMetaKey);
                     }
                 }
-                else if (McpHttpHeaders.SupportsInitializeHandshake(_negotiatedProtocolVersion) && hasReservedPerRequestMeta)
+                else if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion) && hasReservedPerRequestMeta)
                 {
                     ThrowReservedPerRequestMetadata(_negotiatedProtocolVersion, reservedPerRequestMetaKey);
                 }
@@ -352,7 +352,7 @@ internal sealed partial class McpServerImpl : McpServer
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
         if (request.Context?.ProtocolVersion is { } protocolVersion &&
-            !McpHttpHeaders.SupportsInitializeHandshake(protocolVersion))
+            !McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
         {
             throw new UnsupportedProtocolVersionException(
                 requested: protocolVersion,
@@ -382,14 +382,14 @@ internal sealed partial class McpServerImpl : McpServer
     {
         if (protocolVersion is null)
         {
-            return McpHttpHeaders.SupportedProtocolVersions;
+            return McpProtocolVersions.SupportedProtocolVersions;
         }
 
-        if (!McpHttpHeaders.IsSupportedProtocolVersion(protocolVersion))
+        if (!McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion))
         {
             throw new McpException(
                 $"Unsupported server protocol version '{protocolVersion}'. Supported protocol versions: " +
-                string.Join(", ", McpHttpHeaders.SupportedProtocolVersions) + ".");
+                string.Join(", ", McpProtocolVersions.SupportedProtocolVersions) + ".");
         }
 
         return [protocolVersion];
@@ -398,7 +398,7 @@ internal sealed partial class McpServerImpl : McpServer
     private void ValidateNotificationBoundary(JsonRpcNotification notification)
     {
         if (notification.Method == NotificationMethods.InitializedNotification &&
-            McpHttpHeaders.RequiresPerRequestMetadata(notification.Context?.ProtocolVersion ?? _negotiatedProtocolVersion))
+            McpProtocolVersions.RequiresPerRequestMetadata(notification.Context?.ProtocolVersion ?? _negotiatedProtocolVersion))
         {
             throw new McpProtocolException(
                 $"The notification '{NotificationMethods.InitializedNotification}' is only valid after the initialize handshake.",
@@ -578,7 +578,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // per-request _meta instead.
                 string? protocolVersion = options.ProtocolVersion;
                 if (protocolVersion is { } configuredProtocolVersion &&
-                    McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(configuredProtocolVersion))
+                    McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(configuredProtocolVersion))
                 {
                     throw new UnsupportedProtocolVersionException(
                         configuredProtocolVersion,
@@ -590,7 +590,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     if (request?.ProtocolVersion is string clientProtocolVersion)
                     {
-                        if (McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(clientProtocolVersion))
+                        if (McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(clientProtocolVersion))
                         {
                             throw new UnsupportedProtocolVersionException(
                                 clientProtocolVersion,
@@ -598,17 +598,17 @@ internal sealed partial class McpServerImpl : McpServer
                                 $"Protocol version '{clientProtocolVersion}' is not available through the initialize handshake.");
                         }
 
-                        protocolVersion = McpHttpHeaders.SupportsInitializeHandshake(clientProtocolVersion) ?
+                        protocolVersion = McpProtocolVersions.SupportsInitializeHandshake(clientProtocolVersion) ?
                             clientProtocolVersion :
-                            McpHttpHeaders.November2025ProtocolVersion;
+                            McpProtocolVersions.November2025ProtocolVersion;
                     }
                     else
                     {
-                        protocolVersion = McpHttpHeaders.November2025ProtocolVersion;
+                        protocolVersion = McpProtocolVersions.November2025ProtocolVersion;
                     }
                 }
 
-                string negotiatedProtocolVersion = protocolVersion ?? McpHttpHeaders.November2025ProtocolVersion;
+                string negotiatedProtocolVersion = protocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
 
                 // The initialize handshake is authoritative: it may supersede a protocol version
                 // a prior server/discover probe established on the same connection (the dual-path
@@ -1136,7 +1136,7 @@ internal sealed partial class McpServerImpl : McpServer
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
         readResourceHandler ??= (static async (request, _) =>
         {
-            var errorCode = McpHttpHeaders.UseInvalidParamsForMissingResource(request.Server.NegotiatedProtocolVersion)
+            var errorCode = McpProtocolVersions.UseInvalidParamsForMissingResource(request.Server.NegotiatedProtocolVersion)
                 ? McpErrorCode.InvalidParams
                 : McpErrorCode.ResourceNotFound;
             throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", errorCode);
@@ -2050,7 +2050,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// Used to gate the SEP-2663 Tasks extension, which only interoperates on the 2026-07-28 revision.
     /// </summary>
     private bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
-        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(
             request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />

@@ -30,7 +30,7 @@ public class McpRequestHeadersTests
     [InlineData("", false)]
     public void RequiresStandardHeaders_ReturnsExpected(string? version, bool expected)
     {
-        Assert.Equal(expected, McpHttpHeaders.RequiresStandardHeaders(version));
+        Assert.Equal(expected, McpProtocolVersions.RequiresStandardHeaders(version));
     }
 
 }

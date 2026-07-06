@@ -91,7 +91,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
         await using var client = await ConnectDefaultClientAsync();
 
         // The 2026-07-28 probe was refused (-32022), so the client downgraded to initialize.
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("greet",
             new Dictionary<string, object?> { ["name"] = "Alice" },
@@ -118,7 +118,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
             });
         });
 
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("greet_via_elicit",
             cancellationToken: TestContext.Current.CancellationToken);

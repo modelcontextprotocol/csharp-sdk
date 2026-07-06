@@ -76,7 +76,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         return JsonNode.Parse(line!)!;
     }
 
-    private static string July2026ProtocolMetaFragment(string protocolVersion = McpHttpHeaders.July2026ProtocolVersion) =>
+    private static string July2026ProtocolMetaFragment(string protocolVersion = McpProtocolVersions.July2026ProtocolVersion) =>
         @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":""" + protocolVersion +
         @""",""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
         @"""io.modelcontextprotocol/clientCapabilities"":{}}";
@@ -96,7 +96,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var supportedVersions = result!["supportedVersions"]!.AsArray()
             .Select(n => n!.GetValue<string>())
             .ToList();
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supportedVersions);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supportedVersions);
 
         // Capabilities and serverInfo are mandatory in DiscoverResult per SEP-2575.
         Assert.NotNull(result["capabilities"]);
@@ -146,7 +146,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supported);
     }
 
     [Fact]

@@ -71,7 +71,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // (-32022 UnsupportedProtocolVersion, -32021 MissingRequiredClientCapability,
         // -32020 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
         // initialize-handshake servers that don't understand the SEP-2575 _meta envelope) become generic
-        // McpProtocolException instances and trigger the fallback-to-legacy-initialize path.
+        // McpProtocolException instances and trigger the initialize-handshake fallback path.
         // Other status codes (401 auth, 403 forbidden, 404 session-not-found, 5xx server) continue
         // to surface as HttpRequestException to preserve back-compat with transport-layer behaviors.
         // The three per-request metadata protocol error codes are also surfaced for non-400 status codes
@@ -528,7 +528,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         string? protocolVersion,
         string? lastEventId = null)
     {
-        if (sessionId is not null && McpHttpHeaders.SupportsHttpSessions(protocolVersion))
+        if (sessionId is not null && McpProtocolVersions.SupportsHttpSessions(protocolVersion))
         {
             headers.Add(McpHttpHeaders.SessionId, sessionId);
         }

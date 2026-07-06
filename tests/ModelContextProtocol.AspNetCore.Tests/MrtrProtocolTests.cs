@@ -147,7 +147,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
         // headers. No initialize handshake and no Mcp-Session-Id.
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
     }
 
     public async ValueTask DisposeAsync()
@@ -484,7 +484,7 @@ public class MrtrProtocolTests(ITestOutputHelper outputHelper) : KestrelInMemory
             paramsObj["_meta"] = meta;
         }
 
-        meta[MetaKeys.ProtocolVersion] = McpHttpHeaders.July2026ProtocolVersion;
+        meta[MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion;
         meta[MetaKeys.ClientInfo] = new JsonObject
         {
             ["name"] = "MrtrTestClient",

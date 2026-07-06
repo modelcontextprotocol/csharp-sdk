@@ -124,7 +124,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2025-06-18",
+                        ProtocolVersion = McpProtocolVersions.June2025ProtocolVersion,
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "initialize-handshake", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions),
@@ -162,7 +162,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         // Sanity: subsequent traffic still works post-fallback.
         var tools = await client.ListToolsAsync(cancellationToken: ct);
@@ -198,8 +198,8 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                 // Use the typed payload type so the source-generated serializer can handle it.
                 var data = JsonSerializer.SerializeToNode(new UnsupportedProtocolVersionErrorData
                 {
-                    Supported = new List<string> { "2025-11-25" },
-                    Requested = "2026-07-28",
+                    Supported = new List<string> { McpProtocolVersions.November2025ProtocolVersion },
+                    Requested = McpProtocolVersions.July2026ProtocolVersion,
                 }, GetJsonTypeInfo<UnsupportedProtocolVersionErrorData>());
 
                 var rpcError = new JsonRpcError
@@ -226,7 +226,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2025-11-25",
+                        ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "go-shaped", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions),
@@ -249,7 +249,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
     }
 
     /// <summary>
@@ -294,7 +294,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
@@ -322,7 +322,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new DiscoverResult
                     {
-                        SupportedVersions = [McpHttpHeaders.July2026ProtocolVersion],
+                        SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                         Capabilities = new ServerCapabilities(),
                         ServerInfo = new Implementation { Name = "bad-per-request-metadata-server", Version = "1.0" },
                         TimeToLive = TimeSpan.Zero,
@@ -361,7 +361,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);
 
         await client.ListToolsAsync(cancellationToken: ct);
@@ -392,7 +392,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new DiscoverResult
                     {
-                        SupportedVersions = [McpHttpHeaders.July2026ProtocolVersion],
+                        SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                         Capabilities = new ServerCapabilities(),
                         ServerInfo = new Implementation { Name = "per-request-metadata-server", Version = "1.0" },
                         TimeToLive = TimeSpan.Zero,
@@ -418,7 +418,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("", discoverSessionId);

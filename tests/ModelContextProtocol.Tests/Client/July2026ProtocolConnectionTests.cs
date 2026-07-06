@@ -9,12 +9,12 @@ namespace ModelContextProtocol.Tests.Client;
 /// <summary>
 /// Connection-flow tests for the 2026-07-28 protocol revision (SEP-2575 + SEP-2567)
 /// on <see cref="McpClient"/>. A client that requests
-/// <see cref="McpHttpHeaders.July2026ProtocolVersion"/> calls <c>server/discover</c> rather than
+/// <see cref="McpProtocolVersions.July2026ProtocolVersion"/> calls <c>server/discover</c> rather than
 /// <c>initialize</c>.
 /// </summary>
 public class July2026ProtocolConnectionTests : ClientServerTestBase
 {
-    private const string LatestStableVersion = "2025-11-25";
+    private const string LatestStableVersion = McpProtocolVersions.November2025ProtocolVersion;
 
     public July2026ProtocolConnectionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -34,10 +34,10 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     {
         StartServer();
 
-        var options = new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion };
+        var options = new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion };
         await using var client = await CreateMcpClientForServer(options);
 
-        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
         Assert.NotNull(client.ServerCapabilities);
         Assert.Equal(nameof(July2026ProtocolConnectionTests), client.ServerInfo.Name);
     }
@@ -49,7 +49,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
-        Assert.NotEqual(McpHttpHeaders.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.NotEqual(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -83,6 +83,6 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
-        Assert.Equal([McpHttpHeaders.July2026ProtocolVersion], discoverResult.SupportedVersions);
+        Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], discoverResult.SupportedVersions);
     }
 }

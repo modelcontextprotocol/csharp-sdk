@@ -34,14 +34,14 @@ internal sealed class StreamableHttpHandler(
     /// <summary>
     /// All protocol versions supported by this implementation.
     /// </summary>
-    private static readonly string[] s_supportedProtocolVersions = McpHttpHeaders.SupportedProtocolVersions;
+    private static readonly string[] s_supportedProtocolVersions = McpProtocolVersions.SupportedProtocolVersions;
 
     /// <summary>
     /// The supported protocol versions that still allow Streamable HTTP sessions (excluding 2026-07-28 and
     /// later). Used when refusing a 2026-07-28 request on a stateful (Stateless = false) server so a dual-path
     /// client falls back to the initialize handshake instead of retrying the 2026-07-28 version.
     /// </summary>
-    private static readonly string[] s_sessionSupportingProtocolVersions = McpHttpHeaders.InitializeHandshakeProtocolVersions;
+    private static readonly string[] s_sessionSupportingProtocolVersions = McpProtocolVersions.InitializeHandshakeProtocolVersions;
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
@@ -427,7 +427,7 @@ internal sealed class StreamableHttpHandler(
     private static bool RequiresPerRequestMetadataProtocol(HttpContext context)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        return McpHttpHeaders.RequiresPerRequestMetadata(protocolVersionHeader);
+        return McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader);
     }
 
     private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
@@ -685,7 +685,7 @@ internal sealed class StreamableHttpHandler(
             return s_supportedProtocolVersions;
         }
 
-        return McpHttpHeaders.IsSupportedProtocolVersion(protocolVersion) ?
+        return McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion) ?
             [protocolVersion] :
             s_supportedProtocolVersions;
     }
@@ -708,8 +708,8 @@ internal sealed class StreamableHttpHandler(
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
 
-        if (!McpHttpHeaders.RequiresPerRequestMetadata(protocolVersionHeader) &&
-            !McpHttpHeaders.RequiresPerRequestMetadata(protocolVersionMeta))
+        if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
+            !McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionMeta))
         {
             errorDetail = null;
             return true;
@@ -783,7 +783,7 @@ internal sealed class StreamableHttpHandler(
         var errorDetail = new JsonRpcErrorDetail
         {
             Code = (int)McpErrorCode.UnsupportedProtocolVersion,
-            Message = $"Bad Request: Starting with protocol version '{McpHttpHeaders.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
+            Message = $"Bad Request: Starting with protocol version '{McpProtocolVersions.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
                 "Use the initialize handshake with a protocol version that still supports sessions instead.",
             Data = JsonSerializer.SerializeToNode(
                 new UnsupportedProtocolVersionErrorData
@@ -811,7 +811,7 @@ internal sealed class StreamableHttpHandler(
     {
         // Only validate for protocol versions that support standard headers.
         var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        if (!McpHttpHeaders.RequiresStandardHeaders(protocolVersion))
+        if (!McpProtocolVersions.RequiresStandardHeaders(protocolVersion))
         {
             errorMessage = null;
             return true;

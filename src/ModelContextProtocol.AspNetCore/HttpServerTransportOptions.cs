@@ -65,7 +65,7 @@ public class HttpServerTransportOptions
     /// the revision removed <c>Mcp-Session-Id</c> (SEP-2567), so over HTTP its requests are only ever served
     /// when this property is <see langword="true"/>. When it is <see langword="false"/>, such a request is
     /// refused with a <c>-32022 UnsupportedProtocolVersion</c> error so that a dual-path client downgrades to
-    /// the legacy <c>initialize</c> handshake and obtains the session the server was configured to provide.
+    /// the <c>initialize</c> handshake and obtains the session the server was configured to provide.
     /// A request that carries an <c>Mcp-Session-Id</c> on the <c>2026-07-28</c> and later revisions is ignored;
     /// the server must not mint or echo session IDs for those revisions.
     /// </para>
