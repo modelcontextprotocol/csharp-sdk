@@ -192,6 +192,19 @@ public static class NodeHelpers
         => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
 
     /// <summary>
+    /// Checks whether the installed conformance package contains a spec-conformant
+    /// <c>http-custom-headers</c> scenario. Prereleases 0.2.0-alpha.5 through 0.2.0-alpha.7
+    /// annotated a <c>number</c>-typed parameter with <c>x-mcp-header</c>, which SEP-2243
+    /// forbids; a conformant client excludes that tool, so every positive check in the
+    /// scenario fails. Conformance PR #371 fixed the scenario and shipped it in 0.2.0-alpha.8,
+    /// so this gate requires at least that version. Unlike <see cref="HasSep2243Scenarios"/>,
+    /// this comparison honors the semver prerelease so older 0.2.0 prereleases are skipped
+    /// rather than failing spuriously.
+    /// </summary>
+    public static bool HasConformantCustomHeadersScenario()
+        => IsInstalledConformanceVersionAtLeast("0.2.0-alpha.8");
+
+    /// <summary>
     /// Checks whether the SEP-2549 "caching" conformance scenario (added in conformance
     /// PR #275) is available, by reading the <em>installed</em> conformance package version
     /// from node_modules. The caching scenario was introduced in conformance package 0.2.0.
@@ -256,7 +269,138 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Runs the conformance runner ("conformance &lt;arguments&gt;") in server mode and returns
+    /// Returns <see langword="true"/> when the conformance package installed in node_modules
+    /// has a semver precedence greater than or equal to <paramref name="minimumVersion"/>,
+    /// honoring the prerelease component (e.g. "0.2.0-alpha.8"). Returns <see langword="false"/>
+    /// when no version can be determined.
+    /// </summary>
+    private static bool IsInstalledConformanceVersionAtLeast(string minimumVersion)
+    {
+        var installed = GetInstalledConformanceVersionString();
+        return installed is not null && CompareSemVer(installed, minimumVersion) >= 0;
+    }
+
+    /// <summary>
+    /// Reads the raw version string of the conformance package installed in node_modules,
+    /// preserving any prerelease/build suffix. Returns <see langword="null"/> if it cannot be
+    /// determined.
+    /// </summary>
+    private static string? GetInstalledConformanceVersionString()
+    {
+        try
+        {
+            var repoRoot = FindRepoRoot();
+            var packageJsonPath = Path.Combine(
+                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "package.json");
+
+            if (!File.Exists(packageJsonPath))
+            {
+                return null;
+            }
+
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (json.RootElement.TryGetProperty("version", out var versionElement))
+            {
+                return versionElement.GetString();
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Compares two semantic version strings by precedence, honoring the prerelease component
+    /// per the SemVer 2.0.0 rules used here (numeric identifiers compare numerically, a version
+    /// with a prerelease has lower precedence than the same version without one, and a shorter
+    /// set of prerelease identifiers has lower precedence when all preceding ones are equal).
+    /// Build metadata (after '+') is ignored. Returns a negative value when <paramref name="a"/>
+    /// precedes <paramref name="b"/>, zero when equal, and a positive value otherwise.
+    /// </summary>
+    private static int CompareSemVer(string a, string b)
+    {
+        var (coreA, preA) = SplitSemVer(a);
+        var (coreB, preB) = SplitSemVer(b);
+
+        var coreCompare = coreA.CompareTo(coreB);
+        if (coreCompare != 0)
+        {
+            return coreCompare;
+        }
+
+        // A version without a prerelease outranks one with a prerelease.
+        if (preA.Length == 0 && preB.Length == 0)
+        {
+            return 0;
+        }
+        if (preA.Length == 0)
+        {
+            return 1;
+        }
+        if (preB.Length == 0)
+        {
+            return -1;
+        }
+
+        var count = Math.Min(preA.Length, preB.Length);
+        for (var i = 0; i < count; i++)
+        {
+            var idA = preA[i];
+            var idB = preB[i];
+            var numA = int.TryParse(idA, out var na);
+            var numB = int.TryParse(idB, out var nb);
+
+            int cmp;
+            if (numA && numB)
+            {
+                cmp = na.CompareTo(nb);
+            }
+            else if (numA)
+            {
+                // Numeric identifiers always have lower precedence than alphanumeric ones.
+                cmp = -1;
+            }
+            else if (numB)
+            {
+                cmp = 1;
+            }
+            else
+            {
+                cmp = string.CompareOrdinal(idA, idB);
+            }
+
+            if (cmp != 0)
+            {
+                return cmp;
+            }
+        }
+
+        return preA.Length.CompareTo(preB.Length);
+    }
+
+    /// <summary>
+    /// Splits a semver string into its numeric core (major.minor.patch) and its prerelease
+    /// identifiers, ignoring any build metadata after '+'. Missing core components default to 0.
+    /// </summary>
+    private static (Version Core, string[] Prerelease) SplitSemVer(string version)
+    {
+        var withoutBuild = version.Split('+', 2)[0];
+        var parts = withoutBuild.Split('-', 2);
+        var prerelease = parts.Length > 1 && parts[1].Length > 0
+            ? parts[1].Split('.')
+            : Array.Empty<string>();
+
+        var coreParts = parts[0].Split('.');
+        int Part(int index) => index < coreParts.Length && int.TryParse(coreParts[index], out var v) ? v : 0;
+        var core = new Version(Part(0), Part(1), Part(2));
+
+        return (core, prerelease);
+    }
+
+
     /// whether it succeeded along with the captured stdout/stderr. Centralizes the process
     /// plumbing (output capture, a 5-minute timeout, and the Windows libuv-shutdown fallback)
     /// shared by the server-side conformance tests.
