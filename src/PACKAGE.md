@@ -4,6 +4,8 @@
 
 The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit the [API documentation](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.html) for more details on available functionality.
 
+See the [release notes](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v1.4.1) for what's new in this version.
+
 ## Packages
 
 This SDK consists of three main packages:
