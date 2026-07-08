@@ -1083,7 +1083,12 @@ internal sealed partial class McpServerImpl : McpServer
         {
             throw new InvalidOperationException(
                 $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}). Use one style or the other.");
+                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}) tool-call filters or handlers. " +
+                $"These two styles cannot currently be composed on the same server. " +
+                $"This most commonly happens when combining features that register different tool-call filter styles, " +
+                $"for example AddAuthorizationFilters() (which registers a {nameof(McpRequestFilters.CallToolFilters)} filter) together with " +
+                $"WithTasks() (which registers a {nameof(McpRequestFilters.CallToolWithAlternateFilters)} filter). " +
+                $"Configure only one style, or avoid combining features that require different styles.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.

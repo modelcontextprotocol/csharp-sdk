@@ -43,7 +43,9 @@ public sealed class McpRequestFilters
     /// </para>
     /// <para>
     /// Cannot be used together with <see cref="CallToolWithAlternateFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
+    /// register different tool-call filter styles, such as authorization filters (which use this collection) and the
+    /// tasks extension (which uses <see cref="CallToolWithAlternateFilters"/>).
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
@@ -68,7 +70,9 @@ public sealed class McpRequestFilters
     /// </para>
     /// <para>
     /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
+    /// register different tool-call filter styles, such as the tasks extension (which uses this collection) and
+    /// authorization filters (which use <see cref="CallToolFilters"/>).
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
