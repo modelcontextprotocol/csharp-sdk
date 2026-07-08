@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -30,13 +32,18 @@ public static class McpTasksBuilderExtensions
         if (store is null) throw new ArgumentNullException(nameof(store));
 #endif
 
-        builder.Services.AddSingleton<IPostConfigureOptions<McpServerOptions>>(new McpTasksPostConfigureOptions(store));
+        // Resolve ILoggerFactory from the provider (rather than requiring the caller to pass one) so the
+        // background task body has somewhere to report failures. It is optional: if no logging is
+        // registered, the options fall back to NullLoggerFactory.
+        builder.Services.AddSingleton<IPostConfigureOptions<McpServerOptions>>(
+            sp => new McpTasksPostConfigureOptions(store, sp.GetService<ILoggerFactory>()));
         return builder;
     }
 
-    private sealed class McpTasksPostConfigureOptions(IMcpTaskStore store) : IPostConfigureOptions<McpServerOptions>
+    private sealed class McpTasksPostConfigureOptions(IMcpTaskStore store, ILoggerFactory? loggerFactory) : IPostConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
+        private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksPostConfigureOptions>();
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
         public void PostConfigure(string? name, McpServerOptions options)
@@ -74,71 +81,98 @@ public static class McpTasksBuilderExtensions
 
                     _ = Task.Run(async () =>
                     {
-                        using (McpTasksServerExtensions.CreateMcpTaskScope(request.Server, taskId, _store))
+                        try
                         {
-                            try
+                            using (McpTasksServerExtensions.CreateMcpTaskScope(request.Server, taskId, _store))
                             {
-                                var augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
+                                try
+                                {
+                                    var augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
 
-                                if (augmented.IsAlternate)
+                                    if (augmented.IsAlternate)
+                                    {
+                                        var error = new JsonRpcErrorDetail
+                                        {
+                                            Code = (int)McpErrorCode.InternalError,
+                                            Message = $"{nameof(IMcpTaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithAlternateHandler)} returned IsAlternate = true. Use only one mechanism.",
+                                        };
+                                        var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                                        await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
+                                        return;
+                                    }
+
+                                    var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+                                    await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
+                                }
+                                catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
+                                {
+                                    await _store.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
+                                }
+                                catch (InputRequiredException)
                                 {
                                     var error = new JsonRpcErrorDetail
                                     {
-                                        Code = (int)McpErrorCode.InternalError,
-                                        Message = $"{nameof(IMcpTaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithAlternateHandler)} returned IsAlternate = true. Use only one mechanism.",
+                                        Code = (int)McpErrorCode.InvalidRequest,
+                                        Message = "MRTR and tasks cannot be composed via [McpServerTool] yet.",
                                     };
                                     var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
                                     await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                                    return;
                                 }
-
-                                var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
-                                await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
-                            {
-                                await _store.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
-                            }
-                            catch (InputRequiredException)
-                            {
-                                var error = new JsonRpcErrorDetail
+                                catch (McpProtocolException mcpEx)
                                 {
-                                    Code = (int)McpErrorCode.InvalidRequest,
-                                    Message = "MRTR and tasks cannot be composed via [McpServerTool] yet.",
-                                };
-                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
-                                await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                            }
-                            catch (McpProtocolException mcpEx)
-                            {
-                                // SEP-2663 §186: protocol exceptions store as failed with JSON-RPC error shape.
-                                var error = new JsonRpcErrorDetail { Code = (int)mcpEx.ErrorCode, Message = mcpEx.Message };
-                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
-                                await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                // Non-protocol exceptions are wrapped as CallToolResult { IsError = true },
-                                // matching Core's BuildInitialAlternateToolFilter behavior.
-                                var errorResult = new CallToolResult
+                                    // SEP-2663 §186: protocol exceptions store as failed with JSON-RPC error shape.
+                                    var error = new JsonRpcErrorDetail { Code = (int)mcpEx.ErrorCode, Message = mcpEx.Message };
+                                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                                    await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
+                                }
+                                catch (Exception ex)
                                 {
-                                    IsError = true,
-                                    Content = [new TextContentBlock
+                                    // Non-protocol exceptions are wrapped as CallToolResult { IsError = true },
+                                    // matching Core's BuildInitialAlternateToolFilter behavior.
+                                    var errorResult = new CallToolResult
                                     {
-                                        Text = ex is McpException
-                                            ? $"An error occurred invoking '{request.Params?.Name}': {ex.Message}"
-                                            : $"An error occurred invoking '{request.Params?.Name}'.",
-                                    }],
-                                };
-                                var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
-                                await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
-                            }
-                            finally
-                            {
-                                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                                {
-                                    registeredCts.Dispose();
+                                        IsError = true,
+                                        Content = [new TextContentBlock
+                                        {
+                                            Text = ex is McpException
+                                                ? $"An error occurred invoking '{request.Params?.Name}': {ex.Message}"
+                                                : $"An error occurred invoking '{request.Params?.Name}'.",
+                                        }],
+                                    };
+                                    var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+                                    await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
                                 }
+                                finally
+                                {
+                                    if (_cancellationSources.TryRemove(taskId, out var registeredCts))
+                                    {
+                                        registeredCts.Dispose();
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception outer)
+                        {
+                            // The inner handlers above record every expected outcome. Reaching here means a
+                            // store operation inside one of those handlers (or the task scope) threw, most
+                            // likely from a custom IMcpTaskStore. Record the failure best-effort and never let
+                            // it surface as an unobserved task exception.
+                            _logger.LogError(outer, "Background execution of task '{TaskId}' terminated unexpectedly while recording its result.", taskId);
+
+                            try
+                            {
+                                var error = new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = outer.Message };
+                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                                await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
+                            }
+                            catch (Exception storeEx)
+                            {
+                                _logger.LogError(storeEx, "Failed to record the failure of background task '{TaskId}'.", taskId);
+                            }
+
+                            if (_cancellationSources.TryRemove(taskId, out var leftoverCts))
+                            {
+                                leftoverCts.Dispose();
                             }
                         }
                     }, CancellationToken.None);

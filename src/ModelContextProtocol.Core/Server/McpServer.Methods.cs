@@ -622,7 +622,18 @@ public abstract partial class McpServer : McpSession
     {
         var paramsNode = JsonSerializer.SerializeToNode(request, requestTypeInfo);
         var resultNode = await interceptor(method, paramsNode, cancellationToken).ConfigureAwait(false);
-        return resultNode is null ? default! : resultNode.Deserialize(responseTypeInfo)!;
+        if (resultNode is null)
+        {
+            // A null result cannot be deserialized into a concrete TResponse (e.g. SampleAsync's
+            // CreateMessageResult or RequestRootsAsync's ListRootsResult). Returning default! here
+            // would hand callers a null response typed as non-null, deferring the failure to a
+            // confusing NullReferenceException at the use site. Fail fast with a clear message.
+            // Callers that can tolerate no result (such as ElicitAsync) do not route through this
+            // helper and handle null themselves.
+            throw new McpException($"The outgoing-request interceptor returned no result for the '{method}' request.");
+        }
+
+        return resultNode.Deserialize(responseTypeInfo)!;
     }
 
     private void ThrowIfElicitationUnsupported(ElicitRequestParams request)

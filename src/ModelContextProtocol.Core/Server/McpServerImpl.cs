@@ -755,15 +755,32 @@ internal sealed partial class McpServerImpl : McpServer
     {
 #pragma warning disable MCPEXP002
         if (options.RequestHandlers is not { Count: > 0 } customHandlers)
-#pragma warning restore MCPEXP002
         {
             return;
         }
 
         foreach (var entry in customHandlers)
         {
+            if (string.IsNullOrEmpty(entry.Method))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
+            }
+
+            // Custom handlers are registered after all built-in handlers, so a method already present
+            // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
+            // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
+            // so reject the collision instead.
+            if (_requestHandlers.ContainsKey(entry.Method))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} " +
+                    $"uses the method '{entry.Method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
+            }
+
             SetRawHandler(entry.Method, entry.Handler);
         }
+#pragma warning restore MCPEXP002
     }
 
     private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
