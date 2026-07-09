@@ -31,6 +31,7 @@ internal sealed partial class McpClientImpl : McpClient
     private Implementation? _serverInfo;
     private string? _serverInstructions;
     private string? _negotiatedProtocolVersion;
+    private DiscoverResult? _discoverResult;
 
     private bool _disposed;
 
@@ -297,7 +298,12 @@ internal sealed partial class McpClientImpl : McpClient
                 // prefers the 2026-07-28 revision and automatically falls back to the initialize
                 // handshake when the server doesn't support it. The initialize branch below runs only when
                 // the caller explicitly pins a version that still supports Streamable HTTP sessions (opting out of the default).
-                if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
+                if (_options.PriorDiscoverResult is { } priorDiscoverResult)
+                {
+                    string negotiatedVersion = GetPriorDiscoverProtocolVersion(priorDiscoverResult);
+                    AdoptDiscoverResult(priorDiscoverResult, negotiatedVersion);
+                }
+                else if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
                 {
                     string preferredVersion = _options.ProtocolVersion ?? McpProtocolVersions.July2026ProtocolVersion;
 
@@ -433,16 +439,7 @@ internal sealed partial class McpClientImpl : McpClient
                     }
                     else
                     {
-                        if (_logger.IsEnabled(LogLevel.Information))
-                        {
-                            LogServerCapabilitiesReceived(_endpointName,
-                                capabilities: JsonSerializer.Serialize(discoverResult!.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
-                        }
-
-                        _serverCapabilities = discoverResult!.Capabilities;
-                        _serverInfo = discoverResult.ServerInfo;
-                        _serverInstructions = discoverResult.Instructions;
+                        AdoptDiscoverResult(discoverResult!, discoverVersion);
                     }
 
                     async Task<DiscoverResult> SendDiscoverAsync(string protocolVersion, CancellationToken cancellationToken)
@@ -484,6 +481,136 @@ internal sealed partial class McpClientImpl : McpClient
 
         LogClientConnected(_endpointName);
     }
+
+    /// <inheritdoc/>
+    public override DiscoverResult GetDiscoverResult()
+    {
+        if (_discoverResult is not null)
+        {
+            return CloneDiscoverResult(_discoverResult);
+        }
+
+        return base.GetDiscoverResult();
+    }
+
+    private string GetPriorDiscoverProtocolVersion(DiscoverResult discoverResult)
+    {
+        Throw.IfNull(discoverResult);
+        Throw.IfNull(discoverResult.SupportedVersions);
+        Throw.IfNull(discoverResult.Capabilities);
+        Throw.IfNull(discoverResult.ServerInfo);
+
+        if (_options.ProtocolVersion is { } requestedProtocolVersion)
+        {
+            if (!McpProtocolVersions.IsSupportedProtocolVersion(requestedProtocolVersion))
+            {
+                throw new McpException($"The requested protocol version '{requestedProtocolVersion}' is not supported by this SDK.");
+            }
+
+            if (!McpProtocolVersions.RequiresPerRequestMetadata(requestedProtocolVersion))
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(McpClientOptions.PriorDiscoverResult)} can only be used with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
+            }
+
+            if (!discoverResult.SupportedVersions.Contains(requestedProtocolVersion))
+            {
+                throw new McpException(
+                    $"The prior discovery result does not include the requested protocol version '{requestedProtocolVersion}'. " +
+                    $"Server-supported versions: {string.Join(", ", discoverResult.SupportedVersions)}.");
+            }
+
+            return requestedProtocolVersion;
+        }
+
+        string? negotiatedVersion = discoverResult.SupportedVersions
+            .Where(McpProtocolVersions.PerRequestMetadataProtocolVersions.Contains)
+            .OrderByDescending(version => version, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        if (negotiatedVersion is null)
+        {
+            throw new McpException(
+                $"The prior discovery result does not contain a protocol version supported by this SDK for the " +
+                $"{McpProtocolVersions.July2026ProtocolVersion}-or-later connection model. " +
+                $"Server-supported versions: {string.Join(", ", discoverResult.SupportedVersions)}.");
+        }
+
+        return negotiatedVersion;
+    }
+
+    private void AdoptDiscoverResult(DiscoverResult discoverResult, string negotiatedVersion)
+    {
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            LogServerCapabilitiesReceived(_endpointName,
+                capabilities: JsonSerializer.Serialize(discoverResult.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+        }
+
+        _discoverResult = CloneDiscoverResult(discoverResult);
+        _serverCapabilities = _discoverResult.Capabilities;
+        _serverInfo = _discoverResult.ServerInfo;
+        _serverInstructions = _discoverResult.Instructions;
+        _negotiatedProtocolVersion = negotiatedVersion;
+        _sessionHandler.NegotiatedProtocolVersion = negotiatedVersion;
+    }
+
+    private static DiscoverResult CloneDiscoverResult(DiscoverResult discoverResult)
+    {
+        return new DiscoverResult
+        {
+            SupportedVersions = [.. discoverResult.SupportedVersions],
+            Capabilities = CloneServerCapabilities(discoverResult.Capabilities),
+            ServerInfo = CloneImplementation(discoverResult.ServerInfo),
+            Instructions = discoverResult.Instructions,
+            TimeToLive = discoverResult.TimeToLive,
+            CacheScope = discoverResult.CacheScope,
+            Meta = discoverResult.Meta is null ? null : (JsonObject)discoverResult.Meta.DeepClone(),
+            ResultType = discoverResult.ResultType,
+        };
+    }
+
+#pragma warning disable MCP9005 // LoggingCapability is deprecated but still part of the protocol DTO.
+    private static ServerCapabilities CloneServerCapabilities(ServerCapabilities capabilities) =>
+        new()
+        {
+            Experimental = CloneObjectDictionary(capabilities.Experimental),
+            Logging = capabilities.Logging is null ? null : new LoggingCapability(),
+            Prompts = capabilities.Prompts is null ? null : new PromptsCapability { ListChanged = capabilities.Prompts.ListChanged },
+            Resources = capabilities.Resources is null ? null : new ResourcesCapability
+            {
+                Subscribe = capabilities.Resources.Subscribe,
+                ListChanged = capabilities.Resources.ListChanged,
+            },
+            Tools = capabilities.Tools is null ? null : new ToolsCapability { ListChanged = capabilities.Tools.ListChanged },
+            Completions = capabilities.Completions is null ? null : new CompletionsCapability(),
+            Extensions = CloneObjectDictionary(capabilities.Extensions),
+        };
+#pragma warning restore MCP9005
+
+    private static Implementation CloneImplementation(Implementation implementation) =>
+        new()
+        {
+            Name = implementation.Name,
+            Title = implementation.Title,
+            Version = implementation.Version,
+            Description = implementation.Description,
+            Icons = implementation.Icons is null ? null : [.. implementation.Icons.Select(CloneIcon)],
+            WebsiteUrl = implementation.WebsiteUrl,
+        };
+
+    private static Icon CloneIcon(Icon icon) =>
+        new()
+        {
+            Source = icon.Source,
+            MimeType = icon.MimeType,
+            Sizes = icon.Sizes is null ? null : [.. icon.Sizes],
+            Theme = icon.Theme,
+        };
+
+    private static IDictionary<string, object>? CloneObjectDictionary(IDictionary<string, object>? values) =>
+        values is null ? null : new Dictionary<string, object>(values, StringComparer.Ordinal);
 
     /// <summary>
     /// Performs the initialize handshake (initialize request + initialized notification),

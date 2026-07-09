@@ -74,6 +74,31 @@ public sealed class McpClientOptions
     public string? ProtocolVersion { get; set; }
 
     /// <summary>
+    /// Gets or sets a trusted discovery result to use when connecting to a server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, the client skips the <c>server/discover</c> probe and initializes its
+    /// 2026-07-28 per-request metadata connection state from this result. The result should come from a trusted
+    /// source, such as a previous call to <see cref="McpClient.GetDiscoverResult"/> for the same server
+    /// or an equivalent out-of-band configuration.
+    /// </para>
+    /// <para>
+    /// This option is only valid for supported protocol versions that use the discovery-based connection model.
+    /// If <see cref="ProtocolVersion"/> is set, it must use that model and must appear in
+    /// <see cref="DiscoverResult.SupportedVersions"/>. When <see cref="ProtocolVersion"/> is
+    /// <see langword="null"/>, the client chooses the newest protocol version in
+    /// <see cref="DiscoverResult.SupportedVersions"/> that this SDK supports and that uses the per-request metadata
+    /// connection model.
+    /// </para>
+    /// <para>
+    /// Leave this unset to preserve the default safe behavior: probe with <c>server/discover</c> and
+    /// fall back to the <c>initialize</c> handshake when appropriate.
+    /// </para>
+    /// </remarks>
+    public DiscoverResult? PriorDiscoverResult { get; set; }
+
+    /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.
     /// </summary>
     /// <value>

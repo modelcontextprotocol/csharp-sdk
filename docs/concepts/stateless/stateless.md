@@ -53,6 +53,17 @@ The `2026-07-28` protocol revision goes further than `Stateless = true`: it remo
 
 The era is cached per <xref:ModelContextProtocol.Client.IClientTransport> instance, so the probe cost is paid only on the first connect.
 
+**Skipping the discovery round trip.** If you already trust a server's discovery information, provide it through <xref:ModelContextProtocol.Client.McpClientOptions.PriorDiscoverResult> when creating the client. The client skips `server/discover`, chooses a compatible modern protocol version from `SupportedVersions` (honoring <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> when you pin one), and uses the supplied capabilities, server info, instructions, and cache hints as its connected state. You can get a reusable snapshot from a previous modern connection with <xref:ModelContextProtocol.Client.McpClient.GetDiscoverResult*>.
+
+```csharp
+DiscoverResult cachedDiscoverResult = await LoadCachedDiscoverResultAsync();
+
+var clientOptions = new McpClientOptions
+{
+    PriorDiscoverResult = cachedDiscoverResult,
+};
+```
+
 **Opting out of fallback.** Pin <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> to `2026-07-28` when you want the client to refuse to fall back. A non-null `ProtocolVersion` is also treated as the minimum, so the connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading to an initialize-capable revision. This is useful for strict `2026-07-28` production code and for tests that need to assert `2026-07-28`-only behavior. To try several versions yourself, leave `ProtocolVersion` unset (the default) or retry the connection with a different value.
 
 ```csharp

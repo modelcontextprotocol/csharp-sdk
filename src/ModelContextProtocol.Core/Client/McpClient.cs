@@ -56,6 +56,52 @@ public abstract partial class McpClient : McpSession
     public abstract string? ServerInstructions { get; }
 
     /// <summary>
+    /// Gets a discovery result that can be reused as prior knowledge for a later connection to the same server.
+    /// </summary>
+    /// <returns>
+    /// A <see cref="DiscoverResult"/> describing the connected server's supported protocol versions,
+    /// capabilities, implementation metadata, and instructions.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The returned value can be supplied to <see cref="McpClientOptions.PriorDiscoverResult"/> to skip
+    /// the <c>server/discover</c> round trip when reconnecting to a trusted server. This method is intended
+    /// for clients connected with the 2026-07-28-or-later connection model.
+    /// </para>
+    /// <para>
+    /// The default implementation returns a minimal discovery result whose
+    /// <see cref="DiscoverResult.SupportedVersions"/> contains only the negotiated protocol version.
+    /// Concrete clients may override this to preserve the full <c>server/discover</c> response,
+    /// including every server-supported version and caching hints.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The client is not connected or the negotiated protocol version does not use the 2026-07-28-or-later
+    /// connection model.
+    /// </exception>
+    public virtual DiscoverResult GetDiscoverResult()
+    {
+        if (NegotiatedProtocolVersion is not { } negotiatedProtocolVersion)
+        {
+            throw new InvalidOperationException("The client is not connected.");
+        }
+
+        if (!McpProtocolVersions.RequiresPerRequestMetadata(negotiatedProtocolVersion))
+        {
+            throw new InvalidOperationException(
+                $"A discover result is only available for clients connected with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
+        }
+
+        return new DiscoverResult
+        {
+            SupportedVersions = [negotiatedProtocolVersion],
+            Capabilities = ServerCapabilities,
+            ServerInfo = ServerInfo,
+            Instructions = ServerInstructions,
+        };
+    }
+
+    /// <summary>
     /// Gets a <see cref="Task{TResult}"/> that completes when the client session has completed.
     /// </summary>
     /// <remarks>
