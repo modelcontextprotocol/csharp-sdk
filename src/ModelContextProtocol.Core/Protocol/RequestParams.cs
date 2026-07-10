@@ -35,17 +35,8 @@ public abstract class RequestParams
     /// the value is the client's response to that input request.
     /// </para>
     /// </remarks>
-    [JsonIgnore]
-    public IDictionary<string, InputResponse>? InputResponses
-    {
-        get => InputResponsesCore;
-        set => InputResponsesCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
     [JsonPropertyName("inputResponses")]
-    internal IDictionary<string, InputResponse>? InputResponsesCore { get; set; }
+    public IDictionary<string, InputResponse>? InputResponses { get; set; }
 
     /// <summary>
     /// Gets or sets opaque request state echoed back from a previous <see cref="InputRequiredResult"/>.
@@ -57,17 +48,8 @@ public abstract class RequestParams
     /// exact value without modification.
     /// </para>
     /// </remarks>
-    [JsonIgnore]
-    public string? RequestState
-    {
-        get => RequestStateCore;
-        set => RequestStateCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
     [JsonPropertyName("requestState")]
-    internal string? RequestStateCore { get; set; }
+    public string? RequestState { get; set; }
 
     /// <summary>
     /// Gets the opaque token that will be attached to any subsequent progress notifications.

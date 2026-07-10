@@ -106,13 +106,18 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
+        // Once the body has been parsed into a request with a readable id, every JSON-RPC error response
+        // for this request MUST echo that id (base protocol responses section; SEP-2243 error format).
+        // Notifications carry no id, so this stays default (null), which is correct.
+        var requestId = message is JsonRpcRequest jsonRpcRequest ? jsonRpcRequest.Id : default;
+
         if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
             return;
         }
 
-        var session = await GetOrCreateSessionAsync(context, message);
+        var session = await GetOrCreateSessionAsync(context, message, requestId);
         if (session is null)
         {
             return;
@@ -286,7 +291,7 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId, RequestId requestId = default)
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -294,7 +299,7 @@ internal sealed class StreamableHttpHandler(
                 "Bad Request: Mcp-Session-Id header is required for GET and DELETE requests when the server is using sessions. " +
                 "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.Stateless = true. " +
                 "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                StatusCodes.Status400BadRequest);
+                StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
 
@@ -309,7 +314,7 @@ internal sealed class StreamableHttpHandler(
                 // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
                 // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
                 // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
-                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001);
+                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001, requestId);
                 return null;
             }
         }
@@ -318,7 +323,7 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context,
                 "Forbidden: The currently authenticated user does not match the user who initiated the session.",
-                StatusCodes.Status403Forbidden);
+                StatusCodes.Status403Forbidden, requestId: requestId);
             return null;
         }
 
@@ -367,7 +372,7 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message)
+    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message, RequestId requestId = default)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
@@ -380,7 +385,7 @@ internal sealed class StreamableHttpHandler(
                 // A request carrying an Mcp-Session-Id is non-conformant under the 2026-07-28 revision (SEP-2567).
                 await WriteJsonRpcErrorAsync(context,
                     "Bad Request: Mcp-Session-Id is not supported by the 2026-07-28 and later protocol revisions (SEP-2567).",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
@@ -389,7 +394,7 @@ internal sealed class StreamableHttpHandler(
                 // The author explicitly opted into sessions (Stateless = false), which the 2026-07-28
                 // revision cannot provide. Refuse it so a dual-era client falls back to the legacy
                 // initialize handshake and gets the session it asked for (SEP-2575 fallback semantics).
-                await WriteUnsupportedProtocolVersionErrorAsync(context);
+                await WriteUnsupportedProtocolVersionErrorAsync(context, requestId);
                 return null;
             }
 
@@ -408,7 +413,7 @@ internal sealed class StreamableHttpHandler(
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
                     "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
                     "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
@@ -418,12 +423,12 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
-            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest);
+            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
         else
         {
-            return await GetSessionAsync(context, sessionId);
+            return await GetSessionAsync(context, sessionId, requestId);
         }
     }
 
@@ -568,10 +573,11 @@ internal sealed class StreamableHttpHandler(
         return eventStreamReader;
     }
 
-    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
+    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000, RequestId requestId = default)
     {
         var jsonRpcError = new JsonRpcError
         {
+            Id = requestId,
             Error = new()
             {
                 Code = errorCode,
@@ -691,7 +697,7 @@ internal sealed class StreamableHttpHandler(
     /// that excludes 2026-07-28 and later. A dual-era client then falls back to the legacy initialize handshake
     /// (SEP-2575).
     /// </summary>
-    private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context)
+    private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context, RequestId requestId = default)
     {
         var requestedProtocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         var errorDetail = new JsonRpcErrorDetail
@@ -708,7 +714,7 @@ internal sealed class StreamableHttpHandler(
                 GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
         };
 
-        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest);
+        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest, requestId);
     }
 
     /// <summary>
@@ -1150,9 +1156,9 @@ internal sealed class StreamableHttpHandler(
         return SafeIntegerParse.NotNumeric;
     }
 
-    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode)
+    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode, RequestId requestId = default)
     {
-        var jsonRpcError = new JsonRpcError { Error = detail };
+        var jsonRpcError = new JsonRpcError { Id = requestId, Error = detail };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
     }
 
