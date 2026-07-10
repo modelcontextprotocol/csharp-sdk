@@ -16,7 +16,8 @@ public class McpClientMetaTests : ClientServerTestBase
 
     private readonly TaskCompletionSource<JsonNode?> _initializeMeta = new();
 
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
+    private readonly TaskCompletionSource<(Implementation? Info, ClientCapabilities? Capabilities)> _outgoingFilterObserved =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public McpClientMetaTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
@@ -42,6 +43,7 @@ public class McpClientMetaTests : ClientServerTestBase
         // Capture the _meta the server receives on the initialize request so tests can
         // assert that McpClientOptions.InitializeMeta is threaded through the handshake.
         mcpServerBuilder.WithMessageFilters(filters =>
+        {
             filters.AddIncomingFilter(next => async (context, cancellationToken) =>
             {
                 if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.Initialize } request)
@@ -50,7 +52,23 @@ public class McpClientMetaTests : ClientServerTestBase
                 }
 
                 await next(context, cancellationToken);
-            }));
+            });
+
+            // Capture the request-scoped client info/capabilities observed while an outgoing response flows
+            // through the outgoing filter pipeline. Gated on a unique client name so only the dedicated test
+            // triggers it. This exercises that DestinationBoundMcpServer resolves per-request _meta for
+            // responses (whose Context is the originating request's Context), not just requests.
+            filters.AddOutgoingFilter(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcResponse &&
+                    context.Server.ClientInfo is { Name: "outgoing-filter-client" } info)
+                {
+                    _outgoingFilterObserved.TrySetResult((info, context.Server.ClientCapabilities));
+                }
+
+                await next(context, cancellationToken);
+            });
+        });
     }
 
     [Fact]
@@ -161,7 +179,7 @@ public class McpClientMetaTests : ClientServerTestBase
             },
             Meta = new JsonObject
             {
-                [ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(
+                [MetaKeys.ClientCapabilities] = JsonSerializer.SerializeToNode(
                     new ClientCapabilities { Sampling = new SamplingCapability() },
                     McpJsonUtilities.DefaultOptions),
             },
@@ -176,7 +194,7 @@ public class McpClientMetaTests : ClientServerTestBase
             },
             Meta = new JsonObject
             {
-                [ClientCapabilitiesMetaKey] = JsonSerializer.SerializeToNode(
+                [MetaKeys.ClientCapabilities] = JsonSerializer.SerializeToNode(
                     new ClientCapabilities(),
                     McpJsonUtilities.DefaultOptions),
             },
@@ -224,6 +242,70 @@ public class McpClientMetaTests : ClientServerTestBase
 
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         Assert.Equal("request-scoped-client:9.9.9", text);
+    }
+
+    [Fact]
+    public async Task RootServer_UnderJuly2026Protocol_HasNoClientCapabilities_ButHandlerObservesThem()
+    {
+        ClientCapabilities? handlerObservedCapabilities = null;
+
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
+            (RequestContext<CallToolRequestParams> context) =>
+            {
+                handlerObservedCapabilities = context.Server.ClientCapabilities;
+                return "ok";
+            },
+            new() { Name = "capability_probe_tool" }));
+
+        var clientOptions = new McpClientOptions
+        {
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) => new ValueTask<ElicitResult>(new ElicitResult()),
+            },
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        // Under the 2026-07-28 revision capabilities are request-scoped, so the root server (outside any
+        // request) never exposes them, whereas a request handler observes the per-request _meta values.
+        Assert.Null(Server.ClientCapabilities);
+
+        await client.CallToolAsync("capability_probe_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(handlerObservedCapabilities);
+        Assert.NotNull(handlerObservedCapabilities!.Elicitation);
+        Assert.Null(Server.ClientCapabilities);
+    }
+
+    [Fact]
+    public async Task OutgoingMessageFilter_UnderJuly2026Protocol_ObservesRequestScopedClientInfoAndCapabilities()
+    {
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
+            () => "ok",
+            new() { Name = "outgoing_probe_tool" }));
+
+        var clientOptions = new McpClientOptions
+        {
+            ClientInfo = new Implementation { Name = "outgoing-filter-client", Version = "3.2.1" },
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) => new ValueTask<ElicitResult>(new ElicitResult()),
+            },
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        await client.CallToolAsync("outgoing_probe_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        var (info, capabilities) = await _outgoingFilterObserved.Task
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(info);
+        Assert.Equal("outgoing-filter-client", info!.Name);
+        Assert.Equal("3.2.1", info.Version);
+        Assert.NotNull(capabilities);
+        Assert.NotNull(capabilities!.Elicitation);
     }
 
     [Fact]

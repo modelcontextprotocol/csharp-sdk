@@ -5,12 +5,12 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Server;
 
 #pragma warning disable MCPEXP002
-internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcRequest? jsonRpcRequest = null) : McpServer
+internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcMessageContext? requestContext = null) : McpServer
 #pragma warning restore MCPEXP002
 {
-    private readonly bool _isJuly2026OrLaterRequest = IsJuly2026OrLaterProtocolRequest(jsonRpcRequest, server.NegotiatedProtocolVersion);
-    private readonly ClientCapabilities? _requestClientCapabilities = jsonRpcRequest?.Context?.ClientCapabilities;
-    private readonly Implementation? _requestClientInfo = jsonRpcRequest?.Context?.ClientInfo;
+    private readonly bool _isJuly2026OrLaterRequest = IsJuly2026OrLaterProtocolRequest(requestContext, server.NegotiatedProtocolVersion);
+    private readonly ClientCapabilities? _requestClientCapabilities = requestContext?.ClientCapabilities;
+    private readonly Implementation? _requestClientInfo = requestContext?.ClientInfo;
 
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
     public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;
@@ -137,7 +137,7 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
         };
     }
 
-    private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request, string? negotiatedProtocolVersion)
+    private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcMessageContext? requestContext, string? negotiatedProtocolVersion)
         => McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
-            request?.Context?.ProtocolVersion ?? negotiatedProtocolVersion);
+            requestContext?.ProtocolVersion ?? negotiatedProtocolVersion);
 }

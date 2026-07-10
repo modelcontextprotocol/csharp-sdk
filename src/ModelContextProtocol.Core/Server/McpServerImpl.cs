@@ -158,10 +158,11 @@ internal sealed partial class McpServerImpl : McpServer
     /// </summary>
     /// <remarks>
     /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. Per-request client capabilities are consumed request-scoped by
-    /// <see cref="DestinationBoundMcpServer"/> and are not persisted to server-wide state. For legacy clients
-    /// the per-request values are absent and the built-in filter is a no-op (the values were captured during
-    /// the initialize handler).
+    /// MUST be populated per-request. Per-request client capabilities and client info are consumed request-scoped
+    /// by <see cref="DestinationBoundMcpServer"/> and are not read from server-wide state by request handlers. The
+    /// shared <see cref="_clientInfo"/> write below is best-effort and used only to derive the session endpoint
+    /// name for logging/telemetry. For legacy clients the per-request values are absent and the built-in filter is
+    /// a no-op (the values were captured during the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
@@ -190,6 +191,12 @@ internal sealed partial class McpServerImpl : McpServer
                     (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
                      !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
                 {
+                    // This shared write is best-effort and used only to derive the session endpoint name for
+                    // logging/telemetry. It is intentionally NOT read by request handlers on 2026-07-28+ sessions:
+                    // DestinationBoundMcpServer resolves ClientInfo (and ClientCapabilities) request-scoped from
+                    // the per-request _meta so concurrent requests never observe each other's values. Under a
+                    // draft stateful session with differing per-request client info, the last writer wins here,
+                    // which only affects the logged endpoint name and never the request-scoped values handlers see.
                     _clientInfo = clientInfo;
                     endpointNameNeedsRefresh = true;
                 }
@@ -1615,7 +1622,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
     {
-        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport, jsonRpcRequest);
+        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport, jsonRpcRequest.Context);
 
         if (_mrtrContextsByRequestId.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
         {
@@ -1728,7 +1735,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 // Ensure message has a Context so Items can be shared through the pipeline
                 message.Context ??= new();
-                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport, message as JsonRpcRequest), message);
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport, message.Context), message);
                 await current(context, cancellationToken).ConfigureAwait(false);
             };
         };
