@@ -42,8 +42,9 @@ public class McpAppsIntegrationTests : ClientServerTestBase
         Assert.NotNull(uiNode);
         Assert.Equal("ui://weather/view.html", uiNode["resourceUri"]?.GetValue<string>());
 
-        // Visibility was not restricted, so the attribute must not add the property.
-        Assert.Null(uiNode["visibility"]);
+        // Visibility was not restricted, so the property must be absent entirely
+        // (not merely serialized as null).
+        Assert.False(uiNode.ContainsKey("visibility"));
     }
 
     [Fact]
@@ -74,7 +75,10 @@ public class McpAppsIntegrationTests : ClientServerTestBase
 
         var plainTool = Assert.Single(tools, t => t.Name == "plain_tool");
 
-        Assert.Null(plainTool.ProtocolTool.Meta?["ui"]);
+        // The tool must carry no "ui" metadata at all: either no _meta object,
+        // or a _meta without the "ui" key (not a "ui": null entry).
+        JsonObject? meta = plainTool.ProtocolTool.Meta;
+        Assert.False(meta is not null && meta.ContainsKey("ui"));
     }
 
     public sealed class AppUiTools
