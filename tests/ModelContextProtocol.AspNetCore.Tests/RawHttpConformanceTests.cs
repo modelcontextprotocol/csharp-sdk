@@ -193,7 +193,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         // checks) so a conformant client on this revision surfaces the error instead of mistaking the
         // per-request-metadata server for an initialize-handshake one and falling back to initialize.
         var body =
-            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" +
+            @"{""jsonrpc"":""2.0"",""id"":4242,""method"":""server/discover"",""params"":{" +
             July2026ProtocolMetaFragment("2025-11-25") + "}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
@@ -204,6 +204,33 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+
+        // The body parsed successfully, so per the base protocol responses section (and SEP-2243's error
+        // response format) this error MUST echo the request id rather than emitting id=null (see #1677).
+        Assert.Equal(4242, json["id"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public async Task July2026Post_MissingMcpNameHeader_ReturnsHeaderMismatch_EchoesRequestId()
+    {
+        await StartAsync();
+
+        // A well-formed tools/call whose body parses, but the required Mcp-Name header is absent. The server
+        // rejects it with -32020 HeaderMismatch, and because the request id was readable the JSON-RPC error
+        // MUST carry that same id (regression guard for #1677).
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":4242,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""hi""}," +
+            July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "tools/call");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal(4242, json["id"]!.GetValue<long>());
     }
 
     [Fact]

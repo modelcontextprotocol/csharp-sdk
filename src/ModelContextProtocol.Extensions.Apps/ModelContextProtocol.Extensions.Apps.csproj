@@ -5,7 +5,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
     <PackageId>ModelContextProtocol.Extensions.Apps</PackageId>
-    <Description>MCP Apps extension for the .NET Model Context Protocol (MCP) SDK</Description>
+    <Description>MCP Apps extension for building interactive UI applications that render inside MCP hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental MCP warnings for internal usage -->
     <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>

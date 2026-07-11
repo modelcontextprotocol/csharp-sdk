@@ -208,6 +208,50 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     }
 
     [Fact]
+    public async Task DeferChangedEvents_BatchAddResources_EmitsExactlyOneNotification()
+    {
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverResources = serverOptions.ResourceCollection;
+        Assert.NotNull(serverResources);
+
+        int notificationCount = 0;
+        var firstNotification = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (client.RegisterNotificationHandler(NotificationMethods.ResourceListChangedNotification, (notification, cancellationToken) =>
+            {
+                if (Interlocked.Increment(ref notificationCount) == 1)
+                {
+                    firstNotification.TrySetResult(true);
+                }
+                return default;
+            }))
+        {
+            using (serverResources.DeferChangedEvents())
+            {
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource1", UriTemplate = "test://batch1")] () => "1"));
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource2", UriTemplate = "test://batch2")] () => "2"));
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource3", UriTemplate = "test://batch3")] () => "3"));
+            }
+
+            await firstNotification.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // Do a round-trip so that any second (erroneous) notification has time to arrive.
+            var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Contains(resources, t => t.Name == "BatchResource1");
+            Assert.Contains(resources, t => t.Name == "BatchResource2");
+            Assert.Contains(resources, t => t.Name == "BatchResource3");
+
+            Assert.Equal(1, notificationCount);
+        }
+    }
+
+    [Fact]
     public async Task AttributeProperties_Propagated()
     {
         await using McpClient client = await CreateMcpClientForServer();
