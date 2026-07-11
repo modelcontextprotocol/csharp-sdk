@@ -193,7 +193,11 @@ internal sealed partial class McpServerImpl : McpServer
 
                 if (context?.ProtocolVersion is { } protocolVersion)
                 {
-                    bool protocolVersionRecorded = false;
+                    bool protocolVersionAlreadyEstablished = _negotiatedProtocolVersion is not null;
+                    if (protocolVersionAlreadyEstablished)
+                    {
+                        SetNegotiatedProtocolVersion(protocolVersion);
+                    }
 
                     // Per SEP-2575, the server MUST reject any request whose per-request
                     // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
@@ -225,13 +229,11 @@ internal sealed partial class McpServerImpl : McpServer
 
                         if (hasReservedPerRequestMeta)
                         {
-                            SetNegotiatedProtocolVersion(protocolVersion);
-                            protocolVersionRecorded = true;
                             ThrowReservedPerRequestMetadata(requestedProtocolVersion: protocolVersion, reservedPerRequestMetaKey);
                         }
                     }
 
-                    if (!protocolVersionRecorded)
+                    if (!protocolVersionAlreadyEstablished)
                     {
                         SetNegotiatedProtocolVersion(protocolVersion);
                     }

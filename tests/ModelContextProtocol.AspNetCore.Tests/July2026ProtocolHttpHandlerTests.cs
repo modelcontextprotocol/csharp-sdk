@@ -157,6 +157,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -170,6 +171,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -182,6 +184,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -195,6 +198,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     private static string DiscoverRequestJuly2026Protocol => """

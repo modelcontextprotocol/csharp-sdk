@@ -145,6 +145,7 @@ internal sealed class StreamableHttpHandler(
         // no longer has sessions (SEP-2567), the GET is invalid whether or not it carries an Mcp-Session-Id.
         if (RequiresPerRequestMetadataProtocol(context))
         {
+            context.Response.Headers.Allow = HttpMethods.Post;
             await WriteJsonRpcErrorAsync(context,
                 "Method Not Allowed: The GET endpoint is not supported by the 2026-07-28 and later protocol revisions. Use subscriptions/listen via POST instead.",
                 StatusCodes.Status405MethodNotAllowed);
@@ -262,6 +263,7 @@ internal sealed class StreamableHttpHandler(
         // so the DELETE is invalid whether or not it carries an Mcp-Session-Id.
         if (RequiresPerRequestMetadataProtocol(context))
         {
+            context.Response.Headers.Allow = HttpMethods.Post;
             await WriteJsonRpcErrorAsync(context,
                 "Method Not Allowed: The DELETE endpoint is not supported by the 2026-07-28 and later protocol revisions.",
                 StatusCodes.Status405MethodNotAllowed);
@@ -685,9 +687,14 @@ internal sealed class StreamableHttpHandler(
             return s_supportedProtocolVersions;
         }
 
-        return McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion) ?
-            [protocolVersion] :
-            s_supportedProtocolVersions;
+        if (!McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion))
+        {
+            throw new McpException(
+                $"Unsupported server protocol version '{protocolVersion}'. Supported protocol versions: " +
+                string.Join(", ", McpProtocolVersions.SupportedProtocolVersions) + ".");
+        }
+
+        return [protocolVersion];
     }
 
     /// <summary>

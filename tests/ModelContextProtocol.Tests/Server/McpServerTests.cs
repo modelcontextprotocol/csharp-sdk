@@ -291,6 +291,87 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task RejectedReservedPerRequestMetadata_DoesNotEstablishProtocolVersion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions();
+        options.ProtocolVersion = null;
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(ct);
+
+        var rejectedResponse = new TaskCompletionSource<JsonRpcError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var acceptedResponse = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcError { Id: var errorId } error && errorId.ToString() == "1")
+            {
+                rejectedResponse.TrySetResult(error);
+            }
+            else if (message is JsonRpcMessageWithId { Id: var responseId } && responseId.ToString() == "2")
+            {
+                acceptedResponse.TrySetResult(message);
+            }
+        };
+
+        await transport.SendClientMessageAsync(new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ClientInfo] = new JsonObject
+                    {
+                        ["name"] = "test-client",
+                        ["version"] = "1.0.0",
+                    },
+                },
+            },
+            Context = new JsonRpcMessageContext
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
+            },
+        }, ct);
+
+        var error = await rejectedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
+        Assert.Null(server.NegotiatedProtocolVersion);
+
+        var clientInfo = new Implementation { Name = "test-client", Version = "1.0.0" };
+        var clientCapabilities = new ClientCapabilities();
+        await transport.SendClientMessageAsync(new JsonRpcRequest
+        {
+            Id = new RequestId(2),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
+                    [MetaKeys.ClientInfo] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.DefaultOptions),
+                    [MetaKeys.ClientCapabilities] = new JsonObject(),
+                },
+            },
+            Context = new JsonRpcMessageContext
+            {
+                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+                ClientInfo = clientInfo,
+                ClientCapabilities = clientCapabilities,
+            },
+        }, ct);
+
+        await acceptedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, server.NegotiatedProtocolVersion);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
     public async Task Initialize_IncludesExtensionsInResponse()
     {
         await Can_Handle_Requests(
