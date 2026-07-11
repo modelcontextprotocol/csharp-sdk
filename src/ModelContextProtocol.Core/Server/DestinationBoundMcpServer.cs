@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcMessageContext? requestContext = null) : McpServer
 #pragma warning restore MCPEXP002
 {
-    private readonly bool _isJuly2026OrLaterRequest = IsJuly2026OrLaterProtocolRequest(requestContext, server.NegotiatedProtocolVersion);
+    private readonly bool _isJuly2026OrLaterRequest = server.IsJuly2026OrLaterProtocolRequest(requestContext);
     private readonly ClientCapabilities? _requestClientCapabilities = requestContext?.ClientCapabilities;
     private readonly Implementation? _requestClientInfo = requestContext?.ClientInfo;
 
@@ -33,7 +33,9 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
 
             // On protocol revision 2026-07-28+, client capabilities are request-scoped (_meta on each request)
             // and must not be inferred from prior requests. Missing per-request capabilities therefore means
-            // "no declared capabilities for this request", represented by an empty object.
+            // "no declared capabilities for this request", represented by an empty object. A fresh instance is
+            // returned deliberately: ClientCapabilities is a mutable DTO handed to user handlers, so a shared
+            // static empty instance could be mutated and leak across requests.
             if (_isJuly2026OrLaterRequest)
             {
                 return _requestClientCapabilities ?? new ClientCapabilities();
@@ -136,8 +138,4 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             Result = JsonSerializer.SerializeToNode(inputResponse.RawValue, McpJsonUtilities.JsonContext.Default.JsonElement),
         };
     }
-
-    private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcMessageContext? requestContext, string? negotiatedProtocolVersion)
-        => McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
-            requestContext?.ProtocolVersion ?? negotiatedProtocolVersion);
 }

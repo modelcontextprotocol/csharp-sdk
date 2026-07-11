@@ -1790,8 +1790,12 @@ internal sealed partial class McpServerImpl : McpServer
     /// Used to gate the SEP-2663 Tasks extension, which only interoperates on the 2026-07-28 revision.
     /// </summary>
     private bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
+        IsJuly2026OrLaterProtocolRequest(request?.Context);
+
+    /// <inheritdoc cref="IsJuly2026OrLaterProtocolRequest(JsonRpcRequest?)"/>
+    internal bool IsJuly2026OrLaterProtocolRequest(JsonRpcMessageContext? requestContext) =>
         McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
-            request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion);
+            requestContext?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />
     public override bool IsMrtrSupported => ClientSupportsMrtr() || HasStatefulTransport();
