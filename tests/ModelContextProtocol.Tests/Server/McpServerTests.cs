@@ -984,6 +984,29 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Can_Handle_SetLoggingLevel_Requests()
+    {
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Logging = new()
+            },
+            method: RequestMethods.LoggingSetLevel,
+            configureOptions: options =>
+            {
+                // Custom handler intentionally returns a result without a resultType so the server
+                // boundary is responsible for filling in "complete" on the wire.
+                options.Handlers.SetLoggingLevelHandler = async (request, ct) => new EmptyResult();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<EmptyResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpException()
     {
         const string errorMessage = "Tool execution failed with detailed error";
