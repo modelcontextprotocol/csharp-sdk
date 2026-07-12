@@ -76,7 +76,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         return JsonNode.Parse(line!)!;
     }
 
-    private static string July2026ProtocolMetaFragment(string protocolVersion = McpHttpHeaders.July2026ProtocolVersion) =>
+    private static string July2026ProtocolMetaFragment(string protocolVersion = McpProtocolVersions.July2026ProtocolVersion) =>
         @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":""" + protocolVersion +
         @""",""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
         @"""io.modelcontextprotocol/clientCapabilities"":{}}";
@@ -96,7 +96,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var supportedVersions = result!["supportedVersions"]!.AsArray()
             .Select(n => n!.GetValue<string>())
             .ToList();
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supportedVersions);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supportedVersions);
 
         // Capabilities and serverInfo are mandatory in DiscoverResult per SEP-2575.
         Assert.NotNull(result["capabilities"]);
@@ -146,15 +146,15 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, supported);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supported);
     }
 
     [Fact]
-    public async Task LegacyInitialize_StillWorks_OnJuly2026ProtocolDefaultServer()
+    public async Task InitializeHandshake_StillWorks_OnJuly2026ProtocolDefaultServer()
     {
-        // Dual-era: a server defaulting to the 2026-07-28 protocol (ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion in McpServerOptions) must still
-        // accept the legacy initialize handshake from clients that don't speak the new protocol.
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""legacy"",""version"":""1.0""}}}");
+        // Dual-path: a default server must still accept the initialize handshake from clients that
+        // don't speak the 2026-07-28 per-request metadata path.
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}");
 
         var response = await ReadAsync();
         Assert.Equal(1, response["id"]!.GetValue<int>());
@@ -166,13 +166,14 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task MixedSequence_Discover_Then_Initialize_Then_ToolsCall_AllSucceed()
     {
-        // Dual-era servers must accept 2026-07-28 and legacy traffic on the same connection. The exact mix below
-        // is what a permissive client running against an unknown server would emit while probing.
+        // Dual-path servers must accept 2026-07-28 per-request metadata and initialize-handshake traffic
+        // on the same connection. The exact mix below is what a permissive client running against an unknown
+        // server would emit while probing.
         await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
         var discover = await ReadAsync();
         Assert.NotNull(discover["result"]);
 
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":2,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""legacy"",""version"":""1.0""}}}");
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":2,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}");
         var init = await ReadAsync();
         Assert.NotNull(init["result"]);
         Assert.Equal("2025-11-25", init["result"]!["protocolVersion"]!.GetValue<string>());

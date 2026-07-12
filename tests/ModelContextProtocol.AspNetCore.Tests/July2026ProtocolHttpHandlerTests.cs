@@ -10,7 +10,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
 /// HTTP-level tests for the 2026-07-28 protocol revision (SEP-2575 + SEP-2567): verify that the server
-/// suppresses the <c>Mcp-Session-Id</c> header for those requests and returns structured
+/// does not issue <c>Mcp-Session-Id</c> for those requests and returns structured
 /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/> errors instead of plain 400s.
 /// </summary>
 public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
@@ -52,12 +52,12 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync(stateless: true);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         // On a stateless server, server/discover succeeds without creating a session.
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -70,15 +70,15 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567),
         // so the server cannot honor it when configured with sessions (Stateless = false). The server refuses that
-        // version with UnsupportedProtocolVersion (excluding it from Supported) so a dual-era client falls back
-        // to the legacy initialize handshake.
+        // version with UnsupportedProtocolVersion (excluding it from Supported) so a dual-path client falls back
+        // to the initialize handshake.
         await StartAsync(stateless: false);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -93,22 +93,22 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
         var dataElement = (JsonElement)rpcError.Error.Data!;
         var errorData = dataElement.Deserialize<UnsupportedProtocolVersionErrorData>(McpJsonUtilities.DefaultOptions);
         Assert.NotNull(errorData);
-        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, errorData.Requested);
-        // The 2026-07-28 protocol version is excluded from Supported so the client downgrades to a legacy version.
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, errorData.Requested);
+        // The 2026-07-28 protocol version is excluded from Supported so the client downgrades to an initialize-capable version.
         Assert.NotEmpty(errorData.Supported);
-        Assert.DoesNotContain(McpHttpHeaders.July2026ProtocolVersion, errorData.Supported);
+        Assert.DoesNotContain(McpProtocolVersions.July2026ProtocolVersion, errorData.Supported);
     }
 
     [Fact]
     public async Task RequestWithUnsupportedProtocolVersion_Returns_UnsupportedProtocolVersionError()
     {
-        await StartAsync();
+        await StartAsync(stateless: true);
 
         HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2099-12-31");
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
 
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
@@ -128,23 +128,23 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     }
 
     [Fact]
-    public async Task Request_WithMcpSessionIdHeader_IsRejected()
+    public async Task Request_WithMcpSessionIdHeader_IgnoresHeader_AndDoesNotEchoSessionId()
     {
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567):
-        // a request carrying an Mcp-Session-Id is non-conformant and is rejected with 400 regardless of the
-        // Stateless setting.
-        await StartAsync();
+        // a request carrying an Mcp-Session-Id is ignored, and the server must not mint or echo session IDs.
+        await StartAsync(stateless: true);
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Method", "server/discover");
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         var content = new StringContent(
-            """{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}""",
+            DiscoverRequestJuly2026Protocol,
             Encoding.UTF8, "application/json");
         using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(response.Headers.Contains("Mcp-Session-Id"));
     }
 
     [Fact]
@@ -152,11 +152,12 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -164,12 +165,13 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -177,11 +179,12 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
 
     [Fact]
@@ -189,11 +192,16 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     {
         await StartAsync();
 
-        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+        HttpClient.DefaultRequestHeaders.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         HttpClient.DefaultRequestHeaders.Add("Mcp-Session-Id", "non-existent-session-id");
 
         using var response = await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+        Assert.Equal(["POST"], response.Content.Headers.Allow);
     }
+
+    private static string DiscoverRequestJuly2026Protocol => """
+        {"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"July2026HttpHandlerTestClient","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+        """;
 }

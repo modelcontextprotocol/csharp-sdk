@@ -55,7 +55,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// definition of "is this peer speaking the 2026-07-28 or later revision" used by both the client and server.
     /// </remarks>
     internal bool IsJuly2026OrLaterProtocol() =>
-        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
 
     /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.

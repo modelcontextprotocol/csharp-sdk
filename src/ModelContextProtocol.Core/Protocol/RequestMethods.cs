@@ -159,15 +159,15 @@ public static class RequestMethods
     /// <remarks>
     /// <para>
     /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
-    /// to learn what a server supports without performing the legacy <c>initialize</c> handshake.
+    /// to learn what a server supports without performing the <c>initialize</c> handshake.
     /// </para>
     /// <para>
     /// The server's response includes its supported protocol versions, capabilities, implementation
     /// information, and optional usage instructions.
     /// </para>
     /// <para>
-    /// Servers SHOULD implement this method. Legacy clients MAY ignore it. Clients on the 2026-07-28 revision
-    /// typically call this once during connection establishment.
+    /// Servers SHOULD implement this method. Initialize-handshake clients MAY ignore it. Clients on the
+    /// 2026-07-28 revision typically call this once during connection establishment.
     /// </para>
     /// </remarks>
     public const string ServerDiscover = "server/discover";
@@ -179,7 +179,7 @@ public static class RequestMethods
     /// <remarks>
     /// <para>
     /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) and replaces the unsolicited
-    /// HTTP GET endpoint and the legacy <see cref="ResourcesSubscribe"/> / <see cref="ResourcesUnsubscribe"/>
+    /// HTTP GET endpoint and the initialize-handshake <see cref="ResourcesSubscribe"/> / <see cref="ResourcesUnsubscribe"/>
     /// request methods.
     /// </para>
     /// <para>
