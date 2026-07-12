@@ -43,7 +43,7 @@ public class CacheableResultWarningTests : LoggedTest
     {
         var (call, result) = GetScenario(method, ttl: null, scope: null);
 
-        await RunScenarioAsync(July2026ProtocolVersion, useModernLifecycle: true, method, result, call, TestContext.Current.CancellationToken);
+        await RunScenarioAsync(July2026ProtocolVersion, usePerRequestMetadataLifecycle: true, method, result, call, TestContext.Current.CancellationToken);
 
         var warning = Assert.Single(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Warning && m.Message.Contains(method) && m.Message.Contains("SEP-2549"));
@@ -56,7 +56,7 @@ public class CacheableResultWarningTests : LoggedTest
     {
         var (call, result) = GetScenario(RequestMethods.ToolsList, ttl: TimeSpan.FromMinutes(5), scope: null);
 
-        await RunScenarioAsync(July2026ProtocolVersion, useModernLifecycle: true, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
+        await RunScenarioAsync(July2026ProtocolVersion, usePerRequestMetadataLifecycle: true, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
 
         var warning = Assert.Single(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Warning && m.Message.Contains("SEP-2549"));
@@ -69,7 +69,7 @@ public class CacheableResultWarningTests : LoggedTest
     {
         var (call, result) = GetScenario(RequestMethods.ToolsList, ttl: TimeSpan.FromMinutes(5), scope: CacheScope.Public);
 
-        await RunScenarioAsync(July2026ProtocolVersion, useModernLifecycle: true, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
+        await RunScenarioAsync(July2026ProtocolVersion, usePerRequestMetadataLifecycle: true, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Warning && m.Message.Contains("SEP-2549"));
@@ -81,7 +81,7 @@ public class CacheableResultWarningTests : LoggedTest
         // A server on an older protocol version may legitimately omit the fields; no warning should fire.
         var (call, result) = GetScenario(RequestMethods.ToolsList, ttl: null, scope: null);
 
-        await RunScenarioAsync(OlderProtocolVersion, useModernLifecycle: false, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
+        await RunScenarioAsync(OlderProtocolVersion, usePerRequestMetadataLifecycle: false, RequestMethods.ToolsList, result, call, TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain(MockLoggerProvider.LogMessages, m =>
             m.LogLevel == LogLevel.Warning && m.Message.Contains("SEP-2549"));
@@ -98,7 +98,7 @@ public class CacheableResultWarningTests : LoggedTest
 
         await RunScenarioAsync(
             July2026ProtocolVersion,
-            useModernLifecycle: true,
+            usePerRequestMetadataLifecycle: true,
             RequestMethods.ToolsList,
             result,
             (c, ct) => c.ListToolsAsync(cancellationToken: ct).AsTask(),
@@ -130,7 +130,7 @@ public class CacheableResultWarningTests : LoggedTest
         var serverReader = new StreamReader(clientToServer.Reader.AsStream());
         var serverWriter = serverToClient.Writer.AsStream();
 
-        await PerformHandshakeAsync(serverReader, serverWriter, July2026ProtocolVersion, useModernLifecycle: true, TestContext.Current.CancellationToken);
+        await PerformHandshakeAsync(serverReader, serverWriter, July2026ProtocolVersion, usePerRequestMetadataLifecycle: true, TestContext.Current.CancellationToken);
 
         await using var client = await clientTask;
 
@@ -208,7 +208,7 @@ public class CacheableResultWarningTests : LoggedTest
 
     private async Task RunScenarioAsync(
         string serverProtocolVersion,
-        bool useModernLifecycle,
+        bool usePerRequestMetadataLifecycle,
         string method,
         JsonNode resultNode,
         Func<McpClient, CancellationToken, Task> clientCall,
@@ -217,8 +217,8 @@ public class CacheableResultWarningTests : LoggedTest
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        // Pin the protocol version so the client deterministically takes the modern (server/discover)
-        // lifecycle for 2026-07-28 and the legacy (initialize) lifecycle for older versions.
+        // Pin the protocol version so the client deterministically takes the per-request metadata
+        // (server/discover) lifecycle for 2026-07-28 and the initialize lifecycle for older versions.
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
@@ -231,7 +231,7 @@ public class CacheableResultWarningTests : LoggedTest
         var serverReader = new StreamReader(clientToServer.Reader.AsStream());
         var serverWriter = serverToClient.Writer.AsStream();
 
-        await PerformHandshakeAsync(serverReader, serverWriter, serverProtocolVersion, useModernLifecycle, cancellationToken);
+        await PerformHandshakeAsync(serverReader, serverWriter, serverProtocolVersion, usePerRequestMetadataLifecycle, cancellationToken);
 
         await using var client = await clientTask;
         Assert.Equal(serverProtocolVersion, client.NegotiatedProtocolVersion);
@@ -271,7 +271,7 @@ public class CacheableResultWarningTests : LoggedTest
         StreamReader serverReader,
         Stream serverWriter,
         string serverProtocolVersion,
-        bool useModernLifecycle,
+        bool usePerRequestMetadataLifecycle,
         CancellationToken cancellationToken)
     {
         var requestLine = await serverReader.ReadLineAsync(cancellationToken);
@@ -279,9 +279,9 @@ public class CacheableResultWarningTests : LoggedTest
         var request = JsonSerializer.Deserialize<JsonRpcRequest>(requestLine, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(request);
 
-        if (useModernLifecycle)
+        if (usePerRequestMetadataLifecycle)
         {
-            // Modern 2026-07-28 lifecycle (SEP-2575): no initialize handshake. The client probes
+            // Per-request metadata lifecycle (SEP-2575): no initialize handshake. The client probes
             // server/discover to learn capabilities, then sends normal RPCs carrying per-request _meta.
             Assert.Equal(RequestMethods.ServerDiscover, request.Method);
 
@@ -298,7 +298,7 @@ public class CacheableResultWarningTests : LoggedTest
         }
         else
         {
-            // Legacy initialize handshake for older protocol versions.
+            // Initialize handshake for older protocol versions.
             Assert.Equal(RequestMethods.Initialize, request.Method);
 
             await WriteJsonRpcAsync(serverWriter, new JsonRpcResponse

@@ -114,7 +114,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsUnionIntegerCanonicalForm()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Union-typed (["integer","null"]) parameter: header carries canonical "42" while the body
         // carries the decimal form 42.0. The server must treat the union type as integer and match.
@@ -135,7 +135,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsUnionIntegerOutsideSafeRange()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         var callJson = CallTool("union_test", """{"priority":9007199254740993}""");
 
@@ -154,7 +154,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsExponentBodyMatchingDecimalHeader()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Body carries the integer in exponent form (1e2 = 100); header carries the decimal "100".
         var callJson = CallTool("header_test", """{"region":"test","priority":1e2,"verbose":false,"emptyVal":""}""");
@@ -177,7 +177,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsWhitespaceAroundMcpNameHeaderValue()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Per SEP-2243: servers MUST accept extra whitespace around header values
         // and compare the trimmed value to the request body.
@@ -201,7 +201,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsWhitespaceAroundMcpMethodHeaderValue()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Per SEP-2243: servers MUST accept extra whitespace around header values
         var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""");
@@ -224,7 +224,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_ValidatesEmptyStringHeaderValue_AgainstBodyValue()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Send a tools/call with an empty string param that has an x-mcp-header.
         // The header should be present with an empty value, matching the body's empty string.
@@ -248,7 +248,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsHeaderMismatch_WhenEmptyHeaderDoesNotMatchBody()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Send a tools/call where the body has a non-empty value but the header is empty
         var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":"some-value"}""");
@@ -271,7 +271,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsBase64EncodedHeaderWithControlChars()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Encode a value with a newline control character using Base64
         var valueWithNewline = "line1\nline2";
@@ -297,7 +297,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsMaxSafeIntegerWithFullPrecision()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // The maximum safe integer (2^53 - 1) must be accepted, and compared exactly without
         // losing precision through a double conversion.
@@ -326,7 +326,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsIntegerOutsideSafeRange(string outOfRangeValue)
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Per SEP-2243 integer values MUST be within the JavaScript safe integer range.
         // A matching header and body that are both outside the range must still be rejected.
@@ -355,7 +355,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_AcceptsNumericEquivalentHeaderValues(string headerValue, string bodyValue)
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // bodyValue is inserted as a raw JSON numeric literal so that forms such as "42.0" and
         // "4.2e1" are preserved in the body exactly as another SDK might serialize them.
@@ -382,7 +382,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsNonIntegerValue_EvenWhenHeaderAndBodyMatch(string nonIntegerValue)
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // For an integer-typed parameter a non-whole numeric value is invalid and must be rejected
         // even when the header and body strings are byte-for-byte identical (it must not slip through
@@ -407,7 +407,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsNonNumericMismatch_ForIntegerParam()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Header says "99" but body says priority:42 — must reject even with numeric comparison
         var callJson = CallTool("header_test", """{"region":"test","priority":42,"verbose":false,"emptyVal":""}""");
@@ -427,17 +427,17 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     [Fact]
-    public async Task Server_SkipsHeaderValidation_ForLegacyVersion()
+    public async Task Server_SkipsHeaderValidation_ForInitializeHandshakeVersion()
     {
         await StartAsync();
-        await InitializeWithLegacyVersionAsync();
+        await InitializeWithInitializeHandshakeVersionAsync();
 
-        // With the legacy version, Mcp-Param-* headers are NOT validated even if mismatched
-        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""");
+        // With the initialize-handshake version, Mcp-Param-* headers are NOT validated even if mismatched.
+        var callJson = CallTool("header_test", """{"region":"us-west1","priority":42,"verbose":false,"emptyVal":""}""", includePerRequestMetadata: false);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
-        // Send the WRONG header value. This should still succeed because the version is legacy.
+        // Send the WRONG header value. This should still succeed because the version uses initialize.
         request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", "header_test");
@@ -451,7 +451,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     public async Task Server_RejectsInvalidUtf8EncodedHeaderValue()
     {
         await StartAsync();
-        await InitializeWithJuly2026ProtocolVersionAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
 
         // Create a separate HttpClient that sends raw UTF-8 bytes in Mcp-* headers
         // instead of properly base64-encoding non-ASCII values.
@@ -561,40 +561,39 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     [InlineData("2024-11-05", false)]
     [InlineData(null, false)]
     [InlineData("", false)]
-    public void SupportsStandardHeaders_CorrectlyGatesVersions(string? version, bool expected)
+    public void RequiresStandardHeaders_CorrectlyGatesVersions(string? version, bool expected)
     {
-        Assert.Equal(expected, McpHttpHeaders.SupportsStandardHeaders(version));
+        Assert.Equal(expected, McpProtocolVersions.RequiresStandardHeaders(version));
     }
 
     #endregion
 
     #region Helpers
 
-    private async Task InitializeWithJuly2026ProtocolVersionAsync()
+    private async Task ProbeWithJuly2026ProtocolVersionAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
-        request.Content = JsonContent(InitializeRequestJuly2026Protocol);
+        request.Content = JsonContent(DiscoverRequestJuly2026Protocol);
         request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
-        request.Headers.Add("Mcp-Method", "initialize");
+        request.Headers.Add("Mcp-Method", "server/discover");
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // Starting with the 2026-07-28 protocol revision (SEP-2567), Streamable HTTP does not return a
-        // mcp-session-id header. Subsequent requests carry MCP-Protocol-Version=2026-07-28
-        // so each one is handled independently.
+        // Starting with the 2026-07-28 protocol revision, clients use server/discover and per-request
+        // metadata instead of initialize.
     }
 
-    private async Task InitializeWithLegacyVersionAsync()
+    private async Task InitializeWithInitializeHandshakeVersionAsync()
     {
         HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // Server is stateless by default (SEP-2567), so initializing with the legacy protocol does not return
+        // Server is stateless by default (SEP-2567), so initializing with an initialize-handshake protocol does not return
         // a mcp-session-id header. Subsequent requests are independent, just like requests on the 2026-07-28 revision.
     }
 
@@ -602,22 +601,24 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
     private long _lastRequestId = 1;
 
-    private string CallTool(string toolName, string arguments = "{}")
+    private string CallTool(string toolName, string arguments = "{}", bool includePerRequestMetadata = true)
     {
         var id = Interlocked.Increment(ref _lastRequestId);
-        return $$$"""
-            {"jsonrpc":"2.0","id":{{{id}}},"method":"tools/call","params":{"name":"{{{toolName}}}","arguments":{{{arguments}}}}}
-            """;
+        var meta = includePerRequestMetadata
+            ? @",""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2026-07-28"",""io.modelcontextprotocol/clientInfo"":{""name"":""TestClient"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}"
+            : "";
+
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/call\",\"params\":{\"name\":\"" +
+            toolName + "\",\"arguments\":" + arguments + meta + "}}";
     }
 
     private static string InitializeRequest => """
         {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"TestClient","version":"1.0"}}}
         """;
 
-    private static string InitializeRequestJuly2026Protocol => """
-        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"TestClient","version":"1.0"}}}
+    private static string DiscoverRequestJuly2026Protocol => """
+        {"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"TestClient","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
         """;
 
     #endregion
 }
-

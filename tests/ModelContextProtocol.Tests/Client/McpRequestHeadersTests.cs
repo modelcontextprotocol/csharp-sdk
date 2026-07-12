@@ -28,8 +28,9 @@ public class McpRequestHeadersTests
     [InlineData("2024-11-05", false)]
     [InlineData(null, false)]
     [InlineData("", false)]
-    public void SupportsStandardHeaders_ReturnsExpected(string? version, bool expected)
+    public void RequiresStandardHeaders_ReturnsExpected(string? version, bool expected)
     {
-        Assert.Equal(expected, McpHttpHeaders.SupportsStandardHeaders(version));
+        Assert.Equal(expected, McpProtocolVersions.RequiresStandardHeaders(version));
     }
+
 }

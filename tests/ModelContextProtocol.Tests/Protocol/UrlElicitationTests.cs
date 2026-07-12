@@ -196,7 +196,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     // capability behavior under the 2026-07-28 revision is covered by McpClientMetaTests.
     private Task<McpClient> CreateLegacyClientForServer(McpClientOptions clientOptions)
     {
-        clientOptions.ProtocolVersion = McpHttpHeaders.November2025ProtocolVersion;
+        clientOptions.ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion;
         return CreateMcpClientForServer(clientOptions);
     }
 

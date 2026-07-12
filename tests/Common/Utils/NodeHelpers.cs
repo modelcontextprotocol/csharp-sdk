@@ -179,17 +179,22 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Checks whether the SEP-2243 conformance scenarios are available, by reading the
-    /// <em>installed</em> conformance package version from node_modules.
-    /// The http-standard-headers, http-custom-headers, http-invalid-tool-headers,
-    /// http-header-validation, and http-custom-header-server-validation scenarios were
-    /// introduced in conformance package 0.2.0. Reading the installed version (rather than
-    /// the pinned version in package.json) means this also returns <see langword="true"/>
-    /// when a newer private build has been installed locally via
-    /// <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// Checks whether the SEP-2243 conformance scenarios are available in the installed
+    /// conformance package.
     /// </summary>
     public static bool HasSep2243Scenarios()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+        => HasInstalledConformanceScenarios(
+            "http-standard-headers",
+            "http-invalid-tool-headers",
+            "http-header-validation",
+            "http-custom-header-server-validation");
+
+    /// <summary>
+    /// Checks whether the SEP-2575 request-metadata client conformance scenario is available
+    /// in the installed conformance package.
+    /// </summary>
+    public static bool HasRequestMetadataScenario()
+        => HasInstalledConformanceScenario("request-metadata");
 
     /// <summary>
     /// Checks whether the installed conformance package contains a spec-conformant
@@ -213,54 +218,45 @@ public static class NodeHelpers
     /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
     /// </summary>
     public static bool HasCachingScenario()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+        => HasInstalledConformanceScenario("caching");
 
     /// <summary>
-    /// Returns <see langword="true"/> when the conformance package installed in node_modules
-    /// has a version greater than or equal to <paramref name="minimumVersion"/>.
+    /// Checks whether all named conformance scenarios are present in the installed
+    /// <c>@modelcontextprotocol/conformance</c> bundle. This is intentionally based on the
+    /// installed scenario list rather than the package version so prerelease/private builds are
+    /// gated by the scenarios they actually contain.
     /// </summary>
-    private static bool HasInstalledConformanceVersionAtLeast(Version minimumVersion)
-    {
-        var version = GetInstalledConformanceVersion();
-        return version is not null && version >= minimumVersion;
-    }
+    private static bool HasInstalledConformanceScenarios(params string[] scenarioNames)
+        => ReadInstalledConformanceBundle() is { } bundle
+            && scenarioNames.All(scenarioName => HasInstalledConformanceScenario(bundle, scenarioName));
 
-    /// <summary>
-    /// Reads the version of the conformance package actually installed in node_modules,
-    /// stripping any prerelease/build suffix (e.g. "0.2.0-alpha.1" -> "0.2.0") so it can be
-    /// parsed as a <see cref="Version"/>. Returns <see langword="null"/> if it cannot be
-    /// determined.
-    /// </summary>
-    private static Version? GetInstalledConformanceVersion()
+    private static bool HasInstalledConformanceScenario(string scenarioName)
+        => ReadInstalledConformanceBundle() is { } bundle
+            && HasInstalledConformanceScenario(bundle, scenarioName);
+
+    private static bool HasInstalledConformanceScenario(string bundle, string scenarioName)
+        => bundle.Contains($"`{scenarioName}`", StringComparison.Ordinal) ||
+           bundle.Contains($"\"{scenarioName}\"", StringComparison.Ordinal) ||
+           bundle.Contains($"'{scenarioName}'", StringComparison.Ordinal);
+
+    private static string? ReadInstalledConformanceBundle()
     {
         try
         {
             var repoRoot = FindRepoRoot();
-            var packageJsonPath = Path.Combine(
-                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "package.json");
+            var bundlePath = Path.Combine(
+                repoRoot, "node_modules", "@modelcontextprotocol", "conformance", "dist", "index.js");
 
-            // This is a skip gate for version-conditional conformance scenarios, so it must stay
-            // side-effect-free. If the conformance package isn't installed, report no version (the
+            // This is a skip gate for scenario-conditional conformance tests, so it must stay
+            // side-effect-free. If the conformance package isn't installed, report no bundle (the
             // scenario is simply gated off); the actual scenario run path restores npm dependencies
             // separately via ConformanceTestStartInfo.
-            if (!File.Exists(packageJsonPath))
+            if (!File.Exists(bundlePath))
             {
                 return null;
             }
 
-            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(packageJsonPath));
-            if (json.RootElement.TryGetProperty("version", out var versionElement) &&
-                versionElement.GetString() is { } versionStr)
-            {
-                // Strip any prerelease/build suffix so System.Version can parse it.
-                var core = versionStr.Split('-', '+')[0];
-                if (Version.TryParse(core, out var version))
-                {
-                    return version;
-                }
-            }
-
-            return null;
+            return File.ReadAllText(bundlePath);
         }
         catch
         {
@@ -459,7 +455,7 @@ public static class NodeHelpers
             await process.WaitForExitAsync(cts.Token);
 #else
             // net472 lacks the CancellationToken overload; fall back to the timeout-based polyfill
-            // extension and surface a timeout the same way the modern path does.
+            // extension and surface a timeout the same way the current target-framework path does.
             await process.WaitForExitAsync(TimeSpan.FromMinutes(5));
             if (!process.HasExited)
             {
@@ -520,16 +516,24 @@ public static class NodeHelpers
 
     /// <summary>
     /// Checks whether the SEP-2322 (Multi Round-Trip Requests / InputRequiredResult)
-    /// conformance scenarios are available, by reading the <em>installed</em> conformance
-    /// package version from node_modules. The <c>incomplete-result-*</c> scenarios were
-    /// introduced in conformance package 0.2.0 (see
-    /// https://github.com/modelcontextprotocol/conformance/pull/188).
-    /// Reading the installed version (rather than the pinned version in package.json) means
-    /// this also returns <see langword="true"/> when a newer private build has been installed
-    /// locally via <c>npm install --no-save &lt;path-to-conformance&gt;</c>.
+    /// conformance scenarios are available in the installed conformance package.
     /// </summary>
     public static bool HasMrtrScenarios()
-        => HasInstalledConformanceVersionAtLeast(new Version(0, 2, 0));
+        => HasInstalledConformanceScenarios(
+            "input-required-result-basic-elicitation",
+            "input-required-result-basic-sampling",
+            "input-required-result-basic-list-roots",
+            "input-required-result-request-state",
+            "input-required-result-multiple-input-requests",
+            "input-required-result-multi-round",
+            "input-required-result-missing-input-response",
+            "input-required-result-non-tool-request",
+            "input-required-result-result-type",
+            "input-required-result-unsupported-methods",
+            "input-required-result-tampered-state",
+            "input-required-result-capability-check",
+            "input-required-result-ignore-extra-params",
+            "input-required-result-validate-input");
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {
