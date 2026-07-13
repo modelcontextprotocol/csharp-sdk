@@ -132,6 +132,85 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WhenMetadataOmitsPkceMethods()
+    {
+        TestOAuthServer.CodeChallengeMethodsSupported = null;
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        // No discovery endpoint advertises PKCE, so metadata discovery is exhausted. The precise PKCE reason
+        // is logged as each endpoint is skipped.
+        Assert.Contains(
+            MockLoggerProvider.LogMessages,
+            m => m.Exception?.Message.Contains("code_challenge_methods_supported") == true);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenMetadataLacksS256PkceMethod()
+    {
+        TestOAuthServer.CodeChallengeMethodsSupported = ["plain"];
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(
+            MockLoggerProvider.LogMessages,
+            m => m.Exception?.Message.Contains("required PKCE method 'S256'") == true);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WhenFirstMetadataEndpointOmitsPkce_ButAnotherAdvertisesIt()
+    {
+        // The OAuth 2.0 authorization server metadata endpoint is tried before the OpenID Connect one.
+        // Simulate a server where only the OpenID Connect document advertises PKCE support, and verify the
+        // client falls through to it rather than failing on the first PKCE-less document.
+        TestOAuthServer.MetadataPathsWithoutPkceSupport.Add("/.well-known/oauth-authorization-server");
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task UsesDynamicClientRegistration_WhenCimdNotSupported()
     {
         // Disable CIMD support on the test OAuth server so the client

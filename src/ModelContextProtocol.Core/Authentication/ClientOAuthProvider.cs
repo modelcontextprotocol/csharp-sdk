@@ -368,6 +368,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
+            AuthorizationServerMetadata? metadata;
             try
             {
                 var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
@@ -377,7 +378,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 }
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                var metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
+                metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
 
                 if (metadata is null)
                 {
@@ -394,18 +395,46 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 {
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
-
-                metadata.ResponseTypesSupported ??= ["code"];
-                metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
-                metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
-                metadata.CodeChallengeMethodsSupported ??= ["S256"];
-
-                return metadata;
             }
             catch (Exception ex)
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
+                continue;
             }
+
+            try
+            {
+                // Per the MCP spec, clients MUST verify PKCE support via authorization server metadata and refuse
+                // to proceed without it. Rather than failing on the first document that lacks it, skip to the next
+                // discovery endpoint: different well-known endpoints (OAuth 2.0 vs OpenID Connect) can return
+                // different documents for the same server, and OpenID Connect metadata commonly includes the field.
+                var codeChallengeMethods = metadata.CodeChallengeMethodsSupported;
+                if (codeChallengeMethods is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not include 'code_challenge_methods_supported'. MCP clients require PKCE support and must refuse to proceed.");
+                }
+
+                if (!codeChallengeMethods.Contains("S256"))
+                {
+                    var advertisedMethods = codeChallengeMethods.Count > 0
+                        ? string.Join(", ", codeChallengeMethods)
+                        : "<none>";
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not advertise required PKCE method 'S256' in 'code_challenge_methods_supported'. Advertised methods: {advertisedMethods}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogAuthServerMetadataMissingPkceSupport(ex, wellKnownEndpoint);
+                continue;
+            }
+
+            metadata.ResponseTypesSupported ??= ["code"];
+            metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
+            metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
+
+            return metadata;
         }
 
         if (resourceUri is null)
@@ -1154,6 +1183,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Endpoint}")]
     partial void LogErrorFetchingAuthServerMetadata(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server metadata from {Endpoint} does not satisfy PKCE requirements; skipping it and trying the next discovery endpoint.")]
+    partial void LogAuthServerMetadataMissingPkceSupport(Exception ex, Uri endpoint);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
     partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);
