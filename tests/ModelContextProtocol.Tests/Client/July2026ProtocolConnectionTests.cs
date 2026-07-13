@@ -83,6 +83,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         var discoverResult = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(discoverResult);
+        Assert.Equal("complete", discoverResult.ResultType);
         Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], discoverResult.SupportedVersions);
     }
 }

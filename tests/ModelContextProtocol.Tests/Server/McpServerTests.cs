@@ -283,6 +283,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.Equal(expectedAssemblyName.Name, result.ServerInfo.Name);
                 Assert.Equal(expectedAssemblyName.Version?.ToString() ?? "1.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024-11-05", result.ProtocolVersion);
@@ -385,6 +386,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotNull(result.Capabilities.Extensions);
                 Assert.True(result.Capabilities.Extensions.ContainsKey("io.myext"));
             });
@@ -404,6 +406,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotNull(result.Capabilities.Experimental);
                 Assert.True(result.Capabilities.Experimental.ContainsKey("customFeature"));
             });
@@ -435,6 +438,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
 
                 // Use reflection to verify every public property on ServerCapabilities is non-null.
                 // This catches cases where new capability properties are added but not copied
@@ -481,6 +485,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<CompleteResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Completion);
+                Assert.Equal("complete", result.ResultType);
                 Assert.Equal(["test"], result.Completion.Values);
                 Assert.Equal(2, result.Completion.Total);
                 Assert.True(result.Completion.HasMore);
@@ -524,6 +529,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response);
         var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result?.Completion);
+        Assert.Equal("complete", result.ResultType);
         Assert.Equal(["cat"], result.Completion.Values);
         Assert.Equal(1, result.Completion.Total);
 
@@ -567,6 +573,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response);
         var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result?.Completion);
+        Assert.Equal("complete", result.ResultType);
         Assert.Empty(result.Completion.Values);
 
         await transport.DisposeAsync();
@@ -616,6 +623,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response);
         var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result?.Completion);
+        Assert.Equal("complete", result.ResultType);
         Assert.Equal(["us-east-1", "us-west-2"], result.Completion.Values);
         Assert.Equal(2, result.Completion.Total);
 
@@ -671,6 +679,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response);
         var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result?.Completion);
+        Assert.Equal("complete", result.ResultType);
         // Custom handler values + auto-populated values should be combined
         Assert.Equal(["custom-value", "dog", "cat"], result.Completion.Values);
         Assert.Equal(3, result.Completion.Total);
@@ -718,6 +727,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response);
         var result = JsonSerializer.Deserialize<CompleteResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result?.Completion);
+        Assert.Equal("complete", result.ResultType);
         Assert.Equal(["a", "b"], result.Completion.Values);
 
         await transport.DisposeAsync();
@@ -756,6 +766,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.ResourceTemplates);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.ResourceTemplates);
                 Assert.Equal("test", result.ResourceTemplates[0].UriTemplate);
             });
@@ -785,6 +796,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<ListResourcesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Resources);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.Resources);
                 Assert.Equal("test", result.Resources[0].Uri);
             });
@@ -820,6 +832,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<ReadResourceResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Contents);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.Contents);
 
                 TextResourceContents textResource = Assert.IsType<TextResourceContents>(result.Contents[0]);
@@ -857,6 +870,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<ListPromptsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Prompts);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.Prompts);
                 Assert.Equal("test", result.Prompts[0].Name);
             });
@@ -886,6 +900,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<GetPromptResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.Equal("test", result.Description);
             });
     }
@@ -920,6 +935,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<ListToolsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.Tools);
                 Assert.Equal("test", result.Tools[0].Name);
             });
@@ -955,6 +971,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.NotEmpty(result.Content);
                 Assert.Equal("test", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
             });
@@ -964,6 +981,34 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Call_Tool_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
         await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsCall, "CallTool handler not configured");
+    }
+
+    [Fact]
+    public async Task Can_Handle_SetLoggingLevel_Requests()
+    {
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Logging = new()
+            },
+            method: RequestMethods.LoggingSetLevel,
+            configureOptions: options =>
+            {
+                // logging/setLevel is a legacy (2025-06-18) method whose result must serialize as an
+                // empty object {}. The custom handler returns a bare result and the server must not
+                // add a resultType, otherwise the MCP conformance suite rejects the response.
+                options.Handlers.SetLoggingLevelHandler = async (request, ct) => new EmptyResult();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<EmptyResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.Null(result.ResultType);
+
+                // The wire response must be exactly {} with no additional properties.
+                var obj = Assert.IsType<JsonObject>(response);
+                Assert.Empty(obj);
+            });
     }
 
     [Fact]
@@ -988,6 +1033,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.True(result.IsError);
                 Assert.NotEmpty(result.Content);
                 var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
@@ -1016,6 +1062,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.True(result.IsError);
                 Assert.NotEmpty(result.Content);
                 var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
@@ -1051,6 +1098,7 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
+                Assert.Equal("complete", result.ResultType);
                 Assert.True(result.IsError, "Input validation errors should be returned as tool execution errors (IsError=true), not protocol errors");
                 Assert.NotEmpty(result.Content);
                 var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
@@ -1311,6 +1359,7 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(response.Result);
         var initResult = JsonSerializer.Deserialize<InitializeResult>(response.Result, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(initResult);
+        Assert.Equal("complete", initResult.ResultType);
         Assert.NotNull(initResult.ServerInfo);
 
         await transport.DisposeAsync();

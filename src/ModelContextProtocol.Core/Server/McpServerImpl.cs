@@ -621,6 +621,7 @@ internal sealed partial class McpServerImpl : McpServer
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
+                    ResultType = "complete",
                 };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
@@ -651,6 +652,7 @@ internal sealed partial class McpServerImpl : McpServer
                     // their "do not cache" behavior while satisfying the wire requirement.
                     TimeToLive = TimeSpan.Zero,
                     CacheScope = CacheScope.Private,
+                    ResultType = "complete",
                 });
             },
             McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
@@ -703,7 +705,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                     await SendSubscriptionAckAsync(statelessSubscription, cancellationToken).ConfigureAwait(false);
 
-                    return new EmptyResult();
+                    return EmptyResult.Instance;
                 }
 
                 // Filter the requested notifications against what the server actually supports.
@@ -743,7 +745,7 @@ internal sealed partial class McpServerImpl : McpServer
                     _activeSubscriptions.TryRemove(jsonRpcRequest.Id, out _);
                 }
 
-                return new EmptyResult();
+                return EmptyResult.Instance;
             },
             McpJsonUtilities.JsonContext.Default.SubscriptionsListenRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
@@ -1916,6 +1918,21 @@ internal sealed partial class McpServerImpl : McpServer
             };
         }
 
+        if (typeof(Result).IsAssignableFrom(typeof(TResult)))
+        {
+            var innerHandler = handler;
+            handler = async (request, cancellationToken) =>
+            {
+                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+                if (result is Result protocolResult && protocolResult.ResultType is null)
+                {
+                    protocolResult.ResultType = "complete";
+                }
+
+                return result;
+            };
+        }
+
         _requestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
@@ -1930,6 +1947,25 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
         where TResult : Result
     {
+        var innerHandler = handler;
+        handler = async (request, cancellationToken) =>
+        {
+            var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+            if (result.IsTask)
+            {
+                if (result.TaskCreated is { ResultType: null } taskCreated)
+                {
+                    taskCreated.ResultType = "task";
+                }
+            }
+            else if (result.Result is { ResultType: null } immediateResult)
+            {
+                immediateResult.ResultType = "complete";
+            }
+
+            return result;
+        };
+
         _requestHandlers.SetTaskAugmented(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
