@@ -174,7 +174,7 @@ public class ServerConformanceTests(
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
         Assert.SkipWhen(
             !NodeHelpers.HasSep2243Scenarios(),
-            "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
+            "SEP-2243 conformance scenarios are not available in the installed conformance package.");
 
         // SEP-2243 is a 2026-07-28 protocol revision scenario that uses the stateless
         // lifecycle, so it requires a stateless server (a stateful server rejects the un-initialized list/call
@@ -196,7 +196,7 @@ public class ServerConformanceTests(
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
         Assert.SkipWhen(
             !NodeHelpers.HasSep2243Scenarios(),
-            "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).");
+            "SEP-2243 conformance scenarios are not available in the installed conformance package.");
 
         await using var server = await StatelessConformanceServer.StartAsync(
             TestContext.Current.CancellationToken, basePort: 3024);
@@ -245,7 +245,7 @@ public class ServerConformanceTests(
     public async Task RunMrtrConformanceTest(string scenario)
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios not yet available in the published @modelcontextprotocol/conformance package.");
+        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios are not available in the installed conformance package.");
 
         var result = await RunStatelessConformanceTestAsync(
             $"server --url {statelessFixture.ServerUrl} --scenario {scenario} --spec-version 2026-07-28");

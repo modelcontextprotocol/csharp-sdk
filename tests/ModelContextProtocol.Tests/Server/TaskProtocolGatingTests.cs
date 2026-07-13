@@ -123,24 +123,23 @@ public class TaskProtocolGatingTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LegacyClient_CallToolRaw_WithForgedTaskOptIn_ServerReturnsDirectResult()
+    public async Task LegacyClient_CallToolRaw_WithForgedTaskOptIn_RejectsReservedMetadata()
     {
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
         var ct = TestContext.Current.CancellationToken;
 
         // Forge a SEP-2575 capabilities envelope carrying the tasks extension opt-in on a legacy
-        // request. The server must still refuse to create a task because the per-request protocol
-        // version is not the 2026-07-28 protocol.
-        var result = await client.CallToolAsTaskAsync(
+        // request. The server rejects reserved per-request metadata before it can affect behavior.
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "forged"),
                 Meta = CreateForgedTaskOptInMeta(),
-            }, ct);
+            }, ct));
 
-        Assert.False(result.IsTask);
-        Assert.NotNull(result.Result);
+        Assert.Equal(McpErrorCode.InvalidRequest, ex.ErrorCode);
+        Assert.Contains(ClientCapabilitiesMetaKey, ex.Message);
     }
 
     [Fact]

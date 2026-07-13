@@ -33,7 +33,7 @@ MRTR is useful when:
 
 ## Opting in
 
-MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers `2026-07-28` by default — it probes with `server/discover` and falls back to a legacy `initialize` handshake only when the server doesn't support it. Servers accept `2026-07-28` automatically when a client offers it. No experimental flags are required; pinning `ProtocolVersion` to a legacy revision opts back out.
+MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers `2026-07-28` by default — it probes with `server/discover` and falls back to an `initialize` handshake only when the server doesn't support it. Stateless HTTP servers accept `2026-07-28` automatically when a client offers it; HTTP servers configured with `Stateless = false` refuse that revision with `UnsupportedProtocolVersion` so dual-path clients can fall back to a session-capable revision. No experimental flags are required; pinning `ProtocolVersion` to an initialize-capable revision opts back out.
 
 ```csharp
 // Client — the SDK prefers 2026-07-28 (and therefore MRTR) by default.
@@ -283,4 +283,4 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 
 Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
-Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP runs statelessly whenever a client speaks `2026-07-28`. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies only to stdio — a server explicitly set to `Stateless = false` still serves `2026-07-28` requests without a session and creates a legacy session only when an older client falls back to `initialize`.
+Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP can serve that revision only through the stateless path. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies to stdio and other non-HTTP stateful sessions; an HTTP server explicitly set to `Stateless = false` refuses `2026-07-28` with `UnsupportedProtocolVersion` and creates a session only when an older client falls back to `initialize`.

@@ -355,7 +355,7 @@ public static class McpTasksClientExtensions
     }
 
     private static bool IsJuly2026OrLaterProtocol(McpClient client) =>
-        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(client.NegotiatedProtocolVersion);
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(client.NegotiatedProtocolVersion);
 
     private static void ThrowIfTasksNotSupported(McpClient client, string operationName)
     {
@@ -363,7 +363,7 @@ public static class McpTasksClientExtensions
         {
             throw new InvalidOperationException(
                 $"'{operationName}' requires a newer protocol revision that supports tasks " +
-                $"(the '{McpHttpHeaders.July2026ProtocolVersion}' revision or later). " +
+                $"(the '{McpProtocolVersions.July2026ProtocolVersion}' revision or later). " +
                 $"The negotiated protocol version is '{client.NegotiatedProtocolVersion ?? "(none)"}'.");
         }
     }

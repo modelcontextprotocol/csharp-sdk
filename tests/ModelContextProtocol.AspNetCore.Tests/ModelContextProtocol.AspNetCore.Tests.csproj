@@ -26,6 +26,7 @@
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
     <Compile Include="..\..\src\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\..\src\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
   <ItemGroup>

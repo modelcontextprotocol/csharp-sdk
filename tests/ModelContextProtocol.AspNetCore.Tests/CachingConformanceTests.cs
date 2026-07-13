@@ -108,7 +108,7 @@ internal sealed class StatelessConformanceServer : IAsyncDisposable
 /// <remarks>
 /// The scenario was introduced in spec wire version 2026-07-28 and uses the stateless lifecycle.
 /// It is gated on the installed conformance
-/// package version (>= 0.2.0). The stateless server is
+/// package's scenario list. The stateless server is
 /// started only after the gates pass, so a skipped run binds no port.
 /// </remarks>
 public class CachingConformanceTests(ITestOutputHelper output)
@@ -119,7 +119,7 @@ public class CachingConformanceTests(ITestOutputHelper output)
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
         Assert.SkipWhen(
             !NodeHelpers.HasCachingScenario(),
-            "SEP-2549 caching conformance scenario not available (requires conformance package >= 0.2.0).");
+            "SEP-2549 caching conformance scenario is not available in the installed conformance package.");
 
         await using var server = await StatelessConformanceServer.StartAsync(TestContext.Current.CancellationToken);
 

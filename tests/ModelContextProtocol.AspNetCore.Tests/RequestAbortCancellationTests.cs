@@ -112,7 +112,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
         var body = july2026Protocol
             ? """
               {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blockingTool","_meta":{"io.modelcontextprotocol/protocolVersion":"PROTOCOL_VERSION","io.modelcontextprotocol/clientInfo":{"name":"raw","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
-              """.Replace("PROTOCOL_VERSION", McpHttpHeaders.July2026ProtocolVersion)
+              """.Replace("PROTOCOL_VERSION", McpProtocolVersions.July2026ProtocolVersion)
             : """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blockingTool"}}""";
 
         var request = new HttpRequestMessage(HttpMethod.Post, "")
@@ -125,7 +125,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
 
         if (july2026Protocol)
         {
-            request.Headers.Add("MCP-Protocol-Version", McpHttpHeaders.July2026ProtocolVersion);
+            request.Headers.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
             request.Headers.Add("Mcp-Method", "tools/call");
             request.Headers.Add("Mcp-Name", "blockingTool");
         }

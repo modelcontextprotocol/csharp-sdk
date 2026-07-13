@@ -54,38 +54,224 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var ct = TestContext.Current.CancellationToken;
 
         // The first request establishes the 2026-07-28 version for the stateful session (null -> 2026-07-28).
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpProtocolVersions.July2026ProtocolVersion, ct));
 
         // Re-sending the same version is an idempotent no-op, not an error.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
 
         // Switching to a different (still-supported) version mid-session is rejected.
-        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpHttpHeaders.November2025ProtocolVersion, ct));
+        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 3, McpProtocolVersions.November2025ProtocolVersion, ct));
         Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
         Assert.Contains("protocol version cannot change", error.Error.Message, StringComparison.OrdinalIgnoreCase);
 
         // The rejected request must not have mutated the negotiated version: the original 2026-07-28 version still works.
-        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpHttpHeaders.July2026ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 4, McpProtocolVersions.July2026ProtocolVersion, ct));
     }
 
-    private async Task<JsonRpcMessage> RoundTripAsync(long id, string protocolVersion, CancellationToken cancellationToken)
+    [Fact]
+    public async Task PerRequestMetadata_RejectsInitializeHandshakeVersionBeforeInitialize()
     {
-        // tools/list is available under both the legacy and 2026-07-28 revisions (unlike ping/initialize,
+        var ct = TestContext.Current.CancellationToken;
+
+        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
+        Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The rejected initialize-handshake _meta request must not have established session state.
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
+    }
+
+    [Fact]
+    public async Task PerRequestMetadata_RejectsRequestMissingRequiredMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var error = Assert.IsType<JsonRpcError>(
+            await RoundTripAsync(
+                id: 1,
+                McpProtocolVersions.July2026ProtocolVersion,
+                ct,
+                includeClientInfo: false));
+
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(MetaKeys.ClientInfo, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServerDiscover_WithoutPerRequestMetadata_IsRejectedBeforeInitialize()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ServerDiscover,
+            Params = new JsonObject(),
+        };
+
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(RequestMethods.ServerDiscover, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Initialize_WithPerRequestMetadataProtocolVersion_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var error = Assert.IsType<JsonRpcError>(
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.July2026ProtocolVersion, ct));
+
+        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
+        Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Initialize_WithReservedPerRequestMetadata_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
+                Meta = new JsonObject
+                {
+                    [MetaKeys.ClientInfo] = new JsonObject
+                    {
+                        ["name"] = "per-request-meta-client",
+                        ["version"] = "1.0.0",
+                    },
+                },
+            }, McpJsonUtilities.DefaultOptions),
+        };
+
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
+        Assert.Contains(MetaKeys.ClientInfo, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SubscriptionsListen_WithInitializeProtocolVersion_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(2),
+            Method = RequestMethods.SubscriptionsListen,
+            Params = new JsonObject(),
+        };
+
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.MethodNotFound, error.Error.Code);
+        Assert.Contains(RequestMethods.SubscriptionsListen, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoggingSetLevel_WithPerRequestMetadataProtocolVersion_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.LoggingSetLevel,
+            Params = new JsonObject
+            {
+                ["level"] = "info",
+                ["_meta"] = PerRequestMetadata(),
+            },
+        };
+
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.MethodNotFound, error.Error.Code);
+        Assert.Contains(RequestMethods.LoggingSetLevel, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    private async Task<JsonRpcMessage> RoundTripAsync(
+        long id,
+        string protocolVersion,
+        CancellationToken cancellationToken,
+        bool includeClientInfo = true,
+        bool includeClientCapabilities = true)
+    {
+        // tools/list is available under both the initialize-handshake and 2026-07-28 revisions (unlike ping/initialize,
         // which the 2026-07-28 protocol removed), so it exercises the version guard rather than the
         // per-method availability gate.
+        var meta = new JsonObject
+        {
+            [MetaKeys.ProtocolVersion] = protocolVersion,
+        };
+
+        if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
+        {
+            if (includeClientInfo)
+            {
+                meta[MetaKeys.ClientInfo] = new JsonObject
+                {
+                    ["name"] = "test-client",
+                    ["version"] = "1.0.0",
+                };
+            }
+
+            if (includeClientCapabilities)
+            {
+                meta[MetaKeys.ClientCapabilities] = new JsonObject();
+            }
+        }
+
         var request = new JsonRpcRequest
         {
             Id = new RequestId(id),
             Method = RequestMethods.ToolsList,
             Params = new JsonObject
             {
-                ["_meta"] = new JsonObject
-                {
-                    [MetaKeys.ProtocolVersion] = protocolVersion,
-                },
+                ["_meta"] = meta,
             },
         };
 
+        return await SendAndReceiveAsync(request, cancellationToken);
+    }
+
+    private static JsonObject PerRequestMetadata() => new()
+    {
+        [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
+        [MetaKeys.ClientInfo] = new JsonObject
+        {
+            ["name"] = "test-client",
+            ["version"] = "1.0.0",
+        },
+        [MetaKeys.ClientCapabilities] = new JsonObject(),
+    };
+
+    private async Task<JsonRpcMessage> RoundTripInitializeAsync(long id, string protocolVersion, CancellationToken cancellationToken)
+    {
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(id),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = protocolVersion,
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
+            }, McpJsonUtilities.DefaultOptions),
+        };
+
+        return await SendAndReceiveAsync(request, cancellationToken);
+    }
+
+    private async Task<JsonRpcMessage> SendAndReceiveAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+    {
         string json = JsonSerializer.Serialize(request, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
 #if NET
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken);

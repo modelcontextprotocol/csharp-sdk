@@ -293,24 +293,20 @@ internal sealed partial class McpClientImpl : McpClient
                 // handshake. Instead, the client calls server/discover to learn the server's
                 // capabilities and then begins sending normal RPCs that carry protocolVersion /
                 // clientInfo / clientCapabilities in their per-request _meta. A null ProtocolVersion
-                // prefers the 2026-07-28 revision and automatically falls back to the legacy initialize
-                // handshake when the server doesn't support it. The legacy branch below runs only when
+                // prefers the 2026-07-28 revision and automatically falls back to the initialize
+                // handshake when the server doesn't support it. The initialize branch below runs only when
                 // the caller explicitly pins a version that still supports Streamable HTTP sessions (opting out of the default).
-                if (_options.ProtocolVersion is null || McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(_options.ProtocolVersion))
+                if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
                 {
-                    string preferredVersion = _options.ProtocolVersion ?? McpHttpHeaders.July2026ProtocolVersion;
-
-                    // Eagerly set the negotiated version so InjectRequestMetaIfNeeded recognizes us as being
-                    // on the 2026-07-28 revision when SendRequestAsync is invoked for server/discover.
-                    _negotiatedProtocolVersion = preferredVersion;
-                    _sessionHandler.NegotiatedProtocolVersion = preferredVersion;
+                    string preferredVersion = _options.ProtocolVersion ?? McpProtocolVersions.July2026ProtocolVersion;
 
                     DiscoverResult? discoverResult = null;
-                    bool fallbackToLegacy = false;
+                    bool fallbackToInitialize = false;
                     IList<string>? serverSupportedVersions = null;
+                    string discoverVersion = preferredVersion;
 
-                    // Apply a probe timeout so dual-era clients don't block forever waiting for a
-                    // legacy server that silently drops unknown methods (per stdio.mdx fallback rules).
+                    // Apply a probe timeout so dual-path clients don't block forever waiting for an
+                    // initialize-handshake server that silently drops unknown methods (per stdio.mdx fallback rules).
                     // The probe timeout is configurable via McpClientOptions.DiscoverProbeTimeout and is
                     // always bounded by InitializationTimeout (only applied when it is the tighter bound).
                     var probeTimeout = _options.DiscoverProbeTimeout;
@@ -322,75 +318,101 @@ internal sealed partial class McpClientImpl : McpClient
 
                     try
                     {
-                        discoverResult = await SendRequestAsync(
-                            RequestMethods.ServerDiscover,
-                            new DiscoverRequestParams(),
-                            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
-                            McpJsonUtilities.JsonContext.Default.DiscoverResult,
-                            cancellationToken: probeCts.Token).ConfigureAwait(false);
+                        discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
                     }
                     catch (UnsupportedProtocolVersionException ex)
                     {
-                        // Spec-recognized modern-server signal: -32022 with data.supported[]. The server is
-                        // modern but doesn't speak our preferred version. Retry with a mutually supported
-                        // version from data.supported[] instead of falling back to legacy initialize.
-                        fallbackToLegacy = true;
+                        // Spec-recognized SEP-2575 signal: -32022 with data.supported[]. The server is
+                        // refusing our preferred version. Retry with a supported per-request metadata
+                        // version if one exists; otherwise fall back to initialize with the highest
+                        // mutually supported initialize-capable version.
                         serverSupportedVersions = (IList<string>)ex.Supported;
+                        var retryVersion = serverSupportedVersions
+                            .Where(McpProtocolVersions.PerRequestMetadataProtocolVersions.Contains)
+                            .OrderByDescending(v => v, StringComparer.Ordinal)
+                            .FirstOrDefault();
+
+                        if (retryVersion is not null)
+                        {
+                            if (_options.ProtocolVersion is { } pinnedVersion &&
+                                StringComparer.Ordinal.Compare(retryVersion, pinnedVersion) < 0)
+                            {
+                                throw new McpException(
+                                    $"The server does not support the requested protocol version '{pinnedVersion}'. " +
+                                    "Leave McpClientOptions.ProtocolVersion unset to allow automatic fallback to an older version. " +
+                                    $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}.");
+                            }
+
+                            discoverVersion = retryVersion;
+                            discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            fallbackToInitialize = true;
+                        }
                     }
                     catch (MissingRequiredClientCapabilityException)
                     {
-                        // Spec-recognized modern-server signal: -32021. The server is modern but rejected
+                        // Spec-recognized SEP-2575 signal: -32021. The server rejected
                         // our capability set. Surface as-is (no fallback): the user must add capabilities.
                         throw;
                     }
                     catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.HeaderMismatch)
                     {
-                        // Spec-recognized modern-server signal: -32020. The server is modern but rejected
+                        // Spec-recognized SEP-2575 signal: -32020. The server rejected
                         // our request envelope (e.g., the MCP-Protocol-Version HTTP header didn't match
                         // the body _meta.io.modelcontextprotocol/protocolVersion). Surface as-is (no
-                        // fallback): falling back to legacy initialize wouldn't fix a malformed envelope.
+                        // fallback): falling back to initialize wouldn't fix a malformed envelope.
+                        throw;
+                    }
+                    catch (McpProtocolException ex) when (
+                        ex.ErrorCode == McpErrorCode.InvalidRequest &&
+                        ex.Message.Contains(McpHttpHeaders.SessionId, StringComparison.Ordinal))
+                    {
+                        // Local transport validation: a 2026-07-28+ response must not carry HTTP session state.
+                        // This is not evidence of an initialize-handshake server, so do not fall back.
                         throw;
                     }
                     catch (McpProtocolException)
                     {
                         // Per spec PR #2844, the fallback MUST NOT be keyed to a single error code.
-                        // Any non-modern JSON-RPC error from the probe indicates a legacy server.
+                        // Any non-SEP-2575 JSON-RPC error from the probe indicates an initialize-handshake server.
                         // Common causes include MethodNotFound from a server that has no
                         // server/discover handler, InvalidParams from a server confused by the
                         // SEP-2575 _meta envelope, ParseError from a server that can't handle our
-                        // payload shape, or any other transport-defined error. The three modern-server
+                        // payload shape, or any other transport-defined error. The three SEP-2575
                         // signals (-32022 UnsupportedProtocolVersion, -32021
                         // MissingRequiredClientCapability, -32020 HeaderMismatch) are caught above and
                         // never reach here.
-                        fallbackToLegacy = true;
+                        fallbackToInitialize = true;
                     }
                     catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
                     {
                         // Probe timeout elapsed without a response. Per stdio.mdx fallback rules, no
-                        // response within a reasonable timeout means the server is legacy. Fall back.
-                        fallbackToLegacy = true;
+                        // response within a reasonable timeout means the server requires initialize. Fall back.
+                        fallbackToInitialize = true;
                     }
 
-                    if (discoverResult is not null && !discoverResult.SupportedVersions.Contains(preferredVersion))
+                    if (discoverResult is not null && !discoverResult.SupportedVersions.Contains(discoverVersion))
                     {
                         // Server is reachable and supports server/discover, but doesn't support the
-                        // 2026-07-28 version. Fall back to legacy initialize with the highest
-                        // mutually-supported version from supportedVersions[].
-                        fallbackToLegacy = true;
+                        // version we are using. Fall back to initialize with the highest
+                        // mutually-supported initialize-capable version from supportedVersions[].
+                        fallbackToInitialize = true;
                         serverSupportedVersions = discoverResult.SupportedVersions;
                     }
 
-                    if (fallbackToLegacy)
+                    if (fallbackToInitialize)
                     {
-                        // Reset negotiated state and try legacy initialize.
+                        // Reset negotiated state and try initialize.
                         _negotiatedProtocolVersion = null;
                         _sessionHandler.NegotiatedProtocolVersion = null;
 
                         string fallbackVersion = serverSupportedVersions?
-                            .Where(McpSessionHandler.SupportedProtocolVersions.Contains)
+                            .Where(McpProtocolVersions.InitializeHandshakeProtocolVersions.Contains)
                             .OrderByDescending(v => v, StringComparer.Ordinal)
                             .FirstOrDefault()
-                            ?? McpHttpHeaders.November2025ProtocolVersion;
+                            ?? McpProtocolVersions.November2025ProtocolVersion;
 
                         // A non-null ProtocolVersion is also the minimum: refuse to fall back below the
                         // explicitly requested version. String.Compare is the spec's prescribed ordering
@@ -402,11 +424,11 @@ internal sealed partial class McpClientImpl : McpClient
                                 $"The server does not support the requested protocol version '{pinnedVersion}'. " +
                                 "Leave McpClientOptions.ProtocolVersion unset to allow automatic fallback to an older version. " +
                                 (serverSupportedVersions is null
-                                    ? "The server appears to be a legacy server that requires the deprecated initialize handshake."
+                                    ? "The server appears to require the initialize handshake."
                                     : $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}."));
                         }
 
-                        await PerformLegacyInitializeAsync(fallbackVersion, initializationCts.Token).ConfigureAwait(false);
+                        await PerformInitializeHandshakeAsync(fallbackVersion, initializationCts.Token).ConfigureAwait(false);
                     }
                     else
                     {
@@ -421,14 +443,29 @@ internal sealed partial class McpClientImpl : McpClient
                         _serverInfo = discoverResult.ServerInfo;
                         _serverInstructions = discoverResult.Instructions;
                     }
+
+                    async Task<DiscoverResult> SendDiscoverAsync(string protocolVersion, CancellationToken cancellationToken)
+                    {
+                        // Eagerly set the negotiated version so InjectRequestMetaIfNeeded recognizes us as being
+                        // on a per-request metadata revision when SendRequestAsync is invoked for server/discover.
+                        _negotiatedProtocolVersion = protocolVersion;
+                        _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+
+                        return await SendRequestAsync(
+                            RequestMethods.ServerDiscover,
+                            new DiscoverRequestParams(),
+                            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
+                            McpJsonUtilities.JsonContext.Default.DiscoverResult,
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
                 }
                 else
                 {
-                    // Legacy initialize handshake. Reached only when the caller explicitly pinned a
+                    // initialize handshake. Reached only when the caller explicitly pinned a
                     // ProtocolVersion that still supports Streamable HTTP sessions (opting out of the default), so
                     // _options.ProtocolVersion is non-null here.
-                    string requestProtocol = _options.ProtocolVersion ?? McpHttpHeaders.November2025ProtocolVersion;
-                    await PerformLegacyInitializeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
+                    string requestProtocol = _options.ProtocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
+                    await PerformInitializeHandshakeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -448,10 +485,10 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <summary>
-    /// Performs the legacy initialize handshake (initialize request + initialized notification),
+    /// Performs the initialize handshake (initialize request + initialized notification),
     /// records the negotiated protocol version, and stores the server capabilities/info/instructions.
     /// </summary>
-    private async Task PerformLegacyInitializeAsync(string requestProtocol, CancellationToken cancellationToken)
+    private async Task PerformInitializeHandshakeAsync(string requestProtocol, CancellationToken cancellationToken)
     {
         var initializeResponse = await SendRequestAsync(
             RequestMethods.Initialize,
@@ -478,18 +515,16 @@ internal sealed partial class McpClientImpl : McpClient
         _serverInstructions = initializeResponse.Instructions;
 
         // When the user explicitly pinned a version that supports Streamable HTTP sessions, the server MUST respect it.
-        // When the user pinned the 2026-07-28 version but we fell back (e.g., legacy server rejected
-        // server/discover), or when no version was pinned, accept any supported response. This is the
-        // spec-mandated behavior: a 2026-07-28 client must be able to downgrade to whatever
-        // version the server advertises.
+        // When no version was pinned, accept any supported initialize-handshake response. initialize cannot negotiate
+        // the 2026-07-28 and later protocol revisions.
         bool isResponseProtocolValid;
-        if (_options.ProtocolVersion is { } optionsProtocol && !McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(optionsProtocol))
+        if (_options.ProtocolVersion is { } optionsProtocol && !McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(optionsProtocol))
         {
             isResponseProtocolValid = optionsProtocol == initializeResponse.ProtocolVersion;
         }
         else
         {
-            isResponseProtocolValid = McpSessionHandler.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+            isResponseProtocolValid = McpProtocolVersions.InitializeHandshakeProtocolVersions.Contains(initializeResponse.ProtocolVersion);
         }
         if (!isResponseProtocolValid)
         {
@@ -524,7 +559,7 @@ internal sealed partial class McpClientImpl : McpClient
         _serverInstructions = resumeOptions.ServerInstructions;
         _negotiatedProtocolVersion = resumeOptions.NegotiatedProtocolVersion
             ?? _options.ProtocolVersion
-            ?? McpHttpHeaders.November2025ProtocolVersion;
+            ?? McpProtocolVersions.November2025ProtocolVersion;
 
         // Update session handler with the negotiated protocol version for telemetry
         _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
@@ -690,7 +725,7 @@ internal sealed partial class McpClientImpl : McpClient
     /// <summary>
     /// Injects the 2026-07-28 protocol's per-request <c>_meta</c> fields (protocol version, client info,
     /// client capabilities) into the request when this client negotiated the 2026-07-28 or later revision
-    /// (SEP-2575). No-op on a legacy session.
+    /// (SEP-2575). No-op on an initialize-handshake session.
     /// </summary>
     private void InjectRequestMetaIfNeeded(JsonRpcRequest request)
     {

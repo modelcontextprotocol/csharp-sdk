@@ -245,7 +245,7 @@ public static class McpTasksBuilderExtensions
             {
                 throw new McpProtocolException(
                     $"The method '{method}' requires a newer protocol revision that supports tasks " +
-                    $"(the '{McpHttpHeaders.July2026ProtocolVersion}' revision or later); " +
+                    $"(the '{McpProtocolVersions.July2026ProtocolVersion}' revision or later); " +
                     $"the negotiated protocol version is '{request?.Context?.ProtocolVersion ?? "(none)"}'.",
                     McpErrorCode.MethodNotFound);
             }
@@ -258,7 +258,7 @@ public static class McpTasksBuilderExtensions
             exts.ContainsKey(TasksProtocol.ExtensionId);
 
         private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
-            McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(request?.Context?.ProtocolVersion);
+            McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(request?.Context?.ProtocolVersion);
 
         private static CreateTaskResult ToCreateTaskResult(McpTaskInfo info) => new()
         {
