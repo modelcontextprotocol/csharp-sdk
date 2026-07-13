@@ -994,15 +994,20 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.LoggingSetLevel,
             configureOptions: options =>
             {
-                // Custom handler intentionally returns a result without a resultType so the server
-                // boundary is responsible for filling in "complete" on the wire.
+                // logging/setLevel is a legacy (2025-06-18) method whose result must serialize as an
+                // empty object {}. The custom handler returns a bare result and the server must not
+                // add a resultType, otherwise the MCP conformance suite rejects the response.
                 options.Handlers.SetLoggingLevelHandler = async (request, ct) => new EmptyResult();
             },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<EmptyResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
-                Assert.Equal("complete", result.ResultType);
+                Assert.Null(result.ResultType);
+
+                // The wire response must be exactly {} with no additional properties.
+                var obj = Assert.IsType<JsonObject>(response);
+                Assert.Empty(obj);
             });
     }
 

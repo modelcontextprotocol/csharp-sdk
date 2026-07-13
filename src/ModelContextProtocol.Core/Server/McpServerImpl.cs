@@ -1810,7 +1810,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         _requestHandlers.Set(
             RequestMethods.LoggingSetLevel,
-            async (request, jsonRpcRequest, cancellationToken) =>
+            (request, jsonRpcRequest, cancellationToken) =>
             {
                 if (IsJuly2026OrLaterProtocolRequest(jsonRpcRequest))
                 {
@@ -1833,16 +1833,11 @@ internal sealed partial class McpServerImpl : McpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    var handlerResult = await InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken).ConfigureAwait(false);
-
-                    // Custom handlers may return a result without a resultType. Fill it in so this path
-                    // always carries "complete" on the wire, matching the other server response paths.
-                    handlerResult.ResultType ??= "complete";
-                    return handlerResult;
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
-                return EmptyResult.Instance;
+                return new ValueTask<EmptyResult>(EmptyResult.Instance);
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
