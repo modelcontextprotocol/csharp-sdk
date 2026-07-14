@@ -413,7 +413,7 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
-    public async Task StreamableHttp_DisableStandaloneStreaming_DoesNotOpenGetSseAfterInitialize()
+    public async Task StreamableHttp_DisablingStandaloneGetStream_DoesNotOpenGetSseAfterInitialize()
     {
         var getRequestReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -421,7 +421,7 @@ public class HttpClientTransportTests : LoggedTest
         {
             Endpoint = new Uri("http://localhost:8080"),
             TransportMode = HttpTransportMode.StreamableHttp,
-            DisableStandaloneStreaming = true,
+            EnableStandaloneGetStream = false,
         };
 
         using var mockHttpHandler = new MockHttpHandler();
@@ -461,7 +461,7 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
-    public async Task StreamableHttp_DisableStandaloneStreaming_DoesNotOpenGetSseForKnownSessionId()
+    public async Task StreamableHttp_DisablingStandaloneGetStream_DoesNotOpenGetSseForKnownSessionId()
     {
         var getRequestReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -470,7 +470,7 @@ public class HttpClientTransportTests : LoggedTest
             Endpoint = new Uri("http://localhost:8080"),
             TransportMode = HttpTransportMode.StreamableHttp,
             KnownSessionId = "test-session",
-            DisableStandaloneStreaming = true,
+            EnableStandaloneGetStream = false,
         };
 
         using var mockHttpHandler = new MockHttpHandler();
@@ -493,13 +493,13 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
-    public async Task AutoDetect_DisableStandaloneStreaming_DisposeCompletesWithHttpDetails()
+    public async Task AutoDetect_DisablingStandaloneGetStream_DisposeCompletesWithHttpDetails()
     {
         var options = new HttpClientTransportOptions
         {
             Endpoint = new Uri("http://localhost:8080"),
             TransportMode = HttpTransportMode.AutoDetect,
-            DisableStandaloneStreaming = true,
+            EnableStandaloneGetStream = false,
         };
 
         using var mockHttpHandler = new MockHttpHandler();
@@ -545,13 +545,13 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
-    public async Task StreamableHttp_DisableStandaloneStreaming_StillProcessesPostSseResponses()
+    public async Task StreamableHttp_DisablingStandaloneGetStream_StillProcessesPostSseResponses()
     {
         var options = new HttpClientTransportOptions
         {
             Endpoint = new Uri("http://localhost:8080"),
             TransportMode = HttpTransportMode.StreamableHttp,
-            DisableStandaloneStreaming = true,
+            EnableStandaloneGetStream = false,
         };
 
         using var mockHttpHandler = new MockHttpHandler();

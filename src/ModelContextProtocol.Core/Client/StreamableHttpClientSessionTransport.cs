@@ -246,7 +246,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private void StartUnsolicitedMessageStreamIfEnabled()
     {
-        if (!_options.DisableStandaloneStreaming)
+        if (_options.EnableStandaloneGetStream)
         {
             _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
         }

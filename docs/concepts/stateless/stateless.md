@@ -373,7 +373,7 @@ The following <xref:ModelContextProtocol.Client.HttpClientTransportOptions> prop
 | Property | Default | Description |
 |----------|---------|-------------|
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.KnownSessionId> | `null` | Pre-existing session ID for use with <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*>. When set, the client includes this session ID immediately and starts listening for unsolicited messages. |
-| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.DisableStandaloneStreaming> | `false` | Skips the standalone GET stream for unsolicited messages. POST request/response streaming still works. |
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> | `true` | Opens the standalone GET stream for unsolicited messages. Set to `false` to skip it; POST request/response streaming still works. |
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> | `true` | Whether to send a DELETE request when the client is disposed. Set to `false` when you don't want disposal to terminate the server session. |
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.AdditionalHeaders> | `null` | Custom headers included in all requests (e.g., for authentication). These are sent alongside the automatic `Mcp-Session-Id` header. |
 

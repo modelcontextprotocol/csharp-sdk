@@ -249,7 +249,7 @@ In Streamable HTTP, client requests arrive as HTTP POST requests. The server hol
 
 In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages) for a detailed breakdown.
 
-If your client does not need unsolicited server-to-client messages, or if a long-lived GET stream would block other requests under a constrained `HttpClient` connection pool, set <xref:ModelContextProtocol.Client.HttpClientTransportOptions.DisableStandaloneStreaming> to `true`. Direct responses and streaming responses to client POST requests still work; only the standalone GET stream is skipped.
+If your client does not need unsolicited server-to-client messages, or if a long-lived GET stream would block other requests under a constrained `HttpClient` connection pool, set <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> to `false`. Direct responses and streaming responses to client POST requests still work; only the standalone GET stream is skipped.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 

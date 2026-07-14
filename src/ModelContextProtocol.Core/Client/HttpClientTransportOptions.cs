@@ -95,14 +95,22 @@ public sealed class HttpClientTransportOptions
     public string? KnownSessionId { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether the Streamable HTTP transport skips the standalone GET SSE stream.
+    /// Gets or sets a value indicating whether the Streamable HTTP transport opens the standalone GET SSE stream
+    /// used to receive unsolicited server-to-client messages.
     /// </summary>
     /// <remarks>
-    /// Set this to <see langword="true"/> for servers where the client does not need unsolicited server-to-client
+    /// <para>
+    /// This defaults to <see langword="true"/>, matching the Streamable HTTP behavior of opening a standalone GET
+    /// SSE stream after initialization so the server can push unsolicited server-to-client messages.
+    /// </para>
+    /// <para>
+    /// Set this to <see langword="false"/> for servers where the client does not need unsolicited server-to-client
     /// messages, or when a long-lived standalone GET would block other requests under a constrained
-    /// <see cref="HttpClient"/> connection pool.
+    /// <see cref="HttpClient"/> connection pool. Direct responses and streaming responses to client POST requests
+    /// still work; only the standalone GET stream is skipped.
+    /// </para>
     /// </remarks>
-    public bool DisableStandaloneStreaming { get; set; }
+    public bool EnableStandaloneGetStream { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value indicating whether this transport endpoint is responsible for ending the session on dispose.
