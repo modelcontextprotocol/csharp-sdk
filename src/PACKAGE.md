@@ -4,7 +4,7 @@
 
 The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit the [API documentation](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.html) for more details on available functionality.
 
-See the [release notes](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.0.0-preview.2) for what's new in this version.
+See the [release notes](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.0.0-preview.3) for what's new in this version.
 
 ## Packages
 
@@ -17,6 +17,8 @@ The SDK packages are:
 - **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore)** [![NuGet version](https://img.shields.io/nuget/vpre/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore) - The library for HTTP-based MCP servers. References `ModelContextProtocol`.
 
 - **[ModelContextProtocol.Extensions.Apps](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps)** [![NuGet version](https://img.shields.io/nuget/vpre/ModelContextProtocol.Extensions.Apps.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps) - MCP Apps extension for building interactive UI applications that render inside MCP hosts.
+
+- **[ModelContextProtocol.Extensions.Tasks](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks)** [![NuGet version](https://img.shields.io/nuget/vpre/ModelContextProtocol.Extensions.Tasks.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks) - MCP Tasks extension for running long-running tool invocations asynchronously with status polling and input requests.
 
 ## Getting Started
 
