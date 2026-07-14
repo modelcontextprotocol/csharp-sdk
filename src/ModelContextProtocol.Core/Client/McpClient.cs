@@ -92,13 +92,13 @@ public abstract partial class McpClient : McpSession
                 $"A discover result is only available for clients connected with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
         }
 
-        return new DiscoverResult
+        return DiscoverResultCloner.Clone(new DiscoverResult
         {
             SupportedVersions = [negotiatedProtocolVersion],
             Capabilities = ServerCapabilities,
             ServerInfo = ServerInfo,
             Instructions = ServerInstructions,
-        };
+        });
     }
 
     /// <summary>

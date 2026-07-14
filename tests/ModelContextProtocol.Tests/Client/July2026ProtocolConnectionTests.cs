@@ -123,6 +123,11 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         reusableDiscoverResult.ServerInfo.Name = "mutated";
         Assert.NotNull(client.GetDiscoverResult().Capabilities.Tools);
         Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.ServerInfo.Name);
+
+        client.ServerCapabilities.Tools = null;
+        client.ServerInfo.Name = "mutated client";
+        Assert.NotNull(client.GetDiscoverResult().Capabilities.Tools);
+        Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.GetDiscoverResult().ServerInfo.Name);
     }
 
     [Fact]

@@ -84,6 +84,11 @@ public sealed class McpClientOptions
     /// or an equivalent out-of-band configuration.
     /// </para>
     /// <para>
+    /// The client does not validate that the result belongs to the target server or is still fresh.
+    /// Callers are responsible for associating it with the correct server and honoring
+    /// <see cref="DiscoverResult.TimeToLive"/> and <see cref="DiscoverResult.CacheScope"/> before reuse.
+    /// </para>
+    /// <para>
     /// This option is only valid for supported protocol versions that use the discovery-based connection model.
     /// If <see cref="ProtocolVersion"/> is set, it must use that model and must appear in
     /// <see cref="DiscoverResult.SupportedVersions"/>. When <see cref="ProtocolVersion"/> is
