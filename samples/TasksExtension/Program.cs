@@ -1,18 +1,17 @@
 // Demonstrates the MCP tasks extension (SEP-2663):
 //
-//   - A server is configured with InMemoryMcpTaskStore so that any [McpServerTool] invocation
+//   - A server is configured with .WithTasks(store) so that any [McpServerTool] invocation
 //     becomes a background task when the client opts in via the per-request _meta marker.
-//   - The client invokes the same tool two ways:
-//       1. CallToolAsync — the SDK auto-polls until the task completes and returns the final
-//          CallToolResult, just like a synchronous call.
-//       2. CallToolRawAsync — the caller drives the lifecycle manually (GetTaskAsync polls,
-//          CancelTaskAsync, etc.). Use this when you need to surface progress to a UI or stream
-//          status updates rather than block on a single await.
+//   - The client invokes the tool and manually drives the lifecycle via GetTaskAsync.
 //
 // Both server and client are wired together in-process over an in-memory pipe so the sample
 // is self-contained — no separate server process or HTTP transport required.
 
+#pragma warning disable MCPEXP001, MCPEXP002, MCPEXP004
+
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
@@ -21,28 +20,25 @@ using System.Text.Json;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
 
-await using McpServer server = McpServer.Create(
-    new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
-    new McpServerOptions
-    {
-        // Setting TaskStore is all that's needed for [McpServerTool]-attributed tools to be
-        // automatically wrapped as background tasks when the client opts in.
-        TaskStore = new InMemoryMcpTaskStore { DefaultPollIntervalMs = 250 },
-        ToolCollection = [McpServerTool.Create(SlowTools.RunReport, new() { Name = "run-report" })],
-    });
+var store = new InMemoryMcpTaskStore { DefaultPollIntervalMs = 250 };
+
+var services = new ServiceCollection();
+services.AddMcpServer()
+    .WithTools([McpServerTool.Create(SlowTools.RunReport, new() { Name = "run-report" })])
+    .WithTasks(store);
+services.AddSingleton<ITransport>(new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()));
+
+await using var serviceProvider = services.BuildServiceProvider();
+var server = serviceProvider.GetRequiredService<McpServer>();
 _ = server.RunAsync();
 
 await using McpClient client = await McpClient.CreateAsync(
-    new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
+    new StreamClientTransport(
+        serverInput: clientToServerPipe.Writer.AsStream(),
+        serverOutput: serverToClientPipe.Reader.AsStream()));
 
-Console.WriteLine("=== CallToolAsync (auto-poll) ===");
-var auto = await client.CallToolAsync(
-    new CallToolRequestParams { Name = "run-report" });
-Console.WriteLine($"  result: {((TextContentBlock)auto.Content[0]).Text}");
-Console.WriteLine();
-
-Console.WriteLine("=== CallToolRawAsync (manual poll) ===");
-var raw = await client.CallToolRawAsync(new CallToolRequestParams { Name = "run-report" });
+Console.WriteLine("=== CallToolAsTaskAsync (manual poll) ===");
+var raw = await client.CallToolAsTaskAsync(new CallToolRequestParams { Name = "run-report" });
 if (!raw.IsTask)
 {
     // Either the server doesn't advertise the tasks extension or it chose to run the call
@@ -88,9 +84,6 @@ while (true)
             continue;
 
         case InputRequiredTaskResult inputRequired:
-            // The auto-poll path (CallToolAsync above) routes these through the registered
-            // ElicitationHandler/SamplingHandler automatically. The manual path needs to call
-            // UpdateTaskAsync with responses for each outstanding key.
             Console.WriteLine($"  poll {pollCount}: input requested ({inputRequired.InputRequests?.Count ?? 0} key(s))");
             continue;
     }

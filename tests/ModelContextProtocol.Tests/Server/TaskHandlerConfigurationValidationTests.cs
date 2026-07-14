@@ -1,17 +1,23 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies the runtime validation that fires when a handler opts into task-augmented execution
-/// (returns a <see cref="CreateTaskResult"/>) without the server having any <c>tasks/get</c>
-/// handler registered.
+/// Verifies behavior when a handler returns a <see cref="CreateTaskResult"/> alternate without
+/// the server having any <c>tasks/get</c> handler registered. After the ResultOrAlternate
+/// generalization, the Core server no longer guards against this -- the extension is responsible
+/// for ensuring lifecycle handlers are registered.
 /// </summary>
 public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 {
+    private static readonly JsonTypeInfo<CreateTaskResult> s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
+
     public TaskHandlerConfigurationValidationTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
 #if !NET
@@ -19,41 +25,40 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 #endif
     }
 
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateHandler/ResultOrAlternate seam
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
             options.Capabilities ??= new ServerCapabilities();
 
-            // Intentionally configure a task-augmented handler without TaskStore or any of the
-            // task lifecycle handlers (GetTaskHandler/UpdateTaskHandler/CancelTaskHandler).
-            options.Handlers.CallToolWithTaskHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrCreatedTask<CallToolResult>>(new CreateTaskResult
-                {
-                    TaskId = "orphan-task",
-                    Status = McpTaskStatus.Working,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    LastUpdatedAt = DateTimeOffset.UtcNow,
-                });
+            // Configure a task-augmented handler without TaskStore or any of the
+            // task lifecycle request handlers.
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
+                new ValueTask<ResultOrAlternate<CallToolResult>>(
+                    ResultOrAlternate<CallToolResult>.FromAlternate(
+                        new CreateTaskResult
+                        {
+                            TaskId = "orphan-task",
+                            Status = McpTaskStatus.Working,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            LastUpdatedAt = DateTimeOffset.UtcNow,
+                        },
+                        s_createTaskResultTypeInfo));
         });
     }
+#pragma warning restore MCPEXP002
 
     [Fact]
-    public async Task CallTool_ReturningCreateTaskResult_WithoutTasksGetHandler_ThrowsAtRequestTime()
+    public async Task ServerAcceptsAlternateHandler_WithoutTasksGetHandler_NoStartupError()
     {
+        // The Core guard that previously threw InvalidOperationException at request time when
+        // a CallToolWithAlternateHandler returned a CreateTaskResult without tasks/get being
+        // registered has been removed. The extension is now responsible for that guarantee.
+        // This test verifies the server starts and connects successfully with such configuration.
         await using var client = await CreateMcpClientForServer();
 
-        // Client surfaces a generic protocol error (the server intentionally redacts the message
-        // on the wire), so use the base McpException type and confirm via server-side logs that
-        // the originating exception was the misconfiguration guard.
-        await Assert.ThrowsAnyAsync<McpException>(async () =>
-            await client.CallToolAsync(
-                new CallToolRequestParams { Name = "anything" },
-                cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains(MockLoggerProvider.LogMessages, log =>
-            log.Exception is InvalidOperationException ioe &&
-            ioe.Message.Contains("tasks/get", StringComparison.Ordinal) &&
-            ioe.Message.Contains("CreateTaskResult", StringComparison.Ordinal));
+        // If we get here, the server accepted the handler config without error.
+        Assert.NotNull(client);
     }
 }

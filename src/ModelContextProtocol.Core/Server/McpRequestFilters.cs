@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -42,8 +43,10 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolWithTaskFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// Cannot be used together with <see cref="CallToolWithAlternateFilters"/>. If both are non-empty at configuration time,
+    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
+    /// register different tool-call filter styles, such as authorization filters (which use this collection) and the
+    /// tasks extension (which uses <see cref="CallToolWithAlternateFilters"/>).
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
@@ -56,22 +59,26 @@ public sealed class McpRequestFilters
         }
     }
 
+#pragma warning disable MCPEXP002 // CallToolWithAlternateFilters references the experimental ResultOrAlternate seam
     /// <summary>
-    /// Gets or sets the filters for the call-tool handler pipeline with task support.
+    /// Gets or sets the filters for the call-tool handler pipeline with alternate result support.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These filters wrap the task-augmented call-tool handler whose return type is
-    /// <see cref="ResultOrCreatedTask{TResult}"/>. Use these filters when the server's tool pipeline
-    /// supports returning either an immediate <see cref="CallToolResult"/> or a <see cref="CreateTaskResult"/>
-    /// for asynchronous execution.
+    /// These filters wrap the alternate-result call-tool handler whose return type is
+    /// <see cref="ResultOrAlternate{TResult}"/>. Use these filters when the server's tool pipeline
+    /// supports returning either an immediate <see cref="CallToolResult"/> or an alternate <see cref="Result"/>
+    /// subtype for asynchronous execution.
     /// </para>
     /// <para>
     /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
+    /// register different tool-call filter styles, such as the tasks extension (which uses this collection) and
+    /// authorization filters (which use <see cref="CallToolFilters"/>).
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>>> CallToolWithTaskFilters
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IList<McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
         get => field ??= [];
         set
@@ -80,6 +87,7 @@ public sealed class McpRequestFilters
             field = value;
         }
     }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the filters for the list-prompts handler pipeline.
