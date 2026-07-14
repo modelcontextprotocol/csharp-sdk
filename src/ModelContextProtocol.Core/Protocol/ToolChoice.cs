@@ -5,6 +5,9 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Controls tool selection behavior for sampling requests.
 /// </summary>
+// Sampling support type: only used to configure tool selection on sampling (createMessage) requests,
+// so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ToolChoice
 {
     /// <summary>

@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
@@ -52,6 +50,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonPropertyName("roots")]
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public RootsCapability? Roots { get; set; }
 
     /// <summary>
@@ -59,6 +58,7 @@ public sealed class ClientCapabilities
     /// supports issuing requests to an LLM on behalf of the server.
     /// </summary>
     [JsonPropertyName("sampling")]
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public SamplingCapability? Sampling { get; set; }
 
     /// <summary>
@@ -82,16 +82,6 @@ public sealed class ClientCapabilities
     /// interoperability. Clients advertise extension support via this field during the initialization handshake.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
-    [JsonIgnore]
-    public IDictionary<string, object>? Extensions
-    {
-        get => ExtensionsCore;
-        set => ExtensionsCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
     [JsonPropertyName("extensions")]
-    internal IDictionary<string, object>? ExtensionsCore { get; set; }
+    public IDictionary<string, object>? Extensions { get; set; }
 }

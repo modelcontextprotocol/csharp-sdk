@@ -9,5 +9,5 @@ namespace ModelContextProtocol.Protocol;
 public sealed class EmptyResult : Result
 {
     [JsonIgnore]
-    internal static EmptyResult Instance { get; } = new();
+    internal static EmptyResult Instance { get; } = new() { ResultType = "complete" };
 }

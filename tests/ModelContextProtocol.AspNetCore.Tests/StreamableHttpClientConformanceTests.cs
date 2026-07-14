@@ -20,7 +20,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     private WebApplication? _app;
     private readonly List<string> _deleteRequestSessionIds = [];
 
-    // Don't add the delete endpoint by default to ensure the client still works with basic sessionless servers.
+    // Don't add the delete endpoint by default to ensure the client still works with basic stateless servers.
     private async Task StartAsync(bool enableDelete = false)
     {
         Builder.Services.Configure<JsonOptions>(options =>
@@ -55,7 +55,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2024-11-05",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new()
                         {
                             Tools = new(),
@@ -128,7 +128,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task CanCallToolOnSessionlessStreamableHttpServer()
+    public async Task CanCallToolOnStatelessStreamableHttpServer()
     {
         await StartAsync();
 
@@ -138,7 +138,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var echoTool = Assert.Single(tools);
@@ -158,7 +158,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var echoTool = Assert.Single(tools);
@@ -184,7 +184,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Dispose should trigger DELETE request
         await client.DisposeAsync();
@@ -206,7 +206,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        await using (await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        await using (await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
         {
             // No-op. Disposing the client should not trigger a DELETE request.
         }
@@ -277,7 +277,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         }, HttpClient, LoggerFactory);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+            McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(nameof(McpClient.ResumeSessionAsync), exception.Message);
     }
@@ -311,7 +311,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2024-11-05",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "hang-test", Version = "0.0.1" },
                     }, McpJsonUtilities.DefaultOptions)
@@ -358,7 +358,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        await using (var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        await using (var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
         {
             var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
             Assert.Single(tools);
@@ -403,7 +403,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2024-11-05",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "expiry-test", Version = "0.0.1" },
                     }, McpJsonUtilities.DefaultOptions)
@@ -421,7 +421,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("expiry-test-session", client.SessionId);
         Assert.False(client.Completion.IsCompleted);
 
@@ -464,7 +464,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2024-11-05",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "get-expiry-test", Version = "0.0.1" },
                     }, McpJsonUtilities.DefaultOptions)
@@ -489,7 +489,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("get-expiry-test", client.SessionId);
 
         // Trigger session expiry on the GET SSE stream
@@ -512,7 +512,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(client.Completion.IsCompleted);
 
         await client.DisposeAsync();
@@ -563,7 +563,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The server returns 3 tools: valid_tool, invalid_space_tool, invalid_duplicate_tool
@@ -587,7 +587,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var tool = Assert.Single(tools);
@@ -628,7 +628,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "DRAFT-2026-v1",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "header-test-server", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions)
@@ -705,7 +705,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "DRAFT-2026-v1",
+                        ProtocolVersion = "2025-11-25",
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "header-capture", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions)

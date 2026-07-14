@@ -21,9 +21,19 @@ public abstract partial class McpServer : McpSession
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These capabilities are established during the initialization handshake and indicate
-    /// which features the client supports, such as sampling, roots, and other
-    /// protocol-specific functionality.
+    /// On protocol revisions that use the <c>initialize</c> handshake (<c>2025-11-25</c> and earlier), these
+    /// capabilities are established once during initialization and are session-scoped: they are available both
+    /// on the root <see cref="McpServer"/> and on the server exposed to request handlers.
+    /// </para>
+    /// <para>
+    /// On the <c>2026-07-28</c> revision and later (SEP-2575) there is no <c>initialize</c> handshake; the client
+    /// declares its capabilities per-request in <c>_meta</c>, and the server MUST NOT infer them from previous
+    /// requests. In that mode this property is only meaningful on the request-scoped server accessed via
+    /// the <c>Server</c> property of the <see cref="RequestContext{TParams}"/> passed to a handler; on the
+    /// root <see cref="McpServer"/> (for example one constructed manually over a
+    /// <see cref="System.IO.Stream"/>) it is <see langword="null"/>.
+    /// It is also <see langword="null"/> in stateless transport mode, where server-to-client requests are
+    /// unsupported.
     /// </para>
     /// <para>
     /// Server implementations can check these capabilities to determine which features
@@ -38,7 +48,14 @@ public abstract partial class McpServer : McpSession
     /// <remarks>
     /// <para>
     /// This property contains identification information about the client that has connected to this server,
-    /// including its name and version. This information is provided by the client during initialization.
+    /// including its name and version.
+    /// </para>
+    /// <para>
+    /// On protocol revisions that use the <c>initialize</c> handshake (<c>2025-11-25</c> and earlier) this
+    /// information is provided once during initialization and is session-scoped. On the <c>2026-07-28</c>
+    /// revision and later it is carried per-request in <c>_meta</c>, so read it from the request-scoped server
+    /// accessed via the <c>Server</c> property of the <see cref="RequestContext{TParams}"/> passed to a handler
+    /// rather than from the root <see cref="McpServer"/>.
     /// </para>
     /// <para>
     /// Server implementations can use this information for logging, tracking client versions, 
@@ -62,6 +79,7 @@ public abstract partial class McpServer : McpSession
     public abstract IServiceProvider? Services { get; }
 
     /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public abstract LoggingLevel? LoggingLevel { get; }
 
     /// <summary>
@@ -80,7 +98,6 @@ public abstract partial class McpServer : McpSession
     /// the required feature) instead of throwing <see cref="Protocol.InputRequiredException"/>.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
     public virtual bool IsMrtrSupported => false;
 
     /// <summary>

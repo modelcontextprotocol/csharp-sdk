@@ -1,7 +1,6 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -56,6 +55,21 @@ public class McpServerTaskTests : ClientServerTestBase
                         LastUpdatedAt = DateTimeOffset.UtcNow,
                         PollIntervalMs = 50,
                         ResultType = "task",
+                    };
+                }
+
+                if (toolName == "async-tool-default-resulttype")
+                {
+                    // Intentionally leaves ResultType unset so the server boundary is responsible for
+                    // filling in "task" on the wire.
+                    var taskId = store.CreateTask();
+                    return new CreateTaskResult
+                    {
+                        TaskId = taskId,
+                        Status = McpTaskStatus.Working,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        LastUpdatedAt = DateTimeOffset.UtcNow,
+                        PollIntervalMs = 50,
                     };
                 }
 
@@ -179,17 +193,25 @@ public class McpServerTaskTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        _ = Task.Run(async () =>
+        var failedTask = new TaskCompletionSource<bool>();
+
+        // Run failure task once the task from the tool call is created
+        _taskStore.OnTaskCreated += taskId =>
         {
-            await Task.Delay(100, ct);
-            var taskId = _taskStore.GetAllTaskIds().Single();
-            _taskStore.FailTask(taskId, JsonElement.Parse("""{"code":-32000,"message":"something went wrong"}"""));
-        }, ct);
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(100, ct);
+                _taskStore.FailTask(taskId, JsonElement.Parse("""{"code":-32000,"message":"something went wrong"}"""));
+                failedTask.SetResult(true);
+            }, ct);
+        };
 
         await Assert.ThrowsAsync<McpException>(async () =>
             await client.CallToolAsync(
                 new CallToolRequestParams { Name = "async-tool" },
                 ct));
+
+        Assert.True(await failedTask.Task);
     }
 
     [Fact]
@@ -198,17 +220,25 @@ public class McpServerTaskTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        _ = Task.Run(async () =>
+        var cancelledTask = new TaskCompletionSource<bool>();
+
+        // Run cancellation task once the task from the tool call is created
+        _taskStore.OnTaskCreated += taskId =>
         {
-            await Task.Delay(100, ct);
-            var taskId = _taskStore.GetAllTaskIds().Single();
-            _taskStore.CancelTask(taskId);
-        }, ct);
+            Task.Run(async () =>
+            {
+                await Task.Delay(100, ct);
+                _taskStore.CancelTask(taskId);
+                cancelledTask.SetResult(true);
+            }, ct);
+        };
 
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
             await client.CallToolAsync(
                 new CallToolRequestParams { Name = "async-tool" },
                 ct));
+
+        Assert.True(await cancelledTask.Task);
     }
 
     [Fact]
@@ -271,6 +301,19 @@ public class McpServerTaskTests : ClientServerTestBase
 
         var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams { Name = "async-tool" },
+            TestContext.Current.CancellationToken);
+
+        Assert.True(augmented.IsTask);
+        Assert.Equal("task", augmented.TaskCreated!.ResultType);
+    }
+
+    [Fact]
+    public async Task CreateTaskResult_WithoutExplicitResultType_ServerFillsTask()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "async-tool-default-resulttype" },
             TestContext.Current.CancellationToken);
 
         Assert.True(augmented.IsTask);
@@ -538,106 +581,135 @@ public class McpServerTaskTests : ClientServerTestBase
     /// </summary>
     private sealed class InMemoryTaskStore
     {
-        private readonly ConcurrentDictionary<string, TaskEntry> _tasks = new();
+        private readonly Dictionary<string, TaskEntry> _tasks = new();
+
+        internal Action<string>? OnTaskCreated;
 
         public string CreateTask(McpTaskStatus initialStatus = McpTaskStatus.Working)
         {
             var taskId = Guid.NewGuid().ToString("N");
-            _tasks[taskId] = new TaskEntry
+            lock (_tasks)
             {
-                Status = initialStatus,
-                CreatedAt = DateTimeOffset.UtcNow,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
-            };
+                _tasks[taskId] = new TaskEntry
+                {
+                    Status = initialStatus,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    LastUpdatedAt = DateTimeOffset.UtcNow,
+                };
+            }
+
+            OnTaskCreated?.Invoke(taskId);
+
             return taskId;
         }
 
-        public IEnumerable<string> GetAllTaskIds() => _tasks.Keys;
+        public IEnumerable<string> GetAllTaskIds()
+        {
+            lock (_tasks)
+            {
+                return _tasks.Keys.ToArray();
+            }
+        }
 
         public GetTaskResult GetTask(string taskId)
         {
-            if (!_tasks.TryGetValue(taskId, out var entry))
+            lock (_tasks)
             {
-                throw new McpException($"Unknown task: '{taskId}'");
-            }
+                if (!_tasks.TryGetValue(taskId, out var entry))
+                {
+                    throw new McpException($"Unknown task: '{taskId}'");
+                }
 
-            return entry.Status switch
-            {
-                McpTaskStatus.Working => new WorkingTaskResult
+                return entry.Status switch
                 {
-                    TaskId = taskId,
-                    CreatedAt = entry.CreatedAt,
-                    LastUpdatedAt = entry.LastUpdatedAt,
-                    PollIntervalMs = 50,
-                },
-                McpTaskStatus.Completed => new CompletedTaskResult
-                {
-                    TaskId = taskId,
-                    CreatedAt = entry.CreatedAt,
-                    LastUpdatedAt = entry.LastUpdatedAt,
-                    Result = JsonSerializer.SerializeToElement(entry.Result, McpJsonUtilities.DefaultOptions),
-                },
-                McpTaskStatus.Failed => new FailedTaskResult
-                {
-                    TaskId = taskId,
-                    CreatedAt = entry.CreatedAt,
-                    LastUpdatedAt = entry.LastUpdatedAt,
-                    Error = entry.Error!.Value,
-                },
-                McpTaskStatus.Cancelled => new CancelledTaskResult
-                {
-                    TaskId = taskId,
-                    CreatedAt = entry.CreatedAt,
-                    LastUpdatedAt = entry.LastUpdatedAt,
-                },
-                McpTaskStatus.InputRequired => new InputRequiredTaskResult
-                {
-                    TaskId = taskId,
-                    CreatedAt = entry.CreatedAt,
-                    LastUpdatedAt = entry.LastUpdatedAt,
-                    InputRequests = entry.InputRequests ?? new Dictionary<string, InputRequest>(),
-                },
-                _ => throw new InvalidOperationException($"Unexpected status: {entry.Status}")
-            };
+                    McpTaskStatus.Working => new WorkingTaskResult
+                    {
+                        TaskId = taskId,
+                        CreatedAt = entry.CreatedAt,
+                        LastUpdatedAt = entry.LastUpdatedAt,
+                        PollIntervalMs = 50,
+                    },
+                    McpTaskStatus.Completed => new CompletedTaskResult
+                    {
+                        TaskId = taskId,
+                        CreatedAt = entry.CreatedAt,
+                        LastUpdatedAt = entry.LastUpdatedAt,
+                        Result = JsonSerializer.SerializeToElement(entry.Result, McpJsonUtilities.DefaultOptions),
+                    },
+                    McpTaskStatus.Failed => new FailedTaskResult
+                    {
+                        TaskId = taskId,
+                        CreatedAt = entry.CreatedAt,
+                        LastUpdatedAt = entry.LastUpdatedAt,
+                        Error = entry.Error!.Value,
+                    },
+                    McpTaskStatus.Cancelled => new CancelledTaskResult
+                    {
+                        TaskId = taskId,
+                        CreatedAt = entry.CreatedAt,
+                        LastUpdatedAt = entry.LastUpdatedAt,
+                    },
+                    McpTaskStatus.InputRequired => new InputRequiredTaskResult
+                    {
+                        TaskId = taskId,
+                        CreatedAt = entry.CreatedAt,
+                        LastUpdatedAt = entry.LastUpdatedAt,
+                        InputRequests = entry.InputRequests ?? new Dictionary<string, InputRequest>(),
+                    },
+                    _ => throw new InvalidOperationException($"Unexpected status: {entry.Status}")
+                };
+            }
         }
 
         public void CompleteTask(string taskId, CallToolResult result)
         {
-            if (_tasks.TryGetValue(taskId, out var entry))
+            lock (_tasks)
             {
-                entry.Status = McpTaskStatus.Completed;
-                entry.Result = result;
-                entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                if (_tasks.TryGetValue(taskId, out var entry))
+                {
+                    entry.Result = result;
+                    entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                    entry.Status = McpTaskStatus.Completed;
+                }
             }
         }
 
         public void FailTask(string taskId, JsonElement error)
         {
-            if (_tasks.TryGetValue(taskId, out var entry))
+            lock (_tasks)
             {
-                entry.Status = McpTaskStatus.Failed;
-                entry.Error = error;
-                entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                if (_tasks.TryGetValue(taskId, out var entry))
+                {
+                    entry.Error = error;
+                    entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                    entry.Status = McpTaskStatus.Failed;
+                }
             }
         }
 
         public void CancelTask(string taskId)
         {
-            if (_tasks.TryGetValue(taskId, out var entry))
+            lock (_tasks)
             {
-                entry.Status = McpTaskStatus.Cancelled;
-                entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                if (_tasks.TryGetValue(taskId, out var entry))
+                {
+                    entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                    entry.Status = McpTaskStatus.Cancelled;
+                }
             }
         }
 
         public void ProvideInput(string taskId, IDictionary<string, InputResponse> inputResponses)
         {
-            if (_tasks.TryGetValue(taskId, out var entry))
+            lock (_tasks)
             {
-                entry.InputResponses = inputResponses;
-                // Transition back to working after receiving input
-                entry.Status = McpTaskStatus.Working;
-                entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                if (_tasks.TryGetValue(taskId, out var entry))
+                {
+                    entry.InputResponses = inputResponses;
+                    entry.LastUpdatedAt = DateTimeOffset.UtcNow;
+                    // Transition back to working after receiving input
+                    entry.Status = McpTaskStatus.Working;
+                }
             }
         }
 

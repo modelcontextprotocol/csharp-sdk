@@ -55,6 +55,7 @@ public static class RequestMethods
     /// <summary>
     /// The name of the request method sent from the server to request a list of the client's roots.
     /// </summary>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string RootsList = "roots/list";
 
     /// <summary>
@@ -71,6 +72,7 @@ public static class RequestMethods
     /// send log messages with severity at or above the specified level to the client as
     /// <see cref="NotificationMethods.LoggingMessageNotification"/> notifications.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string LoggingSetLevel = "logging/setLevel";
 
     /// <summary>
@@ -91,6 +93,7 @@ public static class RequestMethods
     /// based on provided messages. It is part of the sampling capability in the Model Context Protocol and enables servers to access
     /// client-side AI models without needing direct API access to those models.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>
@@ -148,4 +151,42 @@ public static class RequestMethods
     /// Cancellation is cooperative — the server decides whether and when to honor it.
     /// </remarks>
     public const string TasksCancel = "tasks/cancel";
+
+    /// <summary>
+    /// The name of the request method sent from the client to discover the server's protocol versions,
+    /// capabilities, and metadata.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
+    /// to learn what a server supports without performing the <c>initialize</c> handshake.
+    /// </para>
+    /// <para>
+    /// The server's response includes its supported protocol versions, capabilities, implementation
+    /// information, and optional usage instructions.
+    /// </para>
+    /// <para>
+    /// Servers SHOULD implement this method. Initialize-handshake clients MAY ignore it. Clients on the
+    /// 2026-07-28 revision typically call this once during connection establishment.
+    /// </para>
+    /// </remarks>
+    public const string ServerDiscover = "server/discover";
+
+    /// <summary>
+    /// The name of the request method sent from the client to open a long-lived subscription for
+    /// receiving server-to-client notifications outside of a specific request's response stream.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) and replaces the unsolicited
+    /// HTTP GET endpoint and the initialize-handshake <see cref="ResourcesSubscribe"/> / <see cref="ResourcesUnsubscribe"/>
+    /// request methods.
+    /// </para>
+    /// <para>
+    /// The request opens a response stream on which the server first sends a
+    /// <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> describing the granted
+    /// notifications, and then streams matching notifications until the subscription is cancelled.
+    /// </para>
+    /// </remarks>
+    public const string SubscriptionsListen = "subscriptions/listen";
 }

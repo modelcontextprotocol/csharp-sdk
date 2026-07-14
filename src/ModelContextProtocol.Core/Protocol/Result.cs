@@ -27,7 +27,7 @@ public abstract class Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When absent or set to <c>"complete"</c>, the result is a normal completed response.
+    /// When set to <c>"complete"</c>, the result is a normal completed response.
     /// When set to <c>"input_required"</c>, the result is an <see cref="InputRequiredResult"/> indicating
     /// that additional input is needed before the request can be completed.
     /// When set to <c>"task"</c>, the result is a <see cref="CreateTaskResult"/> indicating that the server

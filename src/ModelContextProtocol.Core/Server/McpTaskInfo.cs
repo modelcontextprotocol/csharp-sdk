@@ -1,5 +1,4 @@
 using ModelContextProtocol.Protocol;
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -14,13 +13,12 @@ namespace ModelContextProtocol.Server;
 /// types (<see cref="CreateTaskResult"/>, <see cref="GetTaskResult"/>) when communicating with clients.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
 public sealed record McpTaskInfo(
     string TaskId,
     McpTaskStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastUpdatedAt,
-    long? TtlMs = null,
+    TimeSpan? TimeToLive = null,
     long? PollIntervalMs = null,
     string? StatusMessage = null,
     JsonElement? Result = null,

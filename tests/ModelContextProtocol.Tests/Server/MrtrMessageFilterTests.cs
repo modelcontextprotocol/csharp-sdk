@@ -26,7 +26,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
             _messageTracker.AddFilters(options.Filters.Message);
         });
 
@@ -73,14 +73,14 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         // When both sides are on the experimental protocol, the server should use MRTR
         // (InputRequiredResult) instead of sending old-style elicitation/create JSON-RPC requests.
         StartServer();
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
         };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("elicit-tool",
             new Dictionary<string, object?> { ["message"] = "test" },
@@ -95,7 +95,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
     public async Task MrtrActive_NoOldStyleSamplingRequests_SentOverWire()
     {
         StartServer();
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
         {
             var text = request?.Messages[^1].Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
@@ -107,7 +107,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         };
 
         await using var client = await CreateMcpClientForServer(clientOptions);
-        Assert.Equal("DRAFT-2026-v1", client.NegotiatedProtocolVersion);
+        Assert.Equal("2026-07-28", client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("sample-tool",
             new Dictionary<string, object?> { ["prompt"] = "test" },
@@ -126,7 +126,7 @@ public class MrtrMessageFilterTests : ClientServerTestBase
         var sawIncompleteResult = false;
 
         StartServer();
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
         {
             // If we reach this handler, it means the client received an InputRequiredResult

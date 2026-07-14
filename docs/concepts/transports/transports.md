@@ -183,7 +183,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport uses **stateful sessions** — the server assigns an `Mcp-Session-Id` to each client and tracks session state in memory. For most servers, **stateless mode is recommended** instead. It simplifies deployment, enables horizontal scaling without session affinity, and avoids issues with clients that don't send the `Mcp-Session-Id` header. We recommend setting `Stateless` explicitly (rather than relying on the current default) for [forward compatibility](xref:stateless#forward-and-backward-compatibility). See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
 
 #### Host name validation
 
@@ -381,7 +381,7 @@ Like [stdio](#stdio-transport), the in-memory transport is inherently single-ses
 
 ## Cross-Application Access
 
-The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
+The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
 
 The flow consists of two steps:
 1. **RFC 8693 Token Exchange** at the enterprise IdP: OIDC ID token → JWT Authorization Grant (JAG)

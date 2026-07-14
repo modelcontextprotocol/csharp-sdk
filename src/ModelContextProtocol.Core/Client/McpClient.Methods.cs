@@ -172,6 +172,20 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListToolsResult.TimeToLive"/> and <see cref="ListToolsResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListToolsAsync(ListToolsRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListToolsResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListToolsAsync(ListToolsRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
+    /// </remarks>
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -241,12 +255,25 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ToolsList, SendRequestAsync(
             RequestMethods.ToolsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
+    }
+
+    /// <summary>
+    /// Awaits a cacheable result and gives derived clients a chance to emit diagnostics (for example, a
+    /// SEP-2549 conformance warning) before returning it. Preserves the synchronous argument validation
+    /// performed by the callers before the request is issued.
+    /// </summary>
+    private async ValueTask<TResult> ValidateCacheableResultAsync<TResult>(string method, ValueTask<TResult> resultTask)
+        where TResult : ICacheableResult
+    {
+        var result = await resultTask.ConfigureAwait(false);
+        ValidateCacheableResult(method, result);
+        return result;
     }
 
     /// <summary>
@@ -256,6 +283,20 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListPromptsResult.TimeToLive"/> and <see cref="ListPromptsResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListPromptsAsync(ListPromptsRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListPromptsResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListPromptsAsync(ListPromptsRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
+    /// </remarks>
     public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -297,12 +338,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.PromptsList, SendRequestAsync(
             RequestMethods.PromptsList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -366,6 +407,20 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListResourceTemplatesResult.TimeToLive"/> and <see cref="ListResourceTemplatesResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListResourceTemplatesAsync(ListResourceTemplatesRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListResourceTemplatesResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListResourceTemplatesAsync(ListResourceTemplatesRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
+    /// </remarks>
     public async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -407,12 +462,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesTemplatesList, SendRequestAsync(
             RequestMethods.ResourcesTemplatesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -422,6 +477,20 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resources as <see cref="Resource"/> instances.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This overload aggregates every page into a single list and does not surface the per-result caching hints
+    /// (<see cref="ListResourcesResult.TimeToLive"/> and <see cref="ListResourcesResult.CacheScope"/>). To read those hints,
+    /// use the <see cref="ListResourcesAsync(ListResourcesRequestParams, CancellationToken)"/> overload, which returns the
+    /// raw <see cref="ListResourcesResult"/> for each page.
+    /// </para>
+    /// <para>
+    /// The SDK does not perform any internal caching of listing results; every call re-fetches all pages from the server.
+    /// If you want to cache listing results, do so in your own code using the lower-level
+    /// <see cref="ListResourcesAsync(ListResourcesRequestParams, CancellationToken)"/> overload, which exposes the per-page
+    /// caching hints and lets you manage pagination so each page can be cached and expired independently.
+    /// </para>
+    /// </remarks>
     public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -463,12 +532,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesList, SendRequestAsync(
             RequestMethods.ResourcesList,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
         
     /// <summary>
@@ -547,12 +616,12 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        return ValidateCacheableResultAsync(RequestMethods.ResourcesRead, SendRequestAsync(
             RequestMethods.ResourcesRead,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken));
     }
 
     /// <summary>
@@ -1150,7 +1219,10 @@ public abstract partial class McpClient : McpSession
         {
             Name = requestParams.Name,
             Arguments = requestParams.Arguments,
-            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+            // The SEP-2663 Tasks extension requires the 2026-07-28 or later protocol revision. On an older session, send a plain tools/call
+            // (no task capability envelope) so the server returns a direct CallToolResult and never
+            // creates a task.
+            Meta = IsJuly2026OrLaterProtocol() ? GetMetaWithTaskCapability(requestParams.Meta) : requestParams.Meta,
         };
 
         JsonRpcRequest jsonRpcRequest = new()
@@ -1184,6 +1256,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
         SetLoggingLevelAsync(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
 
@@ -1195,6 +1268,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         return SetLoggingLevelAsync(
@@ -1214,6 +1288,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Task SetLoggingLevelAsync(
         SetLevelRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -1258,6 +1333,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(GetTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksGet,
@@ -1280,6 +1356,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(UpdateTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksUpdate,
@@ -1319,6 +1396,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
+        ThrowIfTasksNotSupported(nameof(CancelTaskAsync));
 
         return SendRequestAsync(
             RequestMethods.TasksCancel,
@@ -1349,30 +1427,41 @@ public abstract partial class McpClient : McpSession
 
     // Per SEP-2663 §51, the per-request opt-in uses the SEP-2575 capabilities envelope:
     //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    // TODO: replace the literal with a shared NotificationMethods.ClientCapabilitiesMetaKey once
-    // the SEP-2575 plumbing lands and drop the local consts.
-    private const string ClientCapabilitiesMetaKey = "io.modelcontextprotocol/clientCapabilities";
-    private const string ExtensionsKey = "extensions";
-
     private static JsonObject GetMetaWithTaskCapability(JsonObject? existingMeta)
     {
         JsonObject meta = existingMeta is not null
             ? (JsonObject)existingMeta.DeepClone()
             : [];
 
-        if (meta[ClientCapabilitiesMetaKey] is not JsonObject capsRoot)
+        if (meta[MetaKeys.ClientCapabilities] is not JsonObject capsRoot)
         {
             capsRoot = [];
-            meta[ClientCapabilitiesMetaKey] = capsRoot;
+            meta[MetaKeys.ClientCapabilities] = capsRoot;
         }
 
-        if (capsRoot[ExtensionsKey] is not JsonObject extensionsRoot)
+        if (capsRoot["extensions"] is not JsonObject extensionsRoot)
         {
             extensionsRoot = [];
-            capsRoot[ExtensionsKey] = extensionsRoot;
+            capsRoot["extensions"] = extensionsRoot;
         }
 
         extensionsRoot.TryAdd(McpExtensions.Tasks, new JsonObject());
         return meta;
+    }
+
+    /// <summary>
+    /// Throws when the negotiated protocol version does not support the SEP-2663 Tasks extension. Tasks
+    /// require the 2026-07-28 or later protocol revision, and a task id only ever exists when the session
+    /// negotiated such a revision, so invoking <c>tasks/get</c>, <c>tasks/update</c>, or <c>tasks/cancel</c>
+    /// on an older session is a programming error rather than a recoverable protocol condition.
+    /// </summary>
+    private void ThrowIfTasksNotSupported(string operationName)
+    {
+        if (!IsJuly2026OrLaterProtocol())
+        {
+            throw new InvalidOperationException(
+                $"'{operationName}' requires a newer protocol revision that supports tasks. " +
+                $"The negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.");
+        }
     }
 }

@@ -9,10 +9,10 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Tests for the legacy MRTR backcompat resolver in <c>McpServerImpl.InvokeWithInputRequiredResultHandlingAsync</c>.
-/// This path runs only when the client did NOT negotiate MRTR (DRAFT-2026-v1) and the session is stateful -
+/// This path runs only when the client did NOT negotiate MRTR (2026-07-28) and the session is stateful, where
 /// the server dispatches each input request to the client via standard JSON-RPC and re-invokes the handler
 /// with the merged responses. To exercise it the server must NOT pin a protocol version; the client picks
-/// a non-draft version during initialize negotiation.
+/// a legacy version during initialize negotiation.
 /// </summary>
 public class MrtrServerBackcompatTests : ClientServerTestBase
 {

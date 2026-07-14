@@ -67,6 +67,7 @@ public abstract partial class McpServer : McpSession
     /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ValueTask<CreateMessageResult> SampleAsync(
         CreateMessageRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -107,6 +108,7 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public async Task<ChatResponse> SampleAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
@@ -243,6 +245,7 @@ public abstract partial class McpServer : McpSession
     /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
     /// the request, rather than relying on the optional standalone GET SSE stream.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
@@ -252,6 +255,7 @@ public abstract partial class McpServer : McpSession
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
     /// <returns>An <see cref="ILogger"/> that can be used to log to the client.</returns>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ILoggerProvider AsClientLoggerProvider() => 
         new ClientLoggerProvider(this);
 
@@ -271,6 +275,7 @@ public abstract partial class McpServer : McpSession
     /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
     /// the request, rather than relying on the optional standalone GET SSE stream.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ValueTask<ListRootsResult> RequestRootsAsync(
         ListRootsRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -595,7 +600,6 @@ public abstract partial class McpServer : McpSession
     /// <param name="taskId">The task ID in the store.</param>
     /// <param name="store">The task store to write input requests to.</param>
     /// <returns>An <see cref="IDisposable"/> that restores the previous context when disposed.</returns>
-    [Experimental(Experimentals.Extensions_DiagnosticId, UrlFormat = Experimentals.Extensions_Url)]
     public IDisposable CreateMcpTaskScope(
         string taskId,
         IMcpTaskStore store)
