@@ -14,9 +14,9 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// server that deliberately opted into sessions (<see cref="HttpServerTransportOptions.Stateless"/>
 /// is <c>false</c>). Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports
 /// sessions (SEP-2567 / SEP-2575), so the server refuses the probe with <c>-32022 UnsupportedProtocolVersion</c>.
-/// The client must then auto-downgrade to the legacy <c>initialize</c> handshake, obtain the stateful session
+/// The client must then auto-downgrade to the <c>initialize</c> handshake, obtain the stateful session
 /// the server author opted into, and continue to work, including a server→client elicitation round-trip
-/// resolved over the stateful session via the legacy backcompat resolver.
+/// resolved over the stateful session via the initialize-handshake backcompat resolver.
 /// </summary>
 public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
@@ -38,7 +38,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
     private static async Task<string> GreetViaElicit(McpServer server, CancellationToken cancellationToken)
     {
         // Server→client round-trip: only works when the session is stateful, which is exactly what
-        // the legacy fallback re-establishes for the 2026-07-28-first client.
+        // the initialize fallback re-establishes for the 2026-07-28-first client.
         var elicitResult = await server.ElicitAsync(new ElicitRequestParams
         {
             Message = "What is your name?",
@@ -77,21 +77,21 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
         }, HttpClient, LoggerFactory);
 
         // Default options: ProtocolVersion is null, which now prefers the 2026-07-28 protocol revision and probes
-        // with server/discover before falling back to a legacy initialize handshake.
+        // with server/discover before falling back to an initialize handshake.
         var clientOptions = new McpClientOptions();
         configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
 
     [Fact]
-    public async Task DefaultClient_AgainstStatefulServer_DowngradesToLegacy_AndToolsWork()
+    public async Task DefaultClient_AgainstStatefulServer_DowngradesToInitialize_AndToolsWork()
     {
         await StartStatefulServerAsync();
 
         await using var client = await ConnectDefaultClientAsync();
 
-        // The 2026-07-28 probe was refused (-32022), so the client downgraded to legacy.
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        // The 2026-07-28 probe was refused (-32022), so the client downgraded to initialize.
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("greet",
             new Dictionary<string, object?> { ["name"] = "Alice" },
@@ -118,7 +118,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
             });
         });
 
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         var result = await client.CallToolAsync("greet_via_elicit",
             cancellationToken: TestContext.Current.CancellationToken);

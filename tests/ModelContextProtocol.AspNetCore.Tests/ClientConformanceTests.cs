@@ -17,6 +17,8 @@ public class ClientConformanceTests
     // Public static property required for SkipUnless attribute
     public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
     public static bool HasSep2243Scenarios => NodeHelpers.HasSep2243Scenarios();
+    public static bool HasRequestMetadataScenario => NodeHelpers.HasRequestMetadataScenario();
+    public static bool HasConformantCustomHeadersScenario => NodeHelpers.HasConformantCustomHeadersScenario();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
@@ -44,7 +46,7 @@ public class ClientConformanceTests
     [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
 
-    // Backcompat: Legacy 2025-03-26 OAuth flows (no PRM, root-location metadata).
+    // Backcompat: 2025-03-26 OAuth flows (no per-request metadata, root-location metadata).
     [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
     [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
 
@@ -62,15 +64,38 @@ public class ClientConformanceTests
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    // Per-request metadata (SEP-2575)
+    [Fact(Skip = "SEP-2575 request-metadata conformance scenario is not available in the installed conformance package.", SkipUnless = nameof(HasRequestMetadataScenario))]
+    public async Task RunConformanceTest_RequestMetadata()
+    {
+        var result = await RunClientConformanceScenario("request-metadata");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     // HTTP Standardization (SEP-2243)
-    [Theory(Skip = "SEP-2243 conformance scenarios not available (requires conformance package >= 0.2.0).", SkipUnless = nameof(HasSep2243Scenarios))]
+    [Theory(Skip = "SEP-2243 conformance scenarios are not available in the installed conformance package.", SkipUnless = nameof(HasSep2243Scenarios))]
     [InlineData("http-standard-headers")]
     [InlineData("http-invalid-tool-headers")]
-    // Commented out: the upstream scenario annotates a "number"-typed parameter with x-mcp-header,
-    // which SEP-2243 forbids, so the client rejects the tool and sends no Mcp-Param-* headers,
-    // failing every positive check. Re-enable once a conformant conformance package ships (#1655).
-    // [InlineData("http-custom-headers")]
     public async Task RunConformanceTest_Sep2243(string scenario)
+    {
+        // Run the conformance test suite
+        var result = await RunClientConformanceScenario(scenario);
+
+        // Report the results
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    // The http-custom-headers scenario needs a tighter gate than the other SEP-2243 scenarios:
+    // conformance 0.2.0-alpha.5 through 0.2.0-alpha.7 shipped it with an x-mcp-header on a
+    // number-typed parameter (forbidden by SEP-2243), which a conformant client excludes,
+    // failing every positive check. It was fixed upstream in 0.2.0-alpha.8 (conformance #371),
+    // so require at least that version to avoid spurious failures on older 0.2.0 prereleases.
+    [Theory(Skip = "Conformant http-custom-headers scenario not available (requires conformance package >= 0.2.0-alpha.8).", SkipUnless = nameof(HasConformantCustomHeadersScenario))]
+    [InlineData("http-custom-headers")]
+    public async Task RunConformanceTest_Sep2243_CustomHeaders(string scenario)
     {
         // Run the conformance test suite
         var result = await RunClientConformanceScenario(scenario);
