@@ -13,6 +13,8 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
 
+    public static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
     [Fact]
     public async Task ConnectAsync_DoesNotLogEnvironmentVariablesAtTrace()
     {
@@ -185,6 +187,151 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         var result = await client.CallToolAsync("echoCliArg", cancellationToken: TestContext.Current.CancellationToken);
         var content = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
         Assert.Equal(cliArgumentValue ?? "", content.Text);
+    }
+
+    // Regression tests for https://github.com/modelcontextprotocol/csharp-sdk/issues/1601:
+    // on Windows, non-cmd.exe commands are wrapped with cmd.exe. The wrapper must launch the
+    // command correctly even when the command path contains a space (e.g. under "Program Files").
+
+    [Fact(Skip = "Windows-only: StdioClientTransport only wraps commands with cmd.exe on Windows.", SkipUnless = nameof(IsWindows))]
+    public async Task WindowsCmdWrapper_UsesDsCWithSingleOuterQuotePair()
+    {
+        // The command and each argument are quoted only when they contain whitespace, a quote, or a cmd.exe
+        // metacharacter (& | < > ^ ( )); a bare command name is left unquoted so cmd.exe still resolves it.
+        static string Wrap(string inner) => "/d /s /c \"" + inner + "\"";
+        static string Quote(string value) => "\"" + value + "\"";
+
+        const string spacedCommand = @"C:\Program Files\My Server\server.exe";
+
+        var cases = new (string command, string[]? arguments, string expectedArguments)[]
+        {
+            // Space in the command path with a trailing argument — the exact shape that failed in #1601.
+            (spacedCommand, ["--flag"], Wrap(Quote(spacedCommand) + " --flag")),
+            // Space in the command path with an argument that itself contains spaces.
+            (spacedCommand, ["arg with spaces"], Wrap(Quote(spacedCommand) + " " + Quote("arg with spaces"))),
+            // Space in the command path with no arguments.
+            (spacedCommand, null, Wrap(Quote(spacedCommand))),
+            // A space-free command path is left unquoted; cmd.exe metacharacters in arguments are quoted so
+            // cmd treats them literally rather than as operators.
+            (@"C:\tools\server.exe", ["a&b", "c|d", "e>f", "g<h", "i^j"],
+                Wrap(@"C:\tools\server.exe" + " " + Quote("a&b") + " " + Quote("c|d") + " " + Quote("e>f") + " " + Quote("g<h") + " " + Quote("i^j"))),
+            // A bare command name and ordinary arguments without special characters are passed through unquoted.
+            ("server.exe", ["--key=value", "plain"], Wrap("server.exe" + " --key=value plain")),
+            // An empty argument is preserved as an empty quoted token.
+            ("server.exe", [""], Wrap("server.exe" + " " + Quote(""))),
+        };
+
+        foreach (var (command, arguments, expectedArguments) in cases)
+        {
+            string logged = await GetLoggedProcessInvocationAsync(command, arguments);
+            Assert.Contains($"Arguments: {expectedArguments}, Working directory:", logged);
+        }
+    }
+
+    // Connects a transport far enough to capture the trace log that records the exact process command line
+    // (emitted before the process is started), then returns the rendered log message.
+    private static async Task<string> GetLoggedProcessInvocationAsync(string command, IList<string>? arguments)
+    {
+        var provider = new MockLoggerProvider();
+        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(provider);
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+
+        var transport = new StdioClientTransport(new() { Name = "TestServer", Command = command, Arguments = arguments }, loggerFactory);
+        try
+        {
+            // The command path need not exist: the invocation is logged before the process is started, and
+            // whether cmd.exe then fails to find the target is irrelevant to the command line we are asserting.
+            await using var _ = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        }
+        catch
+        {
+            // Ignore: we only need the pre-start trace log.
+        }
+
+        var log = Assert.Single(provider.LogMessages, m =>
+            m.LogLevel == LogLevel.Trace && m.Message.Contains("starting server process", StringComparison.Ordinal));
+        return log.Message;
+    }
+
+    [Theory(Skip = "Windows-only: reproduces #1601 (a space in the command path on Windows).", SkipUnless = nameof(IsWindows))]
+    [InlineData("simple")]
+    [InlineData("value with spaces")]
+    [InlineData("a & b | c")]
+    [InlineData("&^<>|")]
+    [InlineData("value with \"quotes\" and spaces")]
+    [InlineData(@"C:\Program Files\Test App\app.dll")]
+    [InlineData(@"C:\EndsWithBackslash\")]
+    [InlineData("http://localhost:1234/callback?foo=1&bar=2")]
+    public async Task CommandPathWithSpaces_RoundTripsArgumentsThroughCmd(string cliArgumentValue)
+    {
+        // Copy the (self-contained) TestServer build output to a directory whose path contains a space,
+        // then launch it by absolute path. Before the fix this failed to start; the argument echoed back
+        // confirms both that the process launched and that the argument survived the cmd.exe wrapping.
+        string serverDirectory = CopyTestServerToDirectoryWithSpaces();
+        try
+        {
+            var options = new StdioClientTransportOptions
+            {
+                Name = "TestServer",
+                Command = Path.Combine(serverDirectory, "TestServer.exe"),
+                Arguments = [$"--cli-arg={cliArgumentValue}"],
+            };
+
+            var transport = new StdioClientTransport(options, LoggerFactory);
+            await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotEmpty(tools);
+
+            var result = await client.CallToolAsync("echoCliArg", cancellationToken: TestContext.Current.CancellationToken);
+            var content = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+            Assert.Equal(cliArgumentValue, content.Text);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(serverDirectory, recursive: true);
+            }
+            catch
+            {
+                // Best effort cleanup.
+            }
+        }
+    }
+
+    private static string CopyTestServerToDirectoryWithSpaces()
+    {
+        // The TestServer build output is a sibling of the test build output under the artifacts layout,
+        // differing only by the project-name segment of the path.
+        string sourceDirectory = AppContext.BaseDirectory.Replace(
+            $"{Path.DirectorySeparatorChar}ModelContextProtocol.Tests{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}ModelContextProtocol.TestServer{Path.DirectorySeparatorChar}");
+
+        Assert.True(
+            File.Exists(Path.Combine(sourceDirectory, "TestServer.exe")),
+            $"Could not locate the TestServer build output at '{sourceDirectory}'.");
+
+        string destinationDirectory = Path.Combine(Path.GetTempPath(), "mcp sdk 1601 " + Guid.NewGuid().ToString("N"));
+        CopyDirectory(sourceDirectory, destinationDirectory);
+        return destinationDirectory;
+
+        static void CopyDirectory(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+            foreach (string file in Directory.GetFiles(source))
+            {
+                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: true);
+            }
+
+            foreach (string directory in Directory.GetDirectories(source))
+            {
+                CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
+            }
+        }
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]

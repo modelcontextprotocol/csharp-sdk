@@ -63,13 +63,23 @@ public sealed partial class StdioClientTransport : IClientTransport
 
         string command = _options.Command;
         IList<string>? arguments = _options.Arguments;
+
+        // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
+        // The stdio transport will not work correctly if the command is not run in a shell.
+        string? cmdArguments = null;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
             !string.Equals(Path.GetFileName(command), "cmd.exe", StringComparison.OrdinalIgnoreCase))
         {
-            // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
-            // The stdio transport will not work correctly if the command is not run in a shell.
-            arguments = arguments is null or [] ? ["/c", command] : ["/c", command, ..arguments];
+            // Build the full "cmd.exe /d /s /c ..." command line by hand rather than relying on
+            // ProcessStartInfo.ArgumentList. ArgumentList applies the Win32 C-runtime quoting rules to
+            // each argument independently, which is incompatible with how cmd.exe /c re-parses its command
+            // line: when more than two quote characters follow /c, cmd strips the first and last quote and
+            // re-parses the middle, mangling command paths that contain spaces (e.g. under "Program Files").
+            // Using /s together with a single outer pair of quotes makes cmd strip exactly that outer pair
+            // and treat the remainder verbatim, so a space-containing command path launches correctly.
+            cmdArguments = GetWindowsCmdArguments(command, arguments);
             command = "cmd.exe";
+            arguments = null;
         }
 
         ILogger logger = (ILogger?)_loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
@@ -93,7 +103,13 @@ public sealed partial class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (arguments is not null)
+            if (cmdArguments is not null)
+            {
+                // The cmd.exe wrapper builds its own already-quoted command line (see GetWindowsCmdArguments);
+                // assign it directly instead of going through ArgumentList's per-argument quoting.
+                startInfo.Arguments = cmdArguments;
+            }
+            else if (arguments is not null)
             {
 #if NET
                 foreach (string arg in arguments)
@@ -292,6 +308,115 @@ public sealed partial class StdioClientTransport : IClientTransport
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && !ContainsWhitespaceRegex.IsMatch(argument) ?
         WindowsCliSpecialArgumentsRegex.Replace(argument, static match => "^" + match.Value) :
         argument;
+
+    /// <summary>
+    /// Builds the raw command line passed to <c>cmd.exe</c> when wrapping a non-<c>cmd.exe</c> command on Windows.
+    /// </summary>
+    /// <remarks>
+    /// Produces <c>/d /s /c "&lt;command&gt; &lt;arg1&gt; &lt;arg2&gt; ..."</c> where:
+    /// <list type="bullet">
+    /// <item><c>/d</c> skips any AutoRun commands, and <c>/s</c> together with the single outer pair of quotes
+    /// makes <c>cmd.exe</c> strip exactly that outer pair and treat the remainder verbatim.</item>
+    /// <item>The command and each argument are wrapped in double quotes when they contain whitespace, a quote,
+    /// or a <c>cmd.exe</c> metacharacter, using the Win32 <c>CommandLineToArgvW</c> escaping rules, so both
+    /// <c>cmd.exe</c> and the launched child process parse the tokens back to their original values. Quoting
+    /// also neutralizes <c>cmd.exe</c> metacharacters (<c>&amp; | &lt; &gt; ^ ( )</c>), which are literal inside
+    /// double quotes. A bare command name is left unquoted so that <c>cmd.exe</c> still resolves it against the
+    /// current directory and PATH.</item>
+    /// </list>
+    /// </remarks>
+    internal static string GetWindowsCmdArguments(string command, IList<string>? arguments)
+    {
+        StringBuilder builder = new("/d /s /c \"");
+
+        // The command is quoted only when it needs it (e.g. a path under "Program Files" that contains a
+        // space): that is what fixes #1601. A bare command name (such as "npx") is deliberately left
+        // unquoted, because cmd.exe resolves an unquoted bare name against the current directory and PATH
+        // but does not resolve a quoted one (the outer /s means cmd does not strip the inner quotes).
+        AppendCmdArgument(builder, command);
+
+        if (arguments is not null)
+        {
+            foreach (string argument in arguments)
+            {
+                builder.Append(' ');
+                AppendCmdArgument(builder, argument);
+            }
+        }
+
+        builder.Append('"');
+        return builder.ToString();
+    }
+
+    private static void AppendCmdArgument(StringBuilder builder, string argument)
+    {
+        if (argument.Length != 0 && !RequiresCmdQuoting(argument))
+        {
+            builder.Append(argument);
+            return;
+        }
+
+        // Quote using the Win32 backslash/quote escaping rules (same rules as PasteArguments), so the child
+        // process's CommandLineToArgvW recovers the exact original argument.
+        builder.Append('"');
+        int idx = 0;
+        while (idx < argument.Length)
+        {
+            char c = argument[idx++];
+            if (c == '\\')
+            {
+                int backslashes = 1;
+                while (idx < argument.Length && argument[idx] == '\\')
+                {
+                    idx++;
+                    backslashes++;
+                }
+
+                if (idx == argument.Length)
+                {
+                    // Backslashes precede the closing quote, so they must be doubled.
+                    builder.Append('\\', backslashes * 2);
+                }
+                else if (argument[idx] == '"')
+                {
+                    // Backslashes precede an embedded quote, so they must be doubled and the quote escaped.
+                    builder.Append('\\', backslashes * 2 + 1);
+                    builder.Append('"');
+                    idx++;
+                }
+                else
+                {
+                    builder.Append('\\', backslashes);
+                }
+
+                continue;
+            }
+
+            if (c == '"')
+            {
+                builder.Append('\\');
+                builder.Append('"');
+                continue;
+            }
+
+            builder.Append(c);
+        }
+
+        builder.Append('"');
+    }
+
+    private static bool RequiresCmdQuoting(string argument)
+    {
+        foreach (char c in argument)
+        {
+            if (char.IsWhiteSpace(c) || c is '"' or '&' or '|' or '<' or '>' or '^' or '(' or ')')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private const string WindowsCliSpecialArgumentsRegexString = "[&^><|]";
 
