@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -58,6 +59,7 @@ public sealed class McpRequestFilters
         }
     }
 
+#pragma warning disable MCPEXP002 // CallToolWithAlternateFilters references the experimental ResultOrAlternate seam
     /// <summary>
     /// Gets or sets the filters for the call-tool handler pipeline with alternate result support.
     /// </summary>
@@ -75,6 +77,7 @@ public sealed class McpRequestFilters
     /// authorization filters (which use <see cref="CallToolFilters"/>).
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public IList<McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
         get => field ??= [];
@@ -84,6 +87,7 @@ public sealed class McpRequestFilters
             field = value;
         }
     }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the filters for the list-prompts handler pipeline.

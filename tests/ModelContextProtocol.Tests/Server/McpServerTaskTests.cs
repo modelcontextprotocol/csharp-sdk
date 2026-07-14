@@ -48,7 +48,7 @@ public class McpServerTaskTests : ClientServerTestBase
                     {
                         Content = [new TextContentBlock { Text = "immediate result" }],
                     }),
-                    "async-tool" => new(
+                    "async-tool" => ResultOrAlternate<CallToolResult>.FromAlternate(
                         new CreateTaskResult
                         {
                             TaskId = store.CreateTask(),
@@ -59,7 +59,7 @@ public class McpServerTaskTests : ClientServerTestBase
                             ResultType = "task",
                         },
                         McpTasksJsonContext.Default.CreateTaskResult),
-                    "input-required-tool" => new(
+                    "input-required-tool" => ResultOrAlternate<CallToolResult>.FromAlternate(
                         new CreateTaskResult
                         {
                             TaskId = store.CreateTask(McpTaskStatus.InputRequired),

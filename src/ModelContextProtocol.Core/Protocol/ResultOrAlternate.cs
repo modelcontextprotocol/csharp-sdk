@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Protocol;
@@ -19,6 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// <see cref="Result"/> for the immediate result or <see cref="Alternate"/> for the alternate.
 /// </para>
 /// </remarks>
+[Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
 public class ResultOrAlternate<TResult> where TResult : Result
 {
     private readonly TResult? _result;
@@ -40,13 +42,28 @@ public class ResultOrAlternate<TResult> where TResult : Result
     /// </summary>
     /// <param name="alternate">The alternate result.</param>
     /// <param name="alternateTypeInfo">The <see cref="JsonTypeInfo"/> used to serialize the alternate result.</param>
-    public ResultOrAlternate(Result alternate, JsonTypeInfo alternateTypeInfo)
+    private ResultOrAlternate(Result alternate, JsonTypeInfo alternateTypeInfo)
     {
         Throw.IfNull(alternate);
         Throw.IfNull(alternateTypeInfo);
         _alternate = alternate;
         _alternateTypeInfo = alternateTypeInfo;
     }
+
+    /// <summary>
+    /// Creates a <see cref="ResultOrAlternate{TResult}"/> that carries an alternate <see cref="Result"/> subtype
+    /// (for example an <c>InputRequiredResult</c> or a task-creation result) in place of the standard result.
+    /// </summary>
+    /// <typeparam name="TAlternate">The concrete alternate result type.</typeparam>
+    /// <param name="alternate">The alternate result to return instead of the standard result.</param>
+    /// <param name="alternateTypeInfo">
+    /// The <see cref="JsonTypeInfo{T}"/> used to serialize <paramref name="alternate"/>. Requiring the strongly-typed
+    /// contract keeps the alternate value paired with matching serializer metadata rather than an unrelated type.
+    /// </param>
+    /// <returns>A <see cref="ResultOrAlternate{TResult}"/> that wraps the alternate result.</returns>
+    public static ResultOrAlternate<TResult> FromAlternate<TAlternate>(TAlternate alternate, JsonTypeInfo<TAlternate> alternateTypeInfo)
+        where TAlternate : Result
+        => new(alternate, alternateTypeInfo);
 
     /// <summary>
     /// Gets a value indicating whether the server returned an alternate result instead of the standard result.

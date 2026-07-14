@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 {
-    private static readonly JsonTypeInfo s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
+    private static readonly JsonTypeInfo<CreateTaskResult> s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
 
     public TaskHandlerConfigurationValidationTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
@@ -25,6 +25,7 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
 #endif
     }
 
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateHandler/ResultOrAlternate seam
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
@@ -35,7 +36,7 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
             // task lifecycle request handlers.
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
                 new ValueTask<ResultOrAlternate<CallToolResult>>(
-                    new ResultOrAlternate<CallToolResult>(
+                    ResultOrAlternate<CallToolResult>.FromAlternate(
                         new CreateTaskResult
                         {
                             TaskId = "orphan-task",
@@ -46,6 +47,7 @@ public class TaskHandlerConfigurationValidationTests : ClientServerTestBase
                         s_createTaskResultTypeInfo));
         });
     }
+#pragma warning restore MCPEXP002
 
     [Fact]
     public async Task ServerAcceptsAlternateHandler_WithoutTasksGetHandler_NoStartupError()

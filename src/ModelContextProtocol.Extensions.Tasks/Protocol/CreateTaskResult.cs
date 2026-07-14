@@ -26,6 +26,14 @@ namespace ModelContextProtocol.Extensions.Tasks;
 public sealed class CreateTaskResult : Result
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="CreateTaskResult"/> class.
+    /// </summary>
+    public CreateTaskResult()
+    {
+        ResultType = "task";
+    }
+
+    /// <summary>
     /// Gets or sets the stable identifier for this task.
     /// </summary>
     [JsonPropertyName("taskId")]

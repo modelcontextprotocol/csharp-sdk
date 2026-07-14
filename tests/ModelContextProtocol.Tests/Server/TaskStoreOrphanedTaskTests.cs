@@ -7,8 +7,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
-#pragma warning disable MCPEXP001
-
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
@@ -19,7 +17,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 {
-    private static readonly JsonTypeInfo s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateHandler/ResultOrAlternate seam
+    private static readonly JsonTypeInfo<CreateTaskResult> s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
 
     public TaskStoreOrphanedTaskTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
@@ -40,7 +39,7 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
             // misconfiguration the server must guard against.
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
                 new ValueTask<ResultOrAlternate<CallToolResult>>(
-                    new ResultOrAlternate<CallToolResult>(
+                    ResultOrAlternate<CallToolResult>.FromAlternate(
                         new CreateTaskResult
                         {
                             TaskId = "user-task",
@@ -87,4 +86,5 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
         Assert.Contains(nameof(IMcpTaskStore), message);
         Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), message);
     }
+#pragma warning restore MCPEXP002
 }

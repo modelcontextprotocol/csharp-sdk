@@ -177,7 +177,7 @@ public static class McpTasksBuilderExtensions
                         }
                     }, CancellationToken.None);
 
-                    return new ResultOrAlternate<CallToolResult>(
+                    return ResultOrAlternate<CallToolResult>.FromAlternate(
                         ToCreateTaskResult(taskInfo),
                         McpTasksJsonContext.Default.CreateTaskResult);
                 }
@@ -269,7 +269,6 @@ public static class McpTasksBuilderExtensions
             TimeToLive = info.TimeToLive,
             PollIntervalMs = info.PollIntervalMs,
             StatusMessage = info.StatusMessage,
-            ResultType = "task",
         };
 
         private static GetTaskResult ToGetTaskResult(McpTaskInfo info) => info.Status switch

@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -36,6 +37,7 @@ public sealed class McpServerHandlers
     /// </remarks>
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler { get; set; }
 
+#pragma warning disable MCPEXP002 // CallToolHandler and CallToolWithAlternateHandler reference the experimental ResultOrAlternate seam
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
     /// </summary>
@@ -74,6 +76,7 @@ public sealed class McpServerHandlers
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>>? CallToolWithAlternateHandler
     {
         get;
@@ -88,6 +91,7 @@ public sealed class McpServerHandlers
             field = value;
         }
     }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.

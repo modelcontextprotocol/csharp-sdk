@@ -46,6 +46,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
         };
     }
 
+#pragma warning disable MCPEXP002 // SetWithAlternate consumes the experimental ResultOrAlternate seam
     /// <summary>
     /// Registers a handler that may return either a standard result or an alternate <see cref="Result"/>
     /// subtype for scenarios like task-augmented execution.
@@ -75,4 +76,5 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
             return JsonSerializer.SerializeToNode(augmented.Result!, responseTypeInfo);
         };
     }
+#pragma warning restore MCPEXP002
 }

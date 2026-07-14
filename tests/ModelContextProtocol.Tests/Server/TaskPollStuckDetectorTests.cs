@@ -42,7 +42,7 @@ public class TaskPollStuckDetectorTests : ClientServerTestBase
             {
                 var taskId = Guid.NewGuid().ToString("N");
                 return new ValueTask<ResultOrAlternate<CallToolResult>>(
-                    new ResultOrAlternate<CallToolResult>(
+                    ResultOrAlternate<CallToolResult>.FromAlternate(
                         new CreateTaskResult
                         {
                             TaskId = taskId,

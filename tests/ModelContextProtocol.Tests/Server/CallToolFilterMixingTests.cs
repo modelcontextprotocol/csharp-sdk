@@ -11,6 +11,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateFilters seam
     private static McpRequestFilter<CallToolRequestParams, CallToolResult> PassThroughCallToolFilter =>
         next => next;
 
@@ -55,4 +56,5 @@ public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : Log
         await using var server = McpServer.Create(transport, options, LoggerFactory);
         Assert.NotNull(server);
     }
+#pragma warning restore MCPEXP002
 }
