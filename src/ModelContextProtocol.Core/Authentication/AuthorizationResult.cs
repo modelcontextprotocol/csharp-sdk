@@ -31,8 +31,8 @@ public sealed class AuthorizationResult
     /// prevent mix-up attacks.
     /// </para>
     /// <para>
-    /// Implementations of <see cref="ClientOAuthOptions.AuthorizationCallbackHandler"/> should populate this property
-    /// whenever the <c>iss</c> parameter is present in the redirect URI callback.
+    /// Implementations of <see cref="ClientOAuthOptions.AuthorizationCallbackHandler"/> should populate this
+    /// property whenever the <c>iss</c> parameter is present in the redirect URI callback.
     /// </para>
     /// </remarks>
     public string? Iss { get; init; }

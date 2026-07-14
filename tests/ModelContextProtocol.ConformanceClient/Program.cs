@@ -82,7 +82,7 @@ var oauthOptions = new ModelContextProtocol.Authentication.ClientOAuthOptions
     RedirectUri = clientRedirectUri,
     // Configure the metadata document URI for CIMD.
     ClientMetadataDocumentUri = new Uri("https://conformance-test.local/client-metadata.json"),
-    AuthorizationCallbackHandler = (authUrl, redirectUri, ct) => HandleAuthorizationUrlAsync(authUrl, redirectUri, ct),
+    AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
 };
 
 if (preRegisteredClientId is not null)
@@ -330,8 +330,12 @@ catch (Exception ex)
 // Copied from ProtectedMcpClient sample
 // Simulate a user opening the browser and logging in
 // Copied from OAuthTestBase
-static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
+    AuthorizationCallbackContext authorizationContext,
+    CancellationToken cancellationToken)
 {
+    var authorizationUrl = authorizationContext.AuthorizationUri;
+
     Console.WriteLine("Starting OAuth authorization flow...");
     Console.WriteLine($"Simulating opening browser to: {authorizationUrl}");
 

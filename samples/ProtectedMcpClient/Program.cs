@@ -69,12 +69,16 @@ if (tools.Any(t => t.Name == "get_alerts"))
 /// Handles the OAuth authorization URL by starting a local HTTP server and opening a browser.
 /// This implementation demonstrates how SDK consumers can provide their own authorization flow.
 /// </summary>
-/// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
-/// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+/// <param name="authorizationContext">The context containing the authorization and redirect URIs.</param>
 /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
 /// <returns>The authorization result extracted from the callback, or null if the operation failed.</returns>
-static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
+    AuthorizationCallbackContext authorizationContext,
+    CancellationToken cancellationToken)
 {
+    var authorizationUrl = authorizationContext.AuthorizationUri;
+    var redirectUri = authorizationContext.RedirectUri;
+
     Console.WriteLine("Starting OAuth authorization flow...");
     Console.WriteLine($"Opening browser to: {authorizationUrl}");
 

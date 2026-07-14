@@ -50,6 +50,37 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task AuthorizationCallbackHandler_ReceivesConfiguredRedirectUri()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var redirectUri = new Uri("http://localhost:1179/callback");
+        AuthorizationCallbackContext? callbackContext = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = redirectUri,
+                AuthorizationCallbackHandler = (context, cancellationToken) =>
+                {
+                    callbackContext = context;
+                    return HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(callbackContext);
+        Assert.Equal(redirectUri, callbackContext.RedirectUri);
+    }
+
+    [Fact]
     public async Task CannotAuthenticate_WithoutOAuthConfiguration()
     {
         await using var app = await StartMcpServerAsync();
@@ -290,10 +321,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    lastAuthorizationUri = uri;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    lastAuthorizationUri = context.AuthorizationUri;
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
@@ -397,11 +428,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -448,11 +479,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -537,11 +568,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1371,11 +1402,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1403,11 +1434,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1442,11 +1473,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1479,11 +1510,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
             },
@@ -1510,11 +1541,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = scopes => scopes?.Append("custom:scope") ?? ["custom:scope"],
             },
@@ -1578,10 +1609,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    scopePresent = QueryHelpers.ParseQuery(context.AuthorizationUri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = _ => null,
             },
@@ -1608,10 +1639,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    scopePresent = QueryHelpers.ParseQuery(context.AuthorizationUri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = _ => [],
             },

@@ -70,37 +70,23 @@ public sealed class ClientOAuthOptions
     public ScopeSelectorDelegate? ScopeSelector { get; set; }
 
     /// <summary>
-    /// Gets or sets the authorization redirect delegate for handling the OAuth authorization flow.
+    /// Gets or sets the callback that handles the OAuth authorization flow.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This delegate is responsible for handling the OAuth authorization URL and obtaining the authorization code.
-    /// If not specified, a default implementation will be used that prompts the user to enter the code manually.
+    /// This callback receives the authorization and redirect URIs in an
+    /// <see cref="AuthorizationCallbackContext"/> and returns the authorization response.
+    /// If not specified, a default implementation prompts the user to enter the authorization code manually.
     /// </para>
     /// <para>
     /// Custom implementations might open a browser, start an HTTP listener, or use other mechanisms to capture
-    /// the authorization code from the OAuth redirect.
-    /// </para>
-    /// </remarks>
-    public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
-
-    /// <summary>
-    /// Gets or sets a callback that handles the full OAuth authorization flow, returning both the
-    /// authorization code and the issuer identifier for RFC 9207 validation.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When set, this handler takes precedence over <see cref="AuthorizationRedirectDelegate"/>.
-    /// It enables the SDK to validate the <c>iss</c> parameter in the authorization response per
+    /// the authorization response. They should return both the <c>code</c> and <c>iss</c> query parameters
+    /// from the redirect URI callback. This enables the SDK to validate the <c>iss</c> parameter per
     /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>, which mitigates
     /// mix-up attacks.
     /// </para>
-    /// <para>
-    /// Implementations should extract both the <c>code</c> and <c>iss</c> query parameters from
-    /// the redirect URI callback and return them in an <see cref="AuthorizationResult"/>.
-    /// </para>
     /// </remarks>
-    public Func<Uri, Uri, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
+    public Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the authorization server selector function.

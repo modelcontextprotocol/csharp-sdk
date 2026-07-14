@@ -31,8 +31,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
-    private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
-    private readonly Func<Uri, Uri, CancellationToken, Task<AuthorizationResult?>>? _authorizationCallbackHandler;
+    private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
     private readonly Uri? _clientMetadataDocumentUri;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
@@ -85,11 +84,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
-        // Set up authorization callback handler (new RFC 9207-aware handler takes precedence)
-        _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
-
-        // Set up authorization URL handler (use default if not provided)
-        _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+        // Set up authorization callback handler (use default if not provided)
+        _authorizationCallbackHandler = options.AuthorizationCallbackHandler ?? DefaultAuthorizationUrlHandler;
 
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
@@ -108,18 +104,19 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <summary>
     /// Default authorization URL handler that displays the URL to the user for manual input.
     /// </summary>
-    /// <param name="authorizationUrl">The authorization URL to handle.</param>
-    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
-    private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    /// <returns>The authorization result entered by the user, or null if none was provided.</returns>
+    private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
+        AuthorizationCallbackContext context,
+        CancellationToken cancellationToken)
     {
         Console.WriteLine($"Please open the following URL in your browser to authorize the application:");
-        Console.WriteLine($"{authorizationUrl}");
+        Console.WriteLine($"{context.AuthorizationUri}");
         Console.WriteLine();
         Console.Write("Enter the authorization code from the redirect URL: ");
         var authorizationCode = Console.ReadLine();
-        return Task.FromResult<string?>(authorizationCode);
+        return Task.FromResult<AuthorizationResult?>(new() { Code = authorizationCode });
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -485,32 +482,27 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
 
-        string? authorizationCode;
-        string? iss = null;
-
-        if (_authorizationCallbackHandler is not null)
-        {
-            var authResult = await _authorizationCallbackHandler(authUrl, _redirectUri, cancellationToken).ConfigureAwait(false);
-            if (authResult is null || string.IsNullOrEmpty(authResult.Code))
+        var authResult = await _authorizationCallbackHandler(
+            new AuthorizationCallbackContext
             {
-                ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
-            }
+                AuthorizationUri = authUrl,
+                RedirectUri = _redirectUri,
+            },
+            cancellationToken).ConfigureAwait(false);
 
-            authorizationCode = authResult!.Code!;
-            iss = authResult.Iss;
-        }
-        else
+        if (authResult is null || string.IsNullOrEmpty(authResult.Code))
         {
-            authorizationCode = await _authorizationRedirectDelegate(authUrl, _redirectUri, cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(authorizationCode))
-            {
-                ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
-            }
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
         }
 
-        ValidateIssuerResponse(iss, authServerMetadata);
+        ValidateIssuerResponse(authResult!.Iss, authServerMetadata);
 
-        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authorizationCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        return await ExchangeCodeForTokenAsync(
+            protectedResourceMetadata,
+            authServerMetadata,
+            authResult.Code!,
+            codeVerifier,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(

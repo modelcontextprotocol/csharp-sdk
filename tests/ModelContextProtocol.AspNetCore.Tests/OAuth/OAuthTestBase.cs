@@ -106,9 +106,11 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         return app;
     }
 
-    protected async Task<ModelContextProtocol.Authentication.AuthorizationResult?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    protected async Task<ModelContextProtocol.Authentication.AuthorizationResult?> HandleAuthorizationUrlAsync(
+        ModelContextProtocol.Authentication.AuthorizationCallbackContext authorizationContext,
+        CancellationToken cancellationToken)
     {
-        using var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
+        using var redirectResponse = await HttpClient.GetAsync(authorizationContext.AuthorizationUri, cancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
         var location = redirectResponse.Headers.Location;
 
