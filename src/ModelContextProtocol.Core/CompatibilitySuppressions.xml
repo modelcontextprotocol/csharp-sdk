@@ -3,6 +3,13 @@
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Authentication.AuthorizationRedirectDelegate</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.IMcpTaskStore</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -157,6 +164,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Authentication.AuthorizationRedirectDelegate</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.IMcpTaskStore</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -311,6 +325,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Authentication.AuthorizationRedirectDelegate</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.IMcpTaskStore</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -461,6 +482,13 @@
     <Target>T:ModelContextProtocol.Protocol.ToolTaskSupport</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Authentication.AuthorizationRedirectDelegate</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
@@ -634,6 +662,20 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksResult</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.get_AuthorizationRedirectDelegate</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.set_AuthorizationRedirectDelegate(ModelContextProtocol.Authentication.AuthorizationRedirectDelegate)</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1011,6 +1053,20 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.get_AuthorizationRedirectDelegate</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.set_AuthorizationRedirectDelegate(ModelContextProtocol.Authentication.AuthorizationRedirectDelegate)</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Client.McpClient.CallToolAsTaskAsync(System.String,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},ModelContextProtocol.Protocol.McpTaskMetadata,System.IProgress{ModelContextProtocol.ProgressNotificationValue},ModelContextProtocol.RequestOptions,System.Threading.CancellationToken)</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -1382,6 +1438,20 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.get_AuthorizationRedirectDelegate</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.set_AuthorizationRedirectDelegate(ModelContextProtocol.Authentication.AuthorizationRedirectDelegate)</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Client.McpClient.CallToolAsTaskAsync(System.String,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},ModelContextProtocol.Protocol.McpTaskMetadata,System.IProgress{ModelContextProtocol.ProgressNotificationValue},ModelContextProtocol.RequestOptions,System.Threading.CancellationToken)</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -1747,6 +1817,20 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksResult</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.get_AuthorizationRedirectDelegate</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Authentication.ClientOAuthOptions.set_AuthorizationRedirectDelegate(ModelContextProtocol.Authentication.AuthorizationRedirectDelegate)</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
