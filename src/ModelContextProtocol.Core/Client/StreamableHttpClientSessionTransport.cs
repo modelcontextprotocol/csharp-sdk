@@ -186,7 +186,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            if (responseContent.Length > 0)
+            {
+                rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            }
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
