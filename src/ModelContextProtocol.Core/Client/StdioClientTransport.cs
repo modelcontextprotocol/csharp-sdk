@@ -64,8 +64,9 @@ public sealed partial class StdioClientTransport : IClientTransport
         string command = _options.Command;
         IList<string>? arguments = _options.Arguments;
 
-        // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
-        // The stdio transport will not work correctly if the command is not run in a shell.
+        // On Windows, for stdio, we need to wrap non-cmd.exe commands with cmd.exe (usually npx or uvicorn):
+        // the stdio transport will not work correctly if the command is not run in a shell. The wrapped
+        // "cmd.exe /d /s /c ..." command line is built by hand (see GetWindowsCmdArguments below).
         string? cmdArguments = null;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
             !string.Equals(Path.GetFileName(command), "cmd.exe", StringComparison.OrdinalIgnoreCase))

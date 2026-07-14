@@ -201,7 +201,13 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         static string Wrap(string inner) => "/d /s /c \"" + inner + "\"";
         static string Quote(string value) => "\"" + value + "\"";
 
-        const string spacedCommand = @"C:\Program Files\My Server\server.exe";
+        // Use guaranteed-nonexistent command names (under a unique, nonexistent directory, and a bare name
+        // that will not resolve from PATH) so the wrapper's cmd.exe never actually launches a real program;
+        // the test only inspects the logged command line, not the process outcome.
+        string id = Guid.NewGuid().ToString("N");
+        string spacedCommand = $@"C:\{id} dir\My Server\server_{id}.exe"; // contains spaces
+        string plainCommand = $@"C:\{id}dir\server_{id}.exe";            // no space, has a directory
+        string bareCommand = $"nonexistent_{id}.exe";                    // bare name, not on PATH
 
         var cases = new (string command, string[]? arguments, string expectedArguments)[]
         {
@@ -213,12 +219,12 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             (spacedCommand, null, Wrap(Quote(spacedCommand))),
             // A space-free command path is left unquoted; cmd.exe metacharacters in arguments are quoted so
             // cmd treats them literally rather than as operators.
-            (@"C:\tools\server.exe", ["a&b", "c|d", "e>f", "g<h", "i^j"],
-                Wrap(@"C:\tools\server.exe" + " " + Quote("a&b") + " " + Quote("c|d") + " " + Quote("e>f") + " " + Quote("g<h") + " " + Quote("i^j"))),
+            (plainCommand, ["a&b", "c|d", "e>f", "g<h", "i^j"],
+                Wrap(plainCommand + " " + Quote("a&b") + " " + Quote("c|d") + " " + Quote("e>f") + " " + Quote("g<h") + " " + Quote("i^j"))),
             // A bare command name and ordinary arguments without special characters are passed through unquoted.
-            ("server.exe", ["--key=value", "plain"], Wrap("server.exe" + " --key=value plain")),
+            (bareCommand, ["--key=value", "plain"], Wrap(bareCommand + " --key=value plain")),
             // An empty argument is preserved as an empty quoted token.
-            ("server.exe", [""], Wrap("server.exe" + " " + Quote(""))),
+            (bareCommand, [""], Wrap(bareCommand + " " + Quote(""))),
         };
 
         foreach (var (command, arguments, expectedArguments) in cases)
