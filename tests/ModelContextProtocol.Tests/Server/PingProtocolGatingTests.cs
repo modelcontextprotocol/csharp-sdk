@@ -8,8 +8,8 @@ namespace ModelContextProtocol.Tests.Server;
 /// <summary>
 /// Verifies that the built-in <c>ping</c> handler is gated by protocol version.
 /// SEP-2575 (the 2026-07-28 revision) removes <c>ping</c>; servers must
-/// respond with <c>-32601 MethodNotFound</c>. Legacy protocol versions still
-/// support <c>ping</c> per the spec.
+/// respond with <c>-32601 MethodNotFound</c>. Initialize-handshake protocol
+/// versions still support <c>ping</c> per the spec.
 /// </summary>
 public sealed class PingProtocolGatingTests : ClientServerTestBase
 {
@@ -28,7 +28,7 @@ public sealed class PingProtocolGatingTests : ClientServerTestBase
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
         });
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
@@ -38,13 +38,13 @@ public sealed class PingProtocolGatingTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Ping_OnLegacySession_StillSucceeds()
+    public async Task Ping_OnInitializeHandshakeSession_StillSucceeds()
     {
         // Default server config; client pinned to 2025-11-25.
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
-            ProtocolVersion = "2025-11-25",
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
         });
 
         var result = await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);

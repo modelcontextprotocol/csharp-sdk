@@ -12,7 +12,7 @@ namespace ModelContextProtocol.ConformanceTests;
 /// The scenario was introduced in spec wire version 2026-07-28 and uses the stateless lifecycle,
 /// so it runs against the shared server's stateless endpoint
 /// (<see cref="ConformanceServerFixture.StatelessServerUrl"/>). It is gated on the installed
-/// conformance package version (>= 0.2.0).
+/// conformance package's scenario list.
 /// </remarks>
 [Collection(nameof(ConformanceServerCollection))]
 public class CachingConformanceTests(ConformanceServerFixture fixture, ITestOutputHelper output)
@@ -23,7 +23,7 @@ public class CachingConformanceTests(ConformanceServerFixture fixture, ITestOutp
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
         Assert.SkipWhen(
             !NodeHelpers.HasCachingScenario(),
-            "SEP-2549 caching conformance scenario not available (requires conformance package >= 0.2.0).");
+            "SEP-2549 caching conformance scenario is not available in the installed conformance package.");
 
         // The caching scenario only exists in the 2026-07-28 protocol revision, so pin the spec version
         // explicitly (and suppress the MCP_CONFORMANCE_PROTOCOL_VERSION override to avoid a

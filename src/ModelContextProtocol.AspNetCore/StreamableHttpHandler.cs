@@ -13,6 +13,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
@@ -32,24 +33,15 @@ internal sealed class StreamableHttpHandler(
 
     /// <summary>
     /// All protocol versions supported by this implementation.
-    /// Keep in sync with McpSessionHandler.SupportedProtocolVersions in ModelContextProtocol.Core.
     /// </summary>
-    private static readonly HashSet<string> s_supportedProtocolVersions =
-    [
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        McpHttpHeaders.November2025ProtocolVersion,
-        McpHttpHeaders.July2026ProtocolVersion,
-    ];
+    private static readonly string[] s_supportedProtocolVersions = McpProtocolVersions.SupportedProtocolVersions;
 
     /// <summary>
     /// The supported protocol versions that still allow Streamable HTTP sessions (excluding 2026-07-28 and
-    /// later). Used when refusing a 2026-07-28 request on a stateful (Stateless = false) server so a dual-era
-    /// client falls back to a legacy initialize handshake instead of retrying the 2026-07-28 version.
+    /// later). Used when refusing a 2026-07-28 request on a stateful (Stateless = false) server so a dual-path
+    /// client falls back to the initialize handshake instead of retrying the 2026-07-28 version.
     /// </summary>
-    private static readonly string[] s_sessionSupportingProtocolVersions =
-        [.. s_supportedProtocolVersions.Where(static v => !McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(v))];
+    private static readonly string[] s_sessionSupportingProtocolVersions = McpProtocolVersions.InitializeHandshakeProtocolVersions;
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
@@ -63,7 +55,8 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
-        if (!ValidateProtocolVersionHeader(context, out var protocolVersionError))
+        var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -106,13 +99,24 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
+        // Once the body has been parsed into a request with a readable id, every JSON-RPC error response
+        // for this request MUST echo that id (base protocol responses section; SEP-2243 error format).
+        // Notifications carry no id, so this stays default (null), which is correct.
+        var requestId = message is JsonRpcRequest jsonRpcRequest ? jsonRpcRequest.Id : default;
+
+        if (!ValidateProtocolVersionEnvelope(context, message, out var protocolVersionEnvelopeError))
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch);
+            await WriteJsonRpcErrorDetailAsync(context, protocolVersionEnvelopeError, StatusCodes.Status400BadRequest, requestId);
             return;
         }
 
-        var session = await GetOrCreateSessionAsync(context, message);
+        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
+        {
+            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
+            return;
+        }
+
+        var session = await GetOrCreateSessionAsync(context, message, requestId);
         if (session is null)
         {
             return;
@@ -132,7 +136,8 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
-        if (!ValidateProtocolVersionHeader(context, out var protocolVersionError))
+        var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -143,11 +148,12 @@ internal sealed class StreamableHttpHandler(
         // The 2026-07-28 revision (SEP-2575) removes the standalone HTTP GET endpoint for unsolicited
         // server-to-client messages; clients use subscriptions/listen (POST) instead. Because Streamable HTTP
         // no longer has sessions (SEP-2567), the GET is invalid whether or not it carries an Mcp-Session-Id.
-        if (IsJuly2026OrLaterProtocol(context))
+        if (RequiresPerRequestMetadataProtocol(context))
         {
+            context.Response.Headers.Allow = HttpMethods.Post;
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The GET endpoint is not supported by the 2026-07-28 and later protocol revisions. Use subscriptions/listen via POST instead.",
-                StatusCodes.Status400BadRequest);
+                "Method Not Allowed: The GET endpoint is not supported by the 2026-07-28 and later protocol revisions. Use subscriptions/listen via POST instead.",
+                StatusCodes.Status405MethodNotAllowed);
             return;
         }
 
@@ -249,7 +255,8 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
-        if (!ValidateProtocolVersionHeader(context, out var protocolVersionError))
+        var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -259,11 +266,12 @@ internal sealed class StreamableHttpHandler(
 
         // Starting with the 2026-07-28 revision, Streamable HTTP has no sessions to terminate (SEP-2567),
         // so the DELETE is invalid whether or not it carries an Mcp-Session-Id.
-        if (IsJuly2026OrLaterProtocol(context))
+        if (RequiresPerRequestMetadataProtocol(context))
         {
+            context.Response.Headers.Allow = HttpMethods.Post;
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The DELETE endpoint is not supported by the 2026-07-28 and later protocol revisions.",
-                StatusCodes.Status400BadRequest);
+                "Method Not Allowed: The DELETE endpoint is not supported by the 2026-07-28 and later protocol revisions.",
+                StatusCodes.Status405MethodNotAllowed);
             return;
         }
 
@@ -286,7 +294,7 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId, RequestId requestId = default)
     {
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -294,7 +302,7 @@ internal sealed class StreamableHttpHandler(
                 "Bad Request: Mcp-Session-Id header is required for GET and DELETE requests when the server is using sessions. " +
                 "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.Stateless = true. " +
                 "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                StatusCodes.Status400BadRequest);
+                StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
 
@@ -309,7 +317,7 @@ internal sealed class StreamableHttpHandler(
                 // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
                 // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
                 // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
-                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001);
+                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001, requestId);
                 return null;
             }
         }
@@ -318,7 +326,7 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context,
                 "Forbidden: The currently authenticated user does not match the user who initiated the session.",
-                StatusCodes.Status403Forbidden);
+                StatusCodes.Status403Forbidden, requestId: requestId);
             return null;
         }
 
@@ -367,29 +375,18 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message)
+    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context, JsonRpcMessage message, RequestId requestId = default)
     {
-        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-
         // The 2026-07-28 revision removes the Mcp-Session-Id header and the session concept (SEP-2567)
         // and the initialize handshake (SEP-2575), so over HTTP it never has a session, with no exceptions:
-        if (IsJuly2026OrLaterProtocol(context))
+        if (RequiresPerRequestMetadataProtocol(context))
         {
-            if (!string.IsNullOrEmpty(sessionId))
-            {
-                // A request carrying an Mcp-Session-Id is non-conformant under the 2026-07-28 revision (SEP-2567).
-                await WriteJsonRpcErrorAsync(context,
-                    "Bad Request: Mcp-Session-Id is not supported by the 2026-07-28 and later protocol revisions (SEP-2567).",
-                    StatusCodes.Status400BadRequest);
-                return null;
-            }
-
             if (!HttpServerTransportOptions.Stateless)
             {
                 // The author explicitly opted into sessions (Stateless = false), which the 2026-07-28
-                // revision cannot provide. Refuse it so a dual-era client falls back to the legacy
+                // revision cannot provide. Refuse it so a dual-path client falls back to the
                 // initialize handshake and gets the session it asked for (SEP-2575 fallback semantics).
-                await WriteUnsupportedProtocolVersionErrorAsync(context);
+                await WriteUnsupportedProtocolVersionErrorAsync(context, requestId);
                 return null;
             }
 
@@ -397,6 +394,7 @@ internal sealed class StreamableHttpHandler(
             return await StartNewSessionAsync(context);
         }
 
+        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
         if (string.IsNullOrEmpty(sessionId))
         {
             // In stateful mode, only allow creating new sessions for initialize requests.
@@ -408,7 +406,7 @@ internal sealed class StreamableHttpHandler(
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
                     "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
                     "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
-                    StatusCodes.Status400BadRequest);
+                    StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
@@ -418,25 +416,25 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
-            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest);
+            await WriteJsonRpcErrorAsync(context, "Bad Request: The Mcp-Session-Id header is not supported in stateless mode", StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
         }
         else
         {
-            return await GetSessionAsync(context, sessionId);
+            return await GetSessionAsync(context, sessionId, requestId);
         }
     }
 
     /// <summary>
     /// Returns <see langword="true"/> when the request's <c>MCP-Protocol-Version</c> header declares a
     /// revision that operates without sessions, so the server must serve it statelessly. Such requests
-    /// never carry an Mcp-Session-Id and never perform the legacy <c>initialize</c> handshake
+    /// do not use an Mcp-Session-Id and never perform the <c>initialize</c> handshake
     /// (SEP-2575 + SEP-2567).
     /// </summary>
-    private static bool IsJuly2026OrLaterProtocol(HttpContext context)
+    private static bool RequiresPerRequestMetadataProtocol(HttpContext context)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        return McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(protocolVersionHeader);
+        return McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader);
     }
 
     private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
@@ -568,10 +566,11 @@ internal sealed class StreamableHttpHandler(
         return eventStreamReader;
     }
 
-    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
+    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000, RequestId requestId = default)
     {
         var jsonRpcError = new JsonRpcError
         {
+            Id = requestId,
             Error = new()
             {
                 Code = errorCode,
@@ -659,11 +658,14 @@ internal sealed class StreamableHttpHandler(
     /// rejection uses the <see cref="McpErrorCode.UnsupportedProtocolVersion"/> error code with a data payload
     /// listing the server's supported versions so the client can select a fallback.
     /// </summary>
-    private static bool ValidateProtocolVersionHeader(HttpContext context, [NotNullWhen(false)] out JsonRpcErrorDetail? errorDetail)
+    private static bool ValidateProtocolVersionHeader(
+        HttpContext context,
+        IReadOnlyList<string> supportedProtocolVersions,
+        [NotNullWhen(false)] out JsonRpcErrorDetail? errorDetail)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
-            !s_supportedProtocolVersions.Contains(protocolVersionHeader))
+            !supportedProtocolVersions.Contains(protocolVersionHeader))
         {
             errorDetail = new JsonRpcErrorDetail
             {
@@ -672,7 +674,7 @@ internal sealed class StreamableHttpHandler(
                 Data = JsonSerializer.SerializeToNode(
                     new UnsupportedProtocolVersionErrorData
                     {
-                        Supported = [.. s_supportedProtocolVersions],
+                        Supported = [.. supportedProtocolVersions],
                         Requested = protocolVersionHeader,
                     },
                     GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
@@ -684,20 +686,117 @@ internal sealed class StreamableHttpHandler(
         return true;
     }
 
+    private static string[] GetConfiguredSupportedProtocolVersions(string? protocolVersion)
+    {
+        if (protocolVersion is null)
+        {
+            return s_supportedProtocolVersions;
+        }
+
+        if (!McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion))
+        {
+            throw new McpException(
+                $"Unsupported server protocol version '{protocolVersion}'. Supported protocol versions: " +
+                string.Join(", ", McpProtocolVersions.SupportedProtocolVersions) + ".");
+        }
+
+        return [protocolVersion];
+    }
+
+    /// <summary>
+    /// Validates that HTTP requests using per-request metadata declare the same protocol version in both
+    /// the <c>MCP-Protocol-Version</c> header and body <c>_meta</c> envelope.
+    /// </summary>
+    private static bool ValidateProtocolVersionEnvelope(
+        HttpContext context,
+        JsonRpcMessage message,
+        [NotNullWhen(false)] out JsonRpcErrorDetail? errorDetail)
+    {
+        if (message is not (JsonRpcRequest or JsonRpcNotification))
+        {
+            errorDetail = null;
+            return true;
+        }
+
+        var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+        bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
+
+        if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
+            !McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionMeta))
+        {
+            errorDetail = null;
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(protocolVersionHeader))
+        {
+            errorDetail = CreateHeaderMismatchError(
+                $"Bad Request: The {McpProtocolVersionHeaderName} header is required when the request body declares a per-request metadata protocol version.");
+            return false;
+        }
+
+        if (!hasProtocolVersionMeta)
+        {
+            errorDetail = CreateHeaderMismatchError(
+                $"Bad Request: The body _meta/{MetaKeys.ProtocolVersion} field is required when the {McpProtocolVersionHeaderName} header declares a per-request metadata protocol version.");
+            return false;
+        }
+
+        if (!string.Equals(protocolVersionHeader, protocolVersionMeta, StringComparison.Ordinal))
+        {
+            errorDetail = CreateHeaderMismatchError(
+                $"Bad Request: The {McpProtocolVersionHeaderName} header value '{protocolVersionHeader}' does not match body _meta/{MetaKeys.ProtocolVersion} value '{protocolVersionMeta}'.");
+            return false;
+        }
+
+        errorDetail = null;
+        return true;
+    }
+
+    private static JsonRpcErrorDetail CreateHeaderMismatchError(string message) => new()
+    {
+        Code = (int)McpErrorCode.HeaderMismatch,
+        Message = message,
+    };
+
+    private static bool TryGetProtocolVersionMeta(JsonRpcMessage message, [NotNullWhen(true)] out string? protocolVersion)
+    {
+        var parameters = message switch
+        {
+            JsonRpcRequest request => request.Params,
+            JsonRpcNotification notification => notification.Params,
+            _ => null,
+        };
+
+        string? value = null;
+        if (parameters is JsonObject paramsObj &&
+            paramsObj["_meta"] is JsonObject metaObj &&
+            metaObj[MetaKeys.ProtocolVersion] is JsonValue protocolVersionValue &&
+            protocolVersionValue.TryGetValue(out value) &&
+            !string.IsNullOrEmpty(value))
+        {
+            protocolVersion = value;
+            return true;
+        }
+
+        protocolVersion = null;
+        return false;
+    }
+
     /// <summary>
     /// Refuses a 2026-07-28 (or later) request on a stateful (Stateless = false) server. Starting with that
     /// revision, Streamable HTTP no longer has sessions (SEP-2567), so it cannot honor the author's opt-in to
     /// sessions; we return <see cref="McpErrorCode.UnsupportedProtocolVersion"/> with a supported-versions list
-    /// that excludes 2026-07-28 and later. A dual-era client then falls back to the legacy initialize handshake
+    /// that excludes 2026-07-28 and later. A dual-path client then falls back to the initialize handshake
     /// (SEP-2575).
     /// </summary>
-    private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context)
+    private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context, RequestId requestId = default)
     {
         var requestedProtocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         var errorDetail = new JsonRpcErrorDetail
         {
             Code = (int)McpErrorCode.UnsupportedProtocolVersion,
-            Message = $"Bad Request: Starting with protocol version '{McpHttpHeaders.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
+            Message = $"Bad Request: Starting with protocol version '{McpProtocolVersions.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
                 "Use the initialize handshake with a protocol version that still supports sessions instead.",
             Data = JsonSerializer.SerializeToNode(
                 new UnsupportedProtocolVersionErrorData
@@ -708,7 +807,7 @@ internal sealed class StreamableHttpHandler(
                 GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
         };
 
-        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest);
+        return WriteJsonRpcErrorDetailAsync(context, errorDetail, StatusCodes.Status400BadRequest, requestId);
     }
 
     /// <summary>
@@ -725,7 +824,7 @@ internal sealed class StreamableHttpHandler(
     {
         // Only validate for protocol versions that support standard headers.
         var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-        if (!McpHttpHeaders.SupportsStandardHeaders(protocolVersion))
+        if (!McpProtocolVersions.RequiresStandardHeaders(protocolVersion))
         {
             errorMessage = null;
             return true;
@@ -1150,9 +1249,9 @@ internal sealed class StreamableHttpHandler(
         return SafeIntegerParse.NotNumeric;
     }
 
-    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode)
+    private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode, RequestId requestId = default)
     {
-        var jsonRpcError = new JsonRpcError { Error = detail };
+        var jsonRpcError = new JsonRpcError { Id = requestId, Error = detail };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
     }
 

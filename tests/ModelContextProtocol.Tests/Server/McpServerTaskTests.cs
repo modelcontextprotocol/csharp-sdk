@@ -58,6 +58,21 @@ public class McpServerTaskTests : ClientServerTestBase
                     };
                 }
 
+                if (toolName == "async-tool-default-resulttype")
+                {
+                    // Intentionally leaves ResultType unset so the server boundary is responsible for
+                    // filling in "task" on the wire.
+                    var taskId = store.CreateTask();
+                    return new CreateTaskResult
+                    {
+                        TaskId = taskId,
+                        Status = McpTaskStatus.Working,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        LastUpdatedAt = DateTimeOffset.UtcNow,
+                        PollIntervalMs = 50,
+                    };
+                }
+
                 if (toolName == "input-required-tool")
                 {
                     var taskId = store.CreateTask(McpTaskStatus.InputRequired);
@@ -286,6 +301,19 @@ public class McpServerTaskTests : ClientServerTestBase
 
         var augmented = await client.CallToolRawAsync(
             new CallToolRequestParams { Name = "async-tool" },
+            TestContext.Current.CancellationToken);
+
+        Assert.True(augmented.IsTask);
+        Assert.Equal("task", augmented.TaskCreated!.ResultType);
+    }
+
+    [Fact]
+    public async Task CreateTaskResult_WithoutExplicitResultType_ServerFillsTask()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var augmented = await client.CallToolRawAsync(
+            new CallToolRequestParams { Name = "async-tool-default-resulttype" },
             TestContext.Current.CancellationToken);
 
         Assert.True(augmented.IsTask);
