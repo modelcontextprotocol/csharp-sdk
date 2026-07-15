@@ -89,12 +89,10 @@ public sealed class McpClientOptions
     /// <see cref="DiscoverResult.TimeToLive"/> and <see cref="DiscoverResult.CacheScope"/> before reuse.
     /// </para>
     /// <para>
-    /// This option is only valid for supported protocol versions that use the discovery-based connection model.
-    /// If <see cref="ProtocolVersion"/> is set, it must use that model and must appear in
-    /// <see cref="DiscoverResult.SupportedVersions"/>. When <see cref="ProtocolVersion"/> is
-    /// <see langword="null"/>, the client chooses the newest protocol version in
-    /// <see cref="DiscoverResult.SupportedVersions"/> that this SDK supports and that uses the per-request metadata
-    /// connection model.
+    /// The result is handled as if it had just been returned by <c>server/discover</c>. If
+    /// <see cref="ProtocolVersion"/> is set, it must use the discovery-based connection model.
+    /// Otherwise, the client uses its normal preferred protocol version. If the result does not advertise
+    /// that version, the client applies the normal fallback behavior.
     /// </para>
     /// <para>
     /// Leave this unset to preserve the default safe behavior: probe with <c>server/discover</c> and

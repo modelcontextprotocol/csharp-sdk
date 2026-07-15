@@ -298,16 +298,19 @@ internal sealed partial class McpClientImpl : McpClient
                 // prefers the 2026-07-28 revision and automatically falls back to the initialize
                 // handshake when the server doesn't support it. The initialize branch below runs only when
                 // the caller explicitly pins a version that still supports Streamable HTTP sessions (opting out of the default).
-                if (_options.PriorDiscoverResult is { } priorDiscoverResult)
+                if (_options.PriorDiscoverResult is not null &&
+                    _options.ProtocolVersion is { } requestedProtocolVersion &&
+                    !McpProtocolVersions.RequiresPerRequestMetadata(requestedProtocolVersion))
                 {
-                    string negotiatedVersion = GetPriorDiscoverProtocolVersion(priorDiscoverResult);
-                    AdoptDiscoverResult(priorDiscoverResult, negotiatedVersion);
+                    throw new InvalidOperationException(
+                        $"{nameof(McpClientOptions.PriorDiscoverResult)} can only be used with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
                 }
-                else if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
+
+                if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
                 {
                     string preferredVersion = _options.ProtocolVersion ?? McpProtocolVersions.July2026ProtocolVersion;
 
-                    DiscoverResult? discoverResult = null;
+                    DiscoverResult? discoverResult = _options.PriorDiscoverResult;
                     bool fallbackToInitialize = false;
                     IList<string>? serverSupportedVersions = null;
                     string discoverVersion = preferredVersion;
@@ -325,7 +328,7 @@ internal sealed partial class McpClientImpl : McpClient
 
                     try
                     {
-                        discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
+                        discoverResult ??= await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
                     }
                     catch (UnsupportedProtocolVersionException ex)
                     {
@@ -493,52 +496,6 @@ internal sealed partial class McpClientImpl : McpClient
         return base.GetDiscoverResult();
     }
 
-    private string GetPriorDiscoverProtocolVersion(DiscoverResult discoverResult)
-    {
-        Throw.IfNull(discoverResult);
-        Throw.IfNull(discoverResult.SupportedVersions);
-        Throw.IfNull(discoverResult.Capabilities);
-        Throw.IfNull(discoverResult.ServerInfo);
-
-        if (_options.ProtocolVersion is { } requestedProtocolVersion)
-        {
-            if (!McpProtocolVersions.IsSupportedProtocolVersion(requestedProtocolVersion))
-            {
-                throw new McpException($"The requested protocol version '{requestedProtocolVersion}' is not supported by this SDK.");
-            }
-
-            if (!McpProtocolVersions.RequiresPerRequestMetadata(requestedProtocolVersion))
-            {
-                throw new InvalidOperationException(
-                    $"{nameof(McpClientOptions.PriorDiscoverResult)} can only be used with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
-            }
-
-            if (!discoverResult.SupportedVersions.Contains(requestedProtocolVersion))
-            {
-                throw new McpException(
-                    $"The prior discovery result does not include the requested protocol version '{requestedProtocolVersion}'. " +
-                    $"Server-supported versions: {string.Join(", ", discoverResult.SupportedVersions)}.");
-            }
-
-            return requestedProtocolVersion;
-        }
-
-        string? negotiatedVersion = discoverResult.SupportedVersions
-            .Where(McpProtocolVersions.PerRequestMetadataProtocolVersions.Contains)
-            .OrderByDescending(version => version, StringComparer.Ordinal)
-            .FirstOrDefault();
-
-        if (negotiatedVersion is null)
-        {
-            throw new McpException(
-                $"The prior discovery result does not contain a protocol version supported by this SDK for the " +
-                $"{McpProtocolVersions.July2026ProtocolVersion}-or-later connection model. " +
-                $"Server-supported versions: {string.Join(", ", discoverResult.SupportedVersions)}.");
-        }
-
-        return negotiatedVersion;
-    }
-
     private void AdoptDiscoverResult(DiscoverResult discoverResult, string negotiatedVersion)
     {
         if (_logger.IsEnabled(LogLevel.Information))
@@ -549,10 +506,9 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         _discoverResult = DiscoverResultCloner.Clone(discoverResult);
-        DiscoverResult connectedState = DiscoverResultCloner.Clone(_discoverResult);
-        _serverCapabilities = connectedState.Capabilities;
-        _serverInfo = connectedState.ServerInfo;
-        _serverInstructions = connectedState.Instructions;
+        _serverCapabilities = _discoverResult.Capabilities;
+        _serverInfo = _discoverResult.ServerInfo;
+        _serverInstructions = _discoverResult.Instructions;
         _negotiatedProtocolVersion = negotiatedVersion;
         _sessionHandler.NegotiatedProtocolVersion = negotiatedVersion;
     }

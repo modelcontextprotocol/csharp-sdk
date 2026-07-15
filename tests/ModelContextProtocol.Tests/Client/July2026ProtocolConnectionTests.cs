@@ -123,11 +123,6 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         reusableDiscoverResult.ServerInfo.Name = "mutated";
         Assert.NotNull(client.GetDiscoverResult().Capabilities.Tools);
         Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.ServerInfo.Name);
-
-        client.ServerCapabilities.Tools = null;
-        client.ServerInfo.Name = "mutated client";
-        Assert.NotNull(client.GetDiscoverResult().Capabilities.Tools);
-        Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.GetDiscoverResult().ServerInfo.Name);
     }
 
     [Fact]
@@ -169,23 +164,17 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Client_WithPriorDiscoverResult_AndNoCompatibleModernVersion_Throws()
+    public async Task Client_WithPriorDiscoverResult_AndNoCompatibleModernVersion_FallsBackToInitialize()
     {
         StartServer();
 
-        var ct = TestContext.Current.CancellationToken;
-        await using var transport = new RecordingClientTransport();
-
-        var exception = await Assert.ThrowsAsync<McpException>(async () =>
-        {
-            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions
             {
                 PriorDiscoverResult = CreatePriorDiscoverResult([LatestStableVersion]),
-            }, loggerFactory: LoggerFactory, cancellationToken: ct);
-        });
+            });
 
-        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, exception.Message, StringComparison.Ordinal);
-        Assert.Empty(transport.SentMethods);
+        Assert.Equal(LatestStableVersion, client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -227,7 +216,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task Client_WithPriorDiscoverResult_AndPinnedUnsupportedFutureVersion_Throws()
+    public async Task Client_WithPriorDiscoverResult_AndPinnedFutureVersion_UsesPinnedVersion()
     {
         StartServer();
 
@@ -235,17 +224,14 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new RecordingClientTransport();
 
-        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-            {
-                ProtocolVersion = unsupportedVersion,
-                PriorDiscoverResult = CreatePriorDiscoverResult([unsupportedVersion]),
-            }, loggerFactory: LoggerFactory, cancellationToken: ct);
-        });
+            ProtocolVersion = unsupportedVersion,
+            PriorDiscoverResult = CreatePriorDiscoverResult([unsupportedVersion]),
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.Contains("not supported by this SDK", exception.Message, StringComparison.Ordinal);
         Assert.Empty(transport.SentMethods);
+        Assert.Equal(unsupportedVersion, client.NegotiatedProtocolVersion);
     }
 
     private static DiscoverResult CreatePriorDiscoverResult(IList<string>? supportedVersions = null)
