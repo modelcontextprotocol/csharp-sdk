@@ -280,12 +280,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // refresh/registration/interactive authorization and race on the shared auth state below.
         using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
-        // While we waited for the lock, another concurrent caller may have already refreshed the
-        // token. Only reuse the cached token if it is both still valid and different from the one
-        // that produced this challenge (otherwise we'd just replay the rejected token). This is
-        // limited to 401; a 403 insufficient_scope challenge must still run the step-up flow.
+        // While we waited for the lock, another concurrent caller may have already acquired or
+        // refreshed the token. Reuse the cached token if it is both still valid and different from
+        // the one that produced this challenge (otherwise we'd just replay the rejected token). When
+        // no token was sent (usedAccessToken is null, e.g. concurrent cold-start requests), any valid
+        // cached token was obtained by another caller and is safe to reuse. This is limited to 401; a
+        // 403 insufficient_scope challenge must still run the step-up flow.
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
-            usedAccessToken is not null &&
             await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } cached &&
             !string.Equals(cached.AccessToken, usedAccessToken, StringComparison.Ordinal))
         {
