@@ -366,6 +366,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
+        // Tracks whether at least one well-known endpoint returned a structurally valid metadata document.
+        // This distinguishes "no metadata document was found" (eligible for the 2025-03-26 legacy fallback)
+        // from "a metadata document exists but failed PKCE validation" (must not fall back to synthesized defaults).
+        var metadataDocumentFound = false;
+        McpException? pkceValidationFailure = null;
+
         foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
             AuthorizationServerMetadata? metadata;
@@ -395,6 +401,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 {
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
+
+                // A structurally valid metadata document was discovered. Even if it fails PKCE validation
+                // below, its existence disqualifies the legacy fallback that would otherwise synthesize S256.
+                metadataDocumentFound = true;
             }
             catch (Exception ex)
             {
@@ -427,6 +437,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             catch (Exception ex)
             {
                 LogAuthServerMetadataMissingPkceSupport(ex, wellKnownEndpoint);
+                pkceValidationFailure = ex as McpException ?? new McpException(ex.Message, ex);
                 continue;
             }
 
@@ -437,10 +448,17 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return metadata;
         }
 
+        // A discovered metadata document that failed PKCE validation must not be replaced with synthesized
+        // defaults. Surface the specific PKCE failure regardless of whether PRM was available.
+        if (metadataDocumentFound && pkceValidationFailure is not null)
+        {
+            throw pkceValidationFailure;
+        }
+
         if (resourceUri is null)
         {
-            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
-            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
+            // 2025-03-26 backcompat: when PRM is unavailable and no auth server metadata document was
+            // discovered, fall back to default endpoint paths per the 2025-03-26 spec.
             return BuildDefaultAuthServerMetadata(authServerUri);
         }
 

@@ -1751,6 +1751,81 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WithLegacyServerWhoseMetadataOmitsPkceMethods()
+    {
+        // 2025-03-26 backcompat regression guard: PRM is unavailable (resourceUri is null), but the server
+        // DOES serve an auth server metadata document that omits 'code_challenge_methods_supported'.
+        // The client must refuse to proceed rather than falling back to synthesized S256 defaults, since a
+        // discovered metadata document that fails PKCE validation disqualifies the legacy default fallback.
+        TestOAuthServer.ExpectResource = false;
+
+        // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidateAudience = false;
+        });
+
+        await using var app = Builder.Build();
+
+        app.Use(async (context, next) =>
+        {
+            // Return 404 for PRM to simulate a legacy server that doesn't support RFC 9728.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Serve auth server metadata that omits 'code_challenge_methods_supported' entirely.
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
+                context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
+            {
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync($$"""
+                    {
+                        "issuer": "{{OAuthServerUrl}}",
+                        "authorization_endpoint": "{{McpServerUrl}}/authorize",
+                        "token_endpoint": "{{McpServerUrl}}/token",
+                        "registration_endpoint": "{{McpServerUrl}}/register",
+                        "response_types_supported": ["code"],
+                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "token_endpoint_auth_methods_supported": ["client_secret_post"]
+                    }
+                    """);
+                return;
+            }
+
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        // The specific PKCE failure reason is surfaced rather than a generic discovery failure or a
+        // silently-synthesized S256 fallback.
+        Assert.Contains("code_challenge_methods_supported", ex.Message);
+    }
+
+    [Fact]
     public async Task AuthorizationFlow_AppendsOfflineAccess_WhenServerAdvertisesIt()
     {
         TestOAuthServer.IncludeOfflineAccessInMetadata = true;
