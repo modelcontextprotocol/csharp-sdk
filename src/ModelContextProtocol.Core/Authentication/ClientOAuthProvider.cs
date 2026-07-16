@@ -48,6 +48,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+
+    // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
+    // expired token (or a 401) at the same time, only the first runs the refresh/authorization flow
+    // while the others await its result. This also serializes writes to the mutable auth state below
+    // (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod).
+    //
+    // Intentionally not disposed: this instance is only ever used via WaitAsync/Release (never its
+    // AvailableWaitHandle), so SemaphoreSlim allocates no unmanaged resource and there is nothing to
+    // dispose. Do not access AvailableWaitHandle, or this field will need deterministic disposal.
+    private readonly SemaphoreSlim _tokenAcquisitionLock = new(1, 1);
     // The accumulated scope set lives for this provider's lifetime and is intentionally not keyed by
     // resource or authorization server. This is safe today because one ClientOAuthProvider is created
     // per HttpClientTransport, i.e. per endpoint/resource. If a provider were ever reused across
@@ -145,7 +155,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (ShouldRetryWithNewAccessToken(response))
         {
-            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+            // Capture the token that produced this challenge so the retry path can detect whether
+            // another concurrent caller already replaced it in the cache.
+            var usedAccessToken = request.Headers.Authorization?.Parameter;
+            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
         }
 
         return response;
@@ -161,15 +174,32 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return (tokens.AccessToken, false);
         }
 
-        // Try to refresh the access token if it is invalid and we have a refresh token.
-        if (_authServerMetadata is not null && tokens?.RefreshToken is { Length: > 0 } refreshToken)
+        // A refresh is only possible if we have both the auth server metadata and a refresh token.
+        if (_authServerMetadata is null || tokens?.RefreshToken is not { Length: > 0 })
+        {
+            // No valid token - auth handler will trigger the 401 flow
+            return (null, false);
+        }
+
+        // Serialize the refresh so concurrent callers that all saw the expired token don't each fire
+        // their own refresh. Waiters re-check the cache after acquiring the lock and reuse the token
+        // produced by whoever refreshed first.
+        using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        var current = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        if (current is not null && !current.IsExpired)
+        {
+            return (current.AccessToken, true);
+        }
+
+        if (_authServerMetadata is not null && current?.RefreshToken is { Length: > 0 } refreshToken)
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
         // No valid token - auth handler will trigger the 401 flow
-        return (null, false);
+        return (null, true);
     }
 
     private static bool ShouldRetryWithNewAccessToken(HttpResponseMessage response)
@@ -208,6 +238,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         JsonRpcMessage? originalJsonRpcMessage,
         HttpResponseMessage response,
         bool attemptedRefresh,
+        string? usedAccessToken,
         CancellationToken cancellationToken)
     {
         if (response.Headers.WwwAuthenticate.Count == 0)
@@ -220,7 +251,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
@@ -241,8 +272,30 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="response">The HTTP response that triggered the authentication challenge.</param>
     /// <param name="attemptedRefresh">Indicates whether a token refresh has already been attempted.</param>
+    /// <param name="usedAccessToken">The access token that produced the challenge, or <see langword="null"/> if none was sent.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
+    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, string? usedAccessToken, CancellationToken cancellationToken)
+    {
+        // Serialize the authorization flow so concurrent 401/403 challenges don't each run a full
+        // refresh/registration/interactive authorization and race on the shared auth state below.
+        using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        // While we waited for the lock, another concurrent caller may have already refreshed the
+        // token. Only reuse the cached token if it is both still valid and different from the one
+        // that produced this challenge (otherwise we'd just replay the rejected token). This is
+        // limited to 401; a 403 insufficient_scope challenge must still run the step-up flow.
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            usedAccessToken is not null &&
+            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } cached &&
+            !string.Equals(cached.AccessToken, usedAccessToken, StringComparison.Ordinal))
+        {
+            return cached.AccessToken;
+        }
+
+        return await GetAccessTokenCoreAsync(response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> GetAccessTokenCoreAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
