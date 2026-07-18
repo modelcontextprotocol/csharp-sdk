@@ -34,11 +34,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly Uri? _clientMetadataDocumentUri;
 
-    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrConfiguredApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
     private readonly Uri? _dcrClientUri;
     private readonly string? _dcrInitialAccessToken;
-    private readonly string? _dcrApplicationType;
+    private readonly string? _dcrConfiguredApplicationType;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
     private readonly HttpClient _httpClient;
@@ -100,7 +100,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
-        _dcrApplicationType = ResolveApplicationType(options, _redirectUri);
+        _dcrConfiguredApplicationType = options.DynamicClientRegistration?.ApplicationType;
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
@@ -679,6 +679,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         LogPerformingDynamicClientRegistration(authServerMetadata.RegistrationEndpoint);
 
+        var dcrApplicationType = ResolveApplicationType(_dcrConfiguredApplicationType, _redirectUri);
         var registrationRequest = new DynamicClientRegistrationRequest
         {
             RedirectUris = [_redirectUri.ToString()],
@@ -688,7 +689,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
-            ApplicationType = _dcrApplicationType,
+            ApplicationType = dcrApplicationType,
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -712,7 +713,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             var errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             ThrowFailedToHandleUnauthorizedResponse(
                 $"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent} " +
-                $"(application_type: '{_dcrApplicationType ?? "<null>"}', redirect_uri: '{_redirectUri}').");
+                $"(application_type: '{dcrApplicationType}', redirect_uri: '{_redirectUri}').");
         }
 
         using var responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -746,26 +747,22 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private static string? ResolveApplicationType(ClientOAuthOptions options, Uri redirectUri)
+    private static string ResolveApplicationType(string? configuredApplicationType, Uri redirectUri)
     {
-        var explicitType = options.DynamicClientRegistration?.ApplicationType;
         var inferredType = InferApplicationType(redirectUri);
 
-        if (explicitType is not null &&
-            inferredType is not null &&
-            !string.Equals(explicitType, inferredType, StringComparison.Ordinal))
+        if (configuredApplicationType is not null &&
+            !string.Equals(configuredApplicationType, inferredType, StringComparison.Ordinal))
         {
             throw new ArgumentException(
-                $"DynamicClientRegistrationOptions.ApplicationType \"{explicitType}\" conflicts with the type inferred from the redirect URI (\"{inferredType}\").",
-                nameof(options));
+                $"DynamicClientRegistrationOptions.ApplicationType \"{configuredApplicationType}\" conflicts with the type inferred from the redirect URI (\"{inferredType}\").",
+                nameof(configuredApplicationType));
         }
 
-        var resolved = explicitType ?? inferredType;
-        options.DynamicClientRegistration?.ApplicationType = resolved;
-        return resolved;
+        return configuredApplicationType ?? inferredType;
     }
 
-    private static string? InferApplicationType(Uri redirectUri)
+    private static string InferApplicationType(Uri redirectUri)
     {
         if (redirectUri.Scheme is "http" or "https")
         {

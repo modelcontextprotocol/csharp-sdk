@@ -109,6 +109,8 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("native", TestOAuthServer.LastApplicationType);
     }
 
     [Fact]
@@ -123,7 +125,11 @@ public class AuthTests : OAuthTestBase
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
-                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl)
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
             },
         }, HttpClient, LoggerFactory);
 
@@ -178,6 +184,10 @@ public class AuthTests : OAuthTestBase
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
             },
         }, HttpClient, LoggerFactory);
 
