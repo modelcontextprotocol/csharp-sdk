@@ -46,6 +46,18 @@ public abstract partial class McpSession : IAsyncDisposable
     public abstract string? NegotiatedProtocolVersion { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the negotiated protocol version is <c>2026-07-28</c> or later: the
+    /// revision that removed the <c>initialize</c> handshake (SEP-2575) and <c>Mcp-Session-Id</c> (SEP-2567)
+    /// and enabled MRTR (SEP-2322).
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="false"/> when no version has been negotiated yet. This is the shared
+    /// definition of "is this peer speaking the 2026-07-28 or later revision" used by both the client and server.
+    /// </remarks>
+    internal bool IsJuly2026OrLaterProtocol() =>
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
+
+    /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>

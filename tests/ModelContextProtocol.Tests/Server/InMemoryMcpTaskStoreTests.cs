@@ -1,3 +1,4 @@
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
@@ -55,13 +56,13 @@ public class InMemoryMcpTaskStoreTests
     }
 
     [Fact]
-    public async Task CreateTaskAsync_UsesDefaultTtl()
+    public async Task CreateTaskAsync_UsesDefaultTimeToLive()
     {
-        var store = new InMemoryMcpTaskStore { DefaultTtlMs = 30000 };
+        var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromSeconds(30) };
 
         var result = await store.CreateTaskAsync(CT);
 
-        Assert.Equal(30000, result.TtlMs);
+        Assert.Equal(TimeSpan.FromSeconds(30), result.TimeToLive);
     }
 
     [Fact]
@@ -85,6 +86,59 @@ public class InMemoryMcpTaskStoreTests
         var result = await store.GetTaskAsync("nonexistent", CT);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_WithinTimeToLive_ReturnsTask()
+    {
+        var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromMinutes(10) };
+        var created = await store.CreateTaskAsync(CT);
+
+        var result = await store.GetTaskAsync(created.TaskId, CT);
+
+        Assert.NotNull(result);
+        Assert.Equal(created.TaskId, result.TaskId);
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_AfterTimeToLiveElapsed_ReturnsNull()
+    {
+        var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromMilliseconds(100) };
+        var created = await store.CreateTaskAsync(CT);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(500), CT);
+
+        var result = await store.GetTaskAsync(created.TaskId, CT);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_WithoutTimeToLive_DoesNotExpire()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var created = await store.CreateTaskAsync(CT);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(200), CT);
+
+        var result = await store.GetTaskAsync(created.TaskId, CT);
+
+        Assert.NotNull(result);
+        Assert.Equal(created.TaskId, result.TaskId);
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_WithZeroTimeToLive_DoesNotExpire()
+    {
+        var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.Zero };
+        var created = await store.CreateTaskAsync(CT);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(200), CT);
+
+        var result = await store.GetTaskAsync(created.TaskId, CT);
+
+        Assert.NotNull(result);
+        Assert.Equal(created.TaskId, result.TaskId);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Provides storage and retrieval of SSE event streams, enabling resumability and redelivery of events.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public interface ISseEventStreamStore
 {
     /// <summary>

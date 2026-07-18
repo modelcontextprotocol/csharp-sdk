@@ -8,8 +8,8 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 public abstract class Result
 {
-    /// <summary>Prevent external derivations.</summary>
-    private protected Result()
+    /// <summary>Initializes the base result type.</summary>
+    protected Result()
     {
     }
 
@@ -28,10 +28,8 @@ public abstract class Result
     /// <remarks>
     /// <para>
     /// When absent or set to <c>"complete"</c>, the result is a normal completed response.
-    /// When set to <c>"input_required"</c>, the result is an <see cref="InputRequiredResult"/> indicating
-    /// that additional input is needed before the request can be completed.
-    /// When set to <c>"task"</c>, the result is a <see cref="CreateTaskResult"/> indicating that the server
-    /// has created a long-running task in lieu of returning the result directly.
+    /// Other values discriminate alternate result subtypes so callers can choose the appropriate
+    /// concrete payload to deserialize.
     /// </para>
     /// </remarks>
     /// <value>Defaults to <see langword="null"/>, which is equivalent to <c>"complete"</c>.</value>

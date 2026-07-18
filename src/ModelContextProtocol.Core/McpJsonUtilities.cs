@@ -54,7 +54,13 @@ public static partial class McpJsonUtilities
         return options;
     }
 
-    internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
+    /// <summary>
+    /// Gets the resolved <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/> from the specified options.
+    /// </summary>
+    /// <typeparam name="T">The type whose serialization metadata should be resolved.</typeparam>
+    /// <param name="options">The serializer options providing the type-info resolver chain.</param>
+    /// <returns>The resolved <see cref="JsonTypeInfo{T}"/>.</returns>
+    public static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
@@ -89,7 +95,7 @@ public static partial class McpJsonUtilities
     // matching JSON Schema 2020-12: a schema may be either a JSON object (the usual form
     // with keywords like "type", "properties", etc.) or a boolean (`true` matches anything,
     // `false` matches nothing). Stricter keyword-level validation is intentionally not
-    // performed. Pre-2026-06-30 clients still receive the legacy wrapped wire shape — that
+    // performed. Pre-2026-07-28 clients still receive the legacy wrapped wire shape — that
     // wiring lives in AIFunctionMcpServerTool.CreateStructuredResponse and McpServerImpl's
     // listToolsHandler.
     internal static bool IsValidToolOutputSchema(JsonElement element) =>
@@ -120,12 +126,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(RootsListChangedNotificationParams))]
     [JsonSerializable(typeof(ToolListChangedNotificationParams))]
-    [JsonSerializable(typeof(TaskStatusNotificationParams))]
-    [JsonSerializable(typeof(WorkingTaskNotificationParams))]
-    [JsonSerializable(typeof(CompletedTaskNotificationParams))]
-    [JsonSerializable(typeof(FailedTaskNotificationParams))]
-    [JsonSerializable(typeof(CancelledTaskNotificationParams))]
-    [JsonSerializable(typeof(InputRequiredTaskNotificationParams))]
 
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
@@ -134,8 +134,14 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
     [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(DiscoverRequestParams))]
+    [JsonSerializable(typeof(DiscoverResult))]
     [JsonSerializable(typeof(ElicitRequestParams))]
     [JsonSerializable(typeof(ElicitResult))]
+    [JsonSerializable(typeof(MissingRequiredClientCapabilityErrorData))]
+    [JsonSerializable(typeof(SubscriptionsListenRequestParams))]
+    [JsonSerializable(typeof(SubscriptionsAcknowledgedNotificationParams))]
+    [JsonSerializable(typeof(UnsupportedProtocolVersionErrorData))]
     [JsonSerializable(typeof(UrlElicitationRequiredErrorData))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
@@ -168,19 +174,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
     [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
 
-    [JsonSerializable(typeof(GetTaskRequestParams))]
-    [JsonSerializable(typeof(GetTaskResult))]
-    [JsonSerializable(typeof(WorkingTaskResult))]
-    [JsonSerializable(typeof(CompletedTaskResult))]
-    [JsonSerializable(typeof(FailedTaskResult))]
-    [JsonSerializable(typeof(CancelledTaskResult))]
-    [JsonSerializable(typeof(InputRequiredTaskResult))]
-    [JsonSerializable(typeof(UpdateTaskRequestParams))]
-    [JsonSerializable(typeof(UpdateTaskResult))]
-    [JsonSerializable(typeof(CancelTaskRequestParams))]
-    [JsonSerializable(typeof(CancelTaskResult))]
-    [JsonSerializable(typeof(CreateTaskResult))]
-
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]
     [JsonSerializable(typeof(TextContentBlock))]
@@ -201,6 +194,11 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
+    [JsonSerializable(typeof(JsonElement))]
+    [JsonSerializable(typeof(Implementation))]
+    [JsonSerializable(typeof(ClientCapabilities))]
+    [JsonSerializable(typeof(ServerCapabilities))]
+    [JsonSerializable(typeof(LoggingLevel))]
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]

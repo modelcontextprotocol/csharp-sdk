@@ -126,29 +126,40 @@ public static class RequestMethods
     public const string Initialize = "initialize";
 
     /// <summary>
-    /// The name of the request method sent from the client to poll for task completion.
+    /// The name of the request method sent from the client to discover the server's protocol versions,
+    /// capabilities, and metadata.
     /// </summary>
     /// <remarks>
-    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
-    /// Clients poll for task status by sending this request with the task ID.
+    /// <para>
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
+    /// to learn what a server supports without performing the <c>initialize</c> handshake.
+    /// </para>
+    /// <para>
+    /// The server's response includes its supported protocol versions, capabilities, implementation
+    /// information, and optional usage instructions.
+    /// </para>
+    /// <para>
+    /// Servers SHOULD implement this method. Initialize-handshake clients MAY ignore it. Clients on the
+    /// 2026-07-28 revision typically call this once during connection establishment.
+    /// </para>
     /// </remarks>
-    public const string TasksGet = "tasks/get";
+    public const string ServerDiscover = "server/discover";
 
     /// <summary>
-    /// The name of the request method sent from the client to provide input responses to a task.
+    /// The name of the request method sent from the client to open a long-lived subscription for
+    /// receiving server-to-client notifications outside of a specific request's response stream.
     /// </summary>
     /// <remarks>
-    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
-    /// Used when a task has <c>input_required</c> status and the client needs to fulfill outstanding requests.
+    /// <para>
+    /// This RPC is introduced in the 2026-07-28 protocol revision (SEP-2575) and replaces the unsolicited
+    /// HTTP GET endpoint and the initialize-handshake <see cref="ResourcesSubscribe"/> / <see cref="ResourcesUnsubscribe"/>
+    /// request methods.
+    /// </para>
+    /// <para>
+    /// The request opens a response stream on which the server first sends a
+    /// <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> describing the granted
+    /// notifications, and then streams matching notifications until the subscription is cancelled.
+    /// </para>
     /// </remarks>
-    public const string TasksUpdate = "tasks/update";
-
-    /// <summary>
-    /// The name of the request method sent from the client to signal intent to cancel a task.
-    /// </summary>
-    /// <remarks>
-    /// Part of the <c>io.modelcontextprotocol/tasks</c> extension.
-    /// Cancellation is cooperative — the server decides whether and when to honor it.
-    /// </remarks>
-    public const string TasksCancel = "tasks/cancel";
+    public const string SubscriptionsListen = "subscriptions/listen";
 }

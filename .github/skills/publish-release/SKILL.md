@@ -69,14 +69,24 @@ Re-categorize all PRs in the commit range (including any new ones from Step 3). 
 3. **Re-attribute** co-authors for any new PRs by harvesting `Co-authored-by` trailers from all commits in each PR.
 4. **Update acknowledgements** to include contributors from new PRs.
 
-### Step 5: Validate README Code Samples
+### Step 5: Review README and Validate Code Samples
 
-Verify that all C# code samples in the package README files compile against the current SDK at the merge commit. Follow the [README validation guide](../prepare-release/references/readme-snippets.md) for the full procedure.
+Re-run the README content checklist from [../prepare-release/references/readme-content.md](../prepare-release/references/readme-content.md) and validate code samples against the current SDK at the merge commit. Produce final suggestions before the release is created.
 
-1. Extract `csharp`-fenced code blocks from `README.md` and `src/PACKAGE.md`
-2. Create a temporary test project at `tests/ReadmeSnippetValidation/`
-3. Build and report results
-4. Delete the temporary project
+1. **Content checklist** -- Open `src/PACKAGE.md` and verify:
+   - **Package-list closure**: every shipping SDK package is listed. If a new package was introduced after prepare-release ran, it may be missing.
+   - **Badge strategy**: all badges use `nuget/vpre` for a prerelease or `nuget/v` for a stable release. Verify the badge style is correct for this release type.
+   - **Release-notes link**: the link points to `https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v{version}` for the tag being created. The tag is about to exist -- verify the URL is correct.
+   - **Root README.md sync**: confirm the root `README.md` package list is aligned.
+2. **Snippet validation** -- Extract `csharp`-fenced code blocks from `src/PACKAGE.md` and `README.md`, build the temporary test project, and report results. Follow [../prepare-release/references/readme-snippets.md](../prepare-release/references/readme-snippets.md) for the full procedure.
+3. **Delete** the temporary project after validation.
+
+If issues are found, present them to the user with proposed fixes. Any fixes must be applied as a separate commit before the draft release is created.
+
+**Edge Cases:**
+- **Stale package closure** -- A package introduced between prepare-release and now may not be listed. Add it to `src/PACKAGE.md` and `README.md`.
+- **Wrong badge style for the release type** -- Switch all badges together from `nuget/vpre` to `nuget/v` (or vice versa) if the prepare-release step used the wrong style.
+- **Missing or incorrect release-notes link** -- Correct the link to target the exact tag being created, including any prerelease suffix.
 
 ### Step 6: Review Sections
 

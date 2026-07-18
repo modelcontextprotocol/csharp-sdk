@@ -3,6 +3,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Represents the mode of an SSE event stream.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public enum SseEventStreamMode
 {
     /// <summary>

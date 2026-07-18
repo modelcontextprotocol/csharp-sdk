@@ -26,6 +26,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private string? _negotiatedProtocolVersion;
     private Task? _getReceiveTask;
+    private bool _streamableHttpAdopted;
     private volatile ClientTransportClosedException? _disconnectError;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
@@ -54,7 +55,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (_options.KnownSessionId is { } knownSessionId)
         {
             SessionId = knownSessionId;
-            _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
+            _streamableHttpAdopted = true;
+            StartUnsolicitedMessageStreamIfEnabled();
         }
     }
 
@@ -63,7 +65,72 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         // Immediately dispose the response. SendHttpRequestAsync only returns the response so the auto transport can look at it.
         using var response = await SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
+
+        // Per spec PR #2844 (HTTP backwards compatibility), a 400 Bad Request that carries a
+        // JSON-RPC error envelope means the peer is signalling something application-level about
+        // our request. Surface ANY JSON-RPC error on a 400 as McpProtocolException so the
+        // connect-time logic can react. For example, the three per-request metadata protocol error codes
+        // (-32022 UnsupportedProtocolVersion, -32021 MissingRequiredClientCapability,
+        // -32020 HeaderMismatch) lead to typed exceptions, while other codes (e.g. -32600 from
+        // initialize-handshake servers that don't understand the SEP-2575 _meta envelope) become generic
+        // McpProtocolException instances and trigger the initialize-handshake fallback path.
+        // Other status codes (401 auth, 403 forbidden, 404 session-not-found, 5xx server) continue
+        // to surface as HttpRequestException to preserve back-compat with transport-layer behaviors.
+        // The three per-request metadata protocol error codes are also surfaced for non-400 status codes
+        // for robustness. Servers occasionally emit them with 4xx codes other than 400.
+        if (!response.IsSuccessStatusCode &&
+            await TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
+            (response.StatusCode == HttpStatusCode.BadRequest ||
+             IsPerRequestMetadataProtocolErrorCode((McpErrorCode)parsedError.Error.Code)))
+        {
+            throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
+        }
+
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsPerRequestMetadataProtocolErrorCode(McpErrorCode code) =>
+        code is McpErrorCode.UnsupportedProtocolVersion
+             or McpErrorCode.MissingRequiredClientCapability
+             or McpErrorCode.HeaderMismatch;
+
+    /// <summary>
+    /// Reads a JSON-RPC error envelope from an <c>application/json</c> response body, returning
+    /// <see langword="null"/> when the response isn't JSON, is empty, or doesn't parse to a
+    /// <see cref="JsonRpcError"/>. Shared with the auto-detecting transport so it can tell an MCP
+    /// server that rejected the request apart from a non-MCP endpoint without throwing.
+    /// </summary>
+    internal static async Task<JsonRpcError?> TryReadJsonRpcErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.Content.Headers.ContentType?.MediaType != "application/json")
+        {
+            return null;
+        }
+
+        string body;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(body))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize(body, McpJsonUtilities.JsonContext.Default.JsonRpcMessage) as JsonRpcError;
+        }
+        catch
+        {
+            // Not a valid JSON-RPC error response — fall through to the standard HTTP exception path.
+            return null;
+        }
     }
 
     // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.
@@ -79,6 +146,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         LogTransportSendingMessageSensitive(message);
 
+        // Under the 2026-07-28 or later protocol revision (SEP-2575), every request carries its protocol version in
+        // _meta/io.modelcontextprotocol/protocolVersion (and the matching MCP-Protocol-Version HTTP
+        // header). Pick the value off the message so the first request (server/discover) can
+        // include the header even before we've recorded a negotiated version from an initialize reply.
+        var protocolVersionForRequest = ExtractProtocolVersionFromMeta(message) ?? _negotiatedProtocolVersion;
+
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
@@ -90,7 +163,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             },
         };
 
-        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
+        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, protocolVersionForRequest);
 
         AddMcpRequestHeaders(httpRequestMessage.Headers, message);
 
@@ -115,7 +188,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            if (responseContent.Length > 0)
+            {
+                rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            }
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
@@ -146,7 +222,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse initResponse)
         {
             // We've successfully initialized! Copy session-id and protocol version, then start GET request if any.
-            if (response.Headers.TryGetValues("Mcp-Session-Id", out var sessionIdValues))
+            if (response.Headers.TryGetValues(McpHttpHeaders.SessionId, out var sessionIdValues))
             {
                 SessionId = sessionIdValues.FirstOrDefault();
             }
@@ -154,10 +230,44 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             var initializeResult = JsonSerializer.Deserialize(initResponse.Result, McpJsonUtilities.JsonContext.Default.InitializeResult);
             _negotiatedProtocolVersion = initializeResult?.ProtocolVersion;
 
-            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
+            _streamableHttpAdopted = true;
+            StartUnsolicitedMessageStreamIfEnabled();
+        }
+        else if (rpcRequest.Method == RequestMethods.ServerDiscover && rpcResponseOrError is JsonRpcResponse)
+        {
+            // Under the 2026-07-28 or later protocol revision (SEP-2575), server/discover replaces the initialize
+            // handshake. The transport caches the protocol version from the outgoing request's _meta
+            // so subsequent requests carry the matching MCP-Protocol-Version header without re-parsing.
+            _negotiatedProtocolVersion ??= ExtractProtocolVersionFromMeta(message);
         }
 
         return response;
+    }
+
+    private void StartUnsolicitedMessageStreamIfEnabled()
+    {
+        if (_options.EnableStandaloneGetStream)
+        {
+            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reads the protocol version from a request's <c>_meta/io.modelcontextprotocol/protocolVersion</c> field,
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Returns <see langword="null"/> for messages that
+    /// don't have that field.
+    /// </summary>
+    private static string? ExtractProtocolVersionFromMeta(JsonRpcMessage message)
+    {
+        if (message is JsonRpcRequest { Params: System.Text.Json.Nodes.JsonObject paramsObj } &&
+            paramsObj["_meta"] is System.Text.Json.Nodes.JsonObject metaObj &&
+            metaObj[MetaKeys.ProtocolVersion] is System.Text.Json.Nodes.JsonValue versionValue &&
+            versionValue.TryGetValue(out string? version))
+        {
+            return version;
+        }
+
+        return null;
     }
 
     public override async ValueTask DisposeAsync()
@@ -199,7 +309,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         {
             // If we're auto-detecting the transport and failed to connect, leave the message Channel open for the SSE transport.
             // This class isn't directly exposed to public callers, so we don't have to worry about changing the _state in this case.
-            if (_options.TransportMode is not HttpTransportMode.AutoDetect || _getReceiveTask is not null)
+            if (_options.TransportMode is not HttpTransportMode.AutoDetect || _streamableHttpAdopted)
             {
                 // _disconnectError is set when the server returns 404 indicating session expiry.
                 // When null, this is a graceful client-initiated closure (no error).
@@ -432,7 +542,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         string? protocolVersion,
         string? lastEventId = null)
     {
-        if (sessionId is not null)
+        if (sessionId is not null && McpProtocolVersions.SupportsHttpSessions(protocolVersion))
         {
             headers.Add(McpHttpHeaders.SessionId, sessionId);
         }

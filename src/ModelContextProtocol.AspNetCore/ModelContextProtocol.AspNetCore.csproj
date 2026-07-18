@@ -25,6 +25,7 @@
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
   <ItemGroup>

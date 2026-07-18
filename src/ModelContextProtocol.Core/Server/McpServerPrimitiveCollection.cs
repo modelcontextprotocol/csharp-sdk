@@ -12,6 +12,15 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, T> _primitives;
 
+    /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_hasDeferredChangeEvents"/>.</summary>
+    private readonly object _deferralLock = new();
+
+    /// <summary>Depth counter for active <see cref="DeferChangedEvents"/> scopes. Positive means notifications are deferred.</summary>
+    private int _activeDeferralScopes;
+
+    /// <summary>Whether a change occurred while notifications were deferred.</summary>
+    private bool _hasDeferredChangeEvents;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
     /// </summary>
@@ -33,8 +42,85 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Gets a value that indicates whether there are any primitives in the collection.</summary>
     public bool IsEmpty => _primitives.IsEmpty;
 
+    /// <summary>
+    /// Begins a deferred-change scope. <see cref="Changed"/> notifications are suppressed
+    /// until the returned scope is disposed, at which point a single notification is raised
+    /// if any mutation occurred during the scope. Multiple scopes may be active simultaneously;
+    /// the notification fires once all active scopes have been disposed.
+    /// </summary>
+    /// <returns>An <see cref="IDisposable"/> that ends the deferral scope when disposed.</returns>
+    /// <remarks>
+    /// The scope is exception-safe: even if an exception is thrown inside a <c>using</c> block,
+    /// the deferral is ended on dispose. If any mutation occurred before the exception, a single
+    /// <see cref="Changed"/> notification is raised.
+    /// <para>
+    /// Mutations from any thread during an open scope are coalesced. A single <see cref="Changed"/>
+    /// notification fires on the thread that disposes the last active scope, only if at least one
+    /// mutation occurred. All deferral state transitions are guarded by an internal lock, so
+    /// concurrent mutations and concurrent scope disposal are both safe. Disposing the same scope
+    /// instance more than once is safe and has no additional effect.
+    /// </para>
+    /// </remarks>
+    public IDisposable DeferChangedEvents()
+    {
+        lock (_deferralLock)
+        {
+            _activeDeferralScopes++;
+        }
+        return new ChangeDeferralScope(this);
+    }
+
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
-    protected void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+    /// <remarks>
+    /// If a <see cref="DeferChangedEvents"/> scope is active, the notification is deferred until all
+    /// active scopes are disposed. Derived types that override mutation methods and call
+    /// <see cref="RaiseChanged"/> will automatically participate in deferral.
+    /// </remarks>
+    protected void RaiseChanged()
+    {
+        lock (_deferralLock)
+        {
+            if (_activeDeferralScopes > 0)
+            {
+                _hasDeferredChangeEvents = true;
+                return;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EndDeferral()
+    {
+        bool raise;
+        lock (_deferralLock)
+        {
+            raise = --_activeDeferralScopes == 0 && _hasDeferredChangeEvents;
+            if (raise)
+            {
+                _hasDeferredChangeEvents = false;
+            }
+        }
+
+        if (raise)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private sealed class ChangeDeferralScope : IDisposable
+    {
+        private McpServerPrimitiveCollection<T>? _collection;
+
+        public ChangeDeferralScope(McpServerPrimitiveCollection<T> collection) =>
+            _collection = collection;
+
+        public void Dispose()
+        {
+            McpServerPrimitiveCollection<T>? collection = Interlocked.Exchange(ref _collection, null);
+            collection?.EndDeferral();
+        }
+    }
 
     /// <summary>Gets the <typeparamref name="T"/> with the specified <paramref name="name"/> from the collection.</summary>
     /// <param name="name">The name of the primitive to retrieve.</param>

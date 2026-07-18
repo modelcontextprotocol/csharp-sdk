@@ -1,3 +1,4 @@
+﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -29,16 +30,13 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = new InMemoryMcpTaskStore
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-                DefaultTtlMs = 5000,
-            };
-        });
-
-        mcpServerBuilder.WithTools([McpServerTool.Create(
+                DefaultTimeToLive = TimeSpan.FromSeconds(5),
+            })
+            .WithTools([McpServerTool.Create(
             async (CancellationToken ct) =>
             {
                 _toolStarted.TrySetResult(true);
@@ -66,7 +64,7 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "long-running-tool" }, ct);
 
         Assert.True(augmented.IsTask);
@@ -93,7 +91,7 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "long-running-tool" }, ct);
 
         Assert.True(augmented.IsTask);
@@ -130,15 +128,12 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = new InMemoryMcpTaskStore
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            };
-        });
-
-        mcpServerBuilder.WithTools([McpServerTool.Create(
+            })
+            .WithTools([McpServerTool.Create(
             async (string marker, CancellationToken ct) =>
             {
                 TaskCompletionSource<bool> startTcs;
@@ -219,14 +214,14 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
         RegisterMarker("task2");
 
         // Start two tasks
-        var result1 = await client.CallToolRawAsync(
+        var result1 = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "trackable-tool",
                 Arguments = CreateMarkerArgs("task1"),
             }, ct);
 
-        var result2 = await client.CallToolRawAsync(
+        var result2 = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "trackable-tool",
@@ -273,15 +268,12 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = new InMemoryMcpTaskStore
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            };
-        });
-
-        mcpServerBuilder.WithTools([
+            })
+            .WithTools([
             McpServerTool.Create(
                 async (CancellationToken ct) =>
                 {
@@ -316,7 +308,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "quick-tool" }, ct);
 
         Assert.True(augmented.IsTask);
@@ -346,7 +338,7 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var augmented = await client.CallToolRawAsync(
+        var augmented = await client.CallToolAsTaskAsync(
             new CallToolRequestParams { Name = "failing-tool" }, ct);
 
         Assert.True(augmented.IsTask);

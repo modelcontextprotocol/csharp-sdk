@@ -1,7 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Server;
 
@@ -14,7 +14,7 @@ public sealed class McpServerOptions
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
     /// <remarks>
-    /// This information is sent to the client during initialization to identify the server.
+    /// This information is sent to the client during initialization or discovery to identify the server.
     /// It's displayed in client logs and can be used for debugging and compatibility checks.
     /// </remarks>
     public Implementation? ServerInfo { get; set; }
@@ -33,11 +33,23 @@ public sealed class McpServerOptions
     /// Gets or sets the protocol version supported by this server, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
-    /// The protocol version defines which features and message formats this server supports.
-    /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertise to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertise the latest
-    /// version supported by the server.
+    /// <para>
+    /// The protocol version defines which features and message formats this server supports. Supported
+    /// values are <c>2024-11-05</c>, <c>2025-03-26</c>, <c>2025-06-18</c>, <c>2025-11-25</c>, and
+    /// <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/>, the server supports all of the versions listed above. For clients using
+    /// the <c>initialize</c> handshake, the server returns the requested initialize-capable version when it
+    /// is supported and otherwise returns <c>2025-11-25</c>. For clients using <c>server/discover</c> and
+    /// per-request metadata, the server advertises the supported per-request metadata versions; currently
+    /// this is <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// Set this property to a specific supported value to pin the server to that version. Setting it to
+    /// <c>2026-07-28</c> makes the server reject <c>initialize</c> handshakes; setting it to an earlier
+    /// value makes the server reject <c>2026-07-28</c> per-request metadata.
+    /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -74,12 +86,13 @@ public sealed class McpServerOptions
     public bool ScopeRequests { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets preexisting knowledge about the client including its name and version to help support
-    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
+    /// Gets or sets preexisting knowledge about the client including its name and version.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientCapabilities"/>.
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
@@ -90,7 +103,8 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
     /// This is typically set during session migration in conjunction with <see cref="KnownClientInfo"/>.
     /// </para>
     /// </remarks>
@@ -191,17 +205,18 @@ public sealed class McpServerOptions
     public int MaxSamplingOutputTokens { get; set; } = 1000;
 
     /// <summary>
-    /// Gets or sets the task store for managing asynchronous task executions.
+    /// Gets or sets custom request handlers to register with the server.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When set, the server automatically enables the <c>io.modelcontextprotocol/tasks</c> extension
-    /// and wires up <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> handlers backed by this store.
-    /// Tool executions from clients that signal task support will be wrapped in tasks via the store.
+    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
+    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// If explicit task handlers are also set on <see cref="Handlers"/>, the explicit handlers take precedence.
+    /// Handlers registered here take precedence over built-in handlers for the same method.
     /// </para>
     /// </remarks>
-    public IMcpTaskStore? TaskStore { get; set; }
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }
