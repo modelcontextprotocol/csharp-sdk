@@ -748,19 +748,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     }
 
     private static string ResolveApplicationType(string? configuredApplicationType, Uri redirectUri)
-    {
-        var inferredType = InferApplicationType(redirectUri);
-
-        if (configuredApplicationType is not null &&
-            !string.Equals(configuredApplicationType, inferredType, StringComparison.Ordinal))
-        {
-            throw new ArgumentException(
-                $"DynamicClientRegistrationOptions.ApplicationType \"{configuredApplicationType}\" conflicts with the type inferred from the redirect URI (\"{inferredType}\").",
-                nameof(configuredApplicationType));
-        }
-
-        return configuredApplicationType ?? inferredType;
-    }
+        => configuredApplicationType ?? InferApplicationType(redirectUri);
 
     private static string InferApplicationType(Uri redirectUri)
     {

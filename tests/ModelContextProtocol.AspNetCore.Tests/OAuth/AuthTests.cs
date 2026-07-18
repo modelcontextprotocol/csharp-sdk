@@ -114,6 +114,31 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task DynamicClientRegistration_UsesExplicitApplicationType()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("web", TestOAuthServer.LastApplicationType);
+    }
+
+    [Fact]
     public async Task CanAuthenticate_WithClientMetadataDocument()
     {
         await using var app = await StartMcpServerAsync();
