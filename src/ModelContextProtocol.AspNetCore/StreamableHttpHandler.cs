@@ -243,6 +243,10 @@ internal sealed class StreamableHttpHandler(
             // RequestAborted always triggers when the client disconnects before a complete response body is written,
             // but this is how SSE connections are typically closed.
         }
+        finally
+        {
+            session.EndGetRequest();
+        }
     }
 
 #pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
