@@ -30,6 +30,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     /// </summary>
     public SseClientSessionTransport(
         string endpointName,
+        Uri endpoint,
         HttpClientTransportOptions transportOptions,
         McpHttpClient httpClient,
         Channel<JsonRpcMessage>? messageChannel,
@@ -40,7 +41,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _sseEndpoint = transportOptions.Endpoint;
+        _sseEndpoint = endpoint;
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<HttpClientTransport>() ?? NullLogger.Instance;

@@ -14,17 +14,19 @@ namespace ModelContextProtocol.Client;
 internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 {
     private readonly HttpClientTransportOptions _options;
+    private readonly Uri _endpoint;
     private readonly McpHttpClient _httpClient;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
     private readonly string _name;
     private readonly Channel<JsonRpcMessage> _messageChannel;
 
-    public AutoDetectingClientSessionTransport(string endpointName, HttpClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
+    public AutoDetectingClientSessionTransport(string endpointName, Uri endpoint, HttpClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
 
+        _endpoint = endpoint;
         _options = transportOptions;
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
@@ -62,7 +64,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
     private async Task InitializeAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
         // Try StreamableHttp first
-        var streamableHttpTransport = new StreamableHttpClientSessionTransport(_name, _options, _httpClient, _messageChannel, _loggerFactory);
+        var streamableHttpTransport = new StreamableHttpClientSessionTransport(_name, _endpoint, _options, _httpClient, _messageChannel, _loggerFactory);
 
         try
         {
@@ -126,7 +128,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             throw new InvalidOperationException("Streamable HTTP transport is required to resume an existing session.");
         }
 
-        var sseTransport = new SseClientSessionTransport(_name, _options, _httpClient, _messageChannel, _loggerFactory);
+        var sseTransport = new SseClientSessionTransport(_name, _endpoint, _options, _httpClient, _messageChannel, _loggerFactory);
 
         try
         {
@@ -193,7 +195,6 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using SSE transport.")]
     private partial void LogUsingSSE(string endpointName);
-
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} SSE fallback failed after Streamable HTTP also failed; surfacing both errors.")]
     private partial void LogSseFallbackFailedAfterStreamableHttp(string endpointName, Exception sseError);
 }
