@@ -41,6 +41,75 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
+    public void Constructor_Throws_When_No_Endpoint_Is_Available()
+    {
+        var options = new HttpClientTransportOptions();
+        using var httpClient = new HttpClient();
+
+        var exception = Assert.Throws<ArgumentException>(() => new HttpClientTransport(options, httpClient, LoggerFactory));
+
+        Assert.Equal("transportOptions", exception.ParamName);
+        Assert.Contains(nameof(HttpClient.BaseAddress), exception.Message);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_Uses_Injected_HttpClient_BaseAddress_When_Endpoint_Is_Omitted()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            TransportMode = HttpTransportMode.Sse,
+        };
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler)
+        {
+            BaseAddress = new Uri("https+http://mcp-server/sse"),
+        };
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            Assert.Equal(httpClient.BaseAddress, request.RequestUri);
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent("event: endpoint\r\ndata: /messages\r\n\r\n"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_Prefers_Explicit_Endpoint_Over_HttpClient_BaseAddress()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("https://explicit.example/sse"),
+            TransportMode = HttpTransportMode.Sse,
+        };
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler)
+        {
+            BaseAddress = new Uri("https://base-address.example/sse"),
+        };
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            Assert.Equal(options.Endpoint, request.RequestUri);
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent("event: endpoint\r\ndata: /messages\r\n\r\n"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+    }
+
+    [Fact]
     public async Task ConnectAsync_Should_Connect_Successfully()
     {
         using var mockHttpHandler = new MockHttpHandler();
