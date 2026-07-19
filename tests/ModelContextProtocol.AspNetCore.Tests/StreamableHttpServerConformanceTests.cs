@@ -294,6 +294,25 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task InitializeWithMissingClientVersion_Returns400_InvalidParams_WithRequestId()
+    {
+        await StartAsync();
+
+        const string request = """
+            {"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"IntegrationTestClient"}}}
+            """;
+
+        using var response = await HttpClient.PostAsync("", JsonContent(request), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.False(response.Headers.Contains("mcp-session-id"));
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(7, doc.RootElement.GetProperty("id").GetInt64());
+        Assert.Equal((int)McpErrorCode.InvalidParams, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Contains("version", doc.RootElement.GetProperty("error").GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PostRequestWithExplicitNullId_Returns400_InvalidRequest_WithNullId()
     {
         await StartAsync();
