@@ -418,6 +418,7 @@ builder.Services.AddMcpServer()
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> | `bool` | `true` | Enables stateless mode. No sessions, no `Mcp-Session-Id` header, no server-to-client requests on the legacy protocol. Required by the `2026-07-28` protocol revision. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableJsonResponse> | `bool` | `false` | Returns the final JSON-RPC response as `application/json` instead of an SSE stream. Intermediate request-related messages, POST resumability, and polling are unavailable in this mode. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> | `TimeSpan` | 2 hours | _Stateful only (`MCP9006`)._ Duration of inactivity before a session is closed. Checked every 5 seconds. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> | `int` | 10,000 | _Stateful only (`MCP9006`)._ Maximum idle sessions before the oldest are forcibly terminated. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> | `Func<HttpContext, McpServerOptions, CancellationToken, Task>?` | `null` | Per-session callback to customize `McpServerOptions` with access to `HttpContext`. In stateless mode (including all `2026-07-28` requests), this runs on every HTTP request. |

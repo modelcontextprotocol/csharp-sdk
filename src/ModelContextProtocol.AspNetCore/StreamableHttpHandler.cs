@@ -124,7 +124,15 @@ internal sealed class StreamableHttpHandler(
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
-        InitializeSseResponse(context);
+        if (session.Transport.EnableJsonResponse)
+        {
+            context.Response.ContentType = "application/json";
+        }
+        else
+        {
+            InitializeSseResponse(context);
+        }
+
         var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
@@ -449,6 +457,7 @@ internal sealed class StreamableHttpHandler(
             transport = new(loggerFactory)
             {
                 SessionId = sessionId,
+                EnableJsonResponse = HttpServerTransportOptions.EnableJsonResponse,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
                 EventStreamStore = HttpServerTransportOptions.EventStreamStore,
                 OnSessionInitialized = HttpServerTransportOptions.SessionMigrationHandler is { } handler
@@ -468,6 +477,7 @@ internal sealed class StreamableHttpHandler(
             transport = new(loggerFactory)
             {
                 Stateless = true,
+                EnableJsonResponse = HttpServerTransportOptions.EnableJsonResponse,
             };
         }
 
@@ -524,6 +534,7 @@ internal sealed class StreamableHttpHandler(
         var transport = new StreamableHttpServerTransport(loggerFactory)
         {
             SessionId = sessionId,
+            EnableJsonResponse = HttpServerTransportOptions.EnableJsonResponse,
 #pragma warning disable MCP9006 // Stateful Streamable HTTP options are obsolete but still wired up internally.
             FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
             EventStreamStore = HttpServerTransportOptions.EventStreamStore,

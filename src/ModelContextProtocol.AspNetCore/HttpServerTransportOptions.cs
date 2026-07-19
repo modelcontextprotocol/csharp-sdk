@@ -73,6 +73,21 @@ public class HttpServerTransportOptions
     public bool Stateless { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value that indicates whether Streamable HTTP POST requests return a single JSON response
+    /// instead of an SSE stream.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to return the final JSON-RPC response as <c>application/json</c>;
+    /// <see langword="false"/> to use an SSE response stream. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// JSON response mode is intended for simple request/response scenarios where intermediaries do not support SSE.
+    /// Request-related notifications and other intermediate messages are not included in the response. Standalone GET
+    /// requests continue to use SSE when stateful mode is enabled.
+    /// </remarks>
+    public bool EnableJsonResponse { get; set; }
+
+    /// <summary>
     /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
     /// for backward compatibility with clients that do not support the Streamable HTTP transport.
     /// </summary>
