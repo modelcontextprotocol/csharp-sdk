@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
@@ -91,6 +92,47 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         Assert.False(result.IsError ?? false);
         var content = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("Authorized: test", content.Text);
+    }
+
+    [Fact]
+    public async Task Authorize_ToolAsTask_DeniesBeforeToolExecution()
+    {
+        var taskStore = new TrackingTaskStore { DefaultPollIntervalMs = 10 };
+        TaskAuthorizationTestTools.InvocationCount = 0;
+        await using var app = await StartServerWithAuth(builder => builder
+            .WithTools<TaskAuthorizationTestTools>()
+            .WithTasks(taskStore));
+
+        await using var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolWithPollingAsync(
+                new CallToolRequestParams { Name = "authorized_task_tool" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Access forbidden: This tool requires authorization.", exception.Message);
+        Assert.Equal(1, taskStore.CreateCount);
+        Assert.Equal(0, TaskAuthorizationTestTools.InvocationCount);
+    }
+
+    [Fact]
+    public async Task Authorize_ToolAsTask_AllowsAuthenticatedTaskToComplete()
+    {
+        var taskStore = new TrackingTaskStore { DefaultPollIntervalMs = 10 };
+        TaskAuthorizationTestTools.InvocationCount = 0;
+        await using var app = await StartServerWithAuth(builder => builder
+            .WithTools<TaskAuthorizationTestTools>()
+            .WithTasks(taskStore), "TestUser");
+
+        await using var client = await ConnectAsync();
+
+        var result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "authorized_task_tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("authorized task result", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Equal(1, taskStore.CreateCount);
+        Assert.Equal(1, TaskAuthorizationTestTools.InvocationCount);
     }
 
     [Fact]
@@ -540,6 +582,31 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         => new(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name), .. roles.Select(role => new Claim("role", role))],
             "TestAuthType", "name", "role"));
+
+    private sealed class TrackingTaskStore : InMemoryMcpTaskStore, IMcpTaskStore
+    {
+        public int CreateCount { get; private set; }
+
+        Task<McpTaskInfo> IMcpTaskStore.CreateTaskAsync(CancellationToken cancellationToken)
+        {
+            CreateCount++;
+            return base.CreateTaskAsync(cancellationToken);
+        }
+    }
+
+    [McpServerToolType]
+    private sealed class TaskAuthorizationTestTools
+    {
+        public static int InvocationCount;
+
+        [McpServerTool(Name = "authorized_task_tool")]
+        [Authorize]
+        public static string AuthorizedTaskTool()
+        {
+            Interlocked.Increment(ref InvocationCount);
+            return "authorized task result";
+        }
+    }
 
     [McpServerToolType]
     private class AuthorizationTestTools

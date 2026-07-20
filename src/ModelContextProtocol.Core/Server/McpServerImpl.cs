@@ -26,6 +26,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly List<Action> _disposables = [];
     private readonly NotificationHandlers _notificationHandlers;
     private readonly RequestHandlers _requestHandlers;
+    private readonly HashSet<string> _configuredAlternateResultFilterMethods = new(StringComparer.Ordinal);
     private readonly McpSessionHandler _sessionHandler;
     private readonly string[] _supportedProtocolVersions;
     private readonly string[] _initializeHandshakeProtocolVersions;
@@ -108,6 +109,7 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureCompletion(options);
         ConfigureSubscriptions(options);
         ConfigureExperimentalAndExtensions(options);
+        ValidateAlternateResultFilters(options);
         ConfigureMrtr();
         ConfigureCustomRequestHandlers(options);
 
@@ -996,6 +998,19 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Extensions = options.Capabilities?.Extensions;
     }
 
+    private void ValidateAlternateResultFilters(McpServerOptions options)
+    {
+        foreach (var method in options.AlternateResultFilterMethods)
+        {
+            if (!_configuredAlternateResultFilterMethods.Contains(method))
+            {
+                throw new InvalidOperationException(
+                    $"An alternate-result filter was registered for method '{method}', but the server has no matching typed handler. " +
+                    $"Configure the built-in handler and capability for that method, and ensure the registered parameter and result types match it.");
+            }
+        }
+    }
+
     private void ConfigureCustomRequestHandlers(McpServerOptions options)
     {
 #pragma warning disable MCPEXP002
@@ -1321,20 +1336,21 @@ internal sealed partial class McpServerImpl : McpServer
         var callToolFilters = options.Filters.Request.CallToolFilters;
         var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-alternate filters/handler with alternate filters/handler.
-        bool hasNonAlternatePath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasAlternatePath = callToolWithAlternateHandler is not null || callToolWithAlternateFilters.Count > 0;
-
-        if (hasNonAlternatePath && hasAlternatePath)
+        if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}) tool-call filters or handlers. " +
-                $"These two styles cannot currently be composed on the same server. " +
-                $"This most commonly happens when combining features that register different tool-call filter styles, " +
-                $"for example AddAuthorizationFilters() (which registers a {nameof(McpRequestFilters.CallToolFilters)} filter) together with " +
-                $"WithTasks() (which registers a {nameof(McpRequestFilters.CallToolWithAlternateFilters)} filter). " +
-                $"Configure only one style, or avoid combining features that require different styles.");
+                $"Cannot apply {nameof(McpRequestFilters.CallToolFilters)} when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler replaces " +
+                $"the ordinary tool-call pipeline. Move the behavior to {nameof(McpRequestFilters.CallToolWithAlternateFilters)} " +
+                $"or remove the explicit alternate handler.");
+        }
+
+        if (callToolWithAlternateHandler is not null && options.HasAlternateResultFilters(RequestMethods.ToolsCall))
+        {
+            throw new InvalidOperationException(
+                $"Cannot apply an alternate-result filter registered for '{RequestMethods.ToolsCall}' when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler replaces " +
+                $"the ordinary tool-call pipeline. Remove the explicit alternate handler or the method-keyed filter.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1376,12 +1392,9 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified alternate-result handler from one of the two paths.
-        if (hasAlternatePath)
+        // An explicit alternate handler replaces the ordinary tool-call pipeline.
+        if (callToolWithAlternateHandler is not null)
         {
-            // Case 2: alternate filter + alternate handler
-            callToolWithAlternateHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-
             // Augment with DI tools.
             if (tools is not null)
             {
@@ -1398,10 +1411,15 @@ internal sealed partial class McpServerImpl : McpServer
             }
 
             callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters, BuildInitialAlternateToolFilter(tools));
+
+            SetWithAlternateHandler(
+                RequestMethods.ToolsCall,
+                callToolWithAlternateHandler,
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult);
         }
         else
         {
-            // Case 1: non-alternate filter + non-alternate handler -> apply filters, then convert to alternate-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1421,10 +1439,12 @@ internal sealed partial class McpServerImpl : McpServer
 
             callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
 
-            // Convert to alternate-based.
-            var finalCallToolHandler = callToolHandler;
-            callToolWithAlternateHandler = async (request, cancellationToken) =>
-                await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+            SetHandler(
+                RequestMethods.ToolsCall,
+                callToolHandler,
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult,
+                callToolWithAlternateFilters);
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 
@@ -1434,11 +1454,6 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        SetWithAlternateHandler(
-            RequestMethods.ToolsCall,
-            callToolWithAlternateHandler,
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
     private static async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
         McpServerTool tool,
@@ -1635,11 +1650,14 @@ internal sealed partial class McpServerImpl : McpServer
         return server;
     }
 
+#pragma warning disable MCPEXP002 // SetHandler and SetWithAlternateHandler wrap the experimental ResultOrAlternate seam
     private void SetHandler<TParams, TResult>(
         string method,
         McpRequestHandler<TParams, TResult> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
-        JsonTypeInfo<TResult> responseTypeInfo)
+        JsonTypeInfo<TResult> responseTypeInfo,
+        IList<McpRequestFilter<TParams, ResultOrAlternate<TResult>>>? alternateResultFilters = null)
+        where TResult : Result
     {
         // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
         // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
@@ -1662,19 +1680,38 @@ internal sealed partial class McpServerImpl : McpServer
             };
         }
 
-        if (typeof(Result).IsAssignableFrom(typeof(TResult)))
+        var resultHandler = handler;
+        handler = async (request, cancellationToken) =>
         {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
+            var result = await resultHandler(request, cancellationToken).ConfigureAwait(false);
+            if (result.ResultType is null)
             {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is Result protocolResult && protocolResult.ResultType is null)
-                {
-                    protocolResult.ResultType = "complete";
-                }
+                result.ResultType = "complete";
+            }
 
-                return result;
-            };
+            return result;
+        };
+
+        var registeredAlternateResultFilters = ServerOptions.GetAlternateResultFilters<TParams, TResult>(method);
+        if (registeredAlternateResultFilters.Count > 0 || alternateResultFilters is { Count: > 0 })
+        {
+            if (registeredAlternateResultFilters.Count > 0)
+            {
+                _configuredAlternateResultFilterMethods.Add(method);
+            }
+
+            var ordinaryHandler = handler;
+            McpRequestHandler<TParams, ResultOrAlternate<TResult>> alternateHandler = async (request, cancellationToken) =>
+                await ordinaryHandler(request, cancellationToken).ConfigureAwait(false);
+
+            if (alternateResultFilters is not null)
+            {
+                alternateHandler = BuildFilterPipeline(alternateHandler, alternateResultFilters);
+            }
+
+            alternateHandler = BuildFilterPipeline(alternateHandler, registeredAlternateResultFilters);
+            SetWithAlternateHandler(method, alternateHandler, requestTypeInfo, responseTypeInfo);
+            return;
         }
 
         _requestHandlers.Set(method,
@@ -1683,7 +1720,6 @@ internal sealed partial class McpServerImpl : McpServer
             requestTypeInfo, responseTypeInfo);
     }
 
-#pragma warning disable MCPEXP002 // SetWithAlternateHandler wraps the experimental ResultOrAlternate seam
     private void SetWithAlternateHandler<TParams, TResult>(
         string method,
         McpRequestHandler<TParams, ResultOrAlternate<TResult>> handler,
@@ -1695,9 +1731,15 @@ internal sealed partial class McpServerImpl : McpServer
         handler = async (request, cancellationToken) =>
         {
             var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult)
+            if (!result.IsAlternate && result.Result is { } immediateResult)
             {
-                immediateResult.ResultType = "complete";
+                if (immediateResult is ICacheableResult cacheable)
+                {
+                    cacheable.TimeToLive ??= TimeSpan.Zero;
+                    cacheable.CacheScope ??= CacheScope.Private;
+                }
+
+                immediateResult.ResultType ??= "complete";
             }
 
             return result;

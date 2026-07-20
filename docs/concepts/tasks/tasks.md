@@ -79,6 +79,16 @@ When tasks are enabled with `WithTasks` the SDK automatically:
 - Plumbs a `CancellationToken` through to the tool that fires when the client invokes
   `tasks/cancel`, so cancellation propagates cooperatively.
 
+The task wrapper runs outside the ordinary `tools/call` pipeline. For an opted-in call, the store creates
+the task record first and the ordinary request filters then run exactly once during background execution,
+with the matched tool available in `RequestContext.MatchedPrimitive`. Authorization and validation filters
+therefore still run before the tool body. If authorization fails, the task transitions to `failed` and the
+tool is not invoked; the task record already exists when that denial occurs.
+
+Background execution receives a new asynchronous dependency-injection scope before the initiating request
+completes. Scoped filter services and tool dependencies therefore remain available after an HTTP request scope
+has been disposed. The execution scope is disposed after the task reaches its recorded outcome.
+
 For production scenarios that need durability, session isolation, multi-process routing, or
 TTL-based cleanup, implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> yourself
 (see [Implementing a custom task store](#implementing-a-custom-task-store) below).
@@ -111,15 +121,16 @@ options.Handlers.CallToolWithAlternateHandler = async (context, ct) =>
         PollIntervalMs = 1000,
     };
 
-    return new ResultOrAlternate<CallToolResult>(created, McpTasksJsonContext.Default.CreateTaskResult);
+    return ResultOrAlternate<CallToolResult>.FromAlternate(
+      created,
+      McpTasksJsonContext.Default.CreateTaskResult);
 };
 ```
 
 > This low-level handler is mutually exclusive with `WithTasks`. When a store is configured, the
-> SDK does the wrapping for you and throws `InvalidOperationException` if the alternate handler also
-> returns an alternate. Use one mechanism or the other. When you return a task this way you are also
-> responsible for serving `tasks/get`, `tasks/update`, and `tasks/cancel`, which the store provides
-> automatically.
+    > SDK does the wrapping for you and rejects an explicit alternate handler when the server starts.
+    > Use one mechanism or the other. When you return a task this way you are also responsible for serving
+    > `tasks/get`, `tasks/update`, and `tasks/cancel`, which the store provides automatically.
 
 > <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolHandler?displayProperty=nameWithType>
 > and <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithAlternateHandler?displayProperty=nameWithType>
