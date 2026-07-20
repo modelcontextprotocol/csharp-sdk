@@ -1,0 +1,28 @@
+{
+  "servers": {
+    "Fireworks Show Control": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "artifacts\\bin\\FireworksServer\\Debug\\net10.0\\FireworksServer.dll",
+        "--McpTransport=stdio",
+        "--ListenUrl=http://127.0.0.1:5399",
+        "--DashboardUrl=http://localhost:5399"
+      ]
+    },
+    "Stateless Show Planner": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "artifacts\\bin\\ShowPlannerServer\\Debug\\net10.0\\ShowPlannerServer.dll"
+      ]
+    },
+    "Task-Aware Show Producer": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "artifacts\\bin\\ShowProducerServer\\Debug\\net10.0\\ShowProducerServer.dll"
+      ]
+    }
+  }
+}

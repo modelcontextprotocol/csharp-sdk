@@ -44,16 +44,21 @@
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
+    <Project Path="samples/FireworksServer/FireworksServer.csproj" />
     <Project Path="samples/InMemoryTransport/InMemoryTransport.csproj" />
     <Project Path="samples/ProtectedMcpClient/ProtectedMcpClient.csproj" />
     <Project Path="samples/ProtectedMcpServer/ProtectedMcpServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
+    <Project Path="samples/ShowPlannerServer/ShowPlannerServer.csproj" />
+    <Project Path="samples/ShowProducerServer/ShowProducerServer.csproj" />
     <Project Path="samples/TasksExtension/TasksExtension.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
     <Project Path="samples/WeatherAppServer/WeatherAppServer.csproj" />
+    <File Path="samples/VSLiveMcpDemos.md" />
   </Folder>
   <Folder Name="/Solution Items/">
+    <File Path=".mcp.json" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="global.json" />
