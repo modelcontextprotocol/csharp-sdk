@@ -12,7 +12,6 @@ Docker is a practical way to package and run MCP servers consistently across dev
 This guide assumes you already have an ASP.NET Core MCP server configured with `ModelContextProtocol.AspNetCore`, `WithHttpTransport()`, and `MapMcp()`.
 
 <!-- mlc-disable-next-line -->
-
 > [!TIP]
 > For local, process-based integrations where the client launches the server directly, stdio is often simpler. For remote and containerized deployments, Streamable HTTP is the recommended transport.
 
@@ -77,10 +76,9 @@ Run the container and map host port `3001` to container port `8080`:
 docker run --rm -p 3001:8080 my-mcp-server:latest
 ```
 
-With the baseline route above (`app.MapMcp("/mcp")`), clients connect to:
+With the baseline route above (`app.MapMcp("/mcp")`), clients connect to the Streamable HTTP endpoint at `http://localhost:3001/mcp`.
 
-- Streamable HTTP: `http://localhost:3001/mcp`
-- Legacy SSE endpoint (if needed): `http://localhost:3001/mcp/sse`
+Streamable HTTP is the recommended transport for containerized MCP servers. The legacy SSE endpoints (`/mcp/sse` and `/mcp/message`) are not mapped by default, and the option to enable them is obsolete. See [Transports](../transports/transports.md) for details.
 
 ### Configuration and secrets
 
@@ -96,7 +94,6 @@ docker run --rm -p 3001:8080 \
 ASP.NET Core binds `MYAPP__APIKEY` to `MYAPP:APIKEY` in configuration.
 
 <!-- mlc-disable-next-line -->
-
 > [!IMPORTANT]
 > Do not commit real tokens or credentials into Dockerfiles, compose files, or source code. Use runtime environment variables or an external secret store.
 
