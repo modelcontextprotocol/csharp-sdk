@@ -172,4 +172,4 @@ var response = await chatClient.GetResponseAsync(
 
 ### Next steps
 
-Explore the rest of the conceptual documentation to learn about [tools](tools/tools.md), [prompts](prompts/prompts.md), [resources](resources/resources.md), [transports](transports/transports.md), and more. You can also browse the [samples](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples) directory for complete end-to-end examples.
+Explore the rest of the conceptual documentation to learn about [tools](tools/tools.md), [prompts](prompts/prompts.md), [resources](resources/resources.md), [transports](transports/transports.md), and [Docker deployment](deployment/docker.md) for HTTP-based servers. You can also browse the [samples](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples) directory for complete end-to-end examples.
