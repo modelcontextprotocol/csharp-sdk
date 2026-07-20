@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -36,14 +37,61 @@ public sealed class McpServerHandlers
     /// </remarks>
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler { get; set; }
 
+#pragma warning disable MCPEXP002 // CallToolHandler and CallToolWithAlternateHandler reference the experimental ResultOrAlternate seam
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
     /// </summary>
     /// <remarks>
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
+    /// Use <see cref="CallToolWithAlternateHandler"/> instead if the tool may return an alternate result
+    /// for the caller to handle.
     /// </remarks>
-    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler { get; set; }
+    /// <exception cref="InvalidOperationException"><see cref="CallToolWithAlternateHandler"/> is already set.</exception>
+    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
+    {
+        get;
+        set
+        {
+            if (value is not null && CallToolWithAlternateHandler is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot set {nameof(CallToolHandler)} when {nameof(CallToolWithAlternateHandler)} is already set. Only one call tool handler may be configured.");
+            }
+
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests with alternate result support.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is invoked when a client makes a call to a tool, allowing the tool to return either
+    /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype.
+    /// </para>
+    /// <para>
+    /// Cannot be set if <see cref="CallToolHandler"/> is already set.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>>? CallToolWithAlternateHandler
+    {
+        get;
+        set
+        {
+            if (value is not null && CallToolHandler is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot set {nameof(CallToolWithAlternateHandler)} when {nameof(CallToolHandler)} is already set. Only one call tool handler may be configured.");
+            }
+
+            field = value;
+        }
+    }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.
@@ -154,6 +202,7 @@ public sealed class McpServerHandlers
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 
     /// <summary>Gets or sets notification handlers to register with the server.</summary>

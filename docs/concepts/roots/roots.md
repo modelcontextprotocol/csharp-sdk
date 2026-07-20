@@ -17,7 +17,7 @@ Roots provide a mechanism for the client to tell the server which directories, p
 
 - Scope file searches to the user's project directories
 - Understand which repositories are being worked on
-- Limit operations to specific filesystem boundaries
+- Focus operations on relevant filesystem locations
 
 Each root is represented by a <xref:ModelContextProtocol.Protocol.Root> with a URI and an optional human-readable name.
 
@@ -57,7 +57,7 @@ await using var client = await McpClient.CreateAsync(transport, options);
 
 ### Requesting roots from the server
 
-Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>:
+Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended).
 
 ```csharp
 [McpServerTool, Description("Lists the user's project roots")]
@@ -103,3 +103,43 @@ server.RegisterNotificationHandler(
         Console.WriteLine($"Roots updated. {result.Roots.Count} roots available.");
     });
 ```
+
+### Multi Round-Trip Requests (MRTR)
+
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `roots/list` request method is removed; the recommended way to ask the client for its roots from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
+
+> [!IMPORTANT]
+> `RequestRootsAsync` throws `InvalidOperationException("Roots are not supported in stateless mode.")` whenever the server is running stateless — including Streamable HTTP requests served under `2026-07-28` with `Stateless = true`. Stdio servers and initialize-handshake stateful Streamable HTTP sessions continue to work via the initialize-era server-to-client `roots/list` request flow; an HTTP server set to `Stateless = false` refuses `2026-07-28` so dual-path clients can fall back before using that flow. For code that needs to run on stateless servers — including `2026-07-28` Streamable HTTP — throw `InputRequiredException` from your handler instead. It works under both protocols and both session modes.
+
+For example:
+
+```csharp
+[McpServerTool, Description("Tool that requests roots via MRTR")]
+public static string ListRootsWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's roots response
+    if (context.Params!.InputResponses?.TryGetValue("get_roots", out var response) is true)
+    {
+        var roots = response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)?.Roots ?? [];
+        return $"Found {roots.Count} roots: {string.Join(", ", roots.Select(r => r.Uri))}";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+    }
+
+    // First call — request the client's root list
+    throw new InputRequiredException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["get_roots"] = InputRequest.ForRootsList(new ListRootsRequestParams())
+        },
+        requestState: "awaiting-roots");
+}
+```
+
+> [!TIP]
+> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.

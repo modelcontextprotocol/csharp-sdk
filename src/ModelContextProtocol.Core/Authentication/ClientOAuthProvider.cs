@@ -28,6 +28,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly string? _configuredScopes;
+    private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
@@ -47,6 +48,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    // The accumulated scope set lives for this provider's lifetime and is intentionally not keyed by
+    // resource or authorization server. This is safe today because one ClientOAuthProvider is created
+    // per HttpClientTransport, i.e. per endpoint/resource. If a provider were ever reused across
+    // multiple resources or auth servers, accumulated scopes could be sent to a server that rejects
+    // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
+    private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
+    private readonly object _scopeAccumulatorLock = new();
+    private bool _hasAttemptedStepUp;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -76,6 +85,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _clientSecret = options.ClientSecret;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
+        _scopeSelector = options.ScopeSelector;
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
         _clientMetadataDocumentUri = options.ClientMetadataDocumentUri;
 
@@ -241,6 +251,28 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (availableAuthorizationServers.Count == 0)
         {
             ThrowFailedToHandleUnauthorizedResponse("No authorization servers found in authentication challenge");
+        }
+
+        // SEP-2350: A step-up may legitimately introduce new scopes, so at least one interactive
+        // (re-)authorization attempt is always allowed. However, once a step-up has already been
+        // attempted, a subsequent insufficient_scope challenge that introduces no scope beyond those
+        // already requested cannot make progress by re-running authorization. Treat that repeated,
+        // unproductive challenge as a permanent authorization failure instead of prompting the user
+        // again for the same resource and operation combination.
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            bool introducesNewScopes = ChallengeIntroducesNewScopes(protectedResourceMetadata);
+            lock (_scopeAccumulatorLock)
+            {
+                if (_hasAttemptedStepUp && !introducesNewScopes)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
+                        "so step-up authorization cannot satisfy the request.");
+                }
+
+                _hasAttemptedStepUp = true;
+            }
         }
 
         // Convert string URIs to Uri objects for the selector
@@ -491,7 +523,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             queryParamsDictionary["resource"] = resourceUri;
         }
 
-        var scope = GetScopeParameter(protectedResourceMetadata);
+        var scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata);
         if (!string.IsNullOrEmpty(scope))
         {
             queryParamsDictionary["scope"] = scope!;
@@ -653,7 +685,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             TokenEndpointAuthMethod = "client_secret_post",
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
-            Scope = GetScopeParameter(protectedResourceMetadata),
+            Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -712,30 +744,155 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
 
+    private string? ComputeEffectiveScope(
+        ProtectedResourceMetadata protectedResourceMetadata,
+        AuthorizationServerMetadata authServerMetadata)
+    {
+        var scope = GetScopeParameter(protectedResourceMetadata);
+        scope = AugmentScopeWithOfflineAccess(scope, authServerMetadata);
+        if (_scopeSelector is not null)
+        {
+            var selected = _scopeSelector(scope?.Split(' '));
+            scope = selected is not null ? string.Join(" ", selected) : null;
+        }
+        return scope;
+    }
+
     private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
     {
-        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        // Determine the scopes for the current operation from the challenge or metadata.
+        var currentOperationScopes = GetCurrentOperationScopes(protectedResourceMetadata);
+
+        if (currentOperationScopes.Count == 0)
         {
-            return protectedResourceMetadata.WwwAuthenticateScope;
-        }
-        else if (protectedResourceMetadata.ScopesSupported.Count > 0)
-        {
-            return string.Join(" ", protectedResourceMetadata.ScopesSupported);
+            lock (_scopeAccumulatorLock)
+            {
+                // If we have previously requested scopes but nothing new, return the accumulated set.
+                return _accumulatedScopes.Count > 0
+                    ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
+                    : null;
+            }
         }
 
-        return _configuredScopes;
+        // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
+        // to avoid losing permissions needed for other operations during step-up authorization.
+        // Note: the accumulator stores only server-challenged / scopes_supported / configured scopes.
+        // offline_access (AugmentScopeWithOfflineAccess) and any ScopeSelector are applied per request
+        // in ComputeEffectiveScope and are intentionally not accumulated, so the selector always sees
+        // the full union and the operation stays idempotent.
+        lock (_scopeAccumulatorLock)
+        {
+            foreach (var scope in currentOperationScopes)
+            {
+                _accumulatedScopes.Add(scope);
+            }
+
+            // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
+            return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
+        }
     }
 
     /// <summary>
-    /// Verifies that the resource URI in the metadata exactly matches the original request URL as required by the RFC.
-    /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
+    /// Determines the scopes required for the current operation, preferring the <c>WWW-Authenticate</c>
+    /// challenge scope, then <c>scopes_supported</c> from the protected resource metadata, then the
+    /// configured scopes. Returns the individual scope tokens so callers can compare and accumulate them
+    /// without re-joining and re-splitting. This does not mutate the accumulated scope set.
+    /// </summary>
+    private IReadOnlyList<string> GetCurrentOperationScopes(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        {
+            return SplitScopes(protectedResourceMetadata.WwwAuthenticateScope!);
+        }
+
+        var scopesSupported = protectedResourceMetadata.ScopesSupported;
+        if (scopesSupported.Count > 0)
+        {
+            // scopes_supported is already a list of individual scopes; avoid join/split round-tripping.
+            return scopesSupported as IReadOnlyList<string> ?? [.. scopesSupported];
+        }
+
+        return _configuredScopes is null ? [] : SplitScopes(_configuredScopes);
+    }
+
+    private static string[] SplitScopes(string scopes) =>
+        scopes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the current challenge requires at least one scope that has not
+    /// already been requested in a previous (re-)authorization. The caller combines this with step-up
+    /// attempt tracking: per SEP-2350, a step-up that adds a new scope is always allowed, but once a
+    /// step-up has been attempted, a later challenge that adds no new scope is treated as a permanent
+    /// failure because re-running interactive authorization cannot make progress.
+    /// </summary>
+    private bool ChallengeIntroducesNewScopes(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        var currentOperationScopes = GetCurrentOperationScopes(protectedResourceMetadata);
+        if (currentOperationScopes.Count == 0)
+        {
+            // No concrete scope to request, so a re-authorization cannot add anything new.
+            return false;
+        }
+
+        lock (_scopeAccumulatorLock)
+        {
+            foreach (var scope in currentOperationScopes)
+            {
+                if (!_accumulatedScopes.Contains(scope))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Augments the scope parameter with <c>offline_access</c> if the authorization server advertises it in
+    /// <c>scopes_supported</c> and it is not already present. This signals to OIDC-flavored authorization servers
+    /// that the client desires a refresh token, per SEP-2207.
+    /// </summary>
+    private static string? AugmentScopeWithOfflineAccess(string? scope, AuthorizationServerMetadata authServerMetadata)
+    {
+        const string OfflineAccess = "offline_access";
+
+        if (authServerMetadata.ScopesSupported?.Contains(OfflineAccess) is not true)
+        {
+            return scope;
+        }
+
+        if (scope is null)
+        {
+            return OfflineAccess;
+        }
+
+        // Check if offline_access is already in the scope string (space-separated tokens).
+        foreach (var token in scope.Split(' '))
+        {
+            if (token == OfflineAccess)
+            {
+                return scope;
+            }
+        }
+
+        return scope + " " + OfflineAccess;
+    }
+
+    /// <summary>
+    /// Verifies that the resource URI in the metadata matches the original request URL.
+    /// Accepts either an exact match with the full request URL, or a match with the base URL
+    /// (authority only, path discarded) as allowed by the MCP spec, which derives the authorization
+    /// base URL by discarding the path component from the MCP server URL.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
     /// <param name="resourceLocation">
     /// The original URL the client used to make the request to the resource server or the root Uri for the resource server
     /// if the metadata was automatically requested from the root well-known location.
     /// </param>
-    /// <returns>True if the resource URI exactly matches the original request URL, otherwise false.</returns>
+    /// <returns>
+    /// True if the resource URI exactly matches the original request URL or its authority-level base URL, otherwise false.
+    /// </returns>
     private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
     {
         if (protectedResourceMetadata.Resource is null)
@@ -743,14 +900,22 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return false;
         }
 
-        // Per RFC: The resource value must be identical to the URL that the client used
-        // to make the request to the resource server. Compare entire URIs, not just the host.
-
         // Normalize the URIs to ensure consistent comparison
         string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
 
-        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+        // Accept exact match with the full MCP endpoint URI
+        if (string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Per the MCP spec's "Canonical Server URI" section, both the path-specific URI (e.g. https://mcp.example.com/mcp)
+        // and the authority-only URI (e.g. https://mcp.example.com) are valid canonical URIs for identifying an MCP server.
+        // Accept a match with the base URL (authority only, path discarded) to support servers that use the less specific form.
+
+        string normalizedBaseUrl = NormalizeUri(new Uri(resourceLocation.GetLeftPart(UriPartial.Authority)));
+        return string.Equals(normalizedMetadataResource, normalizedBaseUrl, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -869,7 +1034,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
         metadata.WwwAuthenticateScope = wwwAuthenticateScope;
 
-        // Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server
+        // Validate that the resource URI in metadata corresponds to the server we're connecting to.
+        // VerifyResourceMatch accepts both an exact URI match and an authority-level (base URL) match per the MCP spec.
         LogValidatingResourceMetadata(resourceUri);
 
         if (!isLegacyFallback && !VerifyResourceMatch(metadata, resourceUri))

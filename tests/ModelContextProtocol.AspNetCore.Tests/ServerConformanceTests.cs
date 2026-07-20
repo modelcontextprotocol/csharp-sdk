@@ -1,98 +1,20 @@
-using System.Diagnostics;
-using System.Text;
+using System.Runtime.InteropServices;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
 
 /// <summary>
-/// Shared fixture that starts a single ConformanceServer instance for all tests in
-/// <see cref="ServerConformanceTests"/>. This avoids TCP port TIME_WAIT conflicts
-/// that occur when each test starts and stops its own server on the same port.
+/// Runs the official MCP conformance tests against the ConformanceServer. Uses a shared
+/// <see cref="ConformanceServerFixture"/> so the server is started once and reused across all
+/// tests, avoiding TCP port conflicts on Windows. Stateful scenarios use the server's "/" endpoint
+/// (<see cref="ConformanceServerFixture.ServerUrl"/>); 2026-07-28 scenarios that negotiate the
+/// stateless lifecycle use its "/stateless" endpoint
+/// (<see cref="ConformanceServerFixture.StatelessServerUrl"/>).
 /// </summary>
-public class ConformanceServerFixture : IAsyncLifetime
-{
-    // Use different ports for each target framework to allow parallel execution
-    // net10.0 -> 3001, net9.0 -> 3002, net8.0 -> 3003
-    private static int GetPortForTargetFramework()
-    {
-        var testBinaryDir = AppContext.BaseDirectory;
-        var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
-
-        return targetFramework switch
-        {
-            "net10.0" => 3001,
-            "net9.0" => 3002,
-            "net8.0" => 3003,
-            _ => 3001 // Default fallback
-        };
-    }
-
-    private Task? _serverTask;
-    private CancellationTokenSource? _serverCts;
-
-    public string ServerUrl { get; } = $"http://localhost:{GetPortForTargetFramework()}";
-
-    public async ValueTask InitializeAsync()
-    {
-        _serverCts = new CancellationTokenSource();
-        _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(
-            ["--urls", ServerUrl], cancellationToken: _serverCts.Token));
-
-        // Wait for server to be ready (retry for up to 30 seconds)
-        var timeout = TimeSpan.FromSeconds(30);
-        var stopwatch = Stopwatch.StartNew();
-        using var httpClient = new HttpClient { Timeout = TestConstants.HttpClientPollingTimeout };
-
-        while (stopwatch.Elapsed < timeout)
-        {
-            try
-            {
-                await httpClient.GetAsync($"{ServerUrl}/health");
-                return;
-            }
-            catch (HttpRequestException)
-            {
-                // Connection refused means server not ready yet
-            }
-            catch (TaskCanceledException)
-            {
-                // Timeout means server might be processing, give it more time
-            }
-
-            await Task.Delay(500);
-        }
-
-        throw new InvalidOperationException("ConformanceServer failed to start within the timeout period");
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_serverCts != null)
-        {
-            _serverCts.Cancel();
-            if (_serverTask != null)
-            {
-                try
-                {
-                    await _serverTask.WaitAsync(TestConstants.DefaultTimeout);
-                }
-                catch
-                {
-                    // Ignore exceptions during shutdown
-                }
-            }
-            _serverCts.Dispose();
-        }
-    }
-}
-
-/// <summary>
-/// Runs the official MCP conformance tests against the ConformanceServer.
-/// Uses a shared <see cref="ConformanceServerFixture"/> so the server is started once
-/// and reused across all tests, avoiding TCP port conflicts on Windows.
-/// </summary>
-public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutputHelper output)
-    : IClassFixture<ConformanceServerFixture>
+[Collection(nameof(ConformanceServerCollection))]
+public class ServerConformanceTests(
+    ConformanceServerFixture fixture,
+    ITestOutputHelper output)
 {
     [Fact]
     public async Task RunConformanceTests()
@@ -109,6 +31,9 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_JsonSchema202012()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario json-schema-2020-12");
 
@@ -120,6 +45,9 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
     public async Task RunPendingConformanceTest_ServerSsePolling()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario server-sse-polling");
 
@@ -127,56 +55,101 @@ public class ServerConformanceTests(ConformanceServerFixture fixture, ITestOutpu
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    [Fact]
+    public async Task RunConformanceTest_HttpHeaderValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasSep2243Scenarios(),
+            "SEP-2243 conformance scenarios are not available in the installed conformance package.");
+
+        // SEP-2243 is a 2026-07-28 protocol revision scenario that uses the stateless lifecycle,
+        // so it runs against the shared server's stateless endpoint (a stateful server rejects the
+        // un-initialized list/call requests with JSON-RPC -32000).
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {fixture.StatelessServerUrl} --scenario http-header-validation --spec-version 2026-07-28");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunConformanceTest_HttpCustomHeaderServerValidation()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasSep2243Scenarios(),
+            "SEP-2243 conformance scenarios are not available in the installed conformance package.");
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {fixture.StatelessServerUrl} --scenario http-custom-header-server-validation --spec-version 2026-07-28");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    // SEP-2322 (Multi Round-Trip Requests / InputRequiredResult) conformance scenarios.
+    // The csharp-sdk ConformanceServer surfaces the matching tools/prompts via
+    // ConformanceServer.Tools.IncompleteResultTools and ConformanceServer.Prompts.IncompleteResultPrompts
+    // (the class names predate the conformance-suite rename from "incomplete-result-*" to
+    // "input-required-result-*"; the wire-level tool names now match the new convention).
+    // Each scenario uses the conformance harness's RawMcpSession, which negotiates 2026-07-28,
+    // so the csharp-sdk emits InputRequiredResult on the wire. Because the 2026-07-28 revision is
+    // served only on a stateless server, the scenarios run against the shared server's stateless
+    // endpoint (ConformanceServerFixture.StatelessServerUrl); a stateful server refuses these requests.
+    // These tests skip until the installed conformance package ships SEP-2322 scenarios
+    // (see <see cref="NodeHelpers.HasMrtrScenarios"/>).
+    //
+    // input-required-result-tampered-state and input-required-result-capability-check are
+    // implemented by ConformanceServer.Tools.IncompleteResultTools.ToolWithTamperedState
+    // (HMAC-protected requestState; a tampered requestState surfaces a -32602 JSON-RPC error)
+    // and ToolWithCapabilityCheck (gates inputRequests on the per-request
+    // _meta clientCapabilities envelope). Both behaviors also have in-process wire-level
+    // regression coverage in MrtrProtocolTests so they stay verified independent of the
+    // published conformance package.
+    [Theory]
+    [InlineData("input-required-result-basic-elicitation")]
+    [InlineData("input-required-result-basic-sampling")]
+    [InlineData("input-required-result-basic-list-roots")]
+    [InlineData("input-required-result-request-state")]
+    [InlineData("input-required-result-multiple-input-requests")]
+    [InlineData("input-required-result-multi-round")]
+    [InlineData("input-required-result-missing-input-response")]
+    [InlineData("input-required-result-non-tool-request")]
+    [InlineData("input-required-result-result-type")]
+    [InlineData("input-required-result-unsupported-methods")]
+    [InlineData("input-required-result-tampered-state")]
+    [InlineData("input-required-result-capability-check")]
+    [InlineData("input-required-result-ignore-extra-params")]
+    [InlineData("input-required-result-validate-input")]
+    public async Task RunMrtrConformanceTest(string scenario)
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.HasMrtrScenarios(), "SEP-2322 MRTR conformance scenarios are not available in the installed conformance package.");
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {fixture.StatelessServerUrl} --scenario {scenario} --spec-version 2026-07-28");
+
+        Assert.True(result.Success,
+            $"MRTR conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
-        var startInfo = NodeHelpers.ConformanceTestStartInfo(arguments);
+        return await NodeHelpers.RunServerConformanceAsync(
+            arguments,
+            line => { try { output.WriteLine(line); } catch { } },
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
 
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
-
-        var process = new Process { StartInfo = startInfo };
-
-        process.OutputDataReceived += (sender, e) =>
-        {
-            if (e.Data != null)
-            {
-                output.WriteLine(e.Data);
-                outputBuilder.AppendLine(e.Data);
-            }
-        };
-
-        process.ErrorDataReceived += (sender, e) =>
-        {
-            if (e.Data != null)
-            {
-                output.WriteLine(e.Data);
-                errorBuilder.AppendLine(e.Data);
-            }
-        };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            return (
-                Success: false,
-                Output: outputBuilder.ToString(),
-                Error: errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed."
-            );
-        }
-
-        return (
-            Success: process.ExitCode == 0,
-            Output: outputBuilder.ToString(),
-            Error: errorBuilder.ToString()
-        );
+    // For 2026-07-28 protocol scenarios that pin --spec-version explicitly, suppress the
+    // MCP_CONFORMANCE_PROTOCOL_VERSION override so a duplicate --spec-version is not appended.
+    private async Task<(bool Success, string Output, string Error)> RunStatelessConformanceTestAsync(string arguments)
+    {
+        return await NodeHelpers.RunServerConformanceAsync(
+            arguments,
+            line => { try { output.WriteLine(line); } catch { } },
+            appendProtocolVersionFromEnv: false,
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 }

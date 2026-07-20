@@ -13,21 +13,19 @@ This guide walks you through installing the MCP C# SDK and building a minimal MC
 
 The SDK ships as three NuGet packages. Pick the one that matches your scenario:
 
-| Package                                                                                                              | Use when...                                                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **[ModelContextProtocol.Core](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest)**             | You only need the client or low-level server APIs and want the **minimum set of dependencies**.                                                                                                                                                  |
-| **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)**                       | You're building a client or a **stdio-based** server and want hosting, dependency injection, and attribute-based tool/prompt/resource discovery. References `ModelContextProtocol.Core`. **This is the right starting point for most projects.** |
-| **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** | You're building an **HTTP-based** MCP server hosted in ASP.NET Core. References `ModelContextProtocol`, so you get everything above plus the HTTP transport.                                                                                     |
+| Package | Use when... |
+| - | - |
+| **[ModelContextProtocol.Core](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest)** | You only need the client or low-level server APIs and want the **minimum set of dependencies**. |
+| **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)** | You're building a client or a **stdio-based** server and want hosting, dependency injection, and attribute-based tool/prompt/resource discovery. References `ModelContextProtocol.Core`. **This is the right starting point for most projects.** |
+| **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** | You're building an **HTTP-based** MCP server hosted in ASP.NET Core. References `ModelContextProtocol`, so you get everything above plus the HTTP transport. |
 
 <!-- mlc-disable-next-line -->
-
 > [!TIP]
 > If you're unsure, start with the **ModelContextProtocol** package. You can always add **ModelContextProtocol.AspNetCore** later if you need HTTP transport support.
 
 ### Building an MCP server
 
 <!-- mlc-disable-next-line -->
-
 > [!TIP]
 > You can also use the [MCP Server project template](https://learn.microsoft.com/dotnet/ai/quickstarts/build-mcp-server) to quickly scaffold a new MCP server project.
 
@@ -81,7 +79,13 @@ using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        // Stateless mode is recommended for servers that don't need
+        // server-to-client requests like sampling or elicitation.
+        // See the Sessions documentation for details.
+        options.Stateless = true;
+    })
     .WithToolsFromAssembly();
 var app = builder.Build();
 
@@ -96,6 +100,20 @@ public static class EchoTool
     public static string Echo(string message) => $"hello {message}";
 }
 ```
+
+#### Host name validation
+
+For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`.
+
+For production servers, configure the exact public host names for the deployment, and validate the host name at the proxy or load balancer when one is responsible for forwarding client requests. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
+
+#### Browser cross-origin access
+
+**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). 
+
+For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#browser-cross-origin-access).
 
 ### Building an MCP client
 

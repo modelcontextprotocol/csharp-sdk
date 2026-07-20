@@ -878,6 +878,7 @@ public static partial class McpServerBuilderExtensions
     /// most recently set level.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, McpRequestHandler<SetLevelRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);

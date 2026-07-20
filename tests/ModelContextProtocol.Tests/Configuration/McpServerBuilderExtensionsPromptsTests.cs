@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -26,7 +26,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         mcpServerBuilder
                 .WithListPromptsHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -68,7 +68,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     })
         .WithGetPromptHandler(async (request, cancellationToken) =>
         {
-            switch (request.Params?.Name)
+            switch (request.Params.Name)
             {
                 case "FirstCustomPrompt":
                 case "SecondCustomPrompt":
@@ -79,7 +79,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     };
 
                 default:
-                    throw new McpProtocolException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException($"Unknown prompt '{request.Params.Name}'", McpErrorCode.InvalidParams);
             }
         })
         .WithPrompts<SimplePrompts>();
@@ -128,7 +128,14 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Can_Be_Notified_Of_Prompt_Changes()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
+        // initialize-handshake revision to keep coverage of the session-wide broadcast that older clients still rely on.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
 
         var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(8, prompts.Count);
@@ -164,6 +171,50 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(8, prompts.Count);
         Assert.DoesNotContain(prompts, t => t.Name == "NewPrompt");
+    }
+
+    [Fact]
+    public async Task DeferChangedEvents_BatchAddPrompts_EmitsExactlyOneNotification()
+    {
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverPrompts = serverOptions.PromptCollection;
+        Assert.NotNull(serverPrompts);
+
+        int notificationCount = 0;
+        var firstNotification = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (client.RegisterNotificationHandler(NotificationMethods.PromptListChangedNotification, (notification, cancellationToken) =>
+            {
+                if (Interlocked.Increment(ref notificationCount) == 1)
+                {
+                    firstNotification.TrySetResult(true);
+                }
+                return default;
+            }))
+        {
+            using (serverPrompts.DeferChangedEvents())
+            {
+                serverPrompts.Add(McpServerPrompt.Create([McpServerPrompt(Name = "BatchPrompt1")] () => "1"));
+                serverPrompts.Add(McpServerPrompt.Create([McpServerPrompt(Name = "BatchPrompt2")] () => "2"));
+                serverPrompts.Add(McpServerPrompt.Create([McpServerPrompt(Name = "BatchPrompt3")] () => "3"));
+            }
+
+            await firstNotification.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // Do a round-trip so that any second (erroneous) notification has time to arrive.
+            var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Contains(prompts, t => t.Name == "BatchPrompt1");
+            Assert.Contains(prompts, t => t.Name == "BatchPrompt2");
+            Assert.Contains(prompts, t => t.Name == "BatchPrompt3");
+
+            Assert.Equal(1, notificationCount);
+        }
     }
 
     [Fact]
@@ -314,17 +365,14 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPrompts(target);
 
         McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
-        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }, new GetPromptRequestParams
         {
-            Params = new GetPromptRequestParams
+            Name = "returns_string",
+            Arguments = new Dictionary<string, JsonElement>
             {
-                Name = "returns_string",
-                Arguments = new Dictionary<string, JsonElement>
-                {
-                    ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
-                }
+                ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
             }
-        }, TestContext.Current.CancellationToken);
+        }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString("hello"), (result.Messages[0].Content as TextContentBlock)?.Text);
     }

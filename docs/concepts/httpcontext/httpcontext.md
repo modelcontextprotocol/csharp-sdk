@@ -29,3 +29,16 @@ The following code snippet shows the `ContextTools` class accepting an [IHttpCon
 and the `GetHttpHeaders` method accessing the current [HttpContext] to retrieve the HTTP headers from the current request.
 
 [!code-csharp[](samples/Tools/ContextTools.cs?name=snippet_AccessHttpContext)]
+
+### SSE transport and stale HttpContext
+
+When using the legacy SSE transport, be aware that the `HttpContext` returned by `IHttpContextAccessor` references the long-lived SSE connection request — not the individual `POST` request that triggered the tool call. This means:
+
+- The `HttpContext.User` may contain stale claims if the client's token was refreshed after the SSE connection was established.
+- Request headers, query strings, and other per-request metadata will reflect the initial SSE connection, not the current operation.
+
+The Streamable HTTP transport does not have this issue because each tool call is its own HTTP request, so `IHttpContextAccessor.HttpContext` always reflects the current request. In [stateless](xref:stateless) mode, this is guaranteed since every request creates a fresh server context.
+
+<!-- mlc-disable-next-line -->
+> [!NOTE]
+> The server validates that the user identity has not changed between the session-initiating request and subsequent requests (using the `sub`, `NameIdentifier`, or `UPN` claim). If the user identity changes, the request is rejected with `403 Forbidden`. However, other claims (roles, permissions, custom claims) are not re-validated and may become stale over the lifetime of a session.
