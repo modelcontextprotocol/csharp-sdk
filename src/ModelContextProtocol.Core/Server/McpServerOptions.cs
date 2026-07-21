@@ -1,7 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Server;
 
@@ -205,17 +205,18 @@ public sealed class McpServerOptions
     public int MaxSamplingOutputTokens { get; set; } = 1000;
 
     /// <summary>
-    /// Gets or sets the task store for managing asynchronous task executions.
+    /// Gets or sets custom request handlers to register with the server.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When set, the server automatically enables the <c>io.modelcontextprotocol/tasks</c> extension
-    /// and wires up <c>tasks/get</c>, <c>tasks/update</c>, and <c>tasks/cancel</c> handlers backed by this store.
-    /// Tool executions from clients that signal task support will be wrapped in tasks via the store.
+    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
+    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// If explicit task handlers are also set on <see cref="Handlers"/>, the explicit handlers take precedence.
+    /// Handlers registered here take precedence over built-in handlers for the same method.
     /// </para>
     /// </remarks>
-    public IMcpTaskStore? TaskStore { get; set; }
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }

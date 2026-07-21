@@ -26,6 +26,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private string? _negotiatedProtocolVersion;
     private Task? _getReceiveTask;
+    private bool _streamableHttpAdopted;
     private volatile ClientTransportClosedException? _disconnectError;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
@@ -54,7 +55,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (_options.KnownSessionId is { } knownSessionId)
         {
             SessionId = knownSessionId;
-            _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
+            _streamableHttpAdopted = true;
+            StartUnsolicitedMessageStreamIfEnabled();
         }
     }
 
@@ -186,7 +188,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            if (responseContent.Length > 0)
+            {
+                rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+            }
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
@@ -225,7 +230,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             var initializeResult = JsonSerializer.Deserialize(initResponse.Result, McpJsonUtilities.JsonContext.Default.InitializeResult);
             _negotiatedProtocolVersion = initializeResult?.ProtocolVersion;
 
-            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
+            _streamableHttpAdopted = true;
+            StartUnsolicitedMessageStreamIfEnabled();
         }
         else if (rpcRequest.Method == RequestMethods.ServerDiscover && rpcResponseOrError is JsonRpcResponse)
         {
@@ -236,6 +242,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
 
         return response;
+    }
+
+    private void StartUnsolicitedMessageStreamIfEnabled()
+    {
+        if (_options.EnableStandaloneGetStream)
+        {
+            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
+        }
     }
 
     /// <summary>
@@ -295,7 +309,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         {
             // If we're auto-detecting the transport and failed to connect, leave the message Channel open for the SSE transport.
             // This class isn't directly exposed to public callers, so we don't have to worry about changing the _state in this case.
-            if (_options.TransportMode is not HttpTransportMode.AutoDetect || _getReceiveTask is not null)
+            if (_options.TransportMode is not HttpTransportMode.AutoDetect || _streamableHttpAdopted)
             {
                 // _disconnectError is set when the server returns 404 indicating session expiry.
                 // When null, this is a graceful client-initiated closure (no error).

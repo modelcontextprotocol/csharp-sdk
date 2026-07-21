@@ -1,4 +1,5 @@
-namespace ModelContextProtocol.Protocol;
+using ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the result of a request that supports task-augmented execution, which may be either
@@ -31,7 +32,10 @@ public class ResultOrCreatedTask<TResult> where TResult : Result
     /// <param name="result">The standard result returned by the server.</param>
     public ResultOrCreatedTask(TResult result)
     {
-        Throw.IfNull(result);
+        if (result is null)
+        {
+            throw new ArgumentNullException(nameof(result));
+        }
         _result = result;
     }
 
@@ -41,7 +45,10 @@ public class ResultOrCreatedTask<TResult> where TResult : Result
     /// <param name="taskCreated">The task creation result returned by the server.</param>
     public ResultOrCreatedTask(CreateTaskResult taskCreated)
     {
-        Throw.IfNull(taskCreated);
+        if (taskCreated is null)
+        {
+            throw new ArgumentNullException(nameof(taskCreated));
+        }
         _taskCreated = taskCreated;
     }
 
