@@ -120,6 +120,20 @@ public sealed class Program
     /// </summary>
     public string? AuthorizationResponseIssuer { get; set; }
 
+    /// <summary>
+    /// Gets or sets the code challenge methods advertised by metadata endpoints.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>["S256"]</c>.
+    /// </remarks>
+    public List<string>? CodeChallengeMethodsSupported { get; set; } = ["S256"];
+
+    /// <summary>
+    /// Gets the set of metadata paths that should omit <c>code_challenge_methods_supported</c> from their
+    /// response, simulating a server whose discovery endpoints advertise differing PKCE support.
+    /// </summary>
+    public HashSet<string> MetadataPathsWithoutPkceSupport { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
@@ -257,7 +271,9 @@ public sealed class Program
                     : ["openid", "profile", "email", "mcp:tools"],
                 TokenEndpointAuthMethodsSupported = ["client_secret_post"],
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
-                CodeChallengeMethodsSupported = ["S256"],
+                CodeChallengeMethodsSupported = MetadataPathsWithoutPkceSupport.Contains(context.Request.Path)
+                    ? null
+                    : CodeChallengeMethodsSupported,
                 GrantTypesSupported = ["authorization_code", "refresh_token"],
                 IntrospectionEndpoint = $"{_url}/introspect",
                 RegistrationEndpoint = $"{_url}/register",

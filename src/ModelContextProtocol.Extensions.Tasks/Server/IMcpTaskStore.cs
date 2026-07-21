@@ -1,7 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Provides an interface for storing and managing the lifecycle of MCP tasks.

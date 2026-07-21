@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Provides an in-memory implementation of <see cref="IMcpTaskStore"/> for development and testing scenarios.
@@ -15,13 +15,21 @@ namespace ModelContextProtocol.Server;
 /// Tasks are not persisted across process restarts.
 /// </para>
 /// <para>
-/// For production scenarios requiring durability, session isolation, or TTL-based cleanup,
-/// implement a custom <see cref="IMcpTaskStore"/>.
+/// Tasks created with a <see cref="DefaultTimeToLive"/> are discarded once their time-to-live
+/// elapses (as permitted by SEP-2663): an expired task is removed on access, and an opportunistic
+/// throttled sweep reclaims expired tasks that are never polled again. Tasks created without a
+/// time-to-live are retained until the process exits.
+/// </para>
+/// <para>
+/// For production scenarios requiring durability, session isolation, or more advanced retention
+/// policies, implement a custom <see cref="IMcpTaskStore"/>.
 /// </para>
 /// </remarks>
 public class InMemoryMcpTaskStore : IMcpTaskStore
 {
     private readonly ConcurrentDictionary<string, McpTaskInfo> _tasks = new();
+    private static readonly long s_sweepIntervalTicks = TimeSpan.FromSeconds(30).Ticks;
+    private long _lastSweepTicks = DateTimeOffset.UtcNow.UtcTicks;
 
     /// <summary>
     /// Gets or sets the default poll interval in milliseconds for new tasks.
@@ -32,13 +40,19 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <summary>
     /// Gets or sets the default time-to-live for new tasks, or <see langword="null"/> for unlimited.
     /// </summary>
+    /// <remarks>
+    /// When set to a positive value, tasks are discarded once this duration elapses from their
+    /// creation. A <see langword="null"/> or non-positive value keeps tasks until the process exits.
+    /// </remarks>
     public TimeSpan? DefaultTimeToLive { get; set; }
 
     /// <inheritdoc/>
     public Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default)
     {
-        var taskId = Guid.NewGuid().ToString("N");
         var now = DateTimeOffset.UtcNow;
+        SweepExpired(now);
+
+        var taskId = Guid.NewGuid().ToString("N");
 
         var info = new McpTaskInfo(taskId, McpTaskStatus.Working, now, now, DefaultTimeToLive, DefaultPollIntervalMs);
         _tasks[taskId] = info;
@@ -49,8 +63,19 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     /// <inheritdoc/>
     public Task<McpTaskInfo?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default)
     {
-        _tasks.TryGetValue(taskId, out var info);
-        return Task.FromResult<McpTaskInfo?>(info);
+        var now = DateTimeOffset.UtcNow;
+        if (_tasks.TryGetValue(taskId, out var info))
+        {
+            if (IsExpired(info, now))
+            {
+                _tasks.TryRemove(taskId, out _);
+                return Task.FromResult<McpTaskInfo?>(null);
+            }
+
+            return Task.FromResult<McpTaskInfo?>(info);
+        }
+
+        return Task.FromResult<McpTaskInfo?>(null);
     }
 
     /// <inheritdoc/>
@@ -197,6 +222,35 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
 
     private static bool IsTerminal(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
+
+    private static bool IsExpired(McpTaskInfo info, DateTimeOffset now) =>
+        info.TimeToLive is { } ttl && ttl > TimeSpan.Zero && now - info.CreatedAt >= ttl;
+
+    private void SweepExpired(DateTimeOffset now)
+    {
+        long last = Interlocked.Read(ref _lastSweepTicks);
+        if (now.UtcTicks - last < s_sweepIntervalTicks)
+        {
+            return;
+        }
+
+        // Ensure only one caller runs the sweep per interval; concurrent callers skip it.
+        if (Interlocked.CompareExchange(ref _lastSweepTicks, now.UtcTicks, last) != last)
+        {
+            return;
+        }
+
+        foreach (var kvp in _tasks)
+        {
+            if (IsExpired(kvp.Value, now))
+            {
+                // TaskId values are unique GUIDs that are never reused, and CreatedAt/TimeToLive
+                // are immutable after creation, so an entry judged expired here stays expired.
+                // Removing by key is therefore safe even if the value was concurrently updated.
+                _tasks.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
 
     private void Update(string taskId, Func<McpTaskInfo, McpTaskInfo> transform)
     {

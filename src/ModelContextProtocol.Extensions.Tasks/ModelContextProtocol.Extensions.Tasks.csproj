@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>ModelContextProtocol.Extensions.Tasks</PackageId>
+    <Description>MCP Tasks extension for the .NET Model Context Protocol (MCP) SDK</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Suppress the experimental MCP warnings for internal usage -->
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
+    <!-- New package with no published baseline yet -->
+    <EnablePackageValidation>false</EnablePackageValidation>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
+  </ItemGroup>
+
+  <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs the ExperimentalAttribute polyfill. -->
+  <ItemGroup>
+    <Compile Remove="..\Common\Polyfills\**\*.cs" />
+    <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\ExperimentalAttribute.cs"
+             Link="Polyfills\ExperimentalAttribute.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\CompilerFeatureRequiredAttribute.cs"
+             Link="Polyfills\CompilerFeatureRequiredAttribute.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\IsExternalInit.cs"
+             Link="Polyfills\IsExternalInit.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\RequiredMemberAttribute.cs"
+             Link="Polyfills\RequiredMemberAttribute.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\PACKAGE.md" Pack="true" PackagePath="\README.md" />
+  </ItemGroup>
+
+</Project>

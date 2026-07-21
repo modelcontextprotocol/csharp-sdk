@@ -3,6 +3,10 @@ items:
   href: index.md
 - name: Getting Started
   uid: getting-started
+- name: Deployment
+  items:
+  - name: Docker
+    uid: docker-deployment
 - name: Base Protocol
   items:
   - name: Capabilities

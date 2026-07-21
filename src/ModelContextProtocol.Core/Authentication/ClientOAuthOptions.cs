@@ -76,7 +76,7 @@ public sealed class ClientOAuthOptions
     /// <para>
     /// This callback receives the authorization and redirect URIs in an
     /// <see cref="AuthorizationCallbackContext"/> and returns the authorization response.
-    /// If not specified, a default implementation prompts the user to enter the authorization code manually.
+    /// If not specified, a default implementation prompts the user to enter the full redirect URL manually.
     /// </para>
     /// <para>
     /// Custom implementations might open a browser, start an HTTP listener, or use other mechanisms to capture

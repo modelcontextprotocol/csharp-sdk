@@ -16,6 +16,8 @@ The SDK packages are:
 
 - **[ModelContextProtocol.Extensions.Apps](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Apps.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps) - MCP Apps extension for building interactive UI applications that render inside MCP hosts.
 
+- **[ModelContextProtocol.Extensions.Tasks](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Tasks.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks) - MCP Tasks extension for running long-running tool invocations asynchronously with status polling and input requests.
+
 ## Getting Started
 
 To get started, see the [Getting Started](https://csharp.sdk.modelcontextprotocol.io/concepts/getting-started.html) guide in the conceptual documentation for installation instructions, package-selection guidance, and complete examples for both clients and servers.

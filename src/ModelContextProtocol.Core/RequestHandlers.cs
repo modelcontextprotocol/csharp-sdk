@@ -46,48 +46,35 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
         };
     }
 
+#pragma warning disable MCPEXP002 // SetWithAlternate consumes the experimental ResultOrAlternate seam
     /// <summary>
-    /// Registers a handler that may return either a standard result or a <see cref="CreateTaskResult"/>
-    /// for task-augmented execution.
+    /// Registers a handler that may return either a standard result or an alternate <see cref="Result"/>
+    /// subtype for scenarios like task-augmented execution.
     /// </summary>
-    public void SetTaskAugmented<TParams, TResult>(
+    public void SetWithAlternate<TParams, TResult>(
         string method,
-        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<ResultOrCreatedTask<TResult>>> handler,
+        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<ResultOrAlternate<TResult>>> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
-        JsonTypeInfo<TResult> responseTypeInfo,
-        JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
+        JsonTypeInfo<TResult> responseTypeInfo)
         where TResult : Result
     {
         Throw.IfNull(method);
         Throw.IfNull(handler);
         Throw.IfNull(requestTypeInfo);
         Throw.IfNull(responseTypeInfo);
-        Throw.IfNull(taskResultTypeInfo);
 
         this[method] = async (request, cancellationToken) =>
         {
             TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
             var augmented = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
 
-            if (augmented.IsTask)
+            if (augmented.IsAlternate)
             {
-                // Guard against a misconfiguration where a handler opts into task-augmented
-                // execution but the server has no task lifecycle handlers wired up. Without
-                // tasks/get, a client that received a CreateTaskResult would have no way to
-                // poll the task to completion. Configure McpServerOptions.TaskStore or set
-                // the task handlers explicitly via McpServerOptions.Handlers.
-                if (!ContainsKey(RequestMethods.TasksGet))
-                {
-                    throw new InvalidOperationException(
-                        $"Handler for '{method}' returned a {nameof(CreateTaskResult)}, but the server has no " +
-                        $"'{RequestMethods.TasksGet}' handler registered. Configure McpServerOptions.TaskStore " +
-                        "or set the task handlers explicitly in McpServerOptions.Handlers before starting the server.");
-                }
-
-                return JsonSerializer.SerializeToNode(augmented.TaskCreated!, taskResultTypeInfo);
+                return JsonSerializer.SerializeToNode(augmented.Alternate!, augmented.AlternateTypeInfo!);
             }
 
             return JsonSerializer.SerializeToNode(augmented.Result!, responseTypeInfo);
         };
     }
+#pragma warning restore MCPEXP002
 }

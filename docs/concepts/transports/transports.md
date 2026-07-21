@@ -249,6 +249,8 @@ In Streamable HTTP, client requests arrive as HTTP POST requests. The server hol
 
 In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages) for a detailed breakdown.
 
+If your client does not need unsolicited server-to-client messages, or if a long-lived GET stream would block other requests under a constrained `HttpClient` connection pool, set <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> to `false`. Direct responses and streaming responses to client POST requests still work; only the standalone GET stream is skipped.
+
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
 [AspNetCoreMcpPerSessionTools]: https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/AspNetCoreMcpPerSessionTools
@@ -258,6 +260,8 @@ app.MapMcp("/mcp");
 ```
 
 When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:stateless#legacy-sse-transport)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+
+For containerized deployments of ASP.NET Core servers, see [Docker deployment](../deployment/docker.md).
 
 ### SSE transport (legacy)
 

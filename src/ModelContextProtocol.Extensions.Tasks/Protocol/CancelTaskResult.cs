@@ -1,6 +1,7 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the result of a <c>tasks/cancel</c> request. This is an empty acknowledgement.

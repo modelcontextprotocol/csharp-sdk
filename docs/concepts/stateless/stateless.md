@@ -373,6 +373,7 @@ The following <xref:ModelContextProtocol.Client.HttpClientTransportOptions> prop
 | Property | Default | Description |
 |----------|---------|-------------|
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.KnownSessionId> | `null` | Pre-existing session ID for use with <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*>. When set, the client includes this session ID immediately and starts listening for unsolicited messages. |
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> | `true` | Opens the standalone GET stream for unsolicited messages. Set to `false` to skip it; POST request/response streaming still works. |
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> | `true` | Whether to send a DELETE request when the client is disposed. Set to `false` when you don't want disposal to terminate the server session. |
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.AdditionalHeaders> | `null` | Custom headers included in all requests (e.g., for authentication). These are sent alongside the automatic `Mcp-Session-Id` header. |
 
@@ -590,7 +591,7 @@ In stateless mode, each HTTP request creates and disposes a short-lived `McpServ
 
 ## Tasks and session modes
 
-[Tasks](xref:tasks) enable a "call-now, fetch-later" pattern for long-running tool calls. Task support depends on having an <xref:ModelContextProtocol.Server.IMcpTaskStore> configured (`McpServerOptions.TaskStore`), and behavior differs between session modes.
+[Tasks](xref:tasks) enable a "call-now, fetch-later" pattern for long-running tool calls. Task support depends on having an <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> configured (enabled via `WithTasks`), and behavior differs between session modes.
 
 ### Stateless mode
 
@@ -600,9 +601,9 @@ In stateless mode, there is no `SessionId`, so the task store does not apply ses
 
 ### Stateful mode
 
-In stateful mode, the `IMcpTaskStore` receives the session's `SessionId` on every operation — `CreateTaskAsync`, `GetTaskAsync`, `ListTasksAsync`, `CancelTaskAsync`, etc. The built-in <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> enforces session isolation: tasks created in one session cannot be accessed from another.
+In stateful mode, the `IMcpTaskStore` receives the session's `SessionId` on every operation: `CreateTaskAsync`, `GetTaskAsync`, `ListTasksAsync`, `CancelTaskAsync`, etc. The built-in <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> enforces session isolation: tasks created in one session cannot be accessed from another.
 
-Tasks can outlive individual HTTP requests because the tool executes in the background after returning the initial `CreateTaskResult`. Task cleanup is governed by the task's TTL (time-to-live), not by session termination. However, the `InMemoryMcpTaskStore` loses all tasks if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.Server.IMcpTaskStore> backed by an external store. See [Implementing a custom task store](xref:tasks#implementing-a-custom-task-store) for guidance.
+Tasks can outlive individual HTTP requests because the tool executes in the background after returning the initial `CreateTaskResult`. Task cleanup is governed by the task's TTL (time-to-live), not by session termination. However, the `InMemoryMcpTaskStore` loses all tasks if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> backed by an external store. See [Implementing a custom task store](xref:tasks#implementing-a-custom-task-store) for guidance.
 
 ### Task cancellation vs request cancellation
 
@@ -654,7 +655,7 @@ The `EventStreamStore` itself has TTL-based limits (default: 2-hour event expira
 
 ### With tasks (experimental)
 
-[Tasks](xref:tasks) are an experimental feature that enables a "call-now, fetch-later" pattern for long-running tool calls. When a client sends a task-augmented `tools/call` request, the server creates a task record in the <xref:ModelContextProtocol.Server.IMcpTaskStore>, starts the tool handler as a fire-and-forget background task, and returns the task ID immediately — the POST response completes **before the handler starts its real work**.
+[Tasks](xref:tasks) are an experimental feature that enables a "call-now, fetch-later" pattern for long-running tool calls. When a client sends a task-augmented `tools/call` request, the server creates a task record in the <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore>, starts the tool handler as a fire-and-forget background task, and returns the task ID immediately, so the POST response completes **before the handler starts its real work**.
 
 This means:
 
