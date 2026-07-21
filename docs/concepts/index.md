@@ -8,6 +8,12 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 Install the SDK and build your first MCP client and server.
 
+### Deployment
+
+| Title | Description |
+| - | - |
+| [Docker deployment](deployment/docker.md) | Learn how to package and run ASP.NET Core MCP servers in Docker containers using Streamable HTTP transport. |
+
 ### Base Protocol
 
 | Title | Description |
