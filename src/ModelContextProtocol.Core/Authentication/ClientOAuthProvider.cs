@@ -32,6 +32,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
+    private readonly bool _validateAuthorizationResponseState;
     private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
 
@@ -120,6 +121,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (options.AuthorizationCallbackHandler is not null)
         {
             _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
+            _validateAuthorizationResponseState = true;
             _validateAuthorizationResponseIssuer = true;
         }
         else if (authorizationRedirectDelegate is not null)
@@ -131,11 +133,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     context.RedirectUri,
                     cancellationToken).ConfigureAwait(false),
             };
+            _validateAuthorizationResponseState = false;
             _validateAuthorizationResponseIssuer = false;
         }
         else
         {
             _authorizationCallbackHandler = DefaultAuthorizationUrlHandler;
+            _validateAuthorizationResponseState = true;
             _validateAuthorizationResponseIssuer = true;
         }
 
@@ -155,11 +159,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers) => availableServers.FirstOrDefault();
 
     /// <summary>
-    /// Default authorization URL handler that displays the URL to the user for manual input.
+    /// Default authorization URL handler that displays the URL to the user and parses the resulting redirect URL.
     /// </summary>
     /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization result entered by the user, or null if none was provided.</returns>
+    /// <returns>The authorization result parsed from the redirect URL, or null if no valid URL was provided.</returns>
     private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
         AuthorizationCallbackContext context,
         CancellationToken cancellationToken)
@@ -179,6 +183,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return Task.FromResult<AuthorizationResult?>(new()
         {
             Code = queryParams["code"],
+            State = queryParams["state"],
             Iss = queryParams["iss"],
         });
     }
@@ -687,10 +692,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
-        var codeVerifier = GenerateCodeVerifier();
+        var codeVerifier = GenerateRandomBase64UrlValue();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        var state = GenerateRandomBase64UrlValue();
 
-        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
+        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge, state);
 
         var authResult = await _authorizationCallbackHandler(
             new AuthorizationCallbackContext
@@ -700,7 +706,17 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             },
             cancellationToken).ConfigureAwait(false);
 
-        if (authResult is null || string.IsNullOrEmpty(authResult.Code))
+        if (authResult is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null authorization result.");
+        }
+
+        if (_validateAuthorizationResponseState)
+        {
+            ValidateStateResponse(authResult!.State, state);
+        }
+
+        if (string.IsNullOrEmpty(authResult.Code))
         {
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
         }
@@ -721,7 +737,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private Uri BuildAuthorizationUrl(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
-        string codeChallenge)
+        string codeChallenge,
+        string state)
     {
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
@@ -732,6 +749,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
+            ["state"] = state,
         };
 
         if (resourceUri is not null)
@@ -1108,6 +1126,26 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     }
 
     /// <summary>
+    /// Validates that an authorization response is bound to the transaction that initiated it.
+    /// </summary>
+    /// <param name="state">The state returned in the authorization response.</param>
+    /// <param name="expectedState">The state sent in the authorization request.</param>
+    private static void ValidateStateResponse(string? state, string expectedState)
+    {
+        if (string.IsNullOrEmpty(state))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The authorization response did not include the required state parameter.");
+        }
+
+        if (!string.Equals(state, expectedState, StringComparison.Ordinal))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The authorization response state did not match the state sent in the authorization request.");
+        }
+    }
+
+    /// <summary>
     /// Validates the <c>iss</c> parameter from an authorization response per
     /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>.
     /// </summary>
@@ -1378,7 +1416,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         yield return (new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}"), new Uri(hostBase));
     }
 
-    private static string GenerateCodeVerifier()
+    private static string GenerateRandomBase64UrlValue()
     {
 #if NET9_0_OR_GREATER
         Span<byte> bytes = stackalloc byte[32];
