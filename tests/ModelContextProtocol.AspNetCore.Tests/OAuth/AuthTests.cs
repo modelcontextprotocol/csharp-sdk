@@ -11,6 +11,7 @@ using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -761,6 +762,120 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("mcp:tools", thirdScopeSet);
         Assert.Contains("files:read", thirdScopeSet);
         Assert.Contains("files:write", thirdScopeSet);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ConcurrentStepUps_ReuseSteppedUpToken_WhenChallengeAddsNoNewScope()
+    {
+        // Two concurrent calls to the same tool both receive the same insufficient_scope challenge
+        // before either has stepped up. They serialize on the provider's token acquisition lock: the
+        // first runs the step-up and caches the broader token, and the second must reuse that token
+        // instead of failing as a "repeated" challenge. Only one interactive step-up should run.
+
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "read-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Read tool executed.";
+                }),
+            ]);
+
+        List<string?> requestedScopes = [];
+        var scopeLock = new object();
+
+        // Release both initial challenges only after both concurrent calls have reached the server, so
+        // the second caller is guaranteed to be waiting on the token lock while the first steps up.
+        var bothChallengesReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int challengesReached = 0;
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        var user = context.User;
+                        var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                        var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+
+                        if (toolCallParams?.Name == "read-tool" && !scopeSet.Contains("files:read"))
+                        {
+                            if (Interlocked.Increment(ref challengesReached) == 2)
+                            {
+                                bothChallengesReached.TrySetResult();
+                            }
+
+                            await bothChallengesReached.Task.WaitAsync(TestConstants.DefaultTimeout, context.RequestAborted);
+
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:read\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    lock (scopeLock)
+                    {
+                        requestedScopes.Add(query["scope"].ToString());
+                    }
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Initial connect requests "mcp:tools" from protected resource metadata.
+        Assert.Single(requestedScopes);
+        Assert.Equal("mcp:tools", requestedScopes[0]);
+
+        var firstCall = client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+        var secondCall = client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+
+        var results = await Task.WhenAll(firstCall, secondCall);
+
+        Assert.Equal("Read tool executed.", results[0].Content[0].ToString());
+        Assert.Equal("Read tool executed.", results[1].Content[0].ToString());
+
+        // Only one interactive step-up should have run; the second caller reused the token from the first.
+        Assert.Equal(2, requestedScopes.Count);
+        var stepUpScopes = new HashSet<string>(requestedScopes[1]!.Split(' '));
+        Assert.Contains("mcp:tools", stepUpScopes);
+        Assert.Contains("files:read", stepUpScopes);
     }
 
     [Fact]

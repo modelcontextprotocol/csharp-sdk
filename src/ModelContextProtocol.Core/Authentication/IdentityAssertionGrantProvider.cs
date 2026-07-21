@@ -120,10 +120,13 @@ public sealed class IdentityAssertionGrantProvider
         Uri authorizationServerUrl,
         CancellationToken cancellationToken = default)
     {
-        // Return cached token if still valid
-        if (_cachedTokens is not null && !_cachedTokens.IsExpired)
+        // Return cached token if still valid. Read the field once into a local so a concurrent
+        // InvalidateCache (which nulls _cachedTokens) cannot turn this lock-free check into a null
+        // dereference or a null return between the null check and the return.
+        var cachedBeforeLock = _cachedTokens;
+        if (cachedBeforeLock is not null && !cachedBeforeLock.IsExpired)
         {
-            return _cachedTokens;
+            return cachedBeforeLock;
         }
 
         // Serialize the exchange so concurrent callers that all saw the expired/absent token don't

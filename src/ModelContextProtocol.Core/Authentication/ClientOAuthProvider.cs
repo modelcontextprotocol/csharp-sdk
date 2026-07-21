@@ -51,8 +51,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
     // expired token (or a 401) at the same time, only the first runs the refresh/authorization flow
-    // while the others await its result. This also serializes writes to the mutable auth state below
-    // (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod).
+    // while the others await its result. This also serializes all reads and writes to the mutable auth
+    // state below (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
+    // the accumulated scope set and step-up tracking (_accumulatedScopes, _hasAttemptedStepUp), so those
+    // fields need no separate lock.
     //
     // Intentionally not disposed: this instance is only ever used via WaitAsync/Release (never its
     // AvailableWaitHandle), so SemaphoreSlim allocates no unmanaged resource and there is nothing to
@@ -64,7 +66,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     // multiple resources or auth servers, accumulated scopes could be sent to a server that rejects
     // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
     private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
-    private readonly object _scopeAccumulatorLock = new();
     private bool _hasAttemptedStepUp;
 
     /// <summary>
@@ -293,10 +294,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return cached.AccessToken;
         }
 
-        return await GetAccessTokenCoreAsync(response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+        return await GetAccessTokenCoreAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string> GetAccessTokenCoreAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
+    private async Task<string> GetAccessTokenCoreAsync(HttpResponseMessage response, bool attemptedRefresh, string? usedAccessToken, CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
@@ -316,17 +317,26 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
             bool introducesNewScopes = ChallengeIntroducesNewScopes(protectedResourceMetadata);
-            lock (_scopeAccumulatorLock)
+            if (_hasAttemptedStepUp && !introducesNewScopes)
             {
-                if (_hasAttemptedStepUp && !introducesNewScopes)
+                // A step-up has already run and this challenge asks for nothing new. If that step-up
+                // produced a different, still-valid token (for example another concurrent caller ran
+                // it while this one waited on the lock), reuse that token instead of failing, since it
+                // already reflects the accumulated scopes. Only fail when there is no newer token to
+                // try, which is the genuine repeated-failure case where the stepped-up token itself
+                // was rejected again.
+                if (await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } steppedUpToken &&
+                    !string.Equals(steppedUpToken.AccessToken, usedAccessToken, StringComparison.Ordinal))
                 {
-                    ThrowFailedToHandleUnauthorizedResponse(
-                        "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
-                        "so step-up authorization cannot satisfy the request.");
+                    return steppedUpToken.AccessToken;
                 }
 
-                _hasAttemptedStepUp = true;
+                ThrowFailedToHandleUnauthorizedResponse(
+                    "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
+                    "so step-up authorization cannot satisfy the request.");
             }
+
+            _hasAttemptedStepUp = true;
         }
 
         // Convert string URIs to Uri objects for the selector
@@ -866,13 +876,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (currentOperationScopes.Count == 0)
         {
-            lock (_scopeAccumulatorLock)
-            {
-                // If we have previously requested scopes but nothing new, return the accumulated set.
-                return _accumulatedScopes.Count > 0
-                    ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
-                    : null;
-            }
+            // If we have previously requested scopes but nothing new, return the accumulated set.
+            return _accumulatedScopes.Count > 0
+                ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
+                : null;
         }
 
         // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
@@ -881,16 +888,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // offline_access (AugmentScopeWithOfflineAccess) and any ScopeSelector are applied per request
         // in ComputeEffectiveScope and are intentionally not accumulated, so the selector always sees
         // the full union and the operation stays idempotent.
-        lock (_scopeAccumulatorLock)
+        foreach (var scope in currentOperationScopes)
         {
-            foreach (var scope in currentOperationScopes)
-            {
-                _accumulatedScopes.Add(scope);
-            }
-
-            // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
-            return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
+            _accumulatedScopes.Add(scope);
         }
+
+        // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
+        return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -935,14 +939,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return false;
         }
 
-        lock (_scopeAccumulatorLock)
+        foreach (var scope in currentOperationScopes)
         {
-            foreach (var scope in currentOperationScopes)
+            if (!_accumulatedScopes.Contains(scope))
             {
-                if (!_accumulatedScopes.Contains(scope))
-                {
-                    return true;
-                }
+                return true;
             }
         }
 
