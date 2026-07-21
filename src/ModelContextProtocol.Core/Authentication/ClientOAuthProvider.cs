@@ -411,15 +411,28 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 // protocol versions, ExtractProtectedResourceMetadata throws if the PRM document
                 // omits the resource field (VerifyResourceMatch returns false for null Resource),
                 // so we never reach this point with resourceUri == null in non-legacy flows.
+                if (resourceUri is not null && metadata.Issuer is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' did not provide the required issuer (RFC 8414 Section 2).");
+                }
+
+                // RFC 8414 requires an identical issuer value, so do not normalize URI case,
+                // trailing slashes, or percent-encoding before comparison.
                 if (resourceUri is not null &&
-                    metadata.Issuer is not null &&
-                    !string.Equals(metadata.Issuer.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
+                    !string.Equals(metadata.Issuer!.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
                 {
                     ThrowFailedToHandleUnauthorizedResponse(
                         $"Authorization server metadata issuer '{metadata.Issuer}' does not match the expected issuer '{authServerUri}' (RFC 8414 Section 3.3).");
                 }
 
                 return metadata;
+            }
+            catch (McpException)
+            {
+                // Metadata validation failures are security signals and must not fall back to
+                // another well-known endpoint.
+                throw;
             }
             catch (Exception ex)
             {
@@ -922,6 +935,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         var expectedIssuer = authServerMetadata.Issuer?.OriginalString;
 
+        if ((authServerMetadata.AuthorizationResponseIssParameterSupported || !string.IsNullOrEmpty(iss)) &&
+            expectedIssuer is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "Authorization server metadata did not provide an issuer required to validate the authorization response.");
+        }
+
         if (authServerMetadata.AuthorizationResponseIssParameterSupported)
         {
             // Server advertises iss support: iss MUST be present and match.
@@ -941,6 +961,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         else
         {
             // Server does not advertise iss support: if iss is present, still validate it.
+            // RFC 9207 cannot protect against a server that neither advertises support nor
+            // returns an iss parameter, so an absent iss is accepted in that case.
             if (!string.IsNullOrEmpty(iss))
             {
                 if (!string.Equals(iss, expectedIssuer, StringComparison.Ordinal))

@@ -100,6 +100,26 @@ public sealed class Program
     /// </remarks>
     public bool IncludeOfflineAccessInMetadata { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether authorization server metadata includes an issuer.
+    /// </summary>
+    public bool IncludeIssuerInMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets an issuer value that overrides the authorization server's metadata issuer.
+    /// </summary>
+    public string? MetadataIssuerOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server advertises RFC 9207 support.
+    /// </summary>
+    public bool AuthorizationResponseIssParameterSupported { get; set; }
+
+    /// <summary>
+    /// Gets or sets the issuer included in authorization responses, or <see langword="null"/> to omit it.
+    /// </summary>
+    public string? AuthorizationResponseIssuer { get; set; }
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
@@ -225,7 +245,7 @@ public sealed class Program
 
             var metadata = new OAuthServerMetadata
             {
-                Issuer = $"{_url}{issuerPath}",
+                Issuer = IncludeIssuerInMetadata ? MetadataIssuerOverride ?? $"{_url}{issuerPath}" : null,
                 AuthorizationEndpoint = $"{_url}/authorize",
                 TokenEndpoint = $"{_url}/token",
                 JwksUri = $"{_url}/.well-known/jwks.json",
@@ -242,6 +262,7 @@ public sealed class Program
                 IntrospectionEndpoint = $"{_url}/introspect",
                 RegistrationEndpoint = $"{_url}/register",
                 ClientIdMetadataDocumentSupported = ClientIdMetadataDocumentSupported,
+                AuthorizationResponseIssParameterSupported = AuthorizationResponseIssParameterSupported ? true : null,
             };
 
             return Results.Ok(metadata);
@@ -372,6 +393,10 @@ public sealed class Program
             if (!string.IsNullOrEmpty(state))
             {
                 redirectUrl += $"&state={Uri.EscapeDataString(state)}";
+            }
+            if (!string.IsNullOrEmpty(AuthorizationResponseIssuer))
+            {
+                redirectUrl += $"&iss={Uri.EscapeDataString(AuthorizationResponseIssuer)}";
             }
 
             return Results.Redirect(redirectUrl);

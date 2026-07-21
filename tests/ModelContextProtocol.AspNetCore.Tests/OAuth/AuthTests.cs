@@ -1040,6 +1040,64 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataIssuerMismatches()
+    {
+        TestOAuthServer.MetadataIssuerOverride = "https://attacker.example";
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataOmitsIssuer()
+    {
+        TestOAuthServer.IncludeIssuerInMetadata = false;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not provide the required issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WhenAuthorizationResponseIssuerMatches()
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
+        TestOAuthServer.AuthorizationResponseIssuer = OAuthServerUrl;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseIssuerMismatches()
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
+        TestOAuthServer.AuthorizationResponseIssuer = "https://attacker.example";
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Authorization response issuer", ex.Message);
+        Assert.Contains("does not match expected issuer", ex.Message);
+    }
+
+    [Fact]
     public async Task CanAuthenticate_WithResourceMetadataPathFallbacks()
     {
         const string resourcePath = "/mcp";
@@ -1969,6 +2027,19 @@ public class AuthTests : OAuthTestBase
 
         Assert.False(scopePresent);
     }
+
+    private HttpClientTransport CreateOAuthTransport() =>
+        new(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
 
     [Fact]
     public async Task DynamicClientRegistration_ScopeSelector_AppliesToDcrScope()
