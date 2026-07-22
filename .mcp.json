@@ -10,18 +10,11 @@
         "--DashboardUrl=http://localhost:5399"
       ]
     },
-    "Stateless Show Planner": {
+    "Stateless Release Planner": {
       "type": "stdio",
       "command": "dotnet",
       "args": [
-        "artifacts\\bin\\ShowPlannerServer\\Debug\\net10.0\\ShowPlannerServer.dll"
-      ]
-    },
-    "Task-Aware Show Producer": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": [
-        "artifacts\\bin\\ShowProducerServer\\Debug\\net10.0\\ShowProducerServer.dll"
+        "artifacts\\bin\\ReleasePlannerServer\\Debug\\net10.0\\ReleasePlannerServer.dll"
       ]
     }
   }

@@ -87,6 +87,7 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
+    .WithTools<IdentityTools>()
     .WithTools<WeatherTools>()
     .WithHttpTransport(options =>
     {

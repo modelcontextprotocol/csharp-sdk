@@ -23,9 +23,9 @@ The repository `.mcp.json` starts this sample in stdio mode. In Visual Studio:
 1. Trust and start **Fireworks Show Control** in the MCP server manager.
 2. Open <http://localhost:5399> in one or more audience browser windows.
 3. Add the `choreograph_fireworks` prompt and set `occasion` to your event.
-4. Let Copilot call `launch_fireworks`, approve the tool, and watch every surface launch together.
+4. Let Copilot call `launch_fireworks`, approve the tool, and watch every connected browser launch together.
 
-If the Visual Studio build being used does not render MCP Apps, the SignalR browser remains the full visual output.
+Visual Studio is not currently listed in the official MCP Apps client matrix, so the SignalR browser is the guaranteed stage output. The same structured result can render inline when the sample is connected to a host that supports MCP Apps.
 
 ## HTTP mode
 

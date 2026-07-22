@@ -15,7 +15,7 @@ No custom client is included.
 - The tool's `CancellationToken` is signaled by `tasks/cancel`.
 - A standard tool result, including tool-level errors, becomes the task's terminal `completed` payload.
 
-This deliberately contrasts with `ShowPlannerServer`: Tasks keep the background handler alive, while MRTR moves all continuation state through `requestState`.
+This deliberately contrasts with `ReleasePlannerServer`: Tasks keep the background handler alive, while MRTR moves all continuation state through `requestState`.
 
 ## Visual Studio demo
 
@@ -25,6 +25,6 @@ Build once before Visual Studio starts the server:
 dotnet build samples\ShowProducerServer\ShowProducerServer.csproj
 ```
 
-The repository `.mcp.json` registers **Task-Aware Show Producer**. Ask it to produce a four-beat show package for a conference closing session. Visual Studio can invoke the tool inline even if it does not yet support the Tasks extension.
+This appendix sample is not registered in the repository `.mcp.json`, keeping the live presentation tool picker focused. Add it to a client configuration when demonstrating the inline fallback or testing with a Tasks-aware host.
 
 When using a task-aware host, the same invocation is returned as a pollable task. The in-memory store is appropriate for this local demo; production servers should use a durable `IMcpTaskStore`.

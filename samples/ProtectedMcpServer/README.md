@@ -10,6 +10,7 @@ The Protected MCP Server sample shows how to:
 - Implement protected MCP tools and resources
 - Integrate with ASP.NET Core authentication and authorization
 - Provide OAuth resource metadata for client discovery
+- Inspect the authenticated caller without depending on an external API
 
 ## Prerequisites
 
@@ -58,13 +59,17 @@ dotnet run
 
 ### Available Tools
 
-The server provides weather-related tools that require authentication:
+The server provides tools that require authentication:
 
-1. **GetAlerts**: Get weather alerts for a US state
+1. **WhoAmI**: Show the authenticated identity, OAuth client, and granted scopes
+   - No parameters
+   - Deterministic and suitable for an authentication demo without network access
+
+2. **GetAlerts**: Get weather alerts for a US state
    - Parameter: `state` (string) - 2-letter US state abbreviation
    - Example: `GetAlerts` with `state: "WA"`
 
-2. **GetForecast**: Get weather forecast for a location
+3. **GetForecast**: Get weather forecast for a location
    - Parameters: 
      - `latitude` (double) - Latitude coordinate
      - `longitude` (double) - Longitude coordinate
@@ -92,6 +97,28 @@ The server uses:
 - **Server URL**: `http://localhost:7071`
 - **OAuth Server**: `https://localhost:7029`
 - **Demo Client ID**: `demo-client`
+
+## Optional Visual Studio authentication demo
+
+The OAuth issuer in this repository is test-only, but it can demonstrate Visual Studio's authentication flow without cloud credentials:
+
+1. Start `ModelContextProtocol.TestOAuthServer`.
+2. Start this server.
+3. Add this remote server to Visual Studio:
+
+   ```json
+   {
+     "servers": {
+       "Protected MCP Demo": {
+         "url": "http://localhost:7071/"
+       }
+     }
+   }
+   ```
+
+4. Use the **Manage Authentication** CodeLens action, complete the local browser flow, and call `who_am_i`.
+
+Rehearse the dynamic client registration, redirect URI, and development-certificate trust with the exact Visual Studio build before relying on this optional stage path. Do not present the test OAuth server as a production identity provider.
 
 ## Testing Without Client
 

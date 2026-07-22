@@ -24,7 +24,7 @@ To get started, see the [Getting Started](https://csharp.sdk.modelcontextprotoco
 
 You can also browse the [samples](samples) directory and the [API documentation](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.html) for more details on available functionality.
 
-For a compact Visual Studio showcase of MCP Apps, SignalR, MRTR, live tool discovery, and Tasks, see the [Visual Studio MCP show demos](samples/VSLiveMcpDemos.md).
+For a compact Visual Studio showcase of SignalR, MRTR, authentication, live tool discovery, and optional MCP Apps and Tasks extensions, see the [Visual Studio MCP demos](samples/VSLiveMcpDemos.md).
 
 ## About MCP
 
