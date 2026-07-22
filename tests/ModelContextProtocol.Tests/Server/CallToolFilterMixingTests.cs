@@ -5,9 +5,8 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies that combining the non-alternate <see cref="McpRequestFilters.CallToolFilters"/> with the
-/// alternate <see cref="McpRequestFilters.CallToolWithAlternateFilters"/> fails at configuration time
-/// with an actionable message.
+/// Verifies composition and validation for the non-alternate <see cref="McpRequestFilters.CallToolFilters"/>
+/// and alternate <see cref="McpRequestFilters.CallToolWithAlternateFilters"/> pipelines.
 /// </summary>
 public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
@@ -19,20 +18,33 @@ public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : Log
         next => next;
 
     [Fact]
-    public async Task MixingCallToolFilters_WithAlternateFilters_ThrowsActionableError()
+    public async Task MixingCallToolFilters_WithAlternateFilters_Succeeds()
     {
         await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
         var options = new McpServerOptions { Capabilities = new() { Tools = new() } };
         options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
         options.Filters.Request.CallToolWithAlternateFilters.Add(PassThroughAlternateFilter);
 
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+
+        Assert.NotNull(server);
+    }
+
+    [Fact]
+    public async Task CallToolFilters_WithExplicitAlternateHandler_ThrowsActionableError()
+    {
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
+        var options = new McpServerOptions { Capabilities = new() { Tools = new() } };
+        options.Handlers.CallToolWithAlternateHandler = static (_, _) =>
+            new(new ResultOrAlternate<CallToolResult>(new CallToolResult()));
+        options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
+
         var ex = Assert.Throws<InvalidOperationException>(
             () => McpServer.Create(transport, options, LoggerFactory));
 
         Assert.Contains(nameof(McpRequestFilters.CallToolFilters), ex.Message);
-        Assert.Contains(nameof(McpRequestFilters.CallToolWithAlternateFilters), ex.Message);
-        Assert.Contains("AddAuthorizationFilters", ex.Message);
-        Assert.Contains("WithTasks", ex.Message);
+        Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), ex.Message);
+        Assert.Contains("replaces the ordinary tool-call pipeline", ex.Message);
     }
 
     [Fact]

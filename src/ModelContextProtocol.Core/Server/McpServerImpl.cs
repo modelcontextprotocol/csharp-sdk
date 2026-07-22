@@ -1321,20 +1321,13 @@ internal sealed partial class McpServerImpl : McpServer
         var callToolFilters = options.Filters.Request.CallToolFilters;
         var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-alternate filters/handler with alternate filters/handler.
-        bool hasNonAlternatePath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasAlternatePath = callToolWithAlternateHandler is not null || callToolWithAlternateFilters.Count > 0;
-
-        if (hasNonAlternatePath && hasAlternatePath)
+        if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}) tool-call filters or handlers. " +
-                $"These two styles cannot currently be composed on the same server. " +
-                $"This most commonly happens when combining features that register different tool-call filter styles, " +
-                $"for example AddAuthorizationFilters() (which registers a {nameof(McpRequestFilters.CallToolFilters)} filter) together with " +
-                $"WithTasks() (which registers a {nameof(McpRequestFilters.CallToolWithAlternateFilters)} filter). " +
-                $"Configure only one style, or avoid combining features that require different styles.");
+                $"Cannot apply {nameof(McpRequestFilters.CallToolFilters)} when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler " +
+                $"replaces the ordinary tool-call pipeline. Move the behavior to " +
+                $"{nameof(McpRequestFilters.CallToolWithAlternateFilters)} or remove the explicit alternate handler.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1376,12 +1369,9 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified alternate-result handler from one of the two paths.
-        if (hasAlternatePath)
+        // An explicit alternate handler replaces the ordinary tool-call pipeline.
+        if (callToolWithAlternateHandler is not null)
         {
-            // Case 2: alternate filter + alternate handler
-            callToolWithAlternateHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-
             // Augment with DI tools.
             if (tools is not null)
             {
@@ -1401,7 +1391,6 @@ internal sealed partial class McpServerImpl : McpServer
         }
         else
         {
-            // Case 1: non-alternate filter + non-alternate handler -> apply filters, then convert to alternate-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1425,6 +1414,9 @@ internal sealed partial class McpServerImpl : McpServer
             var finalCallToolHandler = callToolHandler;
             callToolWithAlternateHandler = async (request, cancellationToken) =>
                 await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+
+            // Alternate-result filters augment the fully constructed ordinary pipeline.
+            callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters);
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 

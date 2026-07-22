@@ -79,6 +79,11 @@ When tasks are enabled with `WithTasks` the SDK automatically:
 - Plumbs a `CancellationToken` through to the tool that fires when the client invokes
   `tasks/cancel`, so cancellation propagates cooperatively.
 
+Ordinary `tools/call` filters still run exactly once for task-backed calls. They execute in the
+background after the task record is created and before the tool body, so validation,
+authorization, and telemetry continue to apply. Each background invocation gets an independent
+DI scope that remains alive until the tool pipeline completes.
+
 For production scenarios that need durability, session isolation, multi-process routing, or
 TTL-based cleanup, implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> yourself
 (see [Implementing a custom task store](#implementing-a-custom-task-store) below).
