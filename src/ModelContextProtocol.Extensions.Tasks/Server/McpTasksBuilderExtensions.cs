@@ -93,7 +93,14 @@ public static class McpTasksBuilderExtensions
             CancellationToken cancellationToken)
         {
             var executionScope = _serviceScopeFactory.CreateAsyncScope();
-            request.Services = executionScope.ServiceProvider;
+            var executionRequest = new RequestContext<CallToolRequestParams>(
+                request.Server,
+                request.JsonRpcRequest,
+                request.Params)
+            {
+                MatchedPrimitive = request.MatchedPrimitive,
+                Services = executionScope.ServiceProvider,
+            };
 
             McpTaskInfo taskInfo;
             try
@@ -114,7 +121,7 @@ public static class McpTasksBuilderExtensions
             // before the background delegate starts.
             var taskCancellationToken = cts.Token;
             _ = Task.Run(
-                () => ExecuteTaskAsync(next, request, taskId, taskCancellationToken, executionScope),
+                () => ExecuteTaskAsync(next, executionRequest, taskId, taskCancellationToken, executionScope),
                 CancellationToken.None);
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(

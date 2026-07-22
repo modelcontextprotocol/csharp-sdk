@@ -33,6 +33,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
+    private readonly AsyncLocal<ComposedCallToolInvocationState?> _currentComposedCallToolInvocation = new();
 
     private static readonly string[] s_perRequestMetadataKeys =
     [
@@ -1408,15 +1409,12 @@ internal sealed partial class McpServerImpl : McpServer
                 };
             }
 
-            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
+            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters);
 
-            // Convert to alternate-based.
-            var finalCallToolHandler = callToolHandler;
-            callToolWithAlternateHandler = async (request, cancellationToken) =>
-                await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
-
-            // Alternate-result filters augment the fully constructed ordinary pipeline.
-            callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters);
+            callToolWithAlternateHandler = BuildComposedCallToolHandler(
+                callToolHandler,
+                callToolWithAlternateFilters,
+                tools);
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 
@@ -1440,58 +1438,85 @@ internal sealed partial class McpServerImpl : McpServer
         return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private McpRequestFilter<CallToolRequestParams, CallToolResult> BuildInitialCallToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
-        {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
+    private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
+        IList<McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> callToolWithAlternateFilters,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> adaptedCallToolHandler =
+            async (request, cancellationToken) =>
             {
-                request.MatchedPrimitive = tool;
-            }
+                var invocation = _currentComposedCallToolInvocation.Value ??
+                    throw new InvalidOperationException("The composed tool-call invocation was not initialized.");
+
+                try
+                {
+                    var result = await callToolHandler(request, cancellationToken).ConfigureAwait(false);
+                    LogToolCallLifecycles(request, invocation.RecordOrdinaryResult(result));
+                    return result;
+                }
+                catch (Exception exception)
+                {
+                    LogToolCallLifecycles(
+                        request,
+                        invocation.RecordOrdinaryException(
+                            exception,
+                            cancellationToken.IsCancellationRequested));
+
+                    if ((exception is OperationCanceledException && cancellationToken.IsCancellationRequested) ||
+                        exception is McpProtocolException ||
+                        exception is InputRequiredException)
+                    {
+                        throw;
+                    }
+
+                    return CreateToolCallErrorResult(request, exception);
+                }
+            };
+
+        var composedHandler = BuildFilterPipeline(adaptedCallToolHandler, callToolWithAlternateFilters);
+
+        return async (request, cancellationToken) =>
+        {
+            MatchTool(request, tools);
+
+            var invocation = new ComposedCallToolInvocationState();
+            var previousInvocation = _currentComposedCallToolInvocation.Value;
+            _currentComposedCallToolInvocation.Value = invocation;
 
             try
             {
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
+                var result = await composedHandler(request, cancellationToken).ConfigureAwait(false);
+                LogToolCallLifecycles(request, invocation.CompleteOuter(result));
                 return result;
             }
             catch (Exception e)
             {
-                // Skip logging for InputRequiredException - it's normal MRTR control flow,
-                // not an error (tools throw it to signal an InputRequiredResult).
-                if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-                }
+                LogToolCallLifecycles(
+                    request,
+                    invocation.CompleteOuterException(
+                        e,
+                        cancellationToken.IsCancellationRequested));
 
                 if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
                 {
                     throw;
                 }
 
-                return new()
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock
-                    {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                return CreateToolCallErrorResult(request, e);
+            }
+            finally
+            {
+                _currentComposedCallToolInvocation.Value = previousInvocation;
             }
         };
+    }
 
     private McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
         McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
         async (request, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
 
             try
             {
@@ -1517,18 +1542,136 @@ internal sealed partial class McpServerImpl : McpServer
                     throw;
                 }
 
-                return new CallToolResult
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock
-                    {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                return CreateToolCallErrorResult(request, e);
             }
         };
+
+    private static void MatchTool(
+        RequestContext<CallToolRequestParams> request,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        if (request.Params?.Name is { } toolName && tools is not null &&
+            tools.TryGetPrimitive(toolName, out var tool))
+        {
+            request.MatchedPrimitive = tool;
+        }
+    }
+
+    private static CallToolResult CreateToolCallErrorResult(
+        RequestContext<CallToolRequestParams> request,
+        Exception exception) =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = exception is McpException ?
+                    $"An error occurred invoking '{request.Params?.Name}': {exception.Message}" :
+                    $"An error occurred invoking '{request.Params?.Name}'.",
+            }],
+        };
+
+    private void LogToolCallLifecycles(
+        RequestContext<CallToolRequestParams> request,
+        IReadOnlyList<ToolCallLifecycle> lifecycles)
+    {
+        string toolName = request.Params?.Name ?? string.Empty;
+        foreach (var lifecycle in lifecycles)
+        {
+            if (lifecycle.Result is { } result)
+            {
+                ToolCallCompleted(toolName, result.IsError is true);
+            }
+            else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
+                lifecycle.Exception is not InputRequiredException)
+            {
+                ToolCallError(toolName, lifecycle.Exception!);
+            }
+        }
+    }
+
+    private sealed class ComposedCallToolInvocationState
+    {
+        private readonly object _sync = new();
+        private readonly List<ToolCallLifecycle> _pendingOrdinaryLifecycles = [];
+        private bool _outerCompleted;
+        private bool _outerReturnedAlternate;
+
+        public IReadOnlyList<ToolCallLifecycle> RecordOrdinaryResult(CallToolResult result) =>
+            RecordOrdinaryLifecycle(new(result, null, false));
+
+        public IReadOnlyList<ToolCallLifecycle> RecordOrdinaryException(
+            Exception exception,
+            bool cancellationRequested) =>
+            RecordOrdinaryLifecycle(new(null, exception, cancellationRequested));
+
+        public IReadOnlyList<ToolCallLifecycle> CompleteOuter(ResultOrAlternate<CallToolResult> result)
+        {
+            lock (_sync)
+            {
+                if (result.IsAlternate)
+                {
+                    _outerReturnedAlternate = true;
+                    return DrainPendingLifecycles();
+                }
+
+                _outerCompleted = true;
+                if (_pendingOrdinaryLifecycles.Count > 0)
+                {
+                    return DrainPendingLifecycles();
+                }
+
+                return [new(result.Result!, null, false)];
+            }
+        }
+
+        public IReadOnlyList<ToolCallLifecycle> CompleteOuterException(
+            Exception exception,
+            bool cancellationRequested)
+        {
+            lock (_sync)
+            {
+                _outerCompleted = true;
+                _pendingOrdinaryLifecycles.Clear();
+                return [new(null, exception, cancellationRequested)];
+            }
+        }
+
+        private IReadOnlyList<ToolCallLifecycle> RecordOrdinaryLifecycle(ToolCallLifecycle lifecycle)
+        {
+            lock (_sync)
+            {
+                if (_outerReturnedAlternate)
+                {
+                    return [lifecycle];
+                }
+
+                if (!_outerCompleted)
+                {
+                    _pendingOrdinaryLifecycles.Add(lifecycle);
+                }
+
+                return [];
+            }
+        }
+
+        private IReadOnlyList<ToolCallLifecycle> DrainPendingLifecycles()
+        {
+            if (_pendingOrdinaryLifecycles.Count == 0)
+            {
+                return [];
+            }
+
+            var lifecycles = _pendingOrdinaryLifecycles.ToArray();
+            _pendingOrdinaryLifecycles.Clear();
+            return lifecycles;
+        }
+    }
+
+    private sealed record ToolCallLifecycle(
+        CallToolResult? Result,
+        Exception? Exception,
+        bool CancellationRequested);
 #pragma warning restore MCPEXP002
 
     private void ConfigureLogging(McpServerOptions options)

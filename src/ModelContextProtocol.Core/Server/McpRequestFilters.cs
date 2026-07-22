@@ -75,8 +75,8 @@ public sealed class McpRequestFilters
     /// </para>
     /// <para>
     /// When no explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> is configured, these filters
-    /// compose outside <see cref="CallToolFilters"/>. The ordinary pipeline, including primitive matching and ordinary
-    /// filters, is adapted to <see cref="ResultOrAlternate{TResult}"/> before these filters are applied.
+    /// compose outside <see cref="CallToolFilters"/>. Primitive matching occurs before either filter family runs, then
+    /// the ordinary pipeline is adapted to <see cref="ResultOrAlternate{TResult}"/> before these filters are applied.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
