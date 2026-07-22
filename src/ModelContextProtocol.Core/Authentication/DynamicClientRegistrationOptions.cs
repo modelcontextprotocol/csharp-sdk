@@ -35,6 +35,24 @@ public sealed class DynamicClientRegistrationOptions
     public string? InitialAccessToken { get; set; }
 
     /// <summary>
+    /// Gets or sets the OIDC <c>application_type</c> sent during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When <see langword="null"/>, the SDK infers the value from the configured
+    /// <see cref="ClientOAuthOptions.RedirectUri"/>: loopback hosts (<c>localhost</c>,
+    /// <c>127.0.0.1</c>, <c>[::1]</c>) and custom-scheme URIs map to <c>"native"</c>; remote
+    /// <c>http://</c> and <c>https://</c> URIs map to <c>"web"</c>.
+    /// </para>
+    /// <para>
+    /// When set explicitly, the value is sent without modification. Use this to account for
+    /// authorization-server-specific requirements or to retry a registration with an adjusted
+    /// application type.
+    /// </para>
+    /// </remarks>
+    public string? ApplicationType { get; set; }
+
+    /// <summary>
     /// Gets or sets the delegate used for handling the dynamic client registration response.
     /// </summary>
     /// <remarks>
