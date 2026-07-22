@@ -19,6 +19,11 @@ public static class McpTasksBuilderExtensions
     /// <summary>
     /// Enables MCP Tasks support backed by the specified task store.
     /// </summary>
+    /// <remarks>
+    /// Tasks are implemented as an alternate-result call-tool filter. Alternate-result filters registered before
+    /// the Tasks filter run before task creation. Filters registered after it, along with all ordinary call-tool
+    /// filters, run in the background before the tool.
+    /// </remarks>
     /// <param name="builder">The server builder.</param>
     /// <param name="store">The task store.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>

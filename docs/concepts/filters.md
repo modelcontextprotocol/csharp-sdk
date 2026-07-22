@@ -30,10 +30,18 @@ The following request filter methods are available on `IMcpRequestFilterBuilder`
 - `AddUnsubscribeFromResourcesFilter` - Filter for resource unsubscription handlers
 - `AddSetLoggingLevelFilter` - Filter for logging level handlers
 
-The Tasks extension augments the ordinary `tools/call` pipeline with an alternate-result filter.
-Ordinary call-tool filters, including ASP.NET Core authorization filters, run exactly once inside
-that wrapper before the tool executes. An explicit `CallToolWithAlternateHandler` remains a
-full replacement and cannot be combined with ordinary call-tool filters.
+The Tasks extension and ASP.NET Core tool authorization use alternate-result `tools/call` filters.
+Alternate-result filters run in registration order outside the ordinary `AddCallToolFilter`
+pipeline. The Tasks filter creates a task at its position in that order and runs its remaining
+pipeline in the background. Consequently, alternate-result filters registered before Tasks run
+before task creation, while those registered after Tasks run in the background before the
+ordinary filters and tool. ASP.NET Core authorization is registered before Tasks, so an
+unauthorized call is rejected without creating a task.
+
+Ordinary call-tool filters run exactly once after all alternate-result filters and before the tool.
+For task-backed calls, ordinary filters execute in the background after task creation. An explicit
+`CallToolWithAlternateHandler` remains a full replacement and cannot be combined with ordinary
+call-tool filters.
 
 ## Message Filters
 

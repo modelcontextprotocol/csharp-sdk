@@ -55,7 +55,8 @@ public static class HttpMcpServerBuilderExtensions
     /// <remarks>
     /// This method automatically configures authorization filters for all MCP server handlers. These filters respect
     /// authorization attributes such as <see cref="AuthorizeAttribute"/>
-    /// and <see cref="AllowAnonymousAttribute"/>.
+    /// and <see cref="AllowAnonymousAttribute"/>. Tool authorization runs in the alternate-result pipeline before
+    /// the Tasks extension dispatches background execution, so an unauthorized tool call does not create a task.
     /// </remarks>
     public static IMcpServerBuilder AddAuthorizationFilters(this IMcpServerBuilder builder)
     {

@@ -79,10 +79,16 @@ When tasks are enabled with `WithTasks` the SDK automatically:
 - Plumbs a `CancellationToken` through to the tool that fires when the client invokes
   `tasks/cancel`, so cancellation propagates cooperatively.
 
+Alternate-result `tools/call` filters run in registration order, with the Tasks filter creating a
+task at its position in that order. Filters before Tasks run before task creation. Filters after
+Tasks run in the background before the ordinary filter pipeline. ASP.NET Core tool authorization
+uses an alternate-result filter registered before Tasks, so an unauthorized call does not create
+a task.
+
 Ordinary `tools/call` filters still run exactly once for task-backed calls. They execute in the
-background after the task record is created and before the tool body, so validation,
-authorization, and telemetry continue to apply. Each background invocation gets an independent
-DI scope that remains alive until the tool pipeline completes.
+background after the task record is created and before the tool body, so validation and telemetry
+continue to apply. Each background invocation gets an independent DI scope that remains alive
+until the tool pipeline completes.
 
 For production scenarios that need durability, session isolation, multi-process routing, or
 TTL-based cleanup, implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> yourself

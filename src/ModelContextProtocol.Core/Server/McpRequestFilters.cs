@@ -45,7 +45,8 @@ public sealed class McpRequestFilters
     /// <para>
     /// These filters run inside <see cref="CallToolWithAlternateFilters"/>. Each ordinary filter runs exactly once
     /// when an alternate-result filter invokes the ordinary tool pipeline. For task-backed calls, that invocation
-    /// occurs in the background after the task record is created and before the matched tool is executed.
+    /// occurs in the background after the task record is created and before the matched tool is executed. Filters
+    /// that must run before task creation should use the alternate-result pipeline instead.
     /// </para>
     /// <para>
     /// These filters cannot be used with an explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>,
@@ -77,6 +78,8 @@ public sealed class McpRequestFilters
     /// When no explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> is configured, these filters
     /// compose outside <see cref="CallToolFilters"/>. Primitive matching occurs before either filter family runs, then
     /// the ordinary pipeline is adapted to <see cref="ResultOrAlternate{TResult}"/> before these filters are applied.
+    /// Alternate-result filters run in registration order. If one filter dispatches the remainder of the pipeline
+    /// asynchronously, filters registered after it execute as part of that asynchronous operation.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
