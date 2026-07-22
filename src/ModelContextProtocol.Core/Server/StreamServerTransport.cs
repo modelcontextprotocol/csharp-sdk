@@ -160,7 +160,8 @@ public class StreamServerTransport : TransportBase
                         }
                         catch (Exception sendEx) when (sendEx is not OperationCanceledException)
                         {
-                            LogTransportSendFailed(Name, id.ToString(), sendEx);
+                            // Swallow so a failed error-send does not tear down the read loop. No logging
+                            // here because SendMessageAsync already logs send failures before it throws.
                         }
                     }
                 }
@@ -249,9 +250,12 @@ public class StreamServerTransport : TransportBase
                 reader.Skip();
             }
         }
-        catch (JsonException)
+        catch (Exception)
         {
-            // The line was too malformed to even locate a top-level id; nothing to correlate.
+            // Recovery is best effort. Whether the line was too malformed to locate a top-level id or
+            // the reader failed for any other reason, swallow it here and return false. Letting an
+            // exception escape would propagate out of the read loop and disconnect the transport,
+            // turning a single bad message into a full session teardown.
         }
 
         return false;
