@@ -32,6 +32,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
+    private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
@@ -92,8 +93,39 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
-        // Set up authorization callback handler (use default if not provided)
-        _authorizationCallbackHandler = options.AuthorizationCallbackHandler ?? DefaultAuthorizationUrlHandler;
+        // Set up authorization callback handler (use default if not provided).
+#pragma warning disable MCP9007 // Read the obsolete property to provide source and binary compatibility.
+        var authorizationRedirectDelegate = options.AuthorizationRedirectDelegate;
+
+        if (options.AuthorizationCallbackHandler is not null && authorizationRedirectDelegate is not null)
+        {
+            throw new ArgumentException(
+                $"{nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} and {nameof(ClientOAuthOptions.AuthorizationRedirectDelegate)} cannot both be configured.",
+                nameof(options));
+        }
+#pragma warning restore MCP9007
+
+        if (options.AuthorizationCallbackHandler is not null)
+        {
+            _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
+        else if (authorizationRedirectDelegate is not null)
+        {
+            _authorizationCallbackHandler = async (context, cancellationToken) => new AuthorizationResult
+            {
+                Code = await authorizationRedirectDelegate(
+                    context.AuthorizationUri,
+                    context.RedirectUri,
+                    cancellationToken).ConfigureAwait(false),
+            };
+            _validateAuthorizationResponseIssuer = false;
+        }
+        else
+        {
+            _authorizationCallbackHandler = DefaultAuthorizationUrlHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
 
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
@@ -595,7 +627,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
         }
 
-        ValidateIssuerResponse(authResult!.Iss, authServerMetadata);
+        if (_validateAuthorizationResponseIssuer)
+        {
+            ValidateIssuerResponse(authResult!.Iss, authServerMetadata);
+        }
 
         return await ExchangeCodeForTokenAsync(
             protectedResourceMetadata,

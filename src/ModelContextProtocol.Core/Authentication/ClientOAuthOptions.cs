@@ -85,8 +85,30 @@ public sealed class ClientOAuthOptions
     /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>, which mitigates
     /// mix-up attacks.
     /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationRedirectDelegate"/>.
+    /// </para>
     /// </remarks>
     public Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the legacy authorization redirect delegate for handling the OAuth authorization flow.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This delegate returns only the authorization code and cannot provide the <c>iss</c> parameter from
+    /// the authorization response. Consequently, RFC 9207 issuer validation is skipped when this delegate
+    /// is used. Use <see cref="AuthorizationCallbackHandler"/> for issuer-aware authorization flows.
+    /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationCallbackHandler"/>.
+    /// </para>
+    /// </remarks>
+    [Obsolete(
+        ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_Message,
+        DiagnosticId = ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_DiagnosticId,
+        UrlFormat = ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_Url)]
+    public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
     /// Gets or sets the authorization server selector function.

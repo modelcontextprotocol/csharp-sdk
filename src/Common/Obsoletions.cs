@@ -46,4 +46,8 @@ internal static class Obsoletions
     public const string LegacyStatefulHttp_DiagnosticId = "MCP9006";
     public const string LegacyStatefulHttp_Message = "Stateful Streamable HTTP mode is a back-compat-only escape hatch for legacy clients. Set HttpServerTransportOptions.Stateless = true (the default as of the 2026-07-28 protocol revision) for new code. See SEP-2567.";
     public const string LegacyStatefulHttp_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
+
+    public const string AuthorizationRedirectDelegate_DiagnosticId = "MCP9007";
+    public const string AuthorizationRedirectDelegate_Message = "AuthorizationRedirectDelegate cannot provide the RFC 9207 issuer and is retained for compatibility only. Use AuthorizationCallbackHandler instead.";
+    public const string AuthorizationRedirectDelegate_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

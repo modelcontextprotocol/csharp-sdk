@@ -126,4 +126,20 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
 
         return null;
     }
+
+    protected async Task<string?> HandleAuthorizationUrlAsync(
+        Uri authorizationUri,
+        Uri redirectUri,
+        CancellationToken cancellationToken)
+    {
+        var result = await HandleAuthorizationUrlAsync(
+            new ModelContextProtocol.Authentication.AuthorizationCallbackContext
+            {
+                AuthorizationUri = authorizationUri,
+                RedirectUri = redirectUri,
+            },
+            cancellationToken);
+
+        return result?.Code;
+    }
 }

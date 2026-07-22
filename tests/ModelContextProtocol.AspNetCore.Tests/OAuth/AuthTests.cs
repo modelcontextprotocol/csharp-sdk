@@ -80,6 +80,101 @@ public class AuthTests : OAuthTestBase
         Assert.Equal(redirectUri, callbackContext.RedirectUri);
     }
 
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "https://localhost:7029")]
+    [InlineData(true, "https://attacker.example")]
+    public async Task AuthorizationRedirectDelegate_ReceivesConfiguredUrisAndSkipsResponseIssuerValidation(
+        bool authorizationResponseIssParameterSupported,
+        string? authorizationResponseIssuer)
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = authorizationResponseIssParameterSupported;
+        TestOAuthServer.AuthorizationResponseIssuer = authorizationResponseIssuer;
+        await using var app = await StartMcpServerAsync();
+
+        var redirectUri = new Uri("http://localhost:1179/callback");
+        Uri? receivedAuthorizationUri = null;
+        Uri? receivedRedirectUri = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = redirectUri,
+#pragma warning disable MCP9007 // Verify the obsolete callback remains functional during its compatibility window.
+                AuthorizationRedirectDelegate = (authorizationUri, callbackRedirectUri, cancellationToken) =>
+                {
+                    receivedAuthorizationUri = authorizationUri;
+                    receivedRedirectUri = callbackRedirectUri;
+                    return HandleAuthorizationUrlAsync(authorizationUri, callbackRedirectUri, cancellationToken);
+                },
+#pragma warning restore MCP9007
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(receivedAuthorizationUri);
+        Assert.Equal(redirectUri, receivedRedirectUri);
+    }
+
+    [Fact]
+    public async Task AuthorizationRedirectDelegate_DoesNotSkipMetadataIssuerValidation()
+    {
+        TestOAuthServer.MetadataIssuerOverride = "https://attacker.example";
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+#pragma warning disable MCP9007 // Verify the obsolete callback retains metadata issuer validation.
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+#pragma warning restore MCP9007
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+    }
+
+    [Fact]
+    public void HttpClientTransport_RejectsBothAuthorizationCallbacks()
+    {
+#pragma warning disable MCP9007 // Verify ambiguous legacy and current callback configuration is rejected.
+        var options = new ClientOAuthOptions
+        {
+            RedirectUri = new Uri("http://localhost:1179/callback"),
+            AuthorizationCallbackHandler = (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(new()),
+            AuthorizationRedirectDelegate = (_, _, _) => Task.FromResult<string?>("code"),
+        };
+#pragma warning restore MCP9007
+
+        var ex = Assert.Throws<ArgumentException>(() => new HttpClientTransport(
+            new()
+            {
+                Endpoint = new(McpServerUrl),
+                OAuth = options,
+            },
+            HttpClient,
+            LoggerFactory));
+
+        Assert.Contains(nameof(ClientOAuthOptions.AuthorizationCallbackHandler), ex.Message);
+#pragma warning disable MCP9007 // The obsolete property name should be included in the diagnostic.
+        Assert.Contains(nameof(ClientOAuthOptions.AuthorizationRedirectDelegate), ex.Message);
+#pragma warning restore MCP9007
+    }
+
     [Fact]
     public async Task CannotAuthenticate_WithoutOAuthConfiguration()
     {
@@ -1160,11 +1255,17 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task CannotAuthenticate_WhenAuthorizationResponseIssuerMismatches()
+    [Theory]
+    [InlineData(true, "https://attacker.example", "does not match expected issuer")]
+    [InlineData(true, null, "advertises RFC 9207 iss parameter support but none was received")]
+    [InlineData(false, "https://attacker.example", "does not match expected issuer")]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseIssuerIsInvalid(
+        bool authorizationResponseIssParameterSupported,
+        string? authorizationResponseIssuer,
+        string expectedMessage)
     {
-        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
-        TestOAuthServer.AuthorizationResponseIssuer = "https://attacker.example";
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = authorizationResponseIssParameterSupported;
+        TestOAuthServer.AuthorizationResponseIssuer = authorizationResponseIssuer;
 
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateOAuthTransport();
@@ -1172,39 +1273,7 @@ public class AuthTests : OAuthTestBase
         var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains("Authorization response issuer", ex.Message);
-        Assert.Contains("does not match expected issuer", ex.Message);
-    }
-
-    [Fact]
-    public async Task CannotAuthenticate_WhenAdvertisedAuthorizationResponseIssuerIsMissing()
-    {
-        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
-        TestOAuthServer.AuthorizationResponseIssuer = null;
-
-        await using var app = await StartMcpServerAsync();
-        await using var transport = CreateOAuthTransport();
-
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains("advertises RFC 9207 iss parameter support but none was received", ex.Message);
-    }
-
-    [Fact]
-    public async Task CannotAuthenticate_WhenUnadvertisedAuthorizationResponseIssuerMismatches()
-    {
-        TestOAuthServer.AuthorizationResponseIssParameterSupported = false;
-        TestOAuthServer.AuthorizationResponseIssuer = "https://attacker.example";
-
-        await using var app = await StartMcpServerAsync();
-        await using var transport = CreateOAuthTransport();
-
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains("Authorization response issuer", ex.Message);
-        Assert.Contains("does not match expected issuer", ex.Message);
+        Assert.Contains(expectedMessage, ex.Message);
     }
 
     [Fact]
