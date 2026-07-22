@@ -158,7 +158,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var redirectUrl = Console.ReadLine();
         if (!Uri.TryCreate(redirectUrl, UriKind.Absolute, out var responseUri))
         {
-            return Task.FromResult<AuthorizationResult?>(null);
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The entered redirect URL is not a valid absolute URL. Paste the full redirect URL from the browser address bar.");
         }
 
         var queryParams = HttpUtility.ParseQueryString(responseUri.Query);
