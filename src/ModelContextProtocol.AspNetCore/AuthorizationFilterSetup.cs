@@ -81,7 +81,8 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+#pragma warning disable MCPEXP002 // Authorization must run in the alternate-result pipeline before task dispatch.
+        options.Filters.Request.CallToolWithAlternateFilters.Add(next => async (context, cancellationToken) =>
         {
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
@@ -93,11 +94,13 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
             return await next(context, cancellationToken);
         });
+#pragma warning restore MCPEXP002
     }
 
     private static void CheckCallToolFilter(McpServerOptions options)
     {
-        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+#pragma warning disable MCPEXP002 // Keep the authorization guard in the same pipeline as authorization.
+        options.Filters.Request.CallToolWithAlternateFilters.Add(next => async (context, cancellationToken) =>
         {
             if (HasAuthorizationMetadata(context.MatchedPrimitive)
                 && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
@@ -107,6 +110,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
             return await next(context, cancellationToken);
         });
+#pragma warning restore MCPEXP002
     }
 
     private void ConfigureListResourcesFilter(McpServerOptions options)

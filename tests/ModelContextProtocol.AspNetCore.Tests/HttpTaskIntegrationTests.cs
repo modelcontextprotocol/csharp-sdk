@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -39,10 +41,50 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
         Assert.Equal("Hello World!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
+    [Fact]
+    public async Task WithTasks_UnauthorizedTool_DoesNotCreateTask()
+    {
+        var taskStore = new Mock<IMcpTaskStore>(MockBehavior.Strict);
+        Builder.Services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .AddAuthorizationFilters()
+            .WithTasks(taskStore.Object)
+            .WithTools<TestTools>();
+        Builder.Services.AddAuthorization();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(
+            new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
+            HttpClient,
+            LoggerFactory);
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(() =>
+            client.CallToolAsTaskAsync(
+                new CallToolRequestParams { Name = "authorized-test" },
+                TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
+        taskStore.Verify(
+            store => store.CreateTaskAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     [McpServerToolType]
     private sealed class TestTools
     {
         [McpServerTool(Name = "test")]
         public static string Test() => "Hello World!";
+
+        [McpServerTool(Name = "authorized-test")]
+        [Authorize]
+        public static string AuthorizedTest() => "unreachable";
     }
 }
