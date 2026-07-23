@@ -10,9 +10,28 @@ Tasks let an MCP server run a request asynchronously and report its result to th
 primary use case today is long-running tool invocations: the tool is offloaded to a background task,
 and the client polls for status, optionally exchanging additional input along the way.
 
-> **Status**: Experimental — diagnostic ID `MCPEXP001`. The implementation tracks
-> [SEP-2663 (Tasks Extension)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md).
-> See [Experimental APIs](xref:experimental) for how to opt in.
+Tasks are provided by the `ModelContextProtocol.Extensions.Tasks` package and require MCP protocol
+version `2026-07-28` or later. The implementation follows
+[SEP-2663 (Tasks Extension)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md).
+
+### Compatibility with v1 experimental Tasks
+
+The Tasks extension in v2.0.0 replaces the experimental Tasks implementation shipped in v1.3.0 and
+v1.4.x. The implementations are not compatible at either the API or protocol level. A v2 Tasks
+client or server must use a connection negotiated to `2026-07-28` or later; it cannot fall back to
+the down-level implementation.
+
+On a connection negotiated to the down-level `2025-11-25` protocol:
+
+- A v2 client calling a v1 server receives an ordinary tool result. The v2 client does not opt in
+  to the down-level Tasks protocol, and `GetTaskAsync` rejects use before a `2026-07-28`
+  connection is negotiated.
+- A v1 client calling a v2 server likewise receives an ordinary tool result. The v2 server does
+  not create Tasks on a down-level connection, and its `tasks/get` endpoint rejects the legacy
+  request with a method-not-found error.
+
+Upgrade both peers to the v2 Tasks extension before using Tasks. The extension provides no
+compatibility bridge for the previous experimental API.
 
 ### Overview
 
@@ -50,14 +69,12 @@ and `"complete"` for ordinary results.
 
 #### Using the task store
 
-Tasks support lives in the `ModelContextProtocol.Extensions.Tasks` package. The easiest way to
-enable tasks is to call <xref:ModelContextProtocol.Extensions.Tasks.McpTasksBuilderExtensions.WithTasks*>
-on the server builder, passing an <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore>.
+The easiest way to enable the package's task store integration is to call
+<xref:ModelContextProtocol.Extensions.Tasks.McpTasksBuilderExtensions.WithTasks*> on the server builder,
+passing an <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore>.
 The SDK ships <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> for development and tests:
 
 ```csharp
-#pragma warning disable MCPEXP001
-
 using ModelContextProtocol.Extensions.Tasks;
 
 builder.Services.AddMcpServer()
