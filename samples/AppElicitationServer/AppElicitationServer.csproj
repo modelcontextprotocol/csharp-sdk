@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
-    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps.Elicitation\ModelContextProtocol.Extensions.Apps.Elicitation.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
   </ItemGroup>
 
   <ItemGroup>

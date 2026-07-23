@@ -1,5 +1,5 @@
 using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Extensions.Apps.Elicitation;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 
 Console.WriteLine("Configuring the stateless MCP app-elicitation server...");
@@ -19,7 +19,7 @@ builder.Services
     .WithHttpTransport(options => options.Stateless = true)
     .WithTools<PortfolioTools>()
     .WithResources<PortfolioResources>()
-    .WithMcpAppElicitation();
+    .WithMcpApps();
 
 var app = builder.Build();
 app.MapMcp("/mcp");

@@ -1,6 +1,8 @@
+#pragma warning disable MCPEXP003
+
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Extensions.Apps.Elicitation;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
@@ -12,14 +14,15 @@ namespace ModelContextProtocol.Tests.Server;
 public class McpAppElicitationTests
 {
     [Fact]
-    public void AddClientCapabilities_AddsCoreAppsAndDependentExtension()
+    public void AddClientCapabilities_AddsCoreAndAppsElicitationCapabilities()
     {
         var capabilities = McpAppElicitation.AddClientCapabilities(new ClientCapabilities());
 
         Assert.NotNull(capabilities.Elicitation?.Form);
         Assert.True(capabilities.Extensions?.ContainsKey("io.modelcontextprotocol/ui"));
-        Assert.True(capabilities.Extensions?.ContainsKey(McpAppElicitation.ExtensionId));
+        Assert.Single(capabilities.Extensions!);
         Assert.True(McpAppElicitation.IsSupported(capabilities));
+        Assert.NotNull(McpApps.GetUiCapability(capabilities)?.Elicitation);
     }
 
     [Fact]

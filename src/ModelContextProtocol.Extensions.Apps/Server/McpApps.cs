@@ -111,6 +111,11 @@ public static class McpApps
             return JsonSerializer.Deserialize(element, McpAppsJsonContext.Default.McpUiClientCapabilities);
         }
 
+        if (value is JsonObject jsonObject)
+        {
+            return jsonObject.Deserialize(McpAppsJsonContext.Default.McpUiClientCapabilities);
+        }
+
         return null;
     }
 

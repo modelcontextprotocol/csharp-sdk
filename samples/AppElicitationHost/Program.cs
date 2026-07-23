@@ -1,5 +1,5 @@
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Extensions.Apps.Elicitation;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 
 var builder = WebApplication.CreateBuilder(args);

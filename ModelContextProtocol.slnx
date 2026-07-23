@@ -71,7 +71,6 @@
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
     <Project Path="src/ModelContextProtocol.Extensions.Apps/ModelContextProtocol.Extensions.Apps.csproj" />
-    <Project Path="src/ModelContextProtocol.Extensions.Apps.Elicitation/ModelContextProtocol.Extensions.Apps.Elicitation.csproj" />
     <Project Path="src/ModelContextProtocol.Extensions.Tasks/ModelContextProtocol.Extensions.Tasks.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>

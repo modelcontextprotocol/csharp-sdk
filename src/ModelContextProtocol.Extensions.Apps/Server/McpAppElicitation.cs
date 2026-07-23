@@ -1,17 +1,16 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
-namespace ModelContextProtocol.Extensions.Apps.Elicitation;
+namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>Strongly typed conventions for using MCP Apps as form elicitation UI.</summary>
+[Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
 public static class McpAppElicitation
 {
-    /// <summary>The experimental extension identifier.</summary>
-    public const string ExtensionId = "io.modelcontextprotocol/ui-elicitation";
-
     /// <summary>The metadata member inherited from the MCP Apps extension.</summary>
     public const string UiMetaKey = "ui";
 
@@ -28,31 +27,58 @@ public static class McpAppElicitation
         capabilities.Elicitation.Form ??= new FormElicitationCapability();
         capabilities.Extensions ??= new Dictionary<string, object>();
 
-        if (!capabilities.Extensions.ContainsKey(McpApps.ExtensionId))
+        if (!capabilities.Extensions.TryGetValue(McpApps.ExtensionId, out var value))
         {
             capabilities.Extensions[McpApps.ExtensionId] = new JsonObject
             {
                 ["mimeTypes"] = new JsonArray(McpApps.HtmlMimeType),
+                ["elicitation"] = new JsonObject(),
             };
         }
-
-        if (!capabilities.Extensions.ContainsKey(ExtensionId))
+        else
         {
-            capabilities.Extensions[ExtensionId] = new JsonObject
+            var appCapabilities = value switch
             {
-                ["requires"] = new JsonArray(McpApps.ExtensionId),
+                McpUiClientCapabilities typed => JsonSerializer.SerializeToNode(
+                    typed,
+                    McpAppsJsonContext.Default.McpUiClientCapabilities)!.AsObject(),
+                JsonObject jsonObject => jsonObject,
+                JsonElement { ValueKind: JsonValueKind.Object } element => JsonNode.Parse(element.GetRawText())!.AsObject(),
+                _ => new JsonObject(),
             };
+            if (appCapabilities["mimeTypes"] is not JsonArray mimeTypes)
+            {
+                mimeTypes = new JsonArray();
+                appCapabilities["mimeTypes"] = mimeTypes;
+            }
+
+            if (!mimeTypes.Any(node =>
+                node is JsonValue valueNode &&
+                valueNode.TryGetValue<string>(out var mimeType) &&
+                string.Equals(mimeType, McpApps.HtmlMimeType, StringComparison.OrdinalIgnoreCase)))
+            {
+                mimeTypes.Add((JsonNode?)JsonValue.Create(McpApps.HtmlMimeType));
+            }
+
+            if (appCapabilities["elicitation"] is not JsonObject)
+            {
+                appCapabilities["elicitation"] = new JsonObject();
+            }
+
+            capabilities.Extensions[McpApps.ExtensionId] = appCapabilities;
         }
 
         return capabilities;
     }
 
-    /// <summary>Returns whether the client advertised form elicitation, MCP Apps, and this extension.</summary>
-    public static bool IsSupported(ClientCapabilities? capabilities) =>
-        capabilities?.Elicitation?.Form is not null &&
-        HasAppsCapability(capabilities) &&
-        capabilities.Extensions?.TryGetValue(ExtensionId, out var value) == true &&
-        IsCapabilityValue(value);
+    /// <summary>Returns whether the client advertised form elicitation and MCP Apps elicitation support.</summary>
+    public static bool IsSupported(ClientCapabilities? capabilities)
+    {
+        var appCapabilities = McpApps.GetUiCapability(capabilities);
+        return capabilities?.Elicitation?.Form is not null &&
+            appCapabilities?.Elicitation is not null &&
+            appCapabilities.MimeTypes?.Contains(McpApps.HtmlMimeType, StringComparer.OrdinalIgnoreCase) == true;
+    }
 
     /// <summary>Associates an elicitation request with an MCP App UI resource.</summary>
     public static ElicitRequestParams SetAppUi(ElicitRequestParams request, string resourceUri)
@@ -62,7 +88,7 @@ public static class McpAppElicitation
         request.Meta ??= [];
         request.Meta[UiMetaKey] = JsonSerializer.SerializeToNode(
             new McpAppElicitationMeta { ResourceUri = resourceUri },
-            McpAppElicitationJsonContext.Default.McpAppElicitationMeta);
+            McpAppsJsonContext.Default.McpAppElicitationMeta);
         return request;
     }
 
@@ -129,7 +155,7 @@ public static class McpAppElicitation
 
         try
         {
-            return node.Deserialize(McpAppElicitationJsonContext.Default.McpAppElicitationMeta);
+            return node.Deserialize(McpAppsJsonContext.Default.McpAppElicitationMeta);
         }
         catch (JsonException)
         {
@@ -143,7 +169,7 @@ public static class McpAppElicitation
     /// <remarks>
     /// This explicit retry-safe convention is suitable for stateless HTTP. Any operation state needed after the
     /// retry must be encoded in the original request arguments or in <paramref name="requestState"/>.
-    /// Clients that do not support this extension can ignore <c>_meta.ui</c> and render the requested schema natively.
+    /// Clients that do not support MCP Apps elicitation render the requested schema natively.
     /// </remarks>
     public static ElicitResult<T> ResolveOrRequest<T>(
         McpServer server,
@@ -204,17 +230,4 @@ public static class McpAppElicitation
             },
             requestState);
     }
-
-    private static bool IsCapabilityValue(object? value) => value switch
-    {
-        McpAppElicitationCapability => true,
-        JsonObject => true,
-        JsonElement { ValueKind: JsonValueKind.Object } => true,
-        _ => false,
-    };
-
-    private static bool HasAppsCapability(ClientCapabilities capabilities) =>
-        McpApps.GetUiCapability(capabilities) is not null ||
-        capabilities.Extensions?.TryGetValue(McpApps.ExtensionId, out var value) == true &&
-        value is JsonObject;
 }

@@ -1,4 +1,4 @@
-using ModelContextProtocol.Extensions.Apps.Elicitation;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;

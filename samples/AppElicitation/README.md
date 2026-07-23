@@ -11,7 +11,7 @@ The server is deliberately stateless and pins the draft `2026-07-28` protocol. T
 1. The host calls `assign_account_manager`.
 2. The server throws `InputRequiredException` with an `elicitation/create` input request.
 3. The request retains the normal `requestedSchema` and adds `_meta.ui.resourceUri` only when the requesting client
-   advertised form elicitation, MCP Apps, and the app-elicitation extension.
+   advertised form elicitation and the MCP Apps `elicitation` capability.
 4. The host reads the `ui://` MCP App resource and performs the Apps `ui/initialize` handshake.
 5. The host forwards `elicitation/create` to the iframe as JSON-RPC.
 6. The app returns `ElicitResult`; the C# client places it in `inputResponses` and retries the tool.
