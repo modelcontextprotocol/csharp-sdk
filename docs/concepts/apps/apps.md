@@ -117,6 +117,43 @@ The `Visibility` property controls which principals can invoke the tool:
 | `McpUiToolVisibility.App` | Only the app UI can call this tool |
 | Both (or null/empty) | Both the model and app can call the tool (default) |
 
+## App-rendered elicitations
+
+The experimental `McpAppElicitation` conventions let a server associate a core form elicitation with an MCP App.
+The normal `requestedSchema` remains authoritative and provides the native-form fallback. The app resource hint is
+only attached when the requesting client advertises core form elicitation and the `elicitation` member of the
+`io.modelcontextprotocol/ui` capability:
+
+```csharp
+var elicitation = McpAppElicitation.SetAppUiIfSupported(
+    new ElicitRequestParams
+    {
+        Message = "Review and confirm the account manager.",
+        RequestedSchema = new ElicitRequestParams.RequestSchema
+        {
+            Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+            {
+                ["confirmed"] = new ElicitRequestParams.BooleanSchema(),
+            },
+            Required = ["confirmed"],
+        },
+    },
+    context,
+    "ui://portfolio/assign-manager");
+
+var response = McpAppElicitation.ResolveOrRequest(
+    server,
+    context.Params,
+    "manager-assignment",
+    elicitation,
+    MyJsonContext.Default.ManagerAssignment,
+    requestState: "assign-account-manager:v1");
+```
+
+On protocol revision `2026-07-28`, `ResolveOrRequest` uses stateless Multi Round-Trip Requests (MRTR). On compatible
+legacy stateful connections, the SDK resolves the same input request through the standard `elicitation/create`
+request. See [the prototype design](../../extensions/apps-elicitation.md) for the wire contract and fallback rules.
+
 ## UI resources
 
 UI resources are HTML pages registered with the MCP server using the `ui://` URI scheme and the `text/html;profile=mcp-app` MIME type. The `McpUiResourceMeta` type provides metadata for these resources, including:

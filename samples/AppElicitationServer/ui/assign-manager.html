@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; padding: 20px; background: #101827; color: #e7edf7; }
+    .eyebrow { color: #8ba4c7; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 6px 0 4px; font-size: 22px; }
+    .health { color: #61d095; font-weight: 650; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+    .metric, label { border: 1px solid #31415c; border-radius: 10px; padding: 12px; background: #162238; }
+    .metric strong { display: block; font-size: 18px; }
+    label { display: block; margin: 8px 0; cursor: pointer; }
+    label:has(input:checked) { border-color: #72a7ff; background: #1d3152; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 650; cursor: pointer; }
+    #confirm { background: #72a7ff; color: #07111f; }
+    #cancel { background: transparent; color: #b9c7da; border: 1px solid #435573; }
+    .actions { display: flex; gap: 8px; margin-top: 14px; }
+    #message { color: #b9c7da; }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Portfolio review</div>
+  <h1>Contoso</h1>
+  <div class="health">Healthy · renewal in 82 days</div>
+  <div class="metrics">
+    <div class="metric"><strong>$1.2M</strong>ARR</div>
+    <div class="metric"><strong>94%</strong>adoption</div>
+    <div class="metric"><strong>3</strong>open risks</div>
+  </div>
+  <p id="message">Choose the manager who should own this portfolio.</p>
+  <label><input type="radio" name="manager" value="mgr-alex"> Alex Chen · Enterprise West</label>
+  <label><input type="radio" name="manager" value="mgr-priya" checked> Priya Shah · Strategic Accounts</label>
+  <label><input type="radio" name="manager" value="mgr-sam"> Sam Rivera · Growth</label>
+  <div class="actions">
+    <button id="confirm">Confirm assignment</button>
+    <button id="cancel">Cancel</button>
+  </div>
+  <script>
+    let elicitationRequestId;
+    const parentWindow = window.parent;
+
+    function send(message) { parentWindow.postMessage(message, "*"); }
+
+    window.addEventListener("message", event => {
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+
+      if (message.id === "app-init" && message.result) {
+        send({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
+      } else if (message.method === "elicitation/create") {
+        elicitationRequestId = message.id;
+        document.getElementById("message").textContent = message.params.message;
+      }
+    });
+
+    document.getElementById("confirm").addEventListener("click", () => {
+      const selectedManagerId = document.querySelector('input[name="manager"]:checked').value;
+      send({
+        jsonrpc: "2.0",
+        id: elicitationRequestId,
+        result: { action: "accept", content: { confirmed: true, selectedManagerId } }
+      });
+    });
+
+    document.getElementById("cancel").addEventListener("click", () => {
+      send({ jsonrpc: "2.0", id: elicitationRequestId, result: { action: "cancel" } });
+    });
+
+    send({
+      jsonrpc: "2.0",
+      id: "app-init",
+      method: "ui/initialize",
+      params: {
+        appInfo: { name: "portfolio-assignment-ui", version: "0.1.0" },
+        appCapabilities: { elicitation: {} }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP App elicitation host</title>
+  <style>
+    body { max-width: 860px; margin: 40px auto; padding: 0 20px; font: 15px/1.5 ui-sans-serif, system-ui; color: #162238; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; background: #185adb; color: white; font-weight: 650; cursor: pointer; }
+    pre { padding: 14px; background: #f1f5fa; border-radius: 8px; white-space: pre-wrap; }
+    iframe { width: 100%; min-height: 470px; border: 1px solid #d3ddea; border-radius: 12px; margin-top: 16px; }
+    .muted { color: #62718a; }
+  </style>
+</head>
+<body>
+  <h1>Custom MCP App elicitation</h1>
+  <p class="muted">The tool runs on a stateless 2026-07-28 MCP server. Its first response is <code>input_required</code>; this host loads the attached <code>ui://</code> resource and retries after the app resolves the elicitation.</p>
+  <button id="run">Run assign_account_manager</button>
+  <pre id="status">Ready.</pre>
+  <div id="mount"></div>
+  <script>
+    const runButton = document.getElementById("run");
+    const status = document.getElementById("status");
+    const mount = document.getElementById("mount");
+    let pending;
+    let iframe;
+    let elicitationRpcId;
+
+    runButton.addEventListener("click", async () => {
+      runButton.disabled = true;
+      status.textContent = "Calling tool; waiting for input_required...";
+      const response = await fetch("/api/run", { method: "POST" });
+      const result = await response.json();
+      status.textContent = result.text;
+      mount.replaceChildren();
+      runButton.disabled = false;
+    });
+
+    window.addEventListener("message", async event => {
+      if (event.source !== iframe?.contentWindow || !pending) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+
+      if (message.method === "ui/initialize") {
+        iframe.contentWindow.postMessage({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            protocolVersion: "2026-07-28",
+            hostInfo: { name: "minimal-app-elicitation-host", version: "0.1.0" },
+            hostCapabilities: { elicitation: {} },
+            hostContext: { theme: "light", displayMode: "inline" }
+          }
+        }, "*");
+      } else if (message.method === "ui/notifications/initialized") {
+        elicitationRpcId = `elicitation-${pending.id}`;
+        iframe.contentWindow.postMessage({
+          jsonrpc: "2.0",
+          id: elicitationRpcId,
+          method: "elicitation/create",
+          params: pending.request
+        }, "*");
+      } else if (message.id === elicitationRpcId && message.result) {
+        await fetch(`/api/elicitation/${pending.id}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(message.result)
+        });
+        status.textContent = "App resolved elicitation; retrying the original tool call...";
+        pending = undefined;
+      }
+    });
+
+    async function poll() {
+      try {
+        const response = await fetch("/api/elicitation", { cache: "no-store" });
+        if (response.ok && response.status !== 204) {
+          const candidate = await response.json();
+          if (!pending || pending.id !== candidate.id) {
+            pending = candidate;
+            status.textContent = `Rendering ${pending.resourceUri}`;
+            iframe = document.createElement("iframe");
+            iframe.sandbox = "allow-scripts";
+            iframe.srcdoc = pending.html;
+            mount.replaceChildren(iframe);
+          }
+        }
+      } finally {
+        setTimeout(poll, 250);
+      }
+    }
+    poll();
+  </script>
+</body>
+</html>

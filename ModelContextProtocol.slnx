@@ -40,6 +40,8 @@
     <Project Path="docs/concepts/progress/samples/server/Progress.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/AppElicitationHost/AppElicitationHost.csproj" />
+    <Project Path="samples/AppElicitationServer/AppElicitationServer.csproj" />
     <Project Path="samples/AspNetCoreMcpPerSessionTools/AspNetCoreMcpPerSessionTools.csproj" />
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />

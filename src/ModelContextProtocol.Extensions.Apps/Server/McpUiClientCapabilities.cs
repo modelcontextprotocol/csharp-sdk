@@ -23,4 +23,10 @@ public sealed class McpUiClientCapabilities
     /// </remarks>
     [JsonPropertyName("mimeTypes")]
     public IList<string>? MimeTypes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the capability indicating that the client can render core form elicitations using an MCP App.
+    /// </summary>
+    [JsonPropertyName("elicitation")]
+    public McpUiElicitationCapability? Elicitation { get; set; }
 }
