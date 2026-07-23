@@ -11,7 +11,7 @@ The Model Context Protocol (MCP) supports [progress tracking] for long-running o
 
 [progress tracking]: https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress
 
-Typically progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as image generation or complex calculations.
+Typically, progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as image generation or complex calculations.
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
@@ -55,7 +55,7 @@ await using var handler = mcpClient.RegisterNotificationHandler(NotificationMeth
 
 The second way is to pass a [`Progress<T>`](https://learn.microsoft.com/dotnet/api/system.progress-1) instance to the tool method. `Progress<T>` is a standard .NET type that provides a way to receive progress updates.
 For the purposes of MCP progress notifications, `T` should be <xref:ModelContextProtocol.ProgressNotificationValue>.
-The MCP C# SDK will automatically handle progress notifications and report them through the `Progress<T>` instance.
+The MCP C# SDK automatically handles progress notifications and reports them through the `Progress<T>` instance.
 This notification handler will only receive progress updates for the specific request that was made,
 rather than all progress notifications from the server.
 
