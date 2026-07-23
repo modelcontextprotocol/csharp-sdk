@@ -26,10 +26,10 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledInitially = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -40,7 +40,7 @@ public class TokenCacheTests : OAuthTestBase
             // Just connecting should trigger auth and storage.
         }
 
-        Assert.True(authDelegateCalledInitially, "AuthorizationRedirectDelegate should be called to get initial token");
+        Assert.True(authDelegateCalledInitially, "AuthorizationCallbackHandler should be called to get initial token");
         Assert.NotNull(tokenCache.LastStoredToken);
 
         var authDelegateCalledAgain = false;
@@ -53,10 +53,10 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledAgain = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache
             },
@@ -64,7 +64,7 @@ public class TokenCacheTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.False(authDelegateCalledAgain, "AuthorizationRedirectDelegate should not be called when token is valid");
+        Assert.False(authDelegateCalledAgain, "AuthorizationCallbackHandler should not be called when token is valid");
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 TokenCache = tokenCache
             },
         }, HttpClient, LoggerFactory);
@@ -109,10 +109,10 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalled = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -120,7 +120,7 @@ public class TokenCacheTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.True(authDelegateCalled, "AuthorizationRedirectDelegate should be called when cached token is invalid");
+        Assert.True(authDelegateCalled, "AuthorizationCallbackHandler should be called when cached token is invalid");
         Assert.NotNull(tokenCache.LastStoredToken);
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
     }
@@ -141,10 +141,10 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledInitially = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -155,7 +155,7 @@ public class TokenCacheTests : OAuthTestBase
             // Just connecting should trigger auth and storage.
         }
 
-        Assert.True(authDelegateCalledInitially, "AuthorizationRedirectDelegate should be called to get initial token");
+        Assert.True(authDelegateCalledInitially, "AuthorizationCallbackHandler should be called to get initial token");
         Assert.False(TestOAuthServer.HasRefreshedToken, "Token should not have been refreshed yet");
         Assert.NotNull(tokenCache.LastStoredToken);
 
@@ -171,10 +171,10 @@ public class TokenCacheTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledAgain = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache
             },
@@ -182,7 +182,7 @@ public class TokenCacheTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.False(authDelegateCalledAgain, "AuthorizationRedirectDelegate should not be called when refresh token is valid");
+        Assert.False(authDelegateCalledAgain, "AuthorizationCallbackHandler should not be called when refresh token is valid");
         Assert.True(TestOAuthServer.HasRefreshedToken, "Token should have been refreshed");
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
     }

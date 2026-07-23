@@ -31,7 +31,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
-    private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
+    private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrConfiguredApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
@@ -104,8 +105,39 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
-        // Set up authorization URL handler (use default if not provided)
-        _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+        // Set up authorization callback handler (use default if not provided).
+#pragma warning disable MCP9007 // Read the obsolete property to provide source and binary compatibility.
+        var authorizationRedirectDelegate = options.AuthorizationRedirectDelegate;
+
+        if (options.AuthorizationCallbackHandler is not null && authorizationRedirectDelegate is not null)
+        {
+            throw new ArgumentException(
+                $"{nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} and {nameof(ClientOAuthOptions.AuthorizationRedirectDelegate)} cannot both be configured.",
+                nameof(options));
+        }
+#pragma warning restore MCP9007
+
+        if (options.AuthorizationCallbackHandler is not null)
+        {
+            _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
+        else if (authorizationRedirectDelegate is not null)
+        {
+            _authorizationCallbackHandler = async (context, cancellationToken) => new AuthorizationResult
+            {
+                Code = await authorizationRedirectDelegate(
+                    context.AuthorizationUri,
+                    context.RedirectUri,
+                    cancellationToken).ConfigureAwait(false),
+            };
+            _validateAuthorizationResponseIssuer = false;
+        }
+        else
+        {
+            _authorizationCallbackHandler = DefaultAuthorizationUrlHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
 
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
@@ -125,18 +157,30 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <summary>
     /// Default authorization URL handler that displays the URL to the user for manual input.
     /// </summary>
-    /// <param name="authorizationUrl">The authorization URL to handle.</param>
-    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
-    private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    /// <returns>The authorization result entered by the user, or null if none was provided.</returns>
+    private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
+        AuthorizationCallbackContext context,
+        CancellationToken cancellationToken)
     {
         Console.WriteLine($"Please open the following URL in your browser to authorize the application:");
-        Console.WriteLine($"{authorizationUrl}");
+        Console.WriteLine($"{context.AuthorizationUri}");
         Console.WriteLine();
-        Console.Write("Enter the authorization code from the redirect URL: ");
-        var authorizationCode = Console.ReadLine();
-        return Task.FromResult<string?>(authorizationCode);
+        Console.Write("Enter the full redirect URL: ");
+        var redirectUrl = Console.ReadLine();
+        if (!Uri.TryCreate(redirectUrl, UriKind.Absolute, out var responseUri))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The entered redirect URL is not a valid absolute URL. Paste the full redirect URL from the browser address bar.");
+        }
+
+        var queryParams = HttpUtility.ParseQueryString(responseUri.Query);
+        return Task.FromResult<AuthorizationResult?>(new()
+        {
+            Code = queryParams["code"],
+            Iss = queryParams["iss"],
+        });
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -468,9 +512,40 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
 
+                // Validate the issuer in the metadata document per RFC 8414 Section 3.3:
+                // the issuer value MUST be identical to the issuer identifier used to construct
+                // the well-known URL.
+                // Skip validation in legacy backcompat mode (resourceUri is null) because the
+                // authServerUri was derived from the server origin rather than from Protected
+                // Resource Metadata, so it may not match the server's canonical issuer.
+                // Note: resourceUri is null exclusively in the 2025-03-26 legacy path. For newer
+                // protocol versions, ExtractProtectedResourceMetadata throws if the PRM document
+                // omits the resource field (VerifyResourceMatch returns false for null Resource),
+                // so we never reach this point with resourceUri == null in non-legacy flows.
+                if (resourceUri is not null && metadata.Issuer is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' did not provide the required issuer (RFC 8414 Section 2).");
+                }
+
+                // RFC 8414 requires an identical issuer value, so do not normalize URI case,
+                // trailing slashes, or percent-encoding before comparison.
+                if (resourceUri is not null &&
+                    !string.Equals(metadata.Issuer!.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata issuer '{metadata.Issuer}' does not match the expected issuer '{authServerUri}' (RFC 8414 Section 3.3).");
+                }
+
                 // A structurally valid metadata document was discovered. Even if it fails PKCE validation
                 // below, its existence disqualifies the legacy fallback that would otherwise synthesize S256.
                 metadataDocumentFound = true;
+            }
+            catch (McpException)
+            {
+                // Metadata validation failures are security signals and must not fall back to
+                // another well-known endpoint.
+                throw;
             }
             catch (Exception ex)
             {
@@ -605,14 +680,31 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
 
         var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
-        var authCode = await _authorizationRedirectDelegate(authUrl, _redirectUri, cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(authCode))
+        var authResult = await _authorizationCallbackHandler(
+            new AuthorizationCallbackContext
+            {
+                AuthorizationUri = authUrl,
+                RedirectUri = _redirectUri,
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (authResult is null || string.IsNullOrEmpty(authResult.Code))
         {
-            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
         }
 
-        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        if (_validateAuthorizationResponseIssuer)
+        {
+            ValidateIssuerResponse(authResult!.Iss, authServerMetadata);
+        }
+
+        return await ExchangeCodeForTokenAsync(
+            protectedResourceMetadata,
+            authServerMetadata,
+            authResult.Code!,
+            codeVerifier,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
@@ -997,6 +1089,56 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         return scope + " " + OfflineAccess;
+    }
+
+    /// <summary>
+    /// Validates the <c>iss</c> parameter from an authorization response per
+    /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>.
+    /// </summary>
+    /// <param name="iss">The issuer identifier received in the authorization response, or null if absent.</param>
+    /// <param name="authServerMetadata">The authorization server metadata containing the expected issuer.</param>
+    private void ValidateIssuerResponse(string? iss, AuthorizationServerMetadata authServerMetadata)
+    {
+        var expectedIssuer = authServerMetadata.Issuer?.OriginalString;
+
+        if ((authServerMetadata.AuthorizationResponseIssParameterSupported || !string.IsNullOrEmpty(iss)) &&
+            expectedIssuer is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "Authorization server metadata did not provide an issuer required to validate the authorization response.");
+        }
+
+        if (authServerMetadata.AuthorizationResponseIssParameterSupported)
+        {
+            // Server advertises iss support: iss MUST be present and match.
+            if (string.IsNullOrEmpty(iss))
+            {
+                ThrowFailedToHandleUnauthorizedResponse(
+                    "Authorization server advertises RFC 9207 iss parameter support but none was received in the authorization response.");
+            }
+
+            // Use exact string comparison per RFC 9207 / RFC 3986 §6.2.1.
+            if (!string.Equals(iss, expectedIssuer, StringComparison.Ordinal))
+            {
+                ThrowFailedToHandleUnauthorizedResponse(
+                    $"Authorization response issuer '{iss}' does not match expected issuer '{expectedIssuer}'.");
+            }
+        }
+        else
+        {
+            // Server does not advertise iss support: if iss is present, still validate it.
+            // RFC 9207 cannot protect against a server that neither advertises support nor
+            // returns an iss parameter, so an absent iss is accepted in that case.
+            if (!string.IsNullOrEmpty(iss))
+            {
+                if (!string.Equals(iss, expectedIssuer, StringComparison.Ordinal))
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization response issuer '{iss}' does not match expected issuer '{expectedIssuer}'.");
+                }
+            }
+            // If iss is absent and not advertised, proceed normally.
+        }
     }
 
     /// <summary>
