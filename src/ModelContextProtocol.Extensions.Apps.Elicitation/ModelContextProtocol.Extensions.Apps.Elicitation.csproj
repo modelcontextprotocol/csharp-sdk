@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>ModelContextProtocol.Extensions.Apps.Elicitation</PackageId>
+    <Description>Experimental conventions for using MCP Apps as custom form elicitation UI.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);MCPEXP003</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="..\Common\Polyfills\**\*.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\IsExternalInit.cs"
+             Link="Polyfills\IsExternalInit.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\RequiredMemberAttribute.cs"
+             Link="Polyfills\RequiredMemberAttribute.cs" />
+    <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\CompilerFeatureRequiredAttribute.cs"
+             Link="Polyfills\CompilerFeatureRequiredAttribute.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\README.md" />
+  </ItemGroup>
+
+</Project>
