@@ -207,10 +207,10 @@ public class TokenCacheTests : OAuthTestBase
                     ClientName = "Test MCP Client",
                     ClientUri = new Uri("https://example.com"),
                 },
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledInitially = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -221,7 +221,7 @@ public class TokenCacheTests : OAuthTestBase
             // Just connecting should trigger dynamic registration, authorization, and storage.
         }
 
-        Assert.True(authDelegateCalledInitially, "AuthorizationRedirectDelegate should be called for the initial authorization");
+        Assert.True(authDelegateCalledInitially, "Authorization callback should be called for the initial authorization");
         Assert.False(TestOAuthServer.HasRefreshedToken, "Token should not have been refreshed yet");
         Assert.NotNull(tokenCache.LastStoredToken);
         Assert.False(
@@ -245,10 +245,10 @@ public class TokenCacheTests : OAuthTestBase
                     ClientName = "Test MCP Client",
                     ClientUri = new Uri("https://example.com"),
                 },
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledAgain = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -256,7 +256,7 @@ public class TokenCacheTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.False(authDelegateCalledAgain, "AuthorizationRedirectDelegate should not be called when the persisted refresh token can be used");
+        Assert.False(authDelegateCalledAgain, "Authorization callback should not be called when the persisted refresh token can be used");
         Assert.True(TestOAuthServer.HasRefreshedToken, "Token should have been refreshed using the persisted client credentials");
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
     }
@@ -280,10 +280,10 @@ public class TokenCacheTests : OAuthTestBase
                     ClientName = "Test MCP Client",
                     ClientUri = new Uri("https://example.com"),
                 },
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledInitially = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -293,7 +293,7 @@ public class TokenCacheTests : OAuthTestBase
         {
         }
 
-        Assert.True(authDelegateCalledInitially, "AuthorizationRedirectDelegate should be called for the initial authorization");
+        Assert.True(authDelegateCalledInitially, "Authorization callback should be called for the initial authorization");
         Assert.NotNull(tokenCache.LastStoredToken);
 
         // Simulate a durable cache that persisted tokens but not the client registration (for example
@@ -316,10 +316,10 @@ public class TokenCacheTests : OAuthTestBase
                     ClientName = "Test MCP Client",
                     ClientUri = new Uri("https://example.com"),
                 },
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
                     authDelegateCalledAgain = true;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 TokenCache = tokenCache,
             },
@@ -329,7 +329,7 @@ public class TokenCacheTests : OAuthTestBase
         // registration and the authorization-code flow.
         await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.True(authDelegateCalledAgain, "AuthorizationRedirectDelegate should be called to re-authorize when no client ID is available to refresh");
+        Assert.True(authDelegateCalledAgain, "Authorization callback should be called to re-authorize when no client ID is available to refresh");
         Assert.False(TestOAuthServer.HasRefreshedToken, "A refresh should not be attempted without a client ID");
     }
 
