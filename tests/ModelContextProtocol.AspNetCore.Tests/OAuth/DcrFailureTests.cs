@@ -26,7 +26,7 @@ public class DcrFailureTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("myapp://callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
             },
         }, HttpClient, LoggerFactory);
@@ -54,7 +54,7 @@ public class DcrFailureTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("myapp://callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -75,7 +75,7 @@ public class DcrFailureTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
