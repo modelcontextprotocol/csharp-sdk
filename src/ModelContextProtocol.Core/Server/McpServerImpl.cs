@@ -1616,12 +1616,13 @@ internal sealed partial class McpServerImpl : McpServer
                 }
 
                 _outerCompleted = true;
-                if (_pendingOrdinaryLifecycles.Count > 0)
-                {
-                    return DrainPendingLifecycles();
-                }
-
-                return [new(result.Result!, null, false)];
+                var exceptions = _pendingOrdinaryLifecycles
+                    .Where(lifecycle => lifecycle.Exception is not null)
+                    .ToArray();
+                _pendingOrdinaryLifecycles.Clear();
+                return exceptions.Length > 0 ?
+                    exceptions :
+                    [new(result.Result!, null, false)];
             }
         }
 

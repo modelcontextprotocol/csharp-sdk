@@ -86,6 +86,16 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
                         };
                     }
 
+                    if (request.Params?.Name == "alternate-transform-result-tool")
+                    {
+                        _ = await next(request, cancellationToken);
+                        return new CallToolResult
+                        {
+                            IsError = true,
+                            Content = [new TextContentBlock { Text = "transformed" }],
+                        };
+                    }
+
                     _alternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
                     _alternateRequestContext = request;
                     _alternateServicesBeforeNext = request.Services;
@@ -182,6 +192,23 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
         Assert.Equal("replacement succeeded", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
+    [Fact]
+    public async Task AlternateFilterTransformedResult_LogsFinalResult()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            "alternate-transform-result-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Equal("transformed", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        var completionLog = Assert.Single(
+            MockLoggerProvider.LogMessages,
+            message => message.Message.StartsWith("\"alternate-transform-result-tool\" completed.", StringComparison.Ordinal));
+        Assert.Equal("\"alternate-transform-result-tool\" completed. IsError = True.", completionLog.Message);
+    }
+
     private sealed class ScopedDependency(TaskCompletionSource<bool> disposed) : IAsyncDisposable
     {
         public ValueTask DisposeAsync()
@@ -205,5 +232,8 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
 
         [McpServerTool(Name = "replace-jsonrpc-request-tool")]
         public static string ReplaceJsonRpcRequestTarget() => "replacement succeeded";
+
+        [McpServerTool(Name = "alternate-transform-result-tool")]
+        public static string AlternateTransformResultTarget() => "original";
     }
 }
