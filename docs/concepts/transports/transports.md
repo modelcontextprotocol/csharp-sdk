@@ -185,6 +185,21 @@ app.Run();
 
 By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
 
+#### JSON response mode
+
+By default, each Streamable HTTP POST returns an SSE stream so the server can send progress notifications and other intermediate messages before the final JSON-RPC response. Set <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableJsonResponse> to `true` when an intermediary, such as a web application firewall or reverse proxy, cannot pass SSE responses:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options =>
+    {
+        options.EnableJsonResponse = true;
+    })
+    .WithTools<MyTools>();
+```
+
+In this mode, POST requests return the final JSON-RPC response directly with an `application/json` content type. Request-related progress notifications and other intermediate messages are omitted, event-store resumability and polling are unavailable for POST responses, and notification-only POST requests still return an empty `202 Accepted` response. Stateful servers can still use the standalone GET SSE stream for unsolicited messages.
+
 #### Host name validation
 
 For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
@@ -245,7 +260,7 @@ app.MapMcp("/mcp").RequireCors("McpBrowserClient");
 
 #### How messages flow
 
-In Streamable HTTP, client requests arrive as HTTP POST requests. The server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each POST holds its connection until the handler completes.
+In Streamable HTTP, client requests arrive as HTTP POST requests. By default, the server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. JSON response mode instead returns only the final response as `application/json`. Both modes provide natural HTTP-level backpressure because each POST remains open until the handler completes.
 
 In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages) for a detailed breakdown.
 
