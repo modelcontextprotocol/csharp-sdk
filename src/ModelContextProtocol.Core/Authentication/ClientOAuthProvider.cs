@@ -1284,6 +1284,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <remarks>
     /// Callers must hold <c>_tokenAcquisitionLock</c>: this writes the shared <c>_clientId</c>,
     /// <c>_clientSecret</c>, and <c>_tokenEndpointAuthMethod</c> fields, which the lock serializes.
+    /// Like the persisted refresh token, the restored client ID assumes the durable cache belongs to the
+    /// current authorization server; a single cache shared across authorization servers is not supported
+    /// (an inherent property of the single-container <see cref="ITokenCache"/> design).
     /// </remarks>
     private void RestoreCachedClientCredentials(TokenContainer? tokens)
     {
@@ -1292,11 +1295,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return;
         }
 
+        // The guard above guarantees a non-null container, but the older nullable flow analysis on
+        // netstandard2.0/net472 doesn't infer that from the null-conditional check, so capture a
+        // non-null local and use it for every assignment.
+        var cached = tokens!;
+
         // Assign _clientId last. Callers treat a non-empty _clientId as "registration complete", so the
         // secret and auth method must already be in place before _clientId becomes observable.
-        _clientSecret ??= tokens.ClientSecret;
-        _tokenEndpointAuthMethod ??= tokens.TokenEndpointAuthMethod;
-        _clientId = tokens!.ClientId;
+        _clientSecret ??= cached.ClientSecret;
+        _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
+        _clientId = cached.ClientId;
     }
 
     [DoesNotReturn]

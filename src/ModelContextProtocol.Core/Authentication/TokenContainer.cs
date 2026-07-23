@@ -56,6 +56,13 @@ public sealed class TokenContainer
     /// This is persisted alongside <see cref="ClientId"/> so a durable <see cref="ITokenCache"/> can use a
     /// persisted <see cref="RefreshToken"/> after a restart. It is only populated when a client secret was
     /// issued (for example via dynamic client registration).
+    /// <para>
+    /// Security: persisting this means a durable <see cref="ITokenCache"/> stores a confidential client
+    /// credential, not just the refresh token (which for a confidential client is not usable on its own).
+    /// Cache implementations that persist to durable storage must protect these values at rest (for
+    /// example with OS-level encryption or a dedicated secret store); otherwise a cache compromise would
+    /// expose a complete, usable credential set.
+    /// </para>
     /// </remarks>
     public string? ClientSecret { get; set; }
 
