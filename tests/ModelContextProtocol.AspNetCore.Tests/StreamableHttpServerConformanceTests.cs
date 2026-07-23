@@ -204,6 +204,31 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData(false, McpProtocolVersions.March2025ProtocolVersion, McpProtocolVersions.November2025ProtocolVersion)]
+    [InlineData(false, McpProtocolVersions.November2025ProtocolVersion, McpProtocolVersions.March2025ProtocolVersion)]
+    [InlineData(true, McpProtocolVersions.March2025ProtocolVersion, McpProtocolVersions.November2025ProtocolVersion)]
+    [InlineData(true, McpProtocolVersions.November2025ProtocolVersion, McpProtocolVersions.March2025ProtocolVersion)]
+    public async Task InitializeRequest_IsBadRequest_WhenProtocolVersionHeaderDoesNotMatchBody(
+        bool stateless,
+        string protocolVersionHeader,
+        string protocolVersionBody)
+    {
+        await StartAsync(stateless);
+
+        var body = $$$$"""
+            {"jsonrpc":"2.0","id":4242,"method":"initialize","params":{"protocolVersion":"{{{{protocolVersionBody}}}}","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+            """;
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add("MCP-Protocol-Version", protocolVersionHeader);
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(4242, json!["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+    }
+
     [Fact]
     public async Task GetRequest_IsBadRequest_WithInvalidProtocolVersionHeader()
     {
