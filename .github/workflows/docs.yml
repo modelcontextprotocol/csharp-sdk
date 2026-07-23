@@ -6,13 +6,19 @@ name: Publish Docs
 # latest release, by date, for each major >= 1), builds each release tag into
 # its own sub-path (e.g. /v1/ and /v2/) with make generate-docs, injects a
 # version-picker widget into each page, adds a root redirect to the default
-# version, and deploys the combined site. Triggers on release publish and
-# manual dispatch.
+# version, and deploys the combined site. A manual dispatch can also rebuild
+# the matching major-version path from a specified branch, tag, or commit.
+# Triggers on release publish and manual dispatch.
 
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      docs_ref:
+        description: Branch, tag, or commit whose docs should refresh its matching major version
+        required: false
+        type: string
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -76,6 +82,8 @@ jobs:
 
     - name: Build all versions
       shell: bash
+      env:
+        CONTENT_REF: ${{ inputs.docs_ref }}
       run: |
         set -euo pipefail
         ROOT="$PWD"
@@ -84,14 +92,34 @@ jobs:
         mkdir -p "$COMBINED"
 
         # Orchestration (discovered docs-versions.json, scripts, picker assets)
-        # always comes from THIS branch. Each version's HTML is produced by
-        # building that version's release TAG with its own `make generate-docs`,
-        # so servicing branches/tags need no changes.
+        # always comes from THIS branch. Normally each version's HTML is produced
+        # by its release tag. A manual docs_ref replaces the matching major's
+        # HTML with content built from that ref, allowing content-only refreshes
+        # without minting a product release.
         git fetch --tags --force origin
+        CONTENT_REF="${CONTENT_REF:-}"
+        CONTENT_WORKTREE=""
+        CONTENT_SLUG=""
+        if [[ -n "$CONTENT_REF" ]]; then
+          CONTENT_WORKTREE="$ROOT/../work-content"
+          git worktree add --force --detach "$CONTENT_WORKTREE" "$CONTENT_REF"
+          CONTENT_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$CONTENT_WORKTREE/src/Directory.Build.props")"
+          if ! node "$ROOT/scripts/list-versions.mjs" | cut -f1 | grep -Fxq "$CONTENT_SLUG"; then
+            echo "::error::The docs ref '$CONTENT_REF' has major '$CONTENT_SLUG', which has no published release."
+            exit 1
+          fi
+          echo "Refreshing $CONTENT_SLUG docs from $CONTENT_REF"
+        fi
+
         while IFS=$'\t' read -r slug ref; do
-          echo "::group::Build $slug (from tag $ref)"
-          wt="$ROOT/../work-$slug"
-          git worktree add --force --detach "$wt" "refs/tags/$ref"
+          if [[ "$slug" == "$CONTENT_SLUG" ]]; then
+            echo "::group::Build $slug (from ref $CONTENT_REF)"
+            wt="$CONTENT_WORKTREE"
+          else
+            echo "::group::Build $slug (from tag $ref)"
+            wt="$ROOT/../work-$slug"
+            git worktree add --force --detach "$wt" "refs/tags/$ref"
+          fi
 
           make -C "$wt" generate-docs
 
@@ -99,9 +127,15 @@ jobs:
           cp -a "$wt/artifacts/_site/." "$COMBINED/$slug/"
           node "$ROOT/scripts/inject-version-picker.mjs" "$COMBINED/$slug" "$slug" --base /
 
-          git worktree remove --force "$wt"
+          if [[ "$wt" != "$CONTENT_WORKTREE" ]]; then
+            git worktree remove --force "$wt"
+          fi
           echo "::endgroup::"
         done < <(node "$ROOT/scripts/list-versions.mjs")
+
+        if [[ -n "$CONTENT_WORKTREE" ]]; then
+          git worktree remove --force "$CONTENT_WORKTREE"
+        fi
 
         node "$ROOT/scripts/finalize-docs-site.mjs" "$COMBINED"
 
