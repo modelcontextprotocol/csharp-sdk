@@ -28,11 +28,11 @@ When sessions are enabled (the current C# SDK default), the server creates and t
 
 ## Forward and backward compatibility
 
-The `Stateless` property is the single most important setting for forward-proofing your MCP server. The current C# SDK default is `Stateless = false` (sessions enabled), but **we expect this default to change** once mechanisms like [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) bring server-to-client interactions (sampling, elicitation, roots) to stateless mode. We recommend every server set `Stateless` explicitly rather than relying on the default:
+The `Stateless` property lets you preserve your server's session behavior across SDK updates. The C# SDK default is `Stateless = false` (sessions enabled); set the property explicitly rather than relying on the default:
 
-- **`Stateless = true`** — the best forward-compatible choice. Your server opts out of sessions entirely. No matter how the SDK default changes in the future, your behavior stays the same. If you don't need [unsolicited notifications](#how-streamable-http-delivers-messages), server-to-client requests, or session-scoped state, this is the setting to use today.
+- **`Stateless = true`** — the best forward-compatible choice. Your server opts out of sessions entirely. Setting the property explicitly preserves that behavior if SDK defaults change. If you don't need [unsolicited notifications](#how-streamable-http-delivers-messages), server-to-client requests, or session-scoped state, this is the setting to use.
 
-- **`Stateless = false`** — the right choice when your server depends on sessions for features like sampling, elicitation, roots, unsolicited notifications, or per-client isolation. Setting this explicitly protects your server from a future default change. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header, so compliant clients will always honor your server's session. Once [MRTR](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) or a similar mechanism is available, you may be able to migrate server-to-client interactions to stateless mode and drop sessions entirely — but until then, explicit `Stateless = false` is the safe choice. See [Stateless alternatives for server-to-client interactions](#stateless-alternatives-for-server-to-client-interactions) for more on MRTR.
+- **`Stateless = false`** — the right choice when your server depends on sessions for features like sampling, elicitation, roots, unsolicited notifications, or per-client isolation. Setting the property explicitly preserves stateful behavior if SDK defaults change. The [MCP specification requires](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http) that clients use sessions when a server's `initialize` response includes an `Mcp-Session-Id` header, so compliant clients honor your server's session.
 
 <!-- mlc-disable-next-line -->
 > [!TIP]
@@ -40,7 +40,7 @@ The `Stateless` property is the single most important setting for forward-proofi
 
 ### Migrating from legacy SSE
 
-If your clients connect to a `/sse` endpoint (e.g., `https://my-server.example.com/sse`), they are using the [legacy SSE transport](#legacy-sse-transport) — regardless of any `Stateless` or session settings on the server. The `/sse` and `/message` endpoints are now **disabled by default** (<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is `false` and marked `[Obsolete]` with diagnostic `MCP9004`). Upgrading the server SDK without updating clients will break SSE connections.
+If your clients connect to a `/sse` endpoint (for example, `https://my-server.example.com/sse`), they are using the [legacy SSE transport](#legacy-sse-transport) — regardless of any `Stateless` or session settings on the server. The `/sse` and `/message` endpoints are now **disabled by default** (<xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is `false` and marked `[Obsolete]` with diagnostic `MCP9004`). Upgrading the server SDK without updating clients will break SSE connections.
 
 **Client-side migration.** Change the client `Endpoint` from the `/sse` path to the root MCP endpoint — the same URL your server passes to `MapMcp()`. For example:
 
@@ -94,7 +94,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
   - Ping — the server cannot ping the client to verify connectivity
 
   The proposed [MRTR mechanism](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458) is designed to bring these capabilities to stateless mode, but it is not yet available.
-- **[Unsolicited](#how-streamable-http-delivers-messages) server-to-client notifications** (e.g., resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client POST request — see [How Streamable HTTP delivers messages](#how-streamable-http-delivers-messages) for why.
+- **[Unsolicited](#how-streamable-http-delivers-messages) server-to-client notifications** (for example, resource update notifications, logging messages) are not supported. Every notification must be part of a direct response to a client POST request — to understand why, see [How Streamable HTTP delivers messages](#how-streamable-http-delivers-messages).
 - **No concurrent client isolation.** Every request is independent — the server cannot distinguish between two agents calling the same tool simultaneously, and there is no mechanism to maintain separate state per client.
 - **No state reset on reconnect.** Stateless servers have no concept of "the previous connection." There is no session to close and no fresh session to start. If your server holds any external state, you must manage cleanup through other means.
 - [Tasks](xref:tasks) **are supported** — the task store is shared across ephemeral server instances. However, task-augmented sampling and elicitation are disabled because they require server-to-client requests.
@@ -130,7 +130,7 @@ When <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless>
 - Server-to-client requests (sampling, elicitation, roots) via an open HTTP response stream
 - [Unsolicited notifications](#how-streamable-http-delivers-messages) (resource updates, logging messages) via the GET stream
 - Resource subscriptions
-- Session-scoped state (e.g., `RunSessionHandler`, state that persists across multiple requests within a session)
+- Session-scoped state (for example, `RunSessionHandler`, state that persists across multiple requests within a session)
 
 ### When to use stateful mode
 
@@ -207,7 +207,7 @@ The server tracks the last activity time for each Streamable HTTP session. Activ
 
 Streamable HTTP sessions that have no activity for the duration of <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> (default: **2 hours**) are automatically closed. The idle timeout is checked in the background every 5 seconds.
 
-A client can keep its session alive by maintaining any open HTTP request (e.g., a long-running POST with a streamed response or an open `GET` for unsolicited messages). Sessions with active requests are never considered idle.
+A client can keep its session alive by maintaining any open HTTP request (for example, a long-running POST with a streamed response or an open `GET` for unsolicited messages). Sessions with active requests are never considered idle.
 
 When a session times out:
 
@@ -344,7 +344,7 @@ Session resumption is useful when:
 
 When you dispose an `McpClient` (via `await using` or explicit `DisposeAsync`), the client sends an HTTP `DELETE` request to the session endpoint with the `Mcp-Session-Id` header. This tells the server to clean up the session immediately rather than waiting for the idle timeout.
 
-The <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> property (default: `true`) controls this behavior. Set it to `false` when you're creating a transport purely to bootstrap session information (e.g., reading capabilities) without intending to own the session's lifetime.
+The <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> property (default: `true`) controls this behavior. Set it to `false` when you're creating a transport purely to bootstrap session information (for example, reading capabilities) without intending to own the session's lifetime.
 
 ### Client transport options
 
@@ -354,7 +354,7 @@ The following <xref:ModelContextProtocol.Client.HttpClientTransportOptions> prop
 |----------|---------|-------------|
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.KnownSessionId> | `null` | Pre-existing session ID for use with <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*>. When set, the client includes this session ID immediately and starts listening for unsolicited messages. |
 | <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OwnsSession> | `true` | Whether to send a DELETE request when the client is disposed. Set to `false` when you don't want disposal to terminate the server session. |
-| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.AdditionalHeaders> | `null` | Custom headers included in all requests (e.g., for authentication). These are sent alongside the automatic `Mcp-Session-Id` header. |
+| <xref:ModelContextProtocol.Client.HttpClientTransportOptions.AdditionalHeaders> | `null` | Custom headers included in all requests (for example, for authentication). These are sent alongside the automatic `Mcp-Session-Id` header. |
 
 For transport-level options like reconnection intervals and transport mode, see [Transports](xref:transports).
 
@@ -531,7 +531,7 @@ Every tool, prompt, and resource handler can receive a `CancellationToken`. The 
 | **Stateless HTTP** | `HttpContext.RequestAborted` | Client disconnects, or ASP.NET Core shuts down. Identical to a standard minimal API or controller action. |
 | **Stateful Streamable HTTP** | Linked token: HTTP request + application shutdown + session disposal | Client disconnects, `ApplicationStopping` fires, or the session is terminated (idle timeout, DELETE, max idle count). |
 | **SSE (legacy)** | Linked token: GET request + application shutdown | Client disconnects the SSE stream, or `ApplicationStopping` fires. The entire session terminates with the GET stream. |
-| **stdio** | Token passed to `McpServer.RunAsync()` | stdin EOF (client process exits), or the token is cancelled (e.g., host shutdown via Ctrl+C). |
+| **stdio** | Token passed to `McpServer.RunAsync()` | stdin EOF (client process exits), or the token is cancelled (for example, host shutdown via Ctrl+C). |
 
 Stateless mode has the simplest cancellation story: the handler's `CancellationToken` is `HttpContext.RequestAborted` — the same token any ASP.NET Core endpoint receives. No additional tokens, linked sources, or session-level lifecycle to reason about.
 
@@ -547,13 +547,13 @@ In stateful modes (Streamable HTTP, SSE, stdio), a client can cancel a specific 
 
 When an `McpServer` is disposed — whether due to session termination, transport closure, or application shutdown — the SDK **awaits all in-flight handlers** before `DisposeAsync()` returns. This means:
 
-- Handlers have an opportunity to complete cleanup (e.g., flushing writes, releasing locks)
+- Handlers have an opportunity to complete cleanup (for example, flushing writes, releasing locks)
 - Scoped services created for the handler are disposed after the handler completes
 - The SDK logs each handler's completion at `Information` level, including elapsed time
 
 #### Graceful shutdown in ASP.NET Core
 
-When `ApplicationStopping` fires (e.g., `SIGTERM`, `Ctrl+C`, `app.StopAsync()`), the SDK immediately cancels active SSE and GET streams so that connected clients don't block shutdown. In-flight POST request handlers continue running and are awaited before the server finishes disposing. The total shutdown time is bounded by ASP.NET Core's `HostOptions.ShutdownTimeout` (default: **30 seconds**). In practice, the SDK completes shutdown well within this limit.
+When `ApplicationStopping` fires (for example, `SIGTERM`, `Ctrl+C`, `app.StopAsync()`), the SDK immediately cancels active SSE and GET streams so that connected clients don't block shutdown. In-flight POST request handlers continue running and are awaited before the server finishes disposing. The total shutdown time is bounded by ASP.NET Core's `HostOptions.ShutdownTimeout` (default: **30 seconds**). In practice, the SDK completes shutdown well within this limit.
 
 For stateless servers, shutdown is even simpler: each request is independent, so there are no long-lived sessions to drain — just standard ASP.NET Core request completion.
 

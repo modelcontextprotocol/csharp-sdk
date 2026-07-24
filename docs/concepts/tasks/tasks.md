@@ -9,7 +9,7 @@ uid: tasks
 
 <!-- mlc-disable-next-line -->
 > [!WARNING]
-> Tasks are an **experimental feature** in the MCP specification (version 2025-11-25). The API may change in future releases. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
+> Tasks are an **experimental feature** in the `2025-11-25` MCP specification revision. The APIs carry `MCPEXP001`, offer no compatibility guarantees, and can change without notice. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
 
 The Model Context Protocol (MCP) supports [task-based execution] for long-running operations. Tasks enable a "call-now, fetch-later" pattern where clients can initiate operations that may take significant time to complete, then poll for status and retrieve results when ready.
 
@@ -33,23 +33,23 @@ Without tasks, clients must keep connections open for the entire duration of lon
 4. Retrieve results when complete
 5. Cancel operations if needed
 
-## Task Lifecycle
+## Task lifecycle
 
 Tasks follow a defined lifecycle through these status values:
 
 | Status | Description |
 |--------|-------------|
 | `working` | Task is actively being processed |
-| `input_required` | Task is waiting for additional input (e.g., elicitation) |
+| `input_required` | Task is waiting for additional input (for example, elicitation) |
 | `completed` | Task finished successfully; results are available |
 | `failed` | Task encountered an error |
 | `cancelled` | Task was cancelled by the client |
 
 Tasks begin in the `working` status and transition to one of the terminal states (`completed`, `failed`, or `cancelled`). Once in a terminal state, the status cannot change.
 
-## Server Implementation
+## Server implementation
 
-### Configuring Task Support
+### Configuring task support
 
 To enable task support on a server, configure a task store when setting up the MCP server:
 
@@ -70,7 +70,7 @@ builder.Services.AddMcpServer(options =>
 
 The <xref:ModelContextProtocol.InMemoryMcpTaskStore> is a reference implementation suitable for development and single-server deployments. For production multi-server scenarios, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store (database, Redis, etc.).
 
-### Task Store Configuration
+### Task store configuration
 
 The `InMemoryMcpTaskStore` constructor accepts several optional parameters:
 
@@ -86,7 +86,7 @@ var taskStore = new InMemoryMcpTaskStore(
 );
 ```
 
-### Tool Task Support
+### Tool task support
 
 Tools automatically advertise task support when they return `Task`, `ValueTask`, `Task<T>`, or `ValueTask<T>`:
 
@@ -137,7 +137,7 @@ Task support levels:
 - `Optional` (default for async methods): Tool can be called with or without task augmentation
 - `Required`: Tool must be called with task augmentation
 
-### Explicit Task Creation with `IMcpTaskStore`
+### Explicit task creation with `IMcpTaskStore`
 
 For more control over task lifecycle, tools can directly interact with <xref:ModelContextProtocol.IMcpTaskStore> and return an `McpTask`. This approach allows you to:
 
@@ -217,7 +217,7 @@ When a tool returns `McpTask`, the SDK bypasses automatic task wrapping and retu
 >
 > For fault-tolerant task execution, see the [Fault-Tolerant Task Implementations](#fault-tolerant-task-implementations) section.
 
-### Task Status Notifications
+### Task status notifications
 
 When `SendTaskStatusNotifications` is enabled, the server automatically sends status updates to connected clients:
 
@@ -231,9 +231,9 @@ builder.Services.AddMcpServer(options =>
 
 Clients receive `notifications/tasks/status` messages when task status changes.
 
-## Client Implementation
+## Client implementation
 
-### Calling Tools as Tasks
+### Calling tools as tasks
 
 To execute a tool as a task, include the `Task` property in the request:
 
@@ -267,7 +267,7 @@ if (result.Task != null)
 }
 ```
 
-### Polling for Task Status
+### Polling for task status
 
 Use <xref:ModelContextProtocol.Client.McpClient.GetTaskAsync*> to check task status:
 
@@ -282,7 +282,7 @@ if (task.StatusMessage != null)
 }
 ```
 
-### Waiting for Completion
+### Waiting for completion
 
 The SDK provides helper methods for polling until a task completes:
 
@@ -316,7 +316,7 @@ else if (completedTask.Status == McpTaskStatus.Failed)
 }
 ```
 
-### Listing Tasks
+### Listing tasks
 
 List all tasks for the current session:
 
@@ -329,7 +329,7 @@ foreach (var task in tasks)
 }
 ```
 
-### Cancelling Tasks
+### Cancelling tasks
 
 Cancel a running task:
 
@@ -341,7 +341,7 @@ var cancelledTask = await client.CancelTaskAsync(
 Console.WriteLine($"Task status: {cancelledTask.Status}"); // Cancelled
 ```
 
-### Handling Status Notifications
+### Handling status notifications
 
 Register a handler to receive real-time status updates:
 
@@ -365,7 +365,7 @@ var client = await McpClient.CreateAsync(transport, options);
 > [!NOTE]
 > Clients should not rely on receiving status notifications. Notifications are optional and may not be sent in all scenarios. Always use polling as the primary mechanism for tracking task status.
 
-## Implementing a Custom Task Store
+## Implementing a custom task store
 
 For production deployments, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store:
 
@@ -415,7 +415,7 @@ public class DatabaseTaskStore : IMcpTaskStore
 }
 ```
 
-### Task Store Best Practices
+### Task store best practices
 
 1. **Session Isolation**: Always filter tasks by session ID to prevent cross-session access
 2. **TTL Enforcement**: Implement background cleanup of expired tasks
@@ -423,7 +423,7 @@ public class DatabaseTaskStore : IMcpTaskStore
 4. **Atomic Updates**: Use database transactions for status transitions
 5. **Optimistic Concurrency**: Prevent lost updates with version checking or row locks
 
-## Error Handling
+## Error handling
 
 Task operations may throw <xref:ModelContextProtocol.McpException> with these error codes:
 
@@ -446,7 +446,7 @@ catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams
 }
 ```
 
-## Complete Example
+## Complete example
 
 <!-- TODO: Remove mlc-disable block after merging to main -->
 <!-- mlc-disable -->
@@ -458,11 +458,11 @@ See the [LongRunningTasks sample](https://github.com/modelcontextprotocol/csharp
 - Task polling and result retrieval across server restarts
 - Cancellation support
 
-## Fault-Tolerant Task Implementations
+## Fault-tolerant task implementations
 
 The default `InMemoryMcpTaskStore` and automatic task support for async tools are convenient for development, but they provide no durability or fault tolerance. When the server process terminates—whether due to a crash, deployment, or scaling event—all task state and in-flight computations are lost.
 
-### Why Fault Tolerance Requires External Systems
+### Why fault tolerance requires external systems
 
 True fault tolerance for long-running tasks requires two key capabilities that cannot be provided by an in-process solution:
 
@@ -470,7 +470,7 @@ True fault tolerance for long-running tasks requires two key capabilities that c
 
 2. **Resumable Compute**: The actual work being performed must be executed by an external system that can continue running independently of the MCP server process—such as a job queue (Azure Service Bus, RabbitMQ), workflow engine (Temporal, Azure Durable Functions), or batch processing system (Azure Batch, Kubernetes Jobs).
 
-### Explicit Task Creation with `IMcpTaskStore`
+### Explicit task creation with `IMcpTaskStore`
 
 To implement fault-tolerant tasks, tools can directly interact with `IMcpTaskStore` and return an `McpTask` instead of relying on automatic task wrapping. This approach gives you full control over task lifecycle and enables integration with external compute fabrics:
 
@@ -550,7 +550,7 @@ public class JobProcessor(IMcpTaskStore taskStore)
 }
 ```
 
-### Simplified Example: File-Based Task Store
+### Simplified example: file-based task store
 
 <!-- TODO: Remove mlc-disable block after merging to main -->
 <!-- mlc-disable -->
@@ -595,7 +595,7 @@ public class TaskTools(IMcpTaskStore taskStore)
 
 While this file-based approach demonstrates the pattern, production systems should use proper distributed storage and compute infrastructure for true fault tolerance and scalability.
 
-## See Also
+## See also
 
 - <xref:ModelContextProtocol.IMcpTaskStore>
 - <xref:ModelContextProtocol.InMemoryMcpTaskStore>
