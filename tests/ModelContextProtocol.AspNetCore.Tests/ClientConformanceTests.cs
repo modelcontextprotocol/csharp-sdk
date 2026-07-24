@@ -46,6 +46,19 @@ public class ClientConformanceTests
     [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
 
+    // Offline access scope negotiation.
+    [InlineData("auth/offline-access-scope")]
+    [InlineData("auth/offline-access-not-supported")]
+
+    // RFC 9207 authorization server issuer validation.
+    [InlineData("auth/iss-supported")]
+    [InlineData("auth/iss-not-advertised")]
+    [InlineData("auth/iss-supported-missing")]
+    [InlineData("auth/iss-wrong-issuer")]
+    [InlineData("auth/iss-unexpected")]
+    [InlineData("auth/iss-normalized")]
+    [InlineData("auth/metadata-issuer-mismatch")]
+
     // Backcompat: 2025-03-26 OAuth flows (no per-request metadata, root-location metadata).
     [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
     [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
