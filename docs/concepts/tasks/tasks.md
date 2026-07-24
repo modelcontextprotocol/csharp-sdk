@@ -79,6 +79,17 @@ When tasks are enabled with `WithTasks` the SDK automatically:
 - Plumbs a `CancellationToken` through to the tool that fires when the client invokes
   `tasks/cancel`, so cancellation propagates cooperatively.
 
+Alternate-result `tools/call` filters run in registration order, with the Tasks filter creating a
+task at its position in that order. Filters before Tasks run before task creation. Filters after
+Tasks run in the background before the ordinary filter pipeline. ASP.NET Core tool authorization
+uses an alternate-result filter registered before Tasks, so an unauthorized call does not create
+a task.
+
+Ordinary `tools/call` filters still run exactly once for task-backed calls. They execute in the
+background after the task record is created and before the tool body, so validation and telemetry
+continue to apply. Each background invocation gets an independent DI scope that remains alive
+until the tool pipeline completes.
+
 For production scenarios that need durability, session isolation, multi-process routing, or
 TTL-based cleanup, implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> yourself
 (see [Implementing a custom task store](#implementing-a-custom-task-store) below).
@@ -125,28 +136,6 @@ options.Handlers.CallToolWithAlternateHandler = async (context, ct) =>
 > and <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithAlternateHandler?displayProperty=nameWithType>
 > are mutually exclusive. Setting one while the other is already non-null throws
 > `InvalidOperationException` at the property setter.
-
-#### Task scope for server-initiated requests
-
-When you start background work from a custom <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithAlternateHandler?displayProperty=nameWithType>
-(rather than the SDK's auto-wrapping), use <xref:ModelContextProtocol.Extensions.Tasks.McpTasksServerExtensions.CreateMcpTaskScope*>
-to route elicitation, sampling, and `roots/list` calls through the task store as input requests
-instead of direct JSON-RPC messages:
-
-```csharp
-using ModelContextProtocol.Extensions.Tasks;
-
-using (server.CreateMcpTaskScope(taskId, taskStore))
-{
-    // ElicitAsync/SampleAsync/RequestRootsAsync calls in here are surfaced as
-    // entries in the task's inputRequests, then await client responses via tasks/update.
-    var elicit = await server.ElicitAsync(elicitParams, ct);
-}
-```
-
-`CreateMcpTaskScope` returns an `IDisposable` that restores the prior ambient context on
-`Dispose`. The scope is established automatically for `[McpServerTool]` methods that run via
-`WithTasks`, so this API is only needed for custom handlers.
 
 ### Client usage
 

@@ -23,50 +23,27 @@ public abstract partial class McpServer : McpSession
 
     private static Dictionary<string, HashSet<string>>? s_elicitAllowedProperties = null;
 
-    /// <summary>
-    /// Ambient interceptor that, when installed, redirects server-initiated requests
-    /// (<see cref="SampleAsync(CreateMessageRequestParams, CancellationToken)"/>,
-    /// <see cref="ElicitAsync(ElicitRequestParams, CancellationToken)"/>, and
-    /// <see cref="RequestRootsAsync(ListRootsRequestParams, CancellationToken)"/>) away from the
-    /// transport. The interceptor receives the request method and pre-serialized parameters and
-    /// returns the serialized result. Used by extensions (such as the Tasks extension) to surface
-    /// these requests through an alternate channel during background execution.
-    /// </summary>
-    private static readonly AsyncLocal<Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>?> s_outgoingRequestInterceptor = new();
+    internal virtual Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => null;
 
     /// <summary>
-    /// Gets the currently installed outgoing-request interceptor for the ambient execution context, if any.
-    /// </summary>
-    internal static Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? CurrentOutgoingRequestInterceptor => s_outgoingRequestInterceptor.Value;
-
-    /// <summary>
-    /// Installs an interceptor that redirects server-initiated requests for the duration of the
-    /// returned scope on the current asynchronous execution context.
+    /// Creates a non-mutating server facade that redirects server-initiated requests through an interceptor.
     /// </summary>
     /// <param name="interceptor">
     /// The interceptor invoked for each outgoing request. It receives the request method, the
     /// pre-serialized request parameters (or <see langword="null"/>), and a cancellation token, and
     /// returns the serialized result (or <see langword="null"/> to indicate no result).
     /// </param>
-    /// <returns>An <see cref="IDisposable"/> that restores the previous interceptor when disposed.</returns>
+    /// <returns>A server facade that uses <paramref name="interceptor"/> for outgoing requests.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="interceptor"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// While an interceptor is installed, the redirected methods skip their client-capability checks,
+    /// On the returned facade, redirected methods skip their client-capability checks,
     /// because the alternate channel is responsible for delivering the request to the client.
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
-    public IDisposable InterceptOutgoingRequests(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
+    public McpServer WithOutgoingRequestInterceptor(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
     {
         Throw.IfNull(interceptor);
-
-        var previous = s_outgoingRequestInterceptor.Value;
-        s_outgoingRequestInterceptor.Value = interceptor;
-        return new OutgoingRequestInterceptorScope(previous);
-    }
-
-    private sealed class OutgoingRequestInterceptorScope(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? previous) : IDisposable
-    {
-        public void Dispose() => s_outgoingRequestInterceptor.Value = previous;
+        return new OutgoingRequestInterceptingMcpServer(this, interceptor);
     }
 
     /// <summary>
@@ -119,7 +96,7 @@ public abstract partial class McpServer : McpSession
         // redirect sampling through it. Capability checks (ThrowIfSamplingUnsupported) are
         // intentionally skipped because the interceptor's alternate channel is responsible for
         // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
-        if (CurrentOutgoingRequestInterceptor is { } interceptor)
+        if (OutgoingRequestInterceptor is { } interceptor)
         {
             return SendRequestViaInterceptorAsync(interceptor, RequestMethods.SamplingCreateMessage, requestParams,
                 McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
@@ -326,7 +303,7 @@ public abstract partial class McpServer : McpSession
         // redirect through it. Capability checks (ThrowIfRootsUnsupported) are intentionally skipped
         // because the interceptor's alternate channel is responsible for delivering the request to
         // the client. See SendRequestViaInterceptorAsync remarks.
-        if (CurrentOutgoingRequestInterceptor is { } interceptor)
+        if (OutgoingRequestInterceptor is { } interceptor)
         {
             return SendRequestViaInterceptorAsync(interceptor, RequestMethods.RootsList, requestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
@@ -372,7 +349,7 @@ public abstract partial class McpServer : McpSession
         // redirect elicitation through it. Capability checks (ThrowIfElicitationUnsupported) are
         // intentionally skipped because the interceptor's alternate channel is responsible for
         // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
-        if (CurrentOutgoingRequestInterceptor is { } interceptor)
+        if (OutgoingRequestInterceptor is { } interceptor)
         {
             var paramsNode = JsonSerializer.SerializeToNode(requestParams, McpJsonUtilities.JsonContext.Default.ElicitRequestParams);
             var resultNode = await interceptor(RequestMethods.ElicitationCreate, paramsNode, cancellationToken).ConfigureAwait(false);

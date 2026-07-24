@@ -11,14 +11,15 @@ namespace ModelContextProtocol.AspNetCore;
 /// <summary>
 /// Evaluates authorization policies from endpoint metadata.
 /// </summary>
-internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? policyProvider = null) : IConfigureOptions<McpServerOptions>, IPostConfigureOptions<McpServerOptions>
+internal sealed class AuthorizationFilterSetup(
+    IAuthorizationPolicyProvider? policyProvider = null,
+    AuthorizationFiltersMarker? marker = null) : IConfigureOptions<McpServerOptions>, IPostConfigureOptions<McpServerOptions>
 {
     private static readonly string AuthorizationFilterInvokedKey = "ModelContextProtocol.AspNetCore.AuthorizationFilter.Invoked";
 
     public void Configure(McpServerOptions options)
     {
         ConfigureListToolsFilter(options);
-        ConfigureCallToolFilter(options);
 
         ConfigureListResourcesFilter(options);
         ConfigureListResourceTemplatesFilter(options);
@@ -30,8 +31,13 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     public void PostConfigure(string? name, McpServerOptions options)
     {
+        // Add tool authorization after all regular configuration so it always wraps Tasks.
+        if (marker is not null)
+        {
+            ConfigureCallToolFilter(options);
+        }
+
         CheckListToolsFilter(options);
-        CheckCallToolFilter(options);
 
         CheckListResourcesFilter(options);
         CheckListResourceTemplatesFilter(options);
@@ -81,7 +87,8 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
     private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+#pragma warning disable MCPEXP002 // Authorization must run in the alternate-result pipeline before task dispatch.
+        options.Filters.Request.CallToolWithAlternateFilters.Insert(0, async (context, next, cancellationToken) =>
         {
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
@@ -93,20 +100,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
 
             return await next(context, cancellationToken);
         });
-    }
-
-    private static void CheckCallToolFilter(McpServerOptions options)
-    {
-        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
-        {
-            if (HasAuthorizationMetadata(context.MatchedPrimitive)
-                && !context.Items.ContainsKey(AuthorizationFilterInvokedKey))
-            {
-                throw new InvalidOperationException("Authorization filter was not invoked for tools/call operation, but authorization metadata was found on the tool. Ensure that AddAuthorizationFilters() is called on the IMcpServerBuilder to configure authorization filters.");
-            }
-
-            return await next(context, cancellationToken);
-        });
+#pragma warning restore MCPEXP002
     }
 
     private void ConfigureListResourcesFilter(McpServerOptions options)
@@ -374,7 +368,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             : AuthorizationPolicy.Combine(policy, reqPolicyBuilder.Build());
     }
 
-    private static bool HasAuthorizationMetadata([NotNullWhen(true)] IMcpServerPrimitive? primitive)
+    internal static bool HasAuthorizationMetadata([NotNullWhen(true)] IMcpServerPrimitive? primitive)
     {
         // If no primitive was found for this request or there is IAllowAnonymous metadata anywhere on the class or method,
         // the request should go through as normal.
