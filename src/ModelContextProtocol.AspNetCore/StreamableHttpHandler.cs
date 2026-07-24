@@ -45,6 +45,7 @@ internal sealed class StreamableHttpHandler(
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
+    private static readonly JsonTypeInfo<InitializeRequestParams> s_initializeRequestParamsTypeInfo = GetRequiredJsonTypeInfo<InitializeRequestParams>();
 
     private static bool AllowNewSessionForNonInitializeRequests { get; } =
         AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", out var enabled) && enabled;
@@ -114,6 +115,21 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
             return;
+        }
+
+        if (message is JsonRpcRequest { Method: RequestMethods.Initialize } initializeRequest)
+        {
+            try
+            {
+                JsonSerializer.Deserialize(initializeRequest.Params, s_initializeRequestParamsTypeInfo);
+            }
+            catch (JsonException ex)
+            {
+                await WriteJsonRpcErrorAsync(context,
+                    $"Bad Request: The initialize request parameters were invalid. {ex.Message}",
+                    StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidParams, requestId);
+                return;
+            }
         }
 
         var session = await GetOrCreateSessionAsync(context, message, requestId);
