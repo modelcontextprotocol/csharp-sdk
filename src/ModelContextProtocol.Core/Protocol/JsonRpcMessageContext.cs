@@ -76,6 +76,15 @@ public sealed class JsonRpcMessageContext
     public IDictionary<string, object?>? Items { get; set; }
 
     /// <summary>
+    /// Gets or sets the routing name for this message.
+    /// </summary>
+    /// <remarks>
+    /// Streamable HTTP transports emit this value in the <c>Mcp-Name</c> header. This enables
+    /// extension methods to identify the named resource targeted by a request.
+    /// </remarks>
+    public string? RoutingName { get; set; }
+
+    /// <summary>
     /// Gets or sets the protocol version from the transport-level header (e.g. <c>Mcp-Protocol-Version</c>)
     /// that accompanied this JSON-RPC message.
     /// </summary>

@@ -75,9 +75,24 @@ public static class McpTasksBuilderExtensions
             }
 
             options.RequestHandlers ??= new List<McpServerRequestHandler>();
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksGet, Handler = HandleGetTask });
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksUpdate, Handler = HandleUpdateTask });
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksCancel, Handler = HandleCancelTask });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksGet,
+                RoutingNameParameter = "taskId",
+                Handler = HandleGetTask,
+            });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksUpdate,
+                RoutingNameParameter = "taskId",
+                Handler = HandleUpdateTask,
+            });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksCancel,
+                RoutingNameParameter = "taskId",
+                Handler = HandleCancelTask,
+            });
 
             if (options.Filters.Request.CallToolFilters.Count > 0)
             {

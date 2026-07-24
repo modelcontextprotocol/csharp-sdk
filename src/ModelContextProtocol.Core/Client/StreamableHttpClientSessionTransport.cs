@@ -592,14 +592,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         headers.Add(McpHttpHeaders.Method, method);
 
         // Add Mcp-Name header for methods that target a specific named resource
-        string? name = message switch
+        string? name = message.Context?.RoutingName ?? message switch
         {
             JsonRpcRequest { Method: RequestMethods.ToolsCall or RequestMethods.PromptsGet } request
                 => GetParamsStringProperty(request.Params, "name"),
             JsonRpcRequest { Method: RequestMethods.ResourcesRead } request
                 => GetParamsStringProperty(request.Params, "uri"),
-            JsonRpcRequest { Method: "tasks/get" or "tasks/update" or "tasks/cancel" } request
-                => GetParamsStringProperty(request.Params, "taskId"),
             _ => null,
         };
 
