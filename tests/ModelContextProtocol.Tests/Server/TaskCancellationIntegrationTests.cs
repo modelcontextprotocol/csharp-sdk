@@ -106,6 +106,7 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
 
         // Cleanup
         await client.CancelTaskAsync(taskId, ct);
+        await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
     }
 }
 
