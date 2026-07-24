@@ -104,7 +104,7 @@ server.RegisterNotificationHandler(
     });
 ```
 
-### Multi Round-Trip Requests (MRTR)
+### Multi round-trip requests (MRTR)
 
 [MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `roots/list` request method is removed; the recommended way to ask the client for its roots from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
@@ -128,7 +128,7 @@ public static string ListRootsWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+        return "This tool requires MRTR support (2026-07-28, or a stateful session using protocol revision 2025-11-25).";
     }
 
     // First call — request the client's root list

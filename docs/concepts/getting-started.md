@@ -5,7 +5,7 @@ description: Install the MCP C# SDK and build your first MCP client and server.
 uid: getting-started
 ---
 
-## Getting Started
+## Getting started
 
 This guide walks you through installing the MCP C# SDK and building a minimal MCP client and server.
 

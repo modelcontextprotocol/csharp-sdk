@@ -1,0 +1,102 @@
+/*
+ * Version picker widget for the multi-version MCP C# SDK docs site.
+ * Injected into every generated page by scripts/inject-version-picker.mjs.
+ * Two placements: inline in the DocFX "modern" navbar, or a fixed floating
+ * fallback when the navbar cannot be found.
+ */
+.dv-picker {
+  --dv-fg: #24292f;
+  --dv-bg: #ffffff;
+  --dv-border: #d0d7de;
+  --dv-accent: #0969da;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--dv-fg);
+}
+
+.dv-picker__label {
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.dv-picker__select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--dv-bg);
+  color: var(--dv-fg);
+  border: 1px solid var(--dv-border);
+  border-radius: 6px;
+  padding: 0.25rem 1.55rem 0.25rem 0.55rem;
+  font: inherit;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23636c76'%3E%3Cpath d='M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 0.72rem;
+}
+
+.dv-picker__select:hover {
+  border-color: var(--dv-accent);
+}
+
+.dv-picker__badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #9a6700;
+  background: #fff8c5;
+  border: 1px solid #eac54f;
+}
+
+.dv-prerelease-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+  padding: 0.4rem 1rem;
+  color: #24292f;
+  background: #fff8c5;
+  border-bottom: 1px solid #eac54f;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Inline in the navbar (preferred placement). */
+.dv-picker--navbar {
+  margin-left: 0.75rem;
+}
+
+/* Fixed fallback when no navbar brand was found. */
+.dv-picker--floating {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2147483000;
+  padding: 0.45rem 0.6rem;
+  background: var(--dv-bg);
+  border: 1px solid var(--dv-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+/* DocFX's explicit Bootstrap theme controls the widget appearance. */
+[data-bs-theme="dark"] .dv-picker {
+  --dv-fg: #e6edf3;
+  --dv-bg: #161b22;
+  --dv-border: #30363d;
+  --dv-accent: #4493f8;
+}
+
+[data-bs-theme="dark"] .dv-prerelease-banner {
+  color: #e6edf3;
+  background: #3d2e00;
+  border-color: #9a6700;
+}
