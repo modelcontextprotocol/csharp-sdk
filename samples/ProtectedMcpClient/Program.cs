@@ -98,6 +98,7 @@ static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
         var context = await listener.GetContextAsync();
         var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
         var code = query["code"];
+        var state = query["state"];
         var iss = query["iss"];
         var error = query["error"];
 
@@ -121,7 +122,7 @@ static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
         }
 
         Console.WriteLine("Authorization code received successfully.");
-        return new AuthorizationResult { Code = code, Iss = iss };
+        return new AuthorizationResult { Code = code, State = state, Iss = iss };
     }
     catch (Exception ex)
     {
