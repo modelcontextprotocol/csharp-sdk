@@ -26,7 +26,7 @@ Add the diagnostic ID to `<NoWarn>` in your project file:
 Use `#pragma warning disable` around specific call sites:
 
 ```csharp
-#pragma warning disable MCPEXP001 // The Extensions feature is part of a future MCP specification version that has not yet been ratified and is subject to change.
+#pragma warning disable MCPEXP001 // This API is experimental and may change.
 capabilities.Extensions = new Dictionary<string, object> { ... };
 #pragma warning restore MCPEXP001
 ```

@@ -128,7 +128,7 @@ public static string ListRootsWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+        return "This tool requires MRTR support (2026-07-28, or a stateful session using protocol revision 2025-11-25).";
     }
 
     // First call — request the client's root list

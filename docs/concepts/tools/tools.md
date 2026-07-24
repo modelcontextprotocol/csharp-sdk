@@ -339,7 +339,7 @@ Rules and constraints:
 - The header name must contain only visible ASCII characters (0x21–0x7E) excluding colon (`:`).
 - Values containing non-ASCII characters, control characters, or leading/trailing whitespace are Base64-encoded using the `=?base64?{value}?=` wrapper.
 - Header names must be case-insensitively unique within the tool's input schema.
-- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (currently `2026-07-28` and later).
+- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (`2026-07-28` and later).
 
 ### Pre-loading tool definitions on the client
 
