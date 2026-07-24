@@ -7,10 +7,6 @@ uid: mrtr
 
 # Multi Round-Trip Requests (MRTR)
 
-<!-- mlc-disable-next-line -->
-> [!WARNING]
-> MRTR is part of the **`2026-07-28`** revision of the MCP specification ([SEP-2322](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2322)). The wire format and API surface might change before the revision is ratified. For details on working with experimental APIs, see [Experimental APIs](../../experimental.md).
-
 Multi Round-Trip Requests (MRTR) let a server tool request input from the client — such as [elicitation](xref:elicitation), [sampling](xref:sampling), or [roots](xref:roots) — as part of a single tool call, without requiring a separate server-to-client JSON-RPC request for each interaction. Instead of returning a final result, the server returns an **incomplete result** containing one or more input requests. The client fulfills those requests and retries the original tool call with the responses attached.
 
 ## Overview
@@ -47,9 +43,9 @@ var clientOptions = new McpClientOptions
 };
 ```
 
-Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (where Streamable HTTP no longer supports sessions) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — that's how stdio servers keep working on `2026-07-28` today — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on any stateless session, current or `2026-07-28`.
+Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (where Streamable HTTP no longer supports sessions) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — including `2026-07-28` stdio sessions — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on every stateless session.
 
-Under the current protocol revision (`2025-06-18` and earlier), `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see the [Compatibility](#compatibility) section.
+Under `2025-11-25` and earlier, `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see the [Compatibility](#compatibility) section.
 
 ## Authoring an MRTR tool
 
@@ -60,7 +56,7 @@ A tool participates in MRTR by throwing <xref:ModelContextProtocol.Protocol.Inpu
 Tools should check <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> before throwing `InputRequiredException`. The property returns `true` when either:
 
 - The negotiated protocol revision is `2026-07-28` (MRTR is native), or
-- The session is stateful under the current protocol (the SDK can resolve input requests via legacy JSON-RPC and retry the handler).
+- The session is stateful under protocol revision `2025-11-25` (the SDK can resolve input requests via legacy JSON-RPC and retry the handler).
 
 ```csharp
 [McpServerTool, Description("A tool that uses MRTR")]
@@ -71,7 +67,7 @@ public static string MyTool(
     if (!server.IsMrtrSupported)
     {
         return "This tool requires a client that negotiates 2026-07-28, "
-             + "or a stateful current-protocol session.";
+             + "or a stateful session using protocol revision 2025-11-25.";
     }
 
     // ... MRTR logic
@@ -260,8 +256,8 @@ if (!server.IsMrtrSupported)
 {
     return "This tool requires interactive input. To use it:\n"
          + "1. Connect with a client that negotiates MCP protocol revision 2026-07-28, or\n"
-         + "2. Use a stateful current-protocol session so the server can resolve the input requests for you.\n"
-         + "\nStateless current-protocol sessions cannot resolve MRTR input requests.";
+         + "2. Use a stateful session using protocol revision 2025-11-25 so the server can resolve the input requests for you.\n"
+         + "\nStateless sessions using protocol revision 2025-11-25 and earlier cannot resolve MRTR input requests.";
 }
 ```
 
@@ -269,12 +265,12 @@ if (!server.IsMrtrSupported)
 
 The SDK supports `InputRequiredException` across two protocol revisions and two session modes:
 
-| Negotiated protocol | Session mode | Behavior                                                                |
-|---------------------|--------------|-------------------------------------------------------------------------|
-| `2026-07-28`        | Stateful     | Native MRTR — `InputRequiredResult` is serialized directly to the wire. |
-| `2026-07-28`        | Stateless    | Native MRTR — `InputRequiredResult` is serialized directly to the wire. No server-side handler state needed. |
-| Current (`2025-06-18` and earlier) | Stateful | Backward-compatibility resolver — the SDK sends standard `elicitation/create` / `sampling/createMessage` / `roots/list` JSON-RPC requests to the client, collects the responses, and retries the handler with `inputResponses` populated. Up to 10 retry rounds. |
-| Current (`2025-06-18` and earlier) | Stateless | **Not supported** — `InputRequiredException` raises an `McpException`. The client doesn't speak MRTR, and the server can't resolve input requests via JSON-RPC without a persistent session. |
+| Negotiated protocol              | Session mode | Behavior                                                                                                                                            |
+|----------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `2026-07-28`                     | Stateful     | Native MRTR — `InputRequiredResult` is serialized directly to the wire.                                                                             |
+| `2026-07-28`                     | Stateless    | Native MRTR — `InputRequiredResult` is serialized directly to the wire. No server-side handler state needed.                                       |
+| `2025-11-25` and earlier         | Stateful     | Backward-compatibility resolver — the SDK sends standard `elicitation/create` / `sampling/createMessage` / `roots/list` JSON-RPC requests to the client, collects the responses, and retries the handler with `inputResponses` populated. Up to 10 retry rounds. |
+| `2025-11-25` and earlier         | Stateless    | **Not supported** — `InputRequiredException` raises an `McpException`. The client doesn't speak MRTR, and the server can't resolve input requests via JSON-RPC without a persistent session. |
 
 > [!NOTE]
 > The backcompat resolver is intentionally limited to 10 retry rounds. Tools that need more rounds should require `2026-07-28` (check `IsMrtrSupported`).
@@ -283,6 +279,6 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 
 `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Stateless servers don't have a persistent session to wait on, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")` (the check is `McpServer.ClientCapabilities is null`, which is the SDK's proxy for stateless).
 
-Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
+Under `2025-11-25` and earlier, stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
 Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP can serve that revision only through the stateless path. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies to stdio and other non-HTTP stateful sessions; an HTTP server explicitly set to `Stateless = false` refuses `2026-07-28` with `UnsupportedProtocolVersion` and creates a session only when an older client falls back to `initialize`.

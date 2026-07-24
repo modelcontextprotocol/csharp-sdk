@@ -6,7 +6,7 @@ uid: list-of-diagnostics
 
 This document provides information about each of the diagnostics produced by the MCP C# SDK analyzers and source generators.
 
-## Analyzer Diagnostics
+## Analyzer diagnostics
 
 Analyzer diagnostic IDs are in the format `MCP###`.
 
