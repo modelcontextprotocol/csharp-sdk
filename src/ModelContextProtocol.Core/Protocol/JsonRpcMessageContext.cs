@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 
@@ -82,6 +83,7 @@ public sealed class JsonRpcMessageContext
     /// Streamable HTTP transports emit this value in the <c>Mcp-Name</c> header. This enables
     /// extension methods to identify the named resource targeted by a request.
     /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public string? RoutingName { get; set; }
 
     /// <summary>

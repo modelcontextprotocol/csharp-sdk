@@ -32,6 +32,7 @@ public sealed class McpServerRequestHandler
     /// When set, Streamable HTTP servers require the request to include an <c>Mcp-Name</c>
     /// header whose decoded value matches the string value of this parameter.
     /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public string? RoutingNameParameter { get; init; }
 
     /// <summary>

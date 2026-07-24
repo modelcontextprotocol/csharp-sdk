@@ -592,6 +592,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         headers.Add(McpHttpHeaders.Method, method);
 
         // Add Mcp-Name header for methods that target a specific named resource
+#pragma warning disable MCPEXP002
         string? name = message.Context?.RoutingName ?? message switch
         {
             JsonRpcRequest { Method: RequestMethods.ToolsCall or RequestMethods.PromptsGet } request
@@ -600,6 +601,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 => GetParamsStringProperty(request.Params, "uri"),
             _ => null,
         };
+#pragma warning restore MCPEXP002
 
         if (name is not null)
         {
