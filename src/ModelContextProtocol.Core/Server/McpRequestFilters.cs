@@ -10,7 +10,6 @@ public sealed class McpRequestFilters
 {
 #pragma warning disable MCPEXP002 // CallToolWithAlternateFilters references the experimental ResultOrAlternate seam
     private IList<McpRequestFilter<CallToolRequestParams, CallToolResult>>? _callToolFilters;
-    private IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>>? _callToolWithAlternateFilters;
 
     /// <summary>
     /// Gets or sets the filters for the list-tools handler pipeline.
@@ -84,39 +83,15 @@ public sealed class McpRequestFilters
     /// Alternate-result filters run in registration order. If one filter dispatches the remainder of the pipeline
     /// asynchronously, filters registered after it execute as part of that asynchronous operation.
     /// </para>
-    /// <para>
-    /// Alternate-result filters must be registered before ordinary <see cref="CallToolFilters"/>.
-    /// Registering an alternate-result filter after an ordinary filter throws an <see cref="InvalidOperationException"/>
-    /// because the two pipelines cannot preserve that registration order.
-    /// </para>
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
-        get => _callToolWithAlternateFilters ??= new McpRequestFilterCollection<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>>(
-            [],
-            ValidateAlternateFilterRegistration);
+        get => field ??= [];
         set
         {
             Throw.IfNull(value);
-            if (value.Count > 0)
-            {
-                ValidateAlternateFilterRegistration();
-            }
-
-            _callToolWithAlternateFilters =
-                new McpRequestFilterCollection<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>>(
-                    value,
-                    ValidateAlternateFilterRegistration);
-        }
-    }
-    private void ValidateAlternateFilterRegistration()
-    {
-        if (CallToolFilters.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"{nameof(CallToolWithAlternateFilters)} must be registered before {nameof(CallToolFilters)} because " +
-                "alternate-result filters always execute outside ordinary call-tool filters.");
+            field = value;
         }
     }
 #pragma warning restore MCPEXP002

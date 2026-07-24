@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Security.Claims;
 
@@ -44,41 +44,23 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
     }
 
     [Fact]
-    public async Task WithTasks_AfterOrdinaryFilter_CanCallToolOverHttp()
+    public async Task WithTasks_AfterOrdinaryFilter_ThrowsActionableError()
     {
-        var ordinaryFilterInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Builder.Services
             .AddMcpServer(options =>
             {
-                options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
-                {
-                    ordinaryFilterInvoked.TrySetResult();
-                    return await next(request, cancellationToken);
-                });
+                options.Filters.Request.CallToolFilters.Add(next => next);
             })
             .WithHttpTransport()
             .WithTasks(new InMemoryMcpTaskStore { DefaultPollIntervalMs = 10 })
             .WithTools<TestTools>();
 
         await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new HttpClientTransport(
-            new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
-            HttpClient,
-            LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
-            transport,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await client.CallToolWithPollingAsync(
-            new CallToolRequestParams { Name = "test" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal("Hello World!", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
-        await ordinaryFilterInvoked.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => app.Services.GetRequiredService<IOptions<McpServerOptions>>().Value);
+        Assert.Contains(nameof(McpTasksBuilderExtensions.WithTasks), exception.Message);
+        Assert.Contains("before ordinary call-tool filters", exception.Message);
     }
 
     [Theory]

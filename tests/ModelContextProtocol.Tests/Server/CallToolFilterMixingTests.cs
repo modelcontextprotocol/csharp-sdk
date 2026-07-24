@@ -5,7 +5,7 @@ using ModelContextProtocol.Tests.Utils;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Verifies composition and validation for the non-alternate <see cref="McpRequestFilters.CallToolFilters"/>
+/// Verifies composition for the non-alternate <see cref="McpRequestFilters.CallToolFilters"/>
 /// and alternate <see cref="McpRequestFilters.CallToolWithAlternateFilters"/> pipelines.
 /// </summary>
 public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
@@ -31,17 +31,16 @@ public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [Fact]
-    public void AlternateFilters_AfterOrdinaryFilters_ThrowsActionableError()
+    public async Task AlternateFilters_AddedAfterOrdinaryFilters_Succeeds()
     {
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
         var options = new McpServerOptions { Capabilities = new() { Tools = new() } };
         options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
+        options.Filters.Request.CallToolWithAlternateFilters.Add(PassThroughAlternateFilter);
 
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => options.Filters.Request.CallToolWithAlternateFilters.Add(PassThroughAlternateFilter));
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
 
-        Assert.Contains(nameof(McpRequestFilters.CallToolWithAlternateFilters), ex.Message);
-        Assert.Contains(nameof(McpRequestFilters.CallToolFilters), ex.Message);
-        Assert.Contains("must be registered before", ex.Message);
+        Assert.NotNull(server);
     }
 
     [Fact]

@@ -23,6 +23,7 @@ public static class McpTasksBuilderExtensions
     /// Tasks are implemented as an alternate-result call-tool filter. Alternate-result filters registered before
     /// the Tasks filter run before task creation. Filters registered after it, along with all ordinary call-tool
     /// filters, run in the background before the tool.
+    /// Register Tasks before configuring ordinary call-tool filters.
     /// </remarks>
     /// <param name="builder">The server builder.</param>
     /// <param name="store">The task store.</param>
@@ -77,6 +78,13 @@ public static class McpTasksBuilderExtensions
             options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksGet, Handler = HandleGetTask });
             options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksUpdate, Handler = HandleUpdateTask });
             options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksCancel, Handler = HandleCancelTask });
+
+            if (options.Filters.Request.CallToolFilters.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(WithTasks)} must be configured before ordinary call-tool filters because " +
+                    "the Tasks filter must execute outside the ordinary call-tool pipeline.");
+            }
 
             // Use a filter rather than a handler so it wraps around Core's tool dispatch.
             // This ensures it intercepts tool calls BEFORE the tool is invoked, allowing

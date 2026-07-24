@@ -43,9 +43,8 @@ For task-backed calls, ordinary filters execute in the background after task cre
 `CallToolWithAlternateHandler` remains a full replacement and cannot be combined with ordinary
 call-tool filters.
 
-Register alternate-result filters before ordinary call-tool filters. Adding an alternate-result
-filter after an ordinary filter throws `InvalidOperationException` because execution order cannot
-match registration order in that arrangement.
+Configure `WithTasks` before adding ordinary call-tool filters. Tasks validates this ordering when
+its filter is installed because it must execute outside the ordinary call-tool pipeline.
 
 ## Message Filters
 
