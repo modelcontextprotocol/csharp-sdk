@@ -48,4 +48,10 @@ internal sealed class DynamicClientRegistrationRequest
     /// </summary>
     [JsonPropertyName("scope")]
     public string? Scope { get; init; }
+
+    /// <summary>
+    /// Gets or sets the OIDC application type ("native" or "web") for the client.
+    /// </summary>
+    [JsonPropertyName("application_type")]
+    public string? ApplicationType { get; init; }
 }

@@ -106,18 +106,40 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         return app;
     }
 
-    protected async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    protected async Task<ModelContextProtocol.Authentication.AuthorizationResult?> HandleAuthorizationUrlAsync(
+        ModelContextProtocol.Authentication.AuthorizationCallbackContext authorizationContext,
+        CancellationToken cancellationToken)
     {
-        using var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
+        using var redirectResponse = await HttpClient.GetAsync(authorizationContext.AuthorizationUri, cancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
         var location = redirectResponse.Headers.Location;
 
         if (location is not null && !string.IsNullOrEmpty(location.Query))
         {
             var queryParams = QueryHelpers.ParseQuery(location.Query);
-            return queryParams["code"];
+            return new ModelContextProtocol.Authentication.AuthorizationResult
+            {
+                Code = queryParams["code"],
+                Iss = queryParams.TryGetValue("iss", out var iss) ? (string?)iss : null,
+            };
         }
 
         return null;
+    }
+
+    protected async Task<string?> HandleAuthorizationUrlAsync(
+        Uri authorizationUri,
+        Uri redirectUri,
+        CancellationToken cancellationToken)
+    {
+        var result = await HandleAuthorizationUrlAsync(
+            new ModelContextProtocol.Authentication.AuthorizationCallbackContext
+            {
+                AuthorizationUri = authorizationUri,
+                RedirectUri = redirectUri,
+            },
+            cancellationToken);
+
+        return result?.Code;
     }
 }

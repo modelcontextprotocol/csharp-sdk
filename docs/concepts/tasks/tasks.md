@@ -36,9 +36,9 @@ compatibility bridge for the previous experimental API.
 ### Overview
 
 A client opts into tasks on a per-request basis by including the `io.modelcontextprotocol/tasks`
-extension key in the request's `_meta`. When that opt-in is present, the server **may** respond
+extension key in the request's `_meta`. When that opt-in is present, the server **might** respond
 with a <xref:ModelContextProtocol.Extensions.Tasks.CreateTaskResult> instead of the standard result
-(e.g., <xref:ModelContextProtocol.Protocol.CallToolResult>). The client then polls `tasks/get`
+(for example, <xref:ModelContextProtocol.Protocol.CallToolResult>). The client then polls `tasks/get`
 until the task reaches a terminal state.
 
 Per the SEP, the server **must not** return `CreateTaskResult` for a request that did not include
@@ -98,7 +98,7 @@ When tasks are enabled with `WithTasks` the SDK automatically:
 
 For production scenarios that need durability, session isolation, multi-process routing, or
 TTL-based cleanup, implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> yourself
-(see [Implementing a custom task store](#implementing-a-custom-task-store) below).
+(see the [Implementing a custom task store](#implementing-a-custom-task-store) section).
 
 #### Returning a task from a tool handler
 
@@ -134,7 +134,7 @@ options.Handlers.CallToolWithAlternateHandler = async (context, ct) =>
 
 > This low-level handler is mutually exclusive with `WithTasks`. When a store is configured, the
 > SDK does the wrapping for you and throws `InvalidOperationException` if the alternate handler also
-> returns an alternate. Use one mechanism or the other. When you return a task this way you are also
+> returns an alternate. Use one mechanism or the other. When you return a task this way, you're also
 > responsible for serving `tasks/get`, `tasks/update`, and `tasks/cancel`, which the store provides
 > automatically.
 
@@ -219,7 +219,7 @@ if (raw.IsTask)
 
 `CallToolWithPollingAsync` includes a safety net for misbehaving servers: if the task stays in
 <xref:ModelContextProtocol.Extensions.Tasks.McpTaskStatus.InputRequired> across many consecutive polls
-without exposing any new input request keys (i.e. every previously requested input has already
+without exposing any new input request keys (that is, every previously requested input has already
 been resolved by the client and yet the server keeps returning `InputRequired`), the client
 gives up, issues a best-effort `tasks/cancel`, and throws
 <xref:ModelContextProtocol.McpException>. This guards against a server that never transitions
@@ -262,7 +262,7 @@ Per SEP-2663:
 Implement <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> for production scenarios. Key
 requirements drawn from the SEP and the SDK contract:
 
-1. **Thread safety** — every method may be called concurrently.
+1. **Thread safety** — every method can be called concurrently.
 2. **Idempotent terminal transitions** —
    <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.SetCompletedAsync*>,
    <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.SetFailedAsync*>, and
@@ -281,7 +281,7 @@ requirements drawn from the SEP and the SDK contract:
    task is durably persisted, so that a subsequent
    <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.GetTaskAsync*> with the returned task ID
    resolves immediately — even from a different process or node. Stores backed by
-   eventually-consistent storage must wait for the write to become visible (quorum
+   eventually consistent storage must wait for the write to become visible (quorum
    acknowledgement, write-through, etc.) before returning. Required by SEP-2663 §306.
 5. **Singleton under stateless HTTP** — when the server runs in stateless mode (each request
    spins up a fresh server instance), the same `IMcpTaskStore` instance must be shared across
@@ -354,14 +354,14 @@ In the built-in SDK pipeline, when a task is wrapped by a configured `TaskStore`
 
 <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> uses immutable record snapshots with
 compare-and-swap updates for lock-free thread safety. `InputRequests` and `InputResponses` are
-exposed as `ImmutableDictionary<,>` so observers cannot mutate internal state.
+exposed as `ImmutableDictionary<,>` so observers can't mutate internal state.
 
 #### Capability bypass inside a task scope
 
 When `server.ElicitAsync`/`server.SampleAsync`/`server.RequestRootsAsync` execute inside a task
 scope, the SDK intentionally skips the normal client-capability negotiation checks
 (`ThrowIfElicitationUnsupported`, etc.). The tasks extension itself is the negotiated capability:
-the client opted in by including the extension marker in the originating request, so it is
+the client opted in by including the extension marker in the originating request, so it's
 responsible for handling — or rejecting — the input requests surfaced through `tasks/get`.
 
 ### Known limitations
