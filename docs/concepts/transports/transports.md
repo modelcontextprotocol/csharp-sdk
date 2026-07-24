@@ -382,7 +382,7 @@ Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
 
 Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. For information about how session behavior varies across transports, see [Sessions](xref:stateless).
 
-## Cross-Application Access
+## Cross-application access
 
 The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
 

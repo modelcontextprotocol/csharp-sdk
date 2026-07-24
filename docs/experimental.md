@@ -26,9 +26,9 @@ Add the diagnostic ID to `<NoWarn>` in your project file:
 Use `#pragma warning disable` around specific call sites:
 
 ```csharp
-#pragma warning disable MCPEXP001 // The Extensions feature is part of a future MCP specification version that has not yet been ratified and is subject to change.
-capabilities.Extensions = new Dictionary<string, object> { ... };
-#pragma warning restore MCPEXP001
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental and may change.
+options.RunSessionHandler = static (_, _, _) => Task.CompletedTask;
+#pragma warning restore MCPEXP002
 ```
 
 For a full list of experimental diagnostic IDs and their descriptions, see the [list of diagnostics](list-of-diagnostics.md#experimental-apis).

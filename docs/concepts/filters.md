@@ -14,7 +14,7 @@ The MCP Server provides two levels of filters for intercepting and modifying req
 
 The filters are stored in `McpServerOptions.Filters`.
 
-## Available Request-Specific Filter Methods
+## Available request-specific filter methods
 
 The following request filter methods are available on `IMcpRequestFilterBuilder` inside `WithRequestFilters(...)`:
 
@@ -32,7 +32,7 @@ The following request filter methods are available on `IMcpRequestFilterBuilder`
 | `AddUnsubscribeFromResourcesFilter` | Resource unsubscription handlers |
 | `AddSetLoggingLevelFilter`          | Logging level handlers           |
 
-## Message Filters
+## Message filters
 
 In addition to the request-specific filters above, there are low-level message filters that intercept all JSON-RPC messages before they are routed to specific handlers.
 Configure these on `IMcpMessageFilterBuilder` inside `WithMessageFilters(...)`:
@@ -40,7 +40,7 @@ Configure these on `IMcpMessageFilterBuilder` inside `WithMessageFilters(...)`:
 - `AddIncomingFilter` - Filter for all incoming JSON-RPC messages (requests and notifications)
 - `AddOutgoingFilter` - Filter for all outgoing JSON-RPC messages (responses and notifications)
 
-### When to Use Message Filters
+### When to use message filters
 
 Message filters operate at a lower level than request-specific filters and are useful when you need to:
 
@@ -50,7 +50,7 @@ Message filters operate at a lower level than request-specific filters and are u
 - Modify or skip messages before they reach handlers
 - Send additional messages in response to specific events
 
-### Incoming Message Filter
+### Incoming message filter
 
 `AddIncomingFilter` intercepts all incoming JSON-RPC messages before they are dispatched to request-specific handlers:
 
@@ -84,7 +84,7 @@ Inside an incoming message filter, you have access to:
 - `context.Services` - The request's service provider
 - `context.Items` - A dictionary for passing data between filters
 
-#### Skipping Default Handlers
+#### Skipping default handlers
 
 You can skip the default handler by not calling `next`. This is useful for implementing custom protocol methods:
 
@@ -110,7 +110,7 @@ You can skip the default handler by not calling `next`. This is useful for imple
 })
 ```
 
-### Outgoing Message Filter
+### Outgoing message filter
 
 `AddOutgoingFilter` intercepts all outgoing JSON-RPC messages before they are sent to the client:
 
@@ -139,7 +139,7 @@ services.AddMcpServer()
     .WithTools<MyTools>();
 ```
 
-#### Skipping Outgoing Messages
+#### Skipping outgoing messages
 
 You can suppress outgoing messages by not calling `next`:
 
@@ -160,7 +160,7 @@ You can suppress outgoing messages by not calling `next`:
 })
 ```
 
-#### Sending Additional Messages
+#### Sending additional messages
 
 Outgoing message filters can send additional messages by calling `next` with a new `MessageContext`:
 
@@ -191,7 +191,7 @@ Outgoing message filters can send additional messages by calling `next` with a n
 })
 ```
 
-### Message Filter Execution Order
+### Message filter execution order
 
 Message filters execute in registration order, with the first registered filter being the outermost:
 
@@ -237,7 +237,7 @@ OutgoingFilter2 (after next)
 OutgoingFilter1 (after next)
 ```
 
-### Passing Data Between Filters
+### Passing data between filters
 
 The `Items` dictionary allows you to pass data between filters processing the same message:
 
@@ -293,7 +293,7 @@ services.AddMcpServer()
     });
 ```
 
-## Filter Execution Order
+## Filter execution order
 
 ```csharp
 services.AddMcpServer()
@@ -308,7 +308,7 @@ services.AddMcpServer()
 
 Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filter2 -> filter1`
 
-## Common Use Cases
+## Common use cases
 
 Filters are commonly used for [logging](#logging), [error handling](#error-handling), [performance monitoring](#performance-monitoring), and [caching](#caching).
 
@@ -329,7 +329,7 @@ Filters are commonly used for [logging](#logging), [error handling](#error-handl
 });
 ```
 
-### Error Handling
+### Error handling
 
 ```csharp
 .WithRequestFilters(requestFilters =>
@@ -355,7 +355,7 @@ Filters are commonly used for [logging](#logging), [error handling](#error-handl
 });
 ```
 
-### Performance Monitoring
+### Performance monitoring
 
 ```csharp
 .WithRequestFilters(requestFilters =>
@@ -395,11 +395,11 @@ Filters are commonly used for [logging](#logging), [error handling](#error-handl
 });
 ```
 
-## Built-in Authorization Request Filters
+## Built-in authorization request filters
 
 When using the ASP.NET Core integration (`ModelContextProtocol.AspNetCore`), you can add authorization filters to support `[Authorize]` and `[AllowAnonymous]` attributes on MCP server tools, prompts, and resources by calling `AddAuthorizationFilters()` on your MCP server builder.
 
-### Enabling Authorization Request Filters
+### Enabling authorization request filters
 
 To enable authorization support, call `AddAuthorizationFilters()` when configuring your MCP server:
 
@@ -412,7 +412,7 @@ services.AddMcpServer()
 
 **Important**: If you want to use authorization attributes like `[Authorize]` on your MCP server tools, prompts, or resources, you should always call `AddAuthorizationFilters()` when using ASP.NET Core integration.
 
-### Authorization Attributes Support
+### Authorization attributes support
 
 The MCP server automatically respects the following authorization attributes:
 
@@ -421,7 +421,7 @@ The MCP server automatically respects the following authorization attributes:
 - **`[Authorize(Policy = "PolicyName")]`** - Requires specific authorization policies
 - **`[AllowAnonymous]`** - Explicitly allows anonymous access (overrides `[Authorize]`)
 
-### Tool Authorization
+### Tool authorization
 
 Tools can be decorated with authorization attributes to control access:
 
@@ -451,7 +451,7 @@ public class WeatherTools
 }
 ```
 
-### Class-Level Authorization
+### Class-level authorization
 
 You can apply authorization at the class level, which affects all tools in the class:
 
@@ -475,19 +475,19 @@ public class RestrictedTools
 }
 ```
 
-### How Authorization Filters Work
+### How authorization filters work
 
 The authorization filters work differently for list operations versus individual operations:
 
-#### List Operations (ListTools, ListPrompts, ListResources)
+#### List operations (`ListTools`, `ListPrompts`, `ListResources`)
 
 For list operations, the filters automatically remove unauthorized items from the results. Users only see tools, prompts, or resources they have permission to access.
 
-#### Individual Operations (CallTool, GetPrompt, ReadResource)
+#### Individual operations (`CallTool`, `GetPrompt`, `ReadResource`)
 
 For individual operations, the filters throw an `McpException` with "Access forbidden" message. These get turned into JSON-RPC errors if uncaught by middleware.
 
-### Filter Execution Order and Authorization
+### Filter execution order and authorization
 
 Authorization filters are applied automatically when you call `AddAuthorizationFilters()`. These filters run at a specific point in the filter pipeline, which means:
 
@@ -535,7 +535,7 @@ services.AddMcpServer()
     .WithTools<WeatherTools>();
 ```
 
-### Setup Requirements
+### Setup requirements
 
 To use authorization features, you must configure authentication and authorization in your ASP.NET Core application and call `AddAuthorizationFilters()`:
 
@@ -569,7 +569,7 @@ app.MapMcp();
 app.Run();
 ```
 
-### Custom Authorization Filters
+### Custom authorization filters
 
 You can also create custom authorization filters using the filter methods:
 

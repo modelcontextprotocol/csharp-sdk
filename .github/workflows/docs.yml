@@ -1,9 +1,24 @@
 name: Publish Docs
 
+# Publishes the versioned docs site to GitHub Pages.
+#
+# Discovers the versions to publish from the repository's GitHub releases (the
+# latest release, by date, for each major >= 1), builds each release tag into
+# its own sub-path (e.g. /v1/ and /v2/) with make generate-docs, injects a
+# version-picker widget into each page, adds a root redirect to the default
+# version, and deploys the combined site. A manual dispatch can also rebuild
+# the matching major-version path from a specified branch, tag, or commit.
+# Triggers on release publish and manual dispatch.
+
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      docs_ref:
+        description: Branch, tag, or commit whose docs should refresh its matching major version
+        required: false
+        type: string
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -11,11 +26,12 @@ permissions:
   pages: write
   id-token: write # Required for actions/deploy-pages
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment. Cancel any in-progress run when a newer one
+# starts: every run rediscovers the current releases and rebuilds the whole site from
+# scratch, so a newer run fully supersedes the work of the one it cancels.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish-docs:
@@ -28,6 +44,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        # Full history + tags so we can add a worktree for each version's release tag.
+        fetch-depth: 0
 
     - name: .NET Setup
       uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
@@ -36,13 +55,97 @@ jobs:
           10.0.x
           9.0.x
 
-    - name: Generate documentation
-      run: make generate-docs
+    - name: Discover versions from GitHub releases
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      # For every major version >= 1, take the most recently published (by date)
+      # non-draft release tagged v{major}.*. The vN prefix becomes the URL slug;
+      # the site root redirects to the newest release, including prereleases.
+      run: |
+        set -euo pipefail
+        gh release list --repo "${{ github.repository }}" --limit 200 \
+          --json tagName,isPrerelease,isDraft,publishedAt \
+          --jq '
+            [ .[]
+              | select((.isDraft | not) and (.tagName | test("^v[1-9][0-9]*\\.")))
+              | { slug: (.tagName | match("^v[0-9]+").string),
+                  ref: .tagName, label: .tagName,
+                  prerelease: .isPrerelease, published: .publishedAt }
+            ]
+            | group_by(.slug)
+            | map(max_by(.published))
+            | sort_by(.published) | reverse
+            | { default: .[0].slug,
+                versions: map({ slug, ref, label, prerelease }) }
+          ' | tee "$RUNNER_TEMP/docs-versions.json"
+
+    - name: Build all versions
+      shell: bash
+      env:
+        CONTENT_REF: ${{ inputs.docs_ref }}
+      run: |
+        set -euo pipefail
+        ROOT="$PWD"
+        COMBINED="$ROOT/combined"
+        rm -rf "$COMBINED"
+        mkdir -p "$COMBINED"
+
+        # Orchestration (discovered docs-versions.json, scripts, picker assets)
+        # always comes from THIS branch. Normally each version's HTML is produced
+        # by its release tag. A manual docs_ref replaces the matching major's
+        # HTML with content built from that ref, allowing content-only refreshes
+        # without minting a product release.
+        git fetch --tags --force origin
+        CONTENT_REF="${CONTENT_REF:-}"
+        CONTENT_WORKTREE=""
+        CONTENT_SLUG=""
+        if [[ -n "$CONTENT_REF" ]]; then
+          CONTENT_WORKTREE="$ROOT/../work-content"
+          git worktree add --force --detach "$CONTENT_WORKTREE" "$CONTENT_REF"
+          CONTENT_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$CONTENT_WORKTREE/src/Directory.Build.props")"
+          if ! node "$ROOT/scripts/list-versions.mjs" | cut -f1 | grep -Fxq "$CONTENT_SLUG"; then
+            echo "::error::The docs ref '$CONTENT_REF' has major '$CONTENT_SLUG', which has no published release."
+            exit 1
+          fi
+          echo "Refreshing $CONTENT_SLUG docs from $CONTENT_REF"
+        fi
+
+        while IFS=$'\t' read -r slug ref; do
+          if [[ "$slug" == "$CONTENT_SLUG" ]]; then
+            echo "::group::Build $slug (from ref $CONTENT_REF)"
+            wt="$CONTENT_WORKTREE"
+          else
+            echo "::group::Build $slug (from tag $ref)"
+            wt="$ROOT/../work-$slug"
+            git worktree add --force --detach "$wt" "refs/tags/$ref"
+          fi
+
+          make -C "$wt" generate-docs
+
+          mkdir -p "$COMBINED/$slug"
+          cp -a "$wt/artifacts/_site/." "$COMBINED/$slug/"
+          node "$ROOT/scripts/inject-version-picker.mjs" "$COMBINED/$slug" "$slug" --base /
+
+          if [[ "$wt" != "$CONTENT_WORKTREE" ]]; then
+            git worktree remove --force "$wt"
+          fi
+          echo "::endgroup::"
+        done < <(node "$ROOT/scripts/list-versions.mjs")
+
+        if [[ -n "$CONTENT_WORKTREE" ]]; then
+          git worktree remove --force "$CONTENT_WORKTREE"
+        fi
+
+        node "$ROOT/scripts/finalize-docs-site.mjs" "$COMBINED"
+
+        echo "Combined site contents:"
+        ls -la "$COMBINED"
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
       with:
-        path: 'artifacts/_site'
+        path: 'combined'
 
     - name: Deploy to GitHub Pages
       id: deployment

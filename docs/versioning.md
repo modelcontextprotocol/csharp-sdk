@@ -16,7 +16,7 @@ Given a version number MAJOR.MINOR.PATCH, the package versions increment the:
 
 ## Supported versions
 
-Beginning with the 1.0.0 release, the following support policy will be applied for the official C# ModelContextProtocol SDK packages:
+The following support policy applies to stable C# ModelContextProtocol SDK packages:
 
 1. New functionality and additive APIs will be introduced in MINOR releases within the current MAJOR version only.
     * New functionality will not be added to an earlier MAJOR version.
@@ -33,9 +33,21 @@ MAJOR or MINOR version updates might introduce or alter APIs annotated as [`[Exp
 
 Experimental APIs require suppression of diagnostic codes specific to the MCP SDK APIs, using an `MCP` prefix.
 
+## MCP specification compatibility
+
+The 2.0.0 SDK implements the `2026-07-28` MCP specification revision while retaining compatibility with peers that negotiate [`2025-11-25`](https://modelcontextprotocol.io/specification/2025-11-25) and earlier. A v2 client automatically uses the legacy `initialize` handshake when it connects to a down-level server, and a v2 server continues to accept that handshake from a down-level client. Stable, non-deprecated 1.x APIs continue to work without modification on those connections.
+
+### Tasks exception
+
+For protocol-level compatibility, Tasks are the sole documented exception. The v2
+[`Tasks`](xref:tasks) extension replaces the experimental Tasks implementation from v1.3.0 and
+v1.4.x and is available only after negotiating `2026-07-28` or later. It has no API or wire
+compatibility with the down-level implementation: a v2 Tasks client or server does not use
+`tasks/*` on a `2025-11-25` connection.
+
 ## Breaking changes
 
-Prior to the release of a stable 1.0.0 set of NuGet packages, the SDK remains in preview and breaking changes can be introduced without prior notice. Thereafter, the SDK follows Semantic Versioning and breaking changes against stable releases require increments to the MAJOR version.
+The 2.0.0 SDK is a stable release. The SDK follows Semantic Versioning, and breaking changes against stable releases require increments to the MAJOR version.
 
 If feasible, the SDK will support all versions of the MCP spec. However, if breaking changes to the spec make this infeasible, preference will be given to the most recent version of the MCP spec. This would be considered a breaking change necessitating a new MAJOR version.
 
