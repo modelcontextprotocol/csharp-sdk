@@ -1453,6 +1453,16 @@ public class AuthTests : OAuthTestBase
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 }
+
+                // Keep OAuth discovery in flight longer than the server/discover response timeout.
+                // The response timeout must not cancel authentication while the request is still being sent.
+                var metadataDelay = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var metadataDelayTimer = new Timer(
+                    static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true),
+                    metadataDelay,
+                    TimeSpan.FromSeconds(2),
+                    Timeout.InfiniteTimeSpan);
+                await metadataDelay.Task.WaitAsync(context.RequestAborted);
             }
 
             await next();
@@ -1480,7 +1490,10 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+            transport,
+            new McpClientOptions { DiscoverProbeTimeout = TimeSpan.FromSeconds(1) },
+            LoggerFactory,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(
             [

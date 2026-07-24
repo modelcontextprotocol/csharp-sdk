@@ -121,6 +121,11 @@ public sealed class McpClientOptions
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.
     /// </para>
+    /// <para>
+    /// The probe timeout starts after the request has been sent. Time spent establishing the transport or
+    /// completing authentication does not consume this timeout, but remains bounded by
+    /// <see cref="InitializationTimeout"/>.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The value is not positive and is not <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>.
