@@ -11,7 +11,7 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
     private readonly TaskCompletionSource<bool> _continueBackgroundExecution = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<CallToolResult> _executionCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _executionScopeDisposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private int _alternateFilterFactoryInvocationCount;
+    private int _alternateFilterInvocationCount;
     private int _filterInvocationCount;
     private string? _matchedPrimitiveId;
     private string? _alternateMatchedPrimitiveId;
@@ -25,12 +25,109 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
     {
         services.AddScoped(_ => new ScopedDependency(_executionScopeDisposed));
 
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
+        {
+#pragma warning disable MCPEXP002 // exercises an alternate filter registered before Tasks
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                if (request.Params?.Name == "task-filter-tool")
+                {
+                    _alternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
+                    _alternateRequestContext = request;
+                    _alternateServicesBeforeNext = request.Services;
+                    var result = await next(request, cancellationToken);
+                    _alternateServicesAfterNext = request.Services;
+                    return result;
+                }
+
+                return await next(request, cancellationToken);
+            });
+#pragma warning restore MCPEXP002
+        });
+
         mcpServerBuilder
             .WithTools<TaskFilterTools>()
             .WithTasks(new InMemoryMcpTaskStore { DefaultPollIntervalMs = 10 });
 
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateFilters seam
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                Interlocked.Increment(ref _alternateFilterInvocationCount);
+
+                if (request.Params?.Name is "suppress-flow-direct-tool" or "suppress-flow-task-tool")
+                {
+                    Task<ResultOrAlternate<CallToolResult>> continuation;
+                    using (ExecutionContext.SuppressFlow())
+                    {
+                        continuation = Task.Run(
+                            async () => await next(request, cancellationToken).ConfigureAwait(false),
+                            cancellationToken);
+                    }
+
+                    return await continuation.ConfigureAwait(false);
+                }
+
+                if (request.Params?.Name == "alternate-filter-exception-tool")
+                {
+                    _throwingAlternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
+                    throw new InvalidOperationException("Alternate filter failure.");
+                }
+
+                if (request.Params?.Name == "alternate-short-circuit-tool")
+                {
+                    return new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "short-circuited" }],
+                    };
+                }
+
+                if (request.Params?.Name == "replace-jsonrpc-request-tool")
+                {
+                    request.JsonRpcRequest = new JsonRpcRequest
+                    {
+                        Id = request.JsonRpcRequest.Id,
+                        Method = request.JsonRpcRequest.Method,
+                    };
+                }
+
+                if (request.Params?.Name == "replace-request-context-tool")
+                {
+                    var replacement = new RequestContext<CallToolRequestParams>(
+                        request.Server,
+                        request.JsonRpcRequest,
+                        request.Params)
+                    {
+                        Services = request.Services,
+                    };
+                    return await next(replacement, cancellationToken);
+                }
+
+                if (request.Params?.Name == "alternate-transform-result-tool")
+                {
+                    _ = await next(request, cancellationToken);
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = "transformed" }],
+                    };
+                }
+
+                if (request.Params?.Name == "task-filter-tool")
+                {
+                    return await next(request, cancellationToken);
+                }
+
+                _alternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
+                _alternateRequestContext = request;
+                _alternateServicesBeforeNext = request.Services;
+                var result = await next(request, cancellationToken);
+                _alternateServicesAfterNext = request.Services;
+                return result;
+            });
+#pragma warning restore MCPEXP002
+
             options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
             {
                 if (request.Params?.Name != "task-filter-tool")
@@ -56,55 +153,6 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
                     throw;
                 }
             });
-
-#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateFilters seam
-            options.Filters.Request.CallToolWithAlternateFilters.Add(next =>
-            {
-                Interlocked.Increment(ref _alternateFilterFactoryInvocationCount);
-                return async (request, cancellationToken) =>
-                {
-                    if (request.Params?.Name == "alternate-filter-exception-tool")
-                    {
-                        _throwingAlternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
-                        throw new InvalidOperationException("Alternate filter failure.");
-                    }
-
-                    if (request.Params?.Name == "alternate-short-circuit-tool")
-                    {
-                        return new CallToolResult
-                        {
-                            Content = [new TextContentBlock { Text = "short-circuited" }],
-                        };
-                    }
-
-                    if (request.Params?.Name == "replace-jsonrpc-request-tool")
-                    {
-                        request.JsonRpcRequest = new JsonRpcRequest
-                        {
-                            Id = request.JsonRpcRequest.Id,
-                            Method = request.JsonRpcRequest.Method,
-                        };
-                    }
-
-                    if (request.Params?.Name == "alternate-transform-result-tool")
-                    {
-                        _ = await next(request, cancellationToken);
-                        return new CallToolResult
-                        {
-                            IsError = true,
-                            Content = [new TextContentBlock { Text = "transformed" }],
-                        };
-                    }
-
-                    _alternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
-                    _alternateRequestContext = request;
-                    _alternateServicesBeforeNext = request.Services;
-                    var result = await next(request, cancellationToken);
-                    _alternateServicesAfterNext = request.Services;
-                    return result;
-                };
-            });
-#pragma warning restore MCPEXP002
         });
     }
 
@@ -166,7 +214,7 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
     }
 
     [Fact]
-    public async Task AlternateFilterFactory_IsCreatedOnce()
+    public async Task AlternateInvocationFilter_RunsForEachRequest()
     {
         await using var client = await CreateMcpClientForServer();
 
@@ -177,7 +225,31 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
             "alternate-short-circuit-tool",
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, _alternateFilterFactoryInvocationCount);
+        Assert.Equal(2, _alternateFilterInvocationCount);
+    }
+
+    [Fact]
+    public async Task AlternateInvocationFilter_CanSuppressExecutionContextForDirectCall()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            "suppress-flow-direct-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("direct succeeded", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task AlternateInvocationFilter_CanSuppressExecutionContextForTaskBackedCall()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "suppress-flow-task-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("task succeeded", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
     [Fact]
@@ -190,6 +262,18 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("replacement succeeded", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task AlternateFilter_CanReplaceRequestContext()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            "replace-request-context-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("context replacement succeeded", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
     }
 
     [Fact]
@@ -233,7 +317,16 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
         [McpServerTool(Name = "replace-jsonrpc-request-tool")]
         public static string ReplaceJsonRpcRequestTarget() => "replacement succeeded";
 
+        [McpServerTool(Name = "replace-request-context-tool")]
+        public static string ReplaceRequestContextTarget() => "context replacement succeeded";
+
         [McpServerTool(Name = "alternate-transform-result-tool")]
         public static string AlternateTransformResultTarget() => "original";
+
+        [McpServerTool(Name = "suppress-flow-direct-tool")]
+        public static string SuppressFlowDirect() => "direct succeeded";
+
+        [McpServerTool(Name = "suppress-flow-task-tool")]
+        public static string SuppressFlowTask() => "task succeeded";
     }
 }

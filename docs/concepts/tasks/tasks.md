@@ -137,28 +137,6 @@ options.Handlers.CallToolWithAlternateHandler = async (context, ct) =>
 > are mutually exclusive. Setting one while the other is already non-null throws
 > `InvalidOperationException` at the property setter.
 
-#### Task scope for server-initiated requests
-
-When you start background work from a custom <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithAlternateHandler?displayProperty=nameWithType>
-(rather than the SDK's auto-wrapping), use <xref:ModelContextProtocol.Extensions.Tasks.McpTasksServerExtensions.CreateMcpTaskScope*>
-to route elicitation, sampling, and `roots/list` calls through the task store as input requests
-instead of direct JSON-RPC messages:
-
-```csharp
-using ModelContextProtocol.Extensions.Tasks;
-
-using (server.CreateMcpTaskScope(taskId, taskStore))
-{
-    // ElicitAsync/SampleAsync/RequestRootsAsync calls in here are surfaced as
-    // entries in the task's inputRequests, then await client responses via tasks/update.
-    var elicit = await server.ElicitAsync(elicitParams, ct);
-}
-```
-
-`CreateMcpTaskScope` returns an `IDisposable` that restores the prior ambient context on
-`Dispose`. The scope is established automatically for `[McpServerTool]` methods that run via
-`WithTasks`, so this API is only needed for custom handlers.
-
 ### Client usage
 
 #### Automatic polling

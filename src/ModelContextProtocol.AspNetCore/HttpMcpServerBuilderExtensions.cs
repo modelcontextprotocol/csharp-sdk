@@ -34,6 +34,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationCallToolFilterGuardSetup>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
@@ -63,7 +64,9 @@ public static class HttpMcpServerBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
+        builder.Services.TryAddSingleton<AuthorizationFiltersMarker>();
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
 
         return builder;
     }

@@ -14,20 +14,34 @@ public class CallToolFilterMixingTests(ITestOutputHelper testOutputHelper) : Log
     private static McpRequestFilter<CallToolRequestParams, CallToolResult> PassThroughCallToolFilter =>
         next => next;
 
-    private static McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> PassThroughAlternateFilter =>
-        next => next;
+    private static McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> PassThroughAlternateFilter =>
+        static (context, next, cancellationToken) => next(context, cancellationToken);
 
     [Fact]
     public async Task MixingCallToolFilters_WithAlternateFilters_Succeeds()
     {
         await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
         var options = new McpServerOptions { Capabilities = new() { Tools = new() } };
-        options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
         options.Filters.Request.CallToolWithAlternateFilters.Add(PassThroughAlternateFilter);
+        options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
 
         await using var server = McpServer.Create(transport, options, LoggerFactory);
 
         Assert.NotNull(server);
+    }
+
+    [Fact]
+    public void AlternateFilters_AfterOrdinaryFilters_ThrowsActionableError()
+    {
+        var options = new McpServerOptions { Capabilities = new() { Tools = new() } };
+        options.Filters.Request.CallToolFilters.Add(PassThroughCallToolFilter);
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => options.Filters.Request.CallToolWithAlternateFilters.Add(PassThroughAlternateFilter));
+
+        Assert.Contains(nameof(McpRequestFilters.CallToolWithAlternateFilters), ex.Message);
+        Assert.Contains(nameof(McpRequestFilters.CallToolFilters), ex.Message);
+        Assert.Contains("must be registered before", ex.Message);
     }
 
     [Fact]

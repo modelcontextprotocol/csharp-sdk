@@ -43,6 +43,10 @@ For task-backed calls, ordinary filters execute in the background after task cre
 `CallToolWithAlternateHandler` remains a full replacement and cannot be combined with ordinary
 call-tool filters.
 
+Register alternate-result filters before ordinary call-tool filters. Adding an alternate-result
+filter after an ordinary filter throws `InvalidOperationException` because execution order cannot
+match registration order in that arrangement.
+
 ## Message Filters
 
 In addition to the request-specific filters above, there are low-level message filters that intercept all JSON-RPC messages before they are routed to specific handlers.

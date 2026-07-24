@@ -40,25 +40,25 @@ public static class McpTasksBuilderExtensions
         // Resolve ILoggerFactory from the provider (rather than requiring the caller to pass one) so the
         // background task body has somewhere to report failures. It is optional: if no logging is
         // registered, the options fall back to NullLoggerFactory.
-        builder.Services.AddSingleton<IPostConfigureOptions<McpServerOptions>>(
-            sp => new McpTasksPostConfigureOptions(
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(
+            sp => new McpTasksConfigureOptions(
                 store,
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetService<ILoggerFactory>()));
         return builder;
     }
 
-    private sealed class McpTasksPostConfigureOptions(
+    private sealed class McpTasksConfigureOptions(
         IMcpTaskStore store,
         IServiceScopeFactory serviceScopeFactory,
-        ILoggerFactory? loggerFactory) : IPostConfigureOptions<McpServerOptions>
+        ILoggerFactory? loggerFactory) : IConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
-        private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksPostConfigureOptions>();
+        private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
-        public void PostConfigure(string? name, McpServerOptions options)
+        public void Configure(McpServerOptions options)
         {
 #if NET
             ArgumentNullException.ThrowIfNull(options);
@@ -81,15 +81,17 @@ public static class McpTasksBuilderExtensions
             // Use a filter rather than a handler so it wraps around Core's tool dispatch.
             // This ensures it intercepts tool calls BEFORE the tool is invoked, allowing
             // it to spawn background execution and return the task alternate immediately.
-            options.Filters.Request.CallToolWithAlternateFilters.Add(next => async (request, cancellationToken) =>
-            {
-                if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) || !HasTaskExtensionOptIn(request.Params?.Meta))
+            options.Filters.Request.CallToolWithAlternateFilters.Insert(
+                options.Filters.Request.CallToolWithAlternateFilters.Count,
+                async (request, next, cancellationToken) =>
                 {
-                    return await next(request, cancellationToken).ConfigureAwait(false);
-                }
+                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) || !HasTaskExtensionOptIn(request.Params?.Meta))
+                    {
+                        return await next(request, cancellationToken).ConfigureAwait(false);
+                    }
 
-                return await RunAsTaskAsync(next, request, cancellationToken).ConfigureAwait(false);
-            });
+                    return await RunAsTaskAsync(next, request, cancellationToken).ConfigureAwait(false);
+                });
         }
 
         private async ValueTask<ResultOrAlternate<CallToolResult>> RunAsTaskAsync(
@@ -119,6 +121,7 @@ public static class McpTasksBuilderExtensions
             }
 
             var taskId = taskInfo.TaskId;
+            executionRequest.Server = request.Server.WithMcpTaskOutgoingRequestInterceptor(taskId, _store);
             var cts = new CancellationTokenSource();
             _cancellationSources[taskId] = cts;
 
@@ -145,10 +148,7 @@ public static class McpTasksBuilderExtensions
             {
                 try
                 {
-                    using (McpTasksServerExtensions.CreateMcpTaskScope(request.Server, taskId, _store))
-                    {
-                        await ExecuteToolPipelineAsync(next, request, taskId, taskCancellationToken).ConfigureAwait(false);
-                    }
+                    await ExecuteToolPipelineAsync(next, request, taskId, taskCancellationToken).ConfigureAwait(false);
                 }
                 finally
                 {

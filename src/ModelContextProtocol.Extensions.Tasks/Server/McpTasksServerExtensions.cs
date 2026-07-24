@@ -37,14 +37,10 @@ public static class McpTasksServerExtensions
             cancellationToken);
     }
 
-    /// <summary>
-    /// Creates a scope that routes server-initiated requests through the specified task store.
-    /// </summary>
-    /// <param name="server">The server whose outgoing requests should be redirected.</param>
-    /// <param name="taskId">The related task identifier.</param>
-    /// <param name="store">The task store used to surface input requests.</param>
-    /// <returns>An <see cref="IDisposable"/> that restores the previous outgoing-request behavior.</returns>
-    public static IDisposable CreateMcpTaskScope(this McpServer server, string taskId, IMcpTaskStore store)
+    internal static McpServer WithMcpTaskOutgoingRequestInterceptor(
+        this McpServer server,
+        string taskId,
+        IMcpTaskStore store)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(server);
@@ -56,7 +52,7 @@ public static class McpTasksServerExtensions
         if (store is null) throw new ArgumentNullException(nameof(store));
 #endif
 
-        return server.InterceptOutgoingRequests(async (method, paramsNode, cancellationToken) =>
+        return server.WithOutgoingRequestInterceptor(async (method, paramsNode, cancellationToken) =>
         {
             var requestId = Guid.NewGuid().ToString("N");
 
