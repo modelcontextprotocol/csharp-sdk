@@ -7,18 +7,20 @@
     <TargetFrameworks></TargetFrameworks>
     <PublishAot>true</PublishAot>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
-    <!-- Suppress the experimental tasks warning -->
-    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Suppress warnings for the experimental tasks and Apps APIs exercised by this test app. -->
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
 
     <TrimmerRootAssembly Include="ModelContextProtocol.Core" />
     <TrimmerRootAssembly Include="ModelContextProtocol" />
     <TrimmerRootAssembly Include="ModelContextProtocol.AspNetCore" />
+    <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Apps" />
   </ItemGroup>
 
 </Project>
