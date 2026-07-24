@@ -11,7 +11,7 @@ MCP [resources] allow servers to expose data and content to clients. Resources r
 
 [resources]: https://modelcontextprotocol.io/specification/2025-11-25/server/resources
 
-This document covers implementing resources on the server, consuming them from the client, resource templates, subscriptions, and change notifications.
+This document covers implementing resources on the server, consuming resources from the client, resource templates, subscriptions, and change notifications.
 
 ### Defining resources on the server
 
@@ -216,7 +216,7 @@ builder.Services.AddMcpServer()
     {
         if (ctx.Params.Uri is { } uri)
         {
-            // Track the subscription (e.g., in a concurrent dictionary)
+            // Track the subscription (for example, in a concurrent dictionary)
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
         }
         return new EmptyResult();
@@ -244,7 +244,7 @@ await server.SendNotificationAsync(
 
 ### Resource list change notifications
 
-When the set of available resources changes (resources added or removed), the server notifies clients:
+When the set of available resources changes (resources added or removed), the server notifies clients.
 
 #### Sending notifications from the server
 

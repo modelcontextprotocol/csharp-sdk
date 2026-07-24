@@ -4,11 +4,11 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 ## Contents
 
-### [Getting Started](getting-started.md)
+### Getting started
 
-Install the SDK and build your first MCP client and server.
+To install the SDK and build your first MCP client and server, see [Getting started](getting-started.md).
 
-### Base Protocol
+### Base protocol
 
 | Title | Description |
 | - | - |
@@ -19,7 +19,7 @@ Install the SDK and build your first MCP client and server.
 | [Cancellation](cancellation/cancellation.md) | Learn how to cancel in-flight MCP requests using cancellation tokens and notifications. |
 | [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 
-### Client Features
+### Client features
 
 | Title | Description |
 | - | - |
@@ -27,7 +27,7 @@ Install the SDK and build your first MCP client and server.
 | [Roots](roots/roots.md) | Learn how clients provide filesystem roots to servers for context-aware operations. |
 | [Elicitation](elicitation/elicitation.md) | Learn how to request additional information from users during interactions. |
 
-### Server Features
+### Server features
 
 | Title | Description |
 | - | - |
