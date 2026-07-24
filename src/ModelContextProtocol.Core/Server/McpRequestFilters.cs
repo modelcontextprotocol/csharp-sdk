@@ -43,10 +43,15 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolWithAlternateFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
-    /// register different tool-call filter styles, such as authorization filters (which use this collection) and the
-    /// tasks extension (which uses <see cref="CallToolWithAlternateFilters"/>).
+    /// These filters run inside <see cref="CallToolWithAlternateFilters"/> and any method-keyed alternate-result filters
+    /// registered through <see cref="McpServerOptions.AddAlternateResultFilter{TParams, TResult}(string, McpRequestFilter{TParams, ResultOrAlternate{TResult}})"/>.
+    /// Each ordinary filter runs exactly once when an alternate-result filter invokes the ordinary tool pipeline.
+    /// For task-backed calls, that invocation occurs in the background after the task record is created and before the
+    /// matched tool is executed.
+    /// </para>
+    /// <para>
+    /// These filters cannot be used with an explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>, which
+    /// replaces the ordinary tool-call pipeline rather than augmenting it.
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
@@ -71,10 +76,9 @@ public sealed class McpRequestFilters
     /// subtype for asynchronous execution.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown. This can happen indirectly when combining features that
-    /// register different tool-call filter styles, such as the tasks extension (which uses this collection) and
-    /// authorization filters (which use <see cref="CallToolFilters"/>).
+    /// These filters compose outside <see cref="CallToolFilters"/>. The ordinary pipeline, including primitive matching
+    /// and ordinary filters, is adapted to <see cref="ResultOrAlternate{TResult}"/> before these filters are applied.
+    /// The first alternate-result filter added is the outermost filter.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]

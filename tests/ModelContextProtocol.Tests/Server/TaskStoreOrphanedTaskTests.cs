@@ -1,26 +1,20 @@
 ﻿using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// Verifies that when both <see cref="McpTasksBuilderExtensions.WithTasks(IMcpServerBuilder, IMcpTaskStore)"/> and
-/// <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> are configured and the handler returns
-/// <see cref="CreateTaskResult"/> (IsTask = true), the store's pre-created task is failed with a
-/// clear error rather than being orphaned in <see cref="McpTaskStatus.Working"/> forever.
+/// <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> are configured, server creation fails before
+/// either alternate-result mechanism can create a task.
 /// </summary>
 public class TaskStoreOrphanedTaskTests : ClientServerTestBase
 {
 #pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateHandler/ResultOrAlternate seam
-    private static readonly JsonTypeInfo<CreateTaskResult> s_createTaskResultTypeInfo = McpTasksJsonContext.Default.CreateTaskResult;
-
-    public TaskStoreOrphanedTaskTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
+    public TaskStoreOrphanedTaskTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper, startServer: false)
     {
 #if !NET
         Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
@@ -35,56 +29,20 @@ public class TaskStoreOrphanedTaskTests : ClientServerTestBase
         {
             options.Capabilities ??= new ServerCapabilities();
 
-            // Returning IsTask = true here while the tasks extension is also configured is the
-            // misconfiguration the server must guard against.
-            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
-                new ValueTask<ResultOrAlternate<CallToolResult>>(
-                    ResultOrAlternate<CallToolResult>.FromAlternate(
-                        new CreateTaskResult
-                        {
-                            TaskId = "user-task",
-                            Status = McpTaskStatus.Working,
-                            CreatedAt = DateTimeOffset.UtcNow,
-                            LastUpdatedAt = DateTimeOffset.UtcNow,
-                        },
-                        s_createTaskResultTypeInfo));
+            options.Handlers.CallToolWithAlternateHandler = static (context, cancellationToken) =>
+                new ValueTask<ResultOrAlternate<CallToolResult>>(new CallToolResult());
         });
     }
 
     [Fact]
-    public async Task TaskStoreAndHandler_BothCreatingTasks_FailsStoreTaskWithClearError()
+    public void TaskStoreAndExplicitAlternateHandler_ThrowsActionableStartupError()
     {
-        await using var client = await CreateMcpClientForServer();
-        var ct = TestContext.Current.CancellationToken;
+        var exception = Assert.Throws<InvalidOperationException>(() => StartServer());
 
-        // The store's task is created synchronously and its taskId returned to the client.
-        var augmented = await client.CallToolAsTaskAsync(
-            new CallToolRequestParams { Name = "anything" }, ct);
-
-        Assert.True(augmented.IsTask);
-        var taskId = augmented.TaskCreated!.TaskId;
-
-        // Poll until the background runner observes the handler's IsTask=true and fails the
-        // store's task. Without the fix this would loop forever in Working.
-        GetTaskResult? taskResult = null;
-        for (int i = 0; i < 40; i++)
-        {
-            await Task.Delay(50, ct);
-            taskResult = await client.GetTaskAsync(taskId, ct);
-            if (taskResult is FailedTaskResult)
-            {
-                break;
-            }
-        }
-
-        var failed = Assert.IsType<FailedTaskResult>(taskResult);
-        Assert.Equal(JsonValueKind.Object, failed.Error.ValueKind);
-        Assert.Equal((int)McpErrorCode.InternalError, failed.Error.GetProperty("code").GetInt32());
-
-        var message = failed.Error.GetProperty("message").GetString();
-        Assert.NotNull(message);
-        Assert.Contains(nameof(IMcpTaskStore), message);
-        Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), message);
+        Assert.Contains(nameof(McpServerHandlers.CallToolWithAlternateHandler), exception.Message);
+        Assert.Contains(RequestMethods.ToolsCall, exception.Message);
+        Assert.Contains("alternate-result filter", exception.Message);
+        Assert.Contains("replaces", exception.Message);
     }
 #pragma warning restore MCPEXP002
 }

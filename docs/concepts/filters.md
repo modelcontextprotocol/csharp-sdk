@@ -32,6 +32,37 @@ The following request filter methods are available on `IMcpRequestFilterBuilder`
 | `AddUnsubscribeFromResourcesFilter` | Resource unsubscription handlers |
 | `AddSetLoggingLevelFilter`          | Logging level handlers           |
 
+### Alternate-Result Filters
+
+Extension packages can augment any typed server method with a filter that returns either the method's
+ordinary result or an alternate `Result` subtype. Register the filter by case-sensitive method name on
+`McpServerOptions`:
+
+```csharp
+services.Configure<McpServerOptions>(options =>
+    options.AddAlternateResultFilter<GetPromptRequestParams, GetPromptResult>(
+        RequestMethods.PromptsGet,
+        next => async (context, cancellationToken) =>
+        {
+            if (ShouldDefer(context.Params))
+            {
+                return ResultOrAlternate<GetPromptResult>.FromAlternate(
+                    CreateDeferredResult(),
+                    MyJsonContext.Default.DeferredResult);
+            }
+
+            return await next(context, cancellationToken);
+        }));
+```
+
+The parameter and ordinary result types must exactly match the configured typed handler for the method.
+The server reports unknown methods and type mismatches when it starts. Multiple filters for one method
+run in registration order, with the first registered filter outermost. The ordinary request-specific
+filters and handler execute inside the alternate-result filters.
+
+An explicit `CallToolWithAlternateHandler` remains a low-level replacement for `tools/call`; it cannot
+be combined with ordinary call-tool filters or a method-keyed alternate-result filter for that method.
+
 ## Message Filters
 
 In addition to the request-specific filters above, there are low-level message filters that intercept all JSON-RPC messages before they are routed to specific handlers.

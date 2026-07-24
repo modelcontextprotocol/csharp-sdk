@@ -72,7 +72,10 @@ public sealed class McpServerHandlers
     /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype.
     /// </para>
     /// <para>
-    /// Cannot be set if <see cref="CallToolHandler"/> is already set.
+    /// This is a low-level full replacement for the ordinary tool-call pipeline. It cannot be set if
+    /// <see cref="CallToolHandler"/> is already set, and it cannot be composed with ordinary
+    /// <see cref="McpRequestFilters.CallToolFilters"/> or a method-keyed alternate-result filter for
+    /// <see cref="RequestMethods.ToolsCall"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>

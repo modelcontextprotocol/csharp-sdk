@@ -10,6 +10,8 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public sealed class McpServerOptions
 {
+    private readonly List<AlternateResultFilterRegistration> _alternateResultFilters = [];
+
     /// <summary>
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
@@ -219,4 +221,87 @@ public sealed class McpServerOptions
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
+
+    /// <summary>
+    /// Adds a typed filter that may return an alternate result for an existing server request handler.
+    /// </summary>
+    /// <typeparam name="TParams">The request parameter type handled by the method.</typeparam>
+    /// <typeparam name="TResult">The method's standard result type.</typeparam>
+    /// <param name="method">The case-sensitive JSON-RPC method name to augment.</param>
+    /// <param name="filter">The alternate-result filter to add.</param>
+    /// <remarks>
+    /// <para>
+    /// The method must identify a typed handler configured by the server, and the supplied parameter and result
+    /// types must exactly match that handler. Invalid method names and type mismatches are reported when the server
+    /// is created.
+    /// </para>
+    /// <para>
+    /// Filters are applied in registration order. The first filter registered for a method is the outermost filter
+    /// and executes first. The ordinary typed handler pipeline executes inside these filters.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public void AddAlternateResultFilter<TParams, TResult>(
+        string method,
+        McpRequestFilter<TParams, ResultOrAlternate<TResult>> filter)
+        where TResult : Result
+    {
+        Throw.IfNullOrWhiteSpace(method);
+        Throw.IfNull(filter);
+
+        _alternateResultFilters.Add(new AlternateResultFilterRegistration<TParams, TResult>(method, filter));
+    }
+
+    internal bool HasAlternateResultFilters(string method) =>
+        _alternateResultFilters.Exists(registration => string.Equals(registration.Method, method, StringComparison.Ordinal));
+
+    internal IList<McpRequestFilter<TParams, ResultOrAlternate<TResult>>> GetAlternateResultFilters<TParams, TResult>(string method)
+        where TResult : Result
+    {
+        List<McpRequestFilter<TParams, ResultOrAlternate<TResult>>>? filters = null;
+
+        foreach (var registration in _alternateResultFilters)
+        {
+            if (!string.Equals(registration.Method, method, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (registration is not AlternateResultFilterRegistration<TParams, TResult> typedRegistration)
+            {
+                throw new InvalidOperationException(
+                    $"An alternate-result filter for method '{method}' was registered for " +
+                    $"'{registration.ParamsType.FullName}' and '{registration.ResultType.FullName}', but the server handler uses " +
+                    $"'{typeof(TParams).FullName}' and '{typeof(TResult).FullName}'.");
+            }
+
+            (filters ??= []).Add(typedRegistration.Filter);
+        }
+
+        return filters ?? [];
+    }
+
+    internal IEnumerable<string> AlternateResultFilterMethods =>
+        _alternateResultFilters.Select(registration => registration.Method).Distinct(StringComparer.Ordinal);
+
+    private abstract class AlternateResultFilterRegistration(string method)
+    {
+        public string Method { get; } = method;
+
+        public abstract Type ParamsType { get; }
+
+        public abstract Type ResultType { get; }
+    }
+
+    private sealed class AlternateResultFilterRegistration<TParams, TResult>(
+        string method,
+        McpRequestFilter<TParams, ResultOrAlternate<TResult>> filter) : AlternateResultFilterRegistration(method)
+        where TResult : Result
+    {
+        public McpRequestFilter<TParams, ResultOrAlternate<TResult>> Filter { get; } = filter;
+
+        public override Type ParamsType => typeof(TParams);
+
+        public override Type ResultType => typeof(TResult);
+    }
 }
