@@ -4,7 +4,7 @@ author: jeffhandley
 description: ModelContextProtocol C# SDK approach to versioning, breaking changes, and support
 uid: versioning
 ---
-The ModelContextProtocol specification continues to evolve rapidly, and it's important for the C# SDK to remain current with specification additions and updates. To enable this, all NuGet packages that compose the SDK follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) with MAJOR.MINOR.PATCH version numbers, and optional prerelease versions.
+All NuGet packages that compose the SDK follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) with MAJOR.MINOR.PATCH version numbers, and optional prerelease versions.
 
 Given a version number MAJOR.MINOR.PATCH, the package versions increment the:
 
@@ -16,7 +16,7 @@ Given a version number MAJOR.MINOR.PATCH, the package versions increment the:
 
 ## Supported versions
 
-Beginning with the 1.0.0 release, the following support policy will be applied for the official C# ModelContextProtocol SDK packages:
+The following support policy applies to stable 1.x C# ModelContextProtocol SDK packages:
 
 1. New functionality and additive APIs will be introduced in MINOR releases within the current MAJOR version only.
     * New functionality will not be added to an earlier MAJOR version.
@@ -33,11 +33,15 @@ MAJOR or MINOR version updates might introduce or alter APIs annotated as [`[Exp
 
 Experimental APIs require suppression of diagnostic codes specific to the MCP SDK APIs, using an `MCP` prefix.
 
+## MCP specification compatibility
+
+The 1.x SDK supports the `2024-11-05`, `2025-03-26`, `2025-06-18`, and [`2025-11-25`](https://modelcontextprotocol.io/specification/2025-11-25) MCP specification revisions. `2025-11-25` is used when the client or server does not configure a protocol revision. During initialization, clients and servers negotiate one of these revisions, and protocol behavior follows the negotiated revision.
+
+The Tasks APIs in 1.x are experimental (`MCPEXP001`) and implement the Tasks feature described by the `2025-11-25` specification revision. They offer no compatibility guarantees and can change without notice.
+
 ## Breaking changes
 
-Prior to the release of a stable 1.0.0 set of NuGet packages, the SDK remains in preview and breaking changes can be introduced without prior notice. Thereafter, the SDK follows Semantic Versioning and breaking changes against stable releases require increments to the MAJOR version.
-
-If feasible, the SDK will support all versions of the MCP spec. However, if breaking changes to the spec make this infeasible, preference will be given to the most recent version of the MCP spec. This would be considered a breaking change necessitating a new MAJOR version.
+The 1.x SDK is stable. The SDK follows Semantic Versioning, and breaking changes against stable APIs require an increment to the MAJOR version.
 
 All releases are posted to https://github.com/modelcontextprotocol/csharp-sdk/releases with release notes. Issues and pull requests labeled with `breaking-change` are highlighted in the corresponding release notes.
 

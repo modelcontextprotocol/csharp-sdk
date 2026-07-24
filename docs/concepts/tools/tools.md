@@ -45,7 +45,7 @@ builder.Services.AddMcpServer()
 
 ### Content types
 
-Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return `DataContent` from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
+Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return [`DataContent`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.ai.datacontent) from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
 
 #### Text content
 
@@ -225,7 +225,7 @@ public static double Divide(double a, double b)
 
 #### Protocol errors
 
-Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (e.g., invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
+Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (for example, invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
 
 ```csharp
 [McpServerTool, Description("Processes the input")]
@@ -296,13 +296,13 @@ Tool parameters are described using [JSON Schema 2020-12]. JSON schemas are auto
 
 [JSON Schema 2020-12]: https://json-schema.org/specification
 
-| .NET Type | JSON Schema Type |
-|-----------|-----------------|
-| `string` | `string` |
-| `int`, `long` | `integer` |
-| `float`, `double` | `number` |
-| `bool` | `boolean` |
-| Complex types | `object` with `properties` |
+| .NET type         | JSON schema type           |
+|-------------------|----------------------------|
+| `string`          | `string`                   |
+| `int`, `long`     | `integer`                  |
+| `float`, `double` | `number`                   |
+| `bool`            | `boolean`                  |
+| Complex types     | `object` with `properties` |
 
 Use `[Description]` attributes on parameters to populate the `description` field in the generated schema. This helps LLMs understand what each parameter expects.
 
