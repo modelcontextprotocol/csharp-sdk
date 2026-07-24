@@ -14,13 +14,13 @@ The protocol supports two modes of elicitation:
 - **Form (In-Band)**: The server requests structured data (strings, numbers, Booleans, enums) which the client collects via a form interface and returns to the server.
 - **URL Mode**: The server provides a URL for the user to visit (for example, for OAuth, payments, or sensitive data entry). The interaction happens outside the MCP client.
 
-### Server Support for Elicitation
+### Server support for elicitation
 
 Servers request information from users with the <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*> extension method on <xref:ModelContextProtocol.Server.McpServer>.
 The C# SDK registers an instance of <xref:ModelContextProtocol.Server.McpServer> with the dependency injection container,
 so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.McpServer> to their method signature to access it.
 
-#### Form Mode Elicitation (In-Band)
+#### Form mode elicitation (in-band)
 
 For form-based elicitation, the MCP Server must specify the schema of each input value it's requesting from the user.
 Primitive types (string, number, Boolean) and enum types are supported for elicitation requests.
@@ -115,7 +115,7 @@ The following example demonstrates how a server could request a Boolean response
 
 [!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
-#### URL Mode Elicitation (Out-of-Band)
+#### URL mode elicitation (out-of-band)
 
 For URL mode elicitation, the server provides a URL that the user must visit to complete an action. This is useful for scenarios like OAuth flows, payment processing, or collecting sensitive credentials that should not be exposed to the MCP client.
 
@@ -134,7 +134,7 @@ var result = await server.ElicitAsync(
     cancellationToken);
 ```
 
-### Client Support for Elicitation
+### Client support for elicitation
 
 Clients declare their support for elicitation in their capabilities as part of the `initialize` request. Clients can support `Form` (in-band), `Url` (out-of-band), or both.
 
@@ -170,7 +170,7 @@ Here's an example implementation of how a console application might handle elici
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
 
-### Multi Round-Trip Requests (MRTR)
+### Multi round-trip requests (MRTR)
 
 [MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `elicitation/create` request method is removed; the recommended way to ask the user for input from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
@@ -225,11 +225,11 @@ public static string ElicitWithMrtr(
 > [!TIP]
 > For the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).
 
-### URL Elicitation Required Error
+### URL elicitation required error
 
 When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example, in [stateless](xref:stateless) mode where server-to-client requests are disabled), the server might throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
 
-#### Throwing UrlElicitationRequiredException on the Server
+#### Throwing `UrlElicitationRequiredException` on the server
 
 A server tool can throw `UrlElicitationRequiredException` when it detects that authorization or other out-of-band interaction is required:
 
@@ -267,7 +267,7 @@ public async Task<string> AccessThirdPartyResource(McpServer server, Cancellatio
 
 The exception can include multiple elicitations if the operation requires authorization from multiple services.
 
-#### Catching UrlElicitationRequiredException on the Client
+#### Catching `UrlElicitationRequiredException` on the client
 
 When the client calls a tool and receives a `UrlElicitationRequiredException`, it should:
 
@@ -317,7 +317,7 @@ catch (UrlElicitationRequiredException ex)
 }
 ```
 
-#### Listening for Elicitation Completion Notifications
+#### Listening for elicitation completion notifications
 
 Servers can optionally send a `notifications/elicitation/complete` notification when the out-of-band interaction is complete. Clients can register a handler to receive these notifications:
 

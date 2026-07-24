@@ -4,7 +4,7 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 ## Contents
 
-### Getting Started
+### Getting started
 
 To install the SDK and build your first MCP client and server, see [Getting started](getting-started.md).
 
@@ -14,7 +14,7 @@ To install the SDK and build your first MCP client and server, see [Getting star
 | - | - |
 | [Docker deployment](deployment/docker.md) | Learn how to package and run ASP.NET Core MCP servers in Docker containers using Streamable HTTP transport. |
 
-### Base Protocol
+### Base protocol
 
 | Title | Description |
 | - | - |
@@ -26,7 +26,7 @@ To install the SDK and build your first MCP client and server, see [Getting star
 | [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 | [Multi Round-Trip Requests (MRTR)](mrtr/mrtr.md) | Learn how servers request client input during tool execution using input-required results and retries. |
 
-### Client Features
+### Client features
 
 | Title | Description |
 | - | - |
@@ -34,7 +34,7 @@ To install the SDK and build your first MCP client and server, see [Getting star
 | [Roots](roots/roots.md) | Learn how clients provide filesystem roots to servers for context-aware operations. |
 | [Elicitation](elicitation/elicitation.md) | Learn how to request additional information from users during interactions. |
 
-### Server Features
+### Server features
 
 | Title | Description |
 | - | - |

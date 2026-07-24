@@ -13,7 +13,7 @@ MCP servers can expose log messages to clients through the [Logging utility].
 
 This document describes how to implement logging in MCP servers and how clients can consume log messages.
 
-### Logging Levels
+### Logging levels
 
 MCP uses the logging levels defined in [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424).
 

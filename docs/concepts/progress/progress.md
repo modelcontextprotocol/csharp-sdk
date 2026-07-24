@@ -18,7 +18,7 @@ This project illustrates the common case of a server tool that performs a long-r
 > [!NOTE]
 > Progress notifications are sent inline as part of the response to a request — they are not unsolicited. Progress tracking works in both [stateless and stateful](xref:stateless) modes as well as stdio.
 
-### Server Implementation
+### Server implementation
 
 When processing a request, the server can use the <xref:ModelContextProtocol.McpSession.SendNotificationAsync*> extension method of <xref:ModelContextProtocol.Server.McpServer> to send progress updates,
 specifying `"notifications/progress"` as the notification method name.
@@ -30,7 +30,7 @@ The server must verify that the caller provided a `progressToken` in the request
 
 [!code-csharp[](samples/server/Tools/LongRunningTools.cs?name=snippet_SendProgress)]
 
-### Client Implementation
+### Client implementation
 
 Clients request progress updates by including a `progressToken` in the parameters of a request.
 Note that servers aren't required to support progress tracking, so clients should not depend on receiving progress updates.
