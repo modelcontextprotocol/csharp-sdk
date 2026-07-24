@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
 #pragma warning disable MCPEXP001, MCPEXP002
-internal sealed partial class McpServerImpl : McpServer
+internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeature
 {
     internal static Implementation DefaultImplementation { get; } = new()
     {
@@ -31,6 +31,9 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly string[] _initializeHandshakeProtocolVersions;
     private readonly string[] _perRequestMetadataProtocolVersions;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
+    private readonly CancellationTokenSource _serverLifetimeCts = new();
+    private readonly object _backgroundTasksLock = new();
+    private readonly ConcurrentDictionary<Task, byte> _backgroundTasks = new();
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
 
@@ -56,6 +59,7 @@ internal sealed partial class McpServerImpl : McpServer
     private int _started;
 
     private bool _disposed;
+    private bool _backgroundTaskRegistrationClosed;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
     /// <remarks>
@@ -505,6 +509,38 @@ internal sealed partial class McpServerImpl : McpServer
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
         => _sessionHandler.RegisterNotificationHandler(method, handler);
 
+    CancellationToken IMcpServerLifetimeFeature.BackgroundTaskCancellationToken =>
+        HasStatefulTransport() ? _serverLifetimeCts.Token : CancellationToken.None;
+
+    void IMcpServerLifetimeFeature.RegisterBackgroundTask(Task backgroundTask)
+    {
+        Throw.IfNull(backgroundTask);
+
+        // Stateless HTTP servers are request-scoped, while Tasks runners intentionally outlive
+        // the originating request and are governed by tasks/cancel and task-store retention.
+        if (!HasStatefulTransport())
+        {
+            return;
+        }
+
+        lock (_backgroundTasksLock)
+        {
+            if (_backgroundTaskRegistrationClosed)
+            {
+                throw new ObjectDisposedException(nameof(McpServer));
+            }
+
+            _backgroundTasks.TryAdd(backgroundTask, 0);
+        }
+
+        _ = backgroundTask.ContinueWith(
+            static (task, state) => ((ConcurrentDictionary<Task, byte>)state!).TryRemove(task, out _),
+            _backgroundTasks,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
@@ -516,6 +552,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         _disposed = true;
+        _serverLifetimeCts.Cancel();
 
         // Dispose the session handler - cancels message processing and waits for all
         // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
@@ -523,6 +560,13 @@ internal sealed partial class McpServerImpl : McpServer
         // can be created, so _mrtrContinuations is effectively frozen.
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
+
+        Task[] backgroundTasks;
+        lock (_backgroundTasksLock)
+        {
+            _backgroundTaskRegistrationClosed = true;
+            backgroundTasks = [.. _backgroundTasks.Keys];
+        }
 
         // Cancel all orphaned MRTR handlers still suspended in continuations (waiting for
         // retries that will never arrive now that the session handler is disposed).
@@ -544,6 +588,11 @@ internal sealed partial class McpServerImpl : McpServer
         if (Interlocked.Decrement(ref _mrtrInFlightCount) != 0)
         {
             await _allMrtrHandlersCompleted.Task.ConfigureAwait(false);
+        }
+
+        if (backgroundTasks.Length > 0)
+        {
+            await Task.WhenAll(backgroundTasks).ConfigureAwait(false);
         }
     }
 
@@ -2124,6 +2173,9 @@ internal sealed partial class McpServerImpl : McpServer
             // is thread-safe with itself, and not disposing avoids deadlock risks from
             // calling Cancel/Dispose inside locks or Interlocked guards.
             var handlerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var serverLifetimeRegistration = _serverLifetimeCts.Token.Register(
+                static state => ((CancellationTokenSource)state!).Cancel(),
+                handlerCts);
 
             // Store the MrtrContext so CreateDestinationBoundServer can pick it up and set it
             // on the per-request DestinationBoundMcpServer. This is picked up synchronously
@@ -2133,6 +2185,11 @@ internal sealed partial class McpServerImpl : McpServer
             try
             {
                 handlerTask = originalHandler(request, handlerCts.Token);
+            }
+            catch
+            {
+                serverLifetimeRegistration.Dispose();
+                throw;
             }
             finally
             {
@@ -2146,7 +2203,7 @@ internal sealed partial class McpServerImpl : McpServer
             // exceptions and decrements _mrtrInFlightCount when the handler completes,
             // mirroring how McpSessionHandler tracks in-flight handlers.
             Interlocked.Increment(ref _mrtrInFlightCount);
-            _ = ObserveHandlerCompletionAsync(handlerTask);
+            _ = ObserveHandlerCompletionAsync(handlerTask, serverLifetimeRegistration);
 
             return await AwaitMrtrHandlerAsync(
                 handlerTask, continuation, mrtrContext.InitialExchangeTask, cancellationToken).ConfigureAwait(false);
@@ -2205,7 +2262,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// double-reporting at Error) and decrements <see cref="_mrtrInFlightCount"/> when the
     /// handler completes, following the same in-flight tracking pattern as <see cref="McpSessionHandler"/>.
     /// </summary>
-    private async Task ObserveHandlerCompletionAsync(Task<JsonNode?> handlerTask)
+    private async Task ObserveHandlerCompletionAsync(
+        Task<JsonNode?> handlerTask,
+        CancellationTokenRegistration serverLifetimeRegistration)
     {
         try
         {
@@ -2225,6 +2284,8 @@ internal sealed partial class McpServerImpl : McpServer
         }
         finally
         {
+            serverLifetimeRegistration.Dispose();
+
             if (Interlocked.Decrement(ref _mrtrInFlightCount) == 0)
             {
                 _allMrtrHandlersCompleted.TrySetResult(true);

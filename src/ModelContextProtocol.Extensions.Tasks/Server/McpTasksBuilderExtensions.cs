@@ -44,7 +44,7 @@ public static class McpTasksBuilderExtensions
     {
         private readonly IMcpTaskStore _store = store;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksPostConfigureOptions>();
-        private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, TaskCancellationState> _cancellationStates = new(StringComparer.Ordinal);
 
         public void PostConfigure(string? name, McpServerOptions options)
         {
@@ -75,11 +75,13 @@ public static class McpTasksBuilderExtensions
                 {
                     var taskInfo = await _store.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
                     var taskId = taskInfo.TaskId;
-                    var cts = new CancellationTokenSource();
-                    _cancellationSources[taskId] = cts;
-                    var taskCancellationToken = cts.Token;
+                    var serverLifetime = request.Server as IMcpServerLifetimeFeature;
+                    var cancellationState = new TaskCancellationState(
+                        serverLifetime?.BackgroundTaskCancellationToken ?? CancellationToken.None);
+                    _cancellationStates[taskId] = cancellationState;
+                    var taskCancellationToken = cancellationState.Token;
 
-                    _ = Task.Run(async () =>
+                    var backgroundTask = Task.Run(async () =>
                     {
                         try
                         {
@@ -142,13 +144,6 @@ public static class McpTasksBuilderExtensions
                                     var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
                                     await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
                                 }
-                                finally
-                                {
-                                    if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                                    {
-                                        registeredCts.Dispose();
-                                    }
-                                }
                             }
                         }
                         catch (Exception outer)
@@ -169,13 +164,17 @@ public static class McpTasksBuilderExtensions
                             {
                                 _logger.LogError(storeEx, "Failed to record the failure of background task '{TaskId}'.", taskId);
                             }
-
-                            if (_cancellationSources.TryRemove(taskId, out var leftoverCts))
+                        }
+                        finally
+                        {
+                            if (_cancellationStates.TryRemove(taskId, out var registeredState))
                             {
-                                leftoverCts.Dispose();
+                                registeredState.UnregisterServerLifetime();
                             }
                         }
                     }, CancellationToken.None);
+
+                    serverLifetime?.RegisterBackgroundTask(backgroundTask);
 
                     return ResultOrAlternate<CallToolResult>.FromAlternate(
                         ToCreateTaskResult(taskInfo),
@@ -230,13 +229,36 @@ public static class McpTasksBuilderExtensions
 
             await _store.SetCancelledAsync(requestParams.TaskId, cancellationToken).ConfigureAwait(false);
 
-            if (_cancellationSources.TryRemove(requestParams.TaskId, out var cts))
+            if (_cancellationStates.TryGetValue(requestParams.TaskId, out var cancellationState))
             {
-                cts.Cancel();
-                cts.Dispose();
+                cancellationState.Cancel();
             }
 
             return JsonSerializer.SerializeToNode(new CancelTaskResult(), McpTasksJsonContext.Default.CancelTaskResult);
+        }
+
+        private sealed class TaskCancellationState
+        {
+            private readonly CancellationTokenSource _source = new();
+            private readonly CancellationTokenRegistration _serverLifetimeRegistration;
+
+            public TaskCancellationState(CancellationToken serverLifetimeToken)
+            {
+                _serverLifetimeRegistration = serverLifetimeToken.Register(
+                    static state => ((CancellationTokenSource)state!).Cancel(),
+                    _source);
+            }
+
+            public CancellationToken Token => _source.Token;
+
+            public void Cancel() => _source.Cancel();
+
+            public void UnregisterServerLifetime()
+            {
+                // Cancellation can arrive concurrently from tasks/cancel and server disposal.
+                // Once the dictionary entry and server registration are gone, the CTS is collectible.
+                _serverLifetimeRegistration.Dispose();
+            }
         }
 
         private static void GateToJuly2026OrLaterProtocol(JsonRpcRequest request, string method)

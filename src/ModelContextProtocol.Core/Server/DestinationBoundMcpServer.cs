@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Server;
 
 #pragma warning disable MCPEXP002
-internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcMessageContext? requestContext = null) : McpServer
+internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport, JsonRpcMessageContext? requestContext = null) : McpServer, IMcpServerLifetimeFeature
 #pragma warning restore MCPEXP002
 {
     private readonly bool _isJuly2026OrLaterRequest = server.IsJuly2026OrLaterProtocolRequest(requestContext);
@@ -72,6 +72,12 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     internal MrtrContext? ActiveMrtrContext { get; set; }
 
     public override bool IsMrtrSupported => server.IsMrtrSupported;
+
+    CancellationToken IMcpServerLifetimeFeature.BackgroundTaskCancellationToken =>
+        ((IMcpServerLifetimeFeature)server).BackgroundTaskCancellationToken;
+
+    void IMcpServerLifetimeFeature.RegisterBackgroundTask(Task backgroundTask) =>
+        ((IMcpServerLifetimeFeature)server).RegisterBackgroundTask(backgroundTask);
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 
