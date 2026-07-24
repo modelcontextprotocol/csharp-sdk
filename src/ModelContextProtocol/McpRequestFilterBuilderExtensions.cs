@@ -42,6 +42,10 @@ public static class McpRequestFilterBuilderExtensions
     /// <summary>
     /// Adds a filter to the call tool handler pipeline.
     /// </summary>
+    /// <remarks>
+    /// This ordinary call-tool filter runs inside all alternate-result call-tool filters. For a task-backed call,
+    /// it executes in the background after task creation and before the tool.
+    /// </remarks>
     /// <param name="builder">The request filter builder instance.</param>
     /// <param name="filter">The filter function that wraps the handler.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
