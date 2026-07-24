@@ -871,8 +871,14 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        // From here on, only validate resources/read, tools/call, and prompts/get requests
-        if (mcpMethodInBody is not (RequestMethods.ToolsCall or RequestMethods.ResourcesRead or RequestMethods.PromptsGet))
+        // From here on, only validate requests whose params carry a name-shaped routing identifier.
+        if (mcpMethodInBody is not (
+            RequestMethods.ToolsCall or
+            RequestMethods.ResourcesRead or
+            RequestMethods.PromptsGet or
+            "tasks/get" or
+            "tasks/update" or
+            "tasks/cancel"))
         {
             errorMessage = null;
             return true;
@@ -916,6 +922,7 @@ internal sealed class StreamableHttpHandler(
             RequestMethods.ToolsCall => GetJsonNodeStringProperty(bodyParams, "name"),
             RequestMethods.ResourcesRead => GetJsonNodeStringProperty(bodyParams, "uri"),
             RequestMethods.PromptsGet => GetJsonNodeStringProperty(bodyParams, "name"),
+            "tasks/get" or "tasks/update" or "tasks/cancel" => GetJsonNodeStringProperty(bodyParams, "taskId"),
             _ => null,
         };
 

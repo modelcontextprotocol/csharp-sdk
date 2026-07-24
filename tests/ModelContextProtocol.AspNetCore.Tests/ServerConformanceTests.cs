@@ -127,6 +127,31 @@ public class ServerConformanceTests(
             $"MRTR conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    [Theory]
+    [InlineData("tasks-lifecycle")]
+    [InlineData("tasks-capability-negotiation")]
+    [InlineData("tasks-wire-fields")]
+    [InlineData("tasks-request-state-removal")]
+    [InlineData("tasks-mrtr-input")]
+    [InlineData("tasks-request-headers")]
+    [InlineData("tasks-dispatch-and-envelope")]
+    [InlineData("tasks-status-notifications")]
+    [InlineData("tasks-required-task-error")]
+    [InlineData("tasks-mrtr-composition")]
+    public async Task RunTasksExtensionConformanceTest(string scenario)
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasTasksExtensionScenarios(),
+            "SEP-2663 Tasks extension scenarios are not available in the installed conformance package.");
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {fixture.StatelessServerUrl} --scenario {scenario}");
+
+        Assert.True(result.Success,
+            $"Tasks extension conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
         return await NodeHelpers.RunServerConformanceAsync(

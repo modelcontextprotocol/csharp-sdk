@@ -118,6 +118,11 @@ public static class McpTasksClientExtensions
 #endif
 
         ThrowIfTasksNotSupported(client, nameof(GetTaskAsync));
+        requestParams = new GetTaskRequestParams
+        {
+            TaskId = requestParams.TaskId,
+            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+        };
         return client.SendRequestAsync<GetTaskRequestParams, GetTaskResult>(
             TasksProtocol.MethodTasksGet,
             requestParams,
@@ -148,6 +153,7 @@ public static class McpTasksClientExtensions
         JsonObject paramsObj = new()
         {
             ["taskId"] = requestParams.TaskId,
+            ["_meta"] = GetMetaWithTaskCapability(requestParams.Meta),
         };
 
         if (requestParams.InputResponses is { Count: > 0 } inputResponses)
@@ -204,6 +210,11 @@ public static class McpTasksClientExtensions
 #endif
 
         ThrowIfTasksNotSupported(client, nameof(CancelTaskAsync));
+        requestParams = new CancelTaskRequestParams
+        {
+            TaskId = requestParams.TaskId,
+            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+        };
         return client.SendRequestAsync<CancelTaskRequestParams, CancelTaskResult>(
             TasksProtocol.MethodTasksCancel,
             requestParams,

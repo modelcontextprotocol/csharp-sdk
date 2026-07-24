@@ -598,6 +598,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 => GetParamsStringProperty(request.Params, "name"),
             JsonRpcRequest { Method: RequestMethods.ResourcesRead } request
                 => GetParamsStringProperty(request.Params, "uri"),
+            JsonRpcRequest { Method: "tasks/get" or "tasks/update" or "tasks/cancel" } request
+                => GetParamsStringProperty(request.Params, "taskId"),
             _ => null,
         };
 

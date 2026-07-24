@@ -29,13 +29,37 @@ public static class McpTasksBuilderExtensions
     /// <param name="store">The task store.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     public static IMcpServerBuilder WithTasks(this IMcpServerBuilder builder, IMcpTaskStore store)
+        => WithTasks(builder, store, static _ => { });
+
+    /// <summary>
+    /// Enables MCP Tasks support backed by the specified task store.
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="store">The task store.</param>
+    /// <param name="configure">A callback that configures per-call task execution behavior.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    public static IMcpServerBuilder WithTasks(
+        this IMcpServerBuilder builder,
+        IMcpTaskStore store,
+        Action<McpTasksOptions> configure)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(configure);
 #else
         if (builder is null) throw new ArgumentNullException(nameof(builder));
         if (store is null) throw new ArgumentNullException(nameof(store));
+        if (configure is null) throw new ArgumentNullException(nameof(configure));
+#endif
+
+        McpTasksOptions taskOptions = new();
+        configure(taskOptions);
+#if NET
+        ArgumentNullException.ThrowIfNull(taskOptions.ExecutionModeSelector);
+#else
+        if (taskOptions.ExecutionModeSelector is null) throw new ArgumentException(
+            $"{nameof(McpTasksOptions.ExecutionModeSelector)} must not be null.", nameof(configure));
 #endif
 
         // Resolve ILoggerFactory from the provider (rather than requiring the caller to pass one) so the
@@ -45,18 +69,21 @@ public static class McpTasksBuilderExtensions
             sp => new McpTasksConfigureOptions(
                 store,
                 sp.GetRequiredService<IServiceScopeFactory>(),
-                sp.GetService<ILoggerFactory>()));
+                sp.GetService<ILoggerFactory>(),
+                taskOptions));
         return builder;
     }
 
     private sealed class McpTasksConfigureOptions(
         IMcpTaskStore store,
         IServiceScopeFactory serviceScopeFactory,
-        ILoggerFactory? loggerFactory) : IConfigureOptions<McpServerOptions>
+        ILoggerFactory? loggerFactory,
+        McpTasksOptions taskOptions) : IConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
+        private readonly McpTasksOptions _taskOptions = taskOptions;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
         public void Configure(McpServerOptions options)
@@ -93,8 +120,24 @@ public static class McpTasksBuilderExtensions
                 options.Filters.Request.CallToolWithAlternateFilters.Count,
                 async (request, next, cancellationToken) =>
                 {
-                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) || !HasTaskExtensionOptIn(request.Params?.Meta))
+                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
                     {
+                        return await next(request, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    var executionMode = _taskOptions.ExecutionModeSelector(request);
+                    if (executionMode == McpTaskExecutionMode.Synchronous)
+                    {
+                        return await next(request, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if (!HasTaskExtensionOptIn(request.JsonRpcRequest))
+                    {
+                        if (executionMode == McpTaskExecutionMode.Required)
+                        {
+                            throw CreateMissingTasksCapabilityException();
+                        }
+
                         return await next(request, cancellationToken).ConfigureAwait(false);
                     }
 
@@ -257,6 +300,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksGet);
+            GateToTasksCapability(request);
 
             var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.GetTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/get", McpErrorCode.InvalidParams);
@@ -273,6 +317,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleUpdateTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksUpdate);
+            GateToTasksCapability(request);
 
             var taskId = request.Params?["taskId"]?.GetValue<string>()
                 ?? throw new McpProtocolException("Missing params.taskId for tasks/update", McpErrorCode.InvalidParams);
@@ -292,6 +337,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleCancelTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksCancel);
+            GateToTasksCapability(request);
 
             var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.CancelTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/cancel", McpErrorCode.InvalidParams);
@@ -319,11 +365,29 @@ public static class McpTasksBuilderExtensions
             }
         }
 
-        private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
-            meta is not null &&
-            meta[MetaKeys.ClientCapabilities] is JsonObject caps &&
-            caps["extensions"] is JsonObject exts &&
-            exts.ContainsKey(TasksProtocol.ExtensionId);
+        private static void GateToTasksCapability(JsonRpcRequest request)
+        {
+            if (!HasTaskExtensionOptIn(request))
+            {
+                throw CreateMissingTasksCapabilityException();
+            }
+        }
+
+        private static MissingRequiredClientCapabilityException CreateMissingTasksCapabilityException() =>
+            new(
+                new ClientCapabilities
+                {
+                    Extensions = new Dictionary<string, object>
+                    {
+                        [TasksProtocol.ExtensionId] = new JsonObject(),
+                    },
+                },
+                $"The request requires the '{TasksProtocol.ExtensionId}' client extension capability.");
+
+        private static bool HasTaskExtensionOptIn(JsonRpcRequest request) =>
+            request.Context?.ClientCapabilities?.Extensions?.ContainsKey(TasksProtocol.ExtensionId) is true ||
+            request.Params?["_meta"]?[MetaKeys.ClientCapabilities]?["extensions"] is JsonObject extensions &&
+                extensions.ContainsKey(TasksProtocol.ExtensionId);
 
         private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
             McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(request?.Context?.ProtocolVersion);
