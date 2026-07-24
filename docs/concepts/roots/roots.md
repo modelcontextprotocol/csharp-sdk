@@ -142,4 +142,4 @@ public static string ListRootsWithMrtr(
 ```
 
 > [!TIP]
-> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.
+> For the full protocol details, including load shedding, multiple round trips, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).

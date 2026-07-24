@@ -7,7 +7,7 @@ uid: transports
 
 ## Transports
 
-MCP uses a [transport layer] to handle the communication between clients and servers. Three transport mechanisms are supported: **stdio**, **Streamable HTTP**, and **SSE** (Server-Sent Events, legacy).
+MCP uses a [transport layer] to handle the communication between clients and servers. Three transport mechanisms are supported: [**stdio**](#stdio-transport), [**Streamable HTTP**](#streamable-http-transport), and [**SSE**](#sse-transport-legacy) (Server-Sent Events, legacy).
 
 [transport layer]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports
 
@@ -32,12 +32,12 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
 await using var client = await McpClient.CreateAsync(transport);
 ```
 
-Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
+The following table describes the key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 
-| Property | Description |
-|----------|-------------|
-| `Command` | The executable to launch (required) |
-| `Arguments` | Command-line arguments for the process |
+| Property           | Description                              |
+|--------------------|------------------------------------------|
+| `Command`          | The executable to launch (required)      |
+| `Arguments`        | Command-line arguments for the process   |
 | `WorkingDirectory` | Working directory for the server process |
 | `EnvironmentVariables` | Environment variables (merged with current when inheriting; `null` values remove variables) |
 | `InheritEnvironmentVariables` | Whether the server process inherits the current process's environment variables (default: `true`) |
@@ -47,7 +47,7 @@ Key <xref:ModelContextProtocol.Client.StdioClientTransportOptions> properties:
 
 #### Environment variable inheritance
 
-By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that may be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
+By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that might be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
 
 ```csharp
 var transport = new StdioClientTransport(new StdioClientTransportOptions
@@ -94,7 +94,7 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
 > [!WARNING]
 > **Security risk (inheriting):** Variables such as `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, and similar credentials present in the parent process automatically flow into the child process unless inheritance is disabled. This can unintentionally expose sensitive values to third-party or untrusted MCP servers.
 >
-> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. `GetDefaultEnvironmentVariables()` covers the most common requirements — `PATH`, `HOME`, and standard system directories — so for most servers it is a safe starting point. For servers that need additional variables not in the default set (such as `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, or proxy settings like `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`), add them on top as shown in the example above.
+> **Compatibility risk (not inheriting):** Disabling inheritance can cause the child process to fail to start or behave incorrectly if it relies on variables provided by the OS or shell. `GetDefaultEnvironmentVariables()` covers the most common requirements — `PATH`, `HOME`, and standard system directories — so for most servers it's a safe starting point. For servers that need additional variables not in the default set (such as `DOTNET_ROOT`, `LD_LIBRARY_PATH`, `JAVA_HOME`, or proxy settings like `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`), add them on top as shown in the previous example.
 
 #### stdio server
 
@@ -183,7 +183,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. See [Sessions](xref:stateless) for a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown.
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Sessions](xref:stateless).
 
 #### Host name validation
 
@@ -202,14 +202,13 @@ If you intentionally expose the server through another host name, such as a tunn
 
 #### Browser cross-origin access
 
-**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+**Only** enable cross-origin requests (CORS) if you intentionally want browser-based cross-origin access to this server.
 
 CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
 
 For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it. `Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration.
 
-
-_In this sample below, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains._
+_In the following sample, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains._
 
 ```json
 // appsettings.Development.json
@@ -230,7 +229,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("McpBrowserClient", policy =>
     {
         policy.WithOrigins(allowedOrigins)
-            // Add GET for standalone/resumable SSE streams and DELETE for stateful session termination.
+            // Add `GET` for standalone/resumable SSE streams and DELETE for stateful session termination.
             .WithMethods("POST", "GET", "DELETE")
             .WithHeaders("Content-Type", "Authorization", "MCP-Protocol-Version", "Mcp-Session-Id")
             .WithExposedHeaders("Mcp-Session-Id");
@@ -245,11 +244,11 @@ app.MapMcp("/mcp").RequireCors("McpBrowserClient");
 
 #### How messages flow
 
-In Streamable HTTP, client requests arrive as HTTP POST requests. The server holds each POST response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each POST holds its connection until the handler completes.
+In Streamable HTTP, client requests arrive as HTTP `POST` requests. The server holds each `POST` response body open as an SSE stream and writes the JSON-RPC response — plus any intermediate messages like progress notifications or server-to-client requests — back through it. This provides natural HTTP-level backpressure: each `POST` holds its connection until the handler completes.
 
-In stateful mode, the client can also open a long-lived GET request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (e.g., resource-changed notifications from a background watcher). In stateless mode, the GET endpoint is not mapped, so every message must be part of a POST response. See [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages) for a detailed breakdown.
+In stateful mode, the client can also open a long-lived `GET` request to receive **unsolicited** messages — notifications or server-to-client requests that the server initiates outside any active request handler (for example, resource-changed notifications from a background watcher). In stateless mode, the `GET` endpoint is not mapped, so every message must be part of a `POST` response. For a detailed breakdown, see [How Streamable HTTP delivers messages](xref:stateless#how-streamable-http-delivers-messages).
 
-If your client does not need unsolicited server-to-client messages, or if a long-lived GET stream would block other requests under a constrained `HttpClient` connection pool, set <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> to `false`. Direct responses and streaming responses to client POST requests still work; only the standalone GET stream is skipped.
+If your client does not need unsolicited server-to-client messages, or if a long-lived `GET` stream would block other requests under a constrained `HttpClient` connection pool, set <xref:ModelContextProtocol.Client.HttpClientTransportOptions.EnableStandaloneGetStream> to `false`. Direct responses and streaming responses to client `POST` requests still work; only the standalone `GET` stream is skipped.
 
 A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools] sample uses a route parameter:
 
@@ -259,7 +258,7 @@ A custom route can be specified. For example, the [AspNetCoreMcpPerSessionTools]
 app.MapMcp("/mcp");
 ```
 
-When using a custom route, Streamable HTTP clients should connect directly to that route (e.g., `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:stateless#legacy-sse-transport)) should connect to `{route}/sse` (e.g., `https://host/mcp/sse`).
+When using a custom route, Streamable HTTP clients should connect directly to that route (for example, `https://host/mcp`), while SSE clients (when [legacy SSE is enabled](xref:stateless#legacy-sse-transport)) should connect to `{route}/sse` (for example, `https://host/mcp/sse`).
 
 For containerized deployments of ASP.NET Core servers, see [Docker deployment](../deployment/docker.md).
 
@@ -291,16 +290,16 @@ await using var client = await McpClient.CreateAsync(transport);
 
 SSE-specific configuration options:
 
-| Property | Description |
-|----------|-------------|
-| `MaxReconnectionAttempts` | Maximum number of reconnection attempts on stream disconnect (default: 5) |
-| `DefaultReconnectionInterval` | Wait time between reconnection attempts (default: 1 second) |
+| Property                      | Description                                                  | Default  |
+|-------------------------------|--------------------------------------------------------------|----------|
+| `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect | 5        |
+| `DefaultReconnectionInterval` | Wait time between reconnection attempts                      | 1 second |
 
 #### SSE server (ASP.NET Core)
 
 The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
 
-**Why SSE is disabled by default.** The SSE transport separates request and response channels: clients POST JSON-RPC messages to `/message` and receive all responses through a long-lived GET SSE stream on `/sse`. Because the POST endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each POST response open until the handler finishes, providing natural backpressure. See [Request backpressure](xref:stateless#request-backpressure) for a detailed comparison and mitigations if you must use SSE.
+**Why SSE is disabled by default.** The SSE transport separates request and response channels: clients `POST` JSON-RPC messages to `/message` and receive all responses through a long-lived `GET` SSE stream on `/sse`. Because the `POST` endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each `POST` response open until the handler finishes, providing natural backpressure. For a detailed comparison and mitigations if you must use SSE, see [Request backpressure](xref:stateless#request-backpressure).
 
 To enable legacy SSE, set `EnableLegacySse` to `true`:
 
@@ -336,7 +335,7 @@ See [Sessions — Legacy SSE transport](xref:stateless#legacy-sse-transport) for
 | Feature | stdio | Streamable HTTP (stateless) | Streamable HTTP (stateful) | SSE (legacy, stateful) |
 |---------|-------|-----------------------------|----------------------------|--------------|
 | Process model | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server POST |
+| Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server `POST` |
 | Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
 | Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
 | Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
@@ -381,13 +380,14 @@ var echo = tools.First(t => t.Name == "echo");
 Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
 ```
 
-Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. See [Sessions](xref:stateless) for how session behavior varies across transports.
+Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. For information about how session behavior varies across transports, see [Sessions](xref:stateless).
 
 ## Cross-Application Access
 
 The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
 
 The flow consists of two steps:
+
 1. **RFC 8693 Token Exchange** at the enterprise IdP: OIDC ID token → JWT Authorization Grant (JAG)
 2. **RFC 7523 JWT Bearer Grant** at the MCP authorization server: JAG → access token
 
@@ -420,4 +420,4 @@ var tokens = await provider.GetAccessTokenAsync(
 // Call provider.InvalidateCache() to force a fresh token exchange on the next call.
 ```
 
-The provider caches the resulting access token and reuses it until it expires. To force re-authentication (e.g. after a 401 response), call `provider.InvalidateCache()` before retrying.
+The provider caches the resulting access token and reuses it until it expires. To force re-authentication (for example, after a 401 response), call `provider.InvalidateCache()` before retrying.

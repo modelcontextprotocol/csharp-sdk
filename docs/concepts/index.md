@@ -4,9 +4,9 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 ## Contents
 
-### [Getting Started](getting-started.md)
+### Getting Started
 
-Install the SDK and build your first MCP client and server.
+To install the SDK and build your first MCP client and server, see [Getting started](getting-started.md).
 
 ### Deployment
 

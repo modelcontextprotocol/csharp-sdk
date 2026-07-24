@@ -10,7 +10,7 @@ uid: filters
 The MCP Server provides two levels of filters for intercepting and modifying request processing:
 
 1. **Message Filters** - Low-level filters (`AddIncomingFilter`, `AddOutgoingFilter`) configured via `WithMessageFilters(...)` that intercept all JSON-RPC messages before routing.
-2. **Request-Specific Filters** - Handler-level filters (e.g., `AddListToolsFilter`, `AddCallToolFilter`) configured via `WithRequestFilters(...)` that target specific MCP operations.
+2. **Request-Specific Filters** - Handler-level filters (for example, `AddListToolsFilter`, `AddCallToolFilter`) configured via `WithRequestFilters(...)` that target specific MCP operations.
 
 The filters are stored in `McpServerOptions.Filters`.
 
@@ -18,17 +18,19 @@ The filters are stored in `McpServerOptions.Filters`.
 
 The following request filter methods are available on `IMcpRequestFilterBuilder` inside `WithRequestFilters(...)`:
 
-- `AddListResourceTemplatesFilter` - Filter for list resource templates handlers
-- `AddListToolsFilter` - Filter for list tools handlers
-- `AddCallToolFilter` - Filter for call tool handlers
-- `AddListPromptsFilter` - Filter for list prompts handlers
-- `AddGetPromptFilter` - Filter for get prompt handlers
-- `AddListResourcesFilter` - Filter for list resources handlers
-- `AddReadResourceFilter` - Filter for read resource handlers
-- `AddCompleteFilter` - Filter for completion handlers
-- `AddSubscribeToResourcesFilter` - Filter for resource subscription handlers
-- `AddUnsubscribeFromResourcesFilter` - Filter for resource unsubscription handlers
-- `AddSetLoggingLevelFilter` - Filter for logging level handlers
+| Method                              | Filters for...                   |
+|-------------------------------------|----------------------------------|
+| `AddListResourceTemplatesFilter`    | List resource templates handlers |
+| `AddListToolsFilter`                | List tools handlers              |
+| `AddCallToolFilter`                 | Call tool handlers               |
+| `AddListPromptsFilter`              | List prompts handlers            |
+| `AddGetPromptFilter`                | Get prompt handlers              |
+| `AddListResourcesFilter`            | List resources handlers          |
+| `AddReadResourceFilter`             | Read resource handlers           |
+| `AddCompleteFilter`                 | Completion handlers              |
+| `AddSubscribeToResourcesFilter`     | Resource subscription handlers   |
+| `AddUnsubscribeFromResourcesFilter` | Resource unsubscription handlers |
+| `AddSetLoggingLevelFilter`          | Logging level handlers           |
 
 ## Message Filters
 
@@ -308,6 +310,8 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 
 ## Common Use Cases
 
+Filters are commonly used for [logging](#logging), [error handling](#error-handling), [performance monitoring](#performance-monitoring), and [caching](#caching).
+
 ### Logging
 
 ```csharp
@@ -406,7 +410,7 @@ services.AddMcpServer()
     .WithTools<WeatherTools>();
 ```
 
-**Important**: You should always call `AddAuthorizationFilters()` when using ASP.NET Core integration if you want to use authorization attributes like `[Authorize]` on your MCP server tools, prompts, or resources.
+**Important**: If you want to use authorization attributes like `[Authorize]` on your MCP server tools, prompts, or resources, you should always call `AddAuthorizationFilters()` when using ASP.NET Core integration.
 
 ### Authorization Attributes Support
 

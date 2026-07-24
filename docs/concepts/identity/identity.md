@@ -64,7 +64,7 @@ The SDK registers `ClaimsPrincipal` as one of the built-in services available du
 2. Automatically resolves it from the current request's `User` property at invocation time.
 3. Passes `null` if no authenticated user is present (when the parameter is nullable).
 
-This behavior is transport-agnostic. For HTTP transports, the `ClaimsPrincipal` comes from ASP.NET Core authentication. For other transports (like stdio), it will be `null` unless you set it explicitly via a message filter.
+This behavior is transport-agnostic. For HTTP transports, the `ClaimsPrincipal` comes from ASP.NET Core authentication. For other transports (like stdio), it's `null` unless you set it explicitly via a message filter.
 
 ## Accessing Identity in Filters
 
@@ -132,7 +132,7 @@ When authorization fails, the SDK automatically:
 - **For list operations**: Removes unauthorized items from the results so users only see what they can access.
 - **For individual operations**: Returns a JSON-RPC error indicating access is forbidden.
 
-See [Filters](xref:filters) for more details on authorization filters and their execution order.
+For more details on authorization filters and their execution order, see [Filters](xref:filters).
 
 ## Using `IHttpContextAccessor` (HTTP-Only Alternative)
 
@@ -156,7 +156,7 @@ public class HttpContextTools(IHttpContextAccessor contextAccessor)
 > [!IMPORTANT]
 > `IHttpContextAccessor` only works with HTTP transports. For transport-agnostic identity access, use `ClaimsPrincipal` parameter injection instead.
 
-See [HTTP Context](xref:httpcontext) for more details, including important caveats about stale `HttpContext` with the legacy SSE transport.
+For more details, including important caveats about stale `HttpContext` with the legacy SSE transport, see [HTTP Context](xref:httpcontext).
 
 ## Transport Considerations
 
