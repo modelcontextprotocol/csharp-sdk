@@ -90,7 +90,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
 
         // Disable the server/discover probe timeout to avoid CI slowness spuriously tripping it (issue #1701).
         // Tests that need a specific probe timeout should create their own client instead of using this helper.
-        clientOptions.DiscoverProbeTimeout = Timeout.InfiniteTimeSpan;
+        clientOptions.DiscoverProbeTimeout = TestConstant.DefaultTimeout;
 
         return await McpClient.CreateAsync(
             new StreamClientTransport(
