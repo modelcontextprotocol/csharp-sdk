@@ -81,9 +81,4 @@ internal sealed class ComposedCallToolInvocationState
         return lifecycles;
     }
 }
-
-internal sealed record ToolCallLifecycle(
-    CallToolResult? Result,
-    Exception? Exception,
-    bool CancellationRequested);
 #pragma warning restore MCPEXP002
