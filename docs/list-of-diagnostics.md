@@ -10,10 +10,10 @@ This document provides information about each of the diagnostics produced by the
 
 Analyzer diagnostic IDs are in the format `MCP###`.
 
-| Diagnostic ID | Description |
-| :------------ | :---------- |
-| `MCP001` | Invalid XML documentation for MCP method |
-| `MCP002` | MCP method must be partial to generate `[Description]` attributes |
+| Diagnostic ID | Description                                                       |
+|:--------------|:------------------------------------------------------------------|
+| `MCP001`      | Invalid XML documentation for MCP method                          |
+| `MCP002`      | MCP method must be partial to generate `[Description]` attributes |
 
 ## Experimental APIs
 
@@ -23,7 +23,7 @@ As new functionality is introduced to this SDK, new in-development APIs are mark
 
 You may use experimental APIs in your application, but we advise against using these APIs in production scenarios as they may not be fully tested nor fully reliable. Additionally, we strongly recommend that library authors do not publish versions of their libraries that depend on experimental APIs as this will quite possibly lead to future breaking changes and diamond problems.
 
-If you use experimental APIs, you will get one of the diagnostics shown below. The diagnostic is there to let you know you're using such an API so that you can avoid accidentally depending on experimental features. You may suppress these diagnostics if desired.
+If you use experimental APIs, you will get one of the diagnostics shown below. The diagnostic is there to let you know you're using such an API so that you can avoid accidentally depending on experimental features. You can suppress these diagnostics if desired.
 
 | Diagnostic ID | Description |
 | :------------ | :---------- |
@@ -40,8 +40,9 @@ When APIs are marked as obsolete, a diagnostic is emitted to warn users that the
 | Diagnostic ID | Status | Description |
 | :------------ | :----- | :---------- |
 | `MCP9001` | In place | The `EnumSchema` and `LegacyTitledEnumSchema` APIs are deprecated as of specification version 2025-11-25. Use the current schema APIs instead. |
-| `MCP9002` | Removed | The `AddXxxFilter` extension methods on `IMcpServerBuilder` (e.g., `AddListToolsFilter`, `AddCallToolFilter`, `AddIncomingMessageFilter`) were superseded by `WithRequestFilters()` and `WithMessageFilters()`. |
+| `MCP9002` | Removed | The `AddXxxFilter` extension methods on `IMcpServerBuilder` (for example, `AddListToolsFilter`, `AddCallToolFilter`, `AddIncomingMessageFilter`) were superseded by `WithRequestFilters()` and `WithMessageFilters()`. |
 | `MCP9003` | In place | The `RequestContext<TParams>(McpServer, JsonRpcRequest)` constructor is obsolete. Use the overload that accepts a `parameters` argument: `RequestContext<TParams>(McpServer, JsonRpcRequest, TParams)`. |
 | `MCP9004` | In place | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> opts into the legacy SSE transport which has no built-in HTTP-level backpressure. Use Streamable HTTP instead. See [Stateless — Legacy SSE transport](xref:stateless#legacy-sse-transport) for details. |
 | `MCP9005` | In place | The Roots, Sampling, and Logging features are deprecated as of specification version 2026-07-28 and may be removed in a future version. See SEP-2577 for more information. |
 | `MCP9006` | In place | The stateful Streamable HTTP configuration knobs on <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions> — `EventStreamStore`, `SessionMigrationHandler`, `PerSessionExecutionContext`, `IdleTimeout`, and `MaxIdleSessionCount` — only apply when `Stateless = false`. Starting with the `2026-07-28` protocol revision, Streamable HTTP no longer supports sessions, and the SDK now defaults `Stateless` to `true`. These knobs remain available for back-compat with the legacy stateful Streamable HTTP transport but new code should target the stateless path. |
+| `MCP9007` | In place | `AuthorizationRedirectDelegate` and `ClientOAuthOptions.AuthorizationRedirectDelegate` are retained for source and binary compatibility but cannot provide the RFC 9207 authorization-response issuer. Use `ClientOAuthOptions.AuthorizationCallbackHandler` for issuer-aware authorization flows. |

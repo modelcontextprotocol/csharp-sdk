@@ -7,7 +7,7 @@ uid: elicitation
 
 ## Elicitation
 
-The **elicitation** feature allows servers to request additional information from users during interactions. This enables more dynamic and interactive AI experiences, making it easier to gather necessary context before executing tasks.
+The **elicitation** feature allows servers to request additional information from users during interactions. This feature enables more dynamic and interactive AI experiences, making it easier to gather necessary context before executing tasks.
 
 The protocol supports two modes of elicitation:
 
@@ -22,7 +22,7 @@ so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.Mc
 
 #### Form Mode Elicitation (In-Band)
 
-For form-based elicitation, the MCP Server must specify the schema of each input value it is requesting from the user.
+For form-based elicitation, the MCP Server must specify the schema of each input value it's requesting from the user.
 Primitive types (string, number, Boolean) and enum types are supported for elicitation requests.
 The schema might include a description to help the user understand what's being requested.
 
@@ -158,7 +158,7 @@ var options = new McpClientOptions
 };
 ```
 
-The `ElicitationHandler` is an asynchronous method that will be called when the server requests additional information. The handler should check the `Mode` of the request:
+The `ElicitationHandler` is an asynchronous method that's called when the server requests additional information. The handler should check the `Mode` of the request:
 
 - **Form Mode**: Present the form defined by `RequestedSchema` to the user. Return the user's input in the `Content` of the result.
 - **URL Mode**: Present the `Message` and `Url` to the user. Ask for consent to open the URL. If the user consents, open the URL and return `Action="accept"`. If the user declines, return `Action="decline"`.
@@ -223,11 +223,11 @@ public static string ElicitWithMrtr(
 ```
 
 > [!TIP]
-> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix.
+> For the full protocol details, including multiple round trips, concurrent input requests, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).
 
 ### URL Elicitation Required Error
 
-When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in [stateless](xref:stateless) mode where server-to-client requests are disabled), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
+When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example, in [stateless](xref:stateless) mode where server-to-client requests are disabled), the server might throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
 
 #### Throwing UrlElicitationRequiredException on the Server
 
@@ -271,10 +271,10 @@ The exception can include multiple elicitations if the operation requires author
 
 When the client calls a tool and receives a `UrlElicitationRequiredException`, it should:
 
-1. Present each URL elicitation to the user (showing the URL and message)
-2. Get user consent before opening each URL
-3. Optionally wait for completion notifications from the server
-4. Retry the original request after the user completes the out-of-band interactions
+1. Present each URL elicitation to the user (showing the URL and message).
+2. Get user consent before opening each URL.
+3. Optionally wait for completion notifications from the server.
+4. Retry the original request after the user completes the out-of-band interactions.
 
 ```csharp
 try
@@ -339,6 +339,6 @@ await using var completionHandler = client.RegisterNotificationHandler(
 
 This pattern is particularly useful for:
 
-- **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user
-- **Payment processing**: When user confirmation is required through a secure payment interface
-- **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client
+- **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user.
+- **Payment processing**: When user confirmation is required through a secure payment interface.
+- **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client.

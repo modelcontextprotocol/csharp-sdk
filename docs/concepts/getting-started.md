@@ -14,7 +14,7 @@ This guide walks you through installing the MCP C# SDK and building a minimal MC
 The SDK ships as three NuGet packages. Pick the one that matches your scenario:
 
 | Package | Use when... |
-| - | - |
+|---------|-------------|
 | **[ModelContextProtocol.Core](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest)** | You only need the client or low-level server APIs and want the **minimum set of dependencies**. |
 | **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)** | You're building a client or a **stdio-based** server and want hosting, dependency injection, and attribute-based tool/prompt/resource discovery. References `ModelContextProtocol.Core`. **This is the right starting point for most projects.** |
 | **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** | You're building an **HTTP-based** MCP server hosted in ASP.NET Core. References `ModelContextProtocol`, so you get everything above plus the HTTP transport. |
@@ -29,13 +29,15 @@ The SDK ships as three NuGet packages. Pick the one that matches your scenario:
 > [!TIP]
 > You can also use the [MCP Server project template](https://learn.microsoft.com/dotnet/ai/quickstarts/build-mcp-server) to quickly scaffold a new MCP server project.
 
-Create a new console app, add the required packages, and replace `Program.cs` with the code below to get a working MCP server that exposes a single tool over stdio:
+Create a new console app and add the required packages:
 
 ```
 dotnet new console
 dotnet add package ModelContextProtocol
 dotnet add package Microsoft.Extensions.Hosting
 ```
+
+Replace `Program.cs` with the following code to get a working MCP server that exposes a single tool over stdio:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -66,12 +68,14 @@ public static class EchoTool
 
 The call to `WithToolsFromAssembly` discovers every class marked with `[McpServerToolType]` in the assembly and registers every `[McpServerTool]` method as a tool. Prompts and resources work the same way with `[McpServerPromptType]` / `[McpServerPrompt]` and `[McpServerResourceType]` / `[McpServerResource]`.
 
-For HTTP-based servers using ASP.NET Core:
+For HTTP-based servers using ASP.NET Core, add the following packages:
 
 ```
 dotnet new web
 dotnet add package ModelContextProtocol.AspNetCore
 ```
+
+And add the following code:
 
 ```csharp
 using ModelContextProtocol.Server;
@@ -109,20 +113,22 @@ For production servers, configure the exact public host names for the deployment
 
 #### Browser cross-origin access
 
-**Only** enable CORS if you intentionally want browser-based cross-origin access to this server.
+**Only** enable cross-origin requests (CORS) if you intentionally want browser-based cross-origin access to this server.
 
-CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors). 
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
 
 For the full HTTP security examples, including `AllowedHosts` and restrictive CORS on `MapMcp`, see [Streamable HTTP transport](transports/transports.md#browser-cross-origin-access).
 
 ### Building an MCP client
 
-Create a new console app, add the package, and replace `Program.cs` with the code below. This client connects to the MCP "everything" reference server, lists its tools, and calls one:
+Create a new console app and add the following packages:
 
 ```
 dotnet new console
 dotnet add package ModelContextProtocol
 ```
+
+Replace `Program.cs` with the following code. This client connects to the MCP "everything" reference server, lists its tools, and calls one:
 
 ```csharp
 using ModelContextProtocol.Client;
@@ -157,7 +163,7 @@ Clients can connect to any MCP server, not just ones created with this library. 
 
 #### Using tools with an LLM
 
-`McpClientTool` inherits from `AIFunction`, so the tools returned by `ListToolsAsync` can be handed directly to any `IChatClient`:
+`McpClientTool` inherits from [`AIFunction`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.ai.aifunction), so the tools returned by `ListToolsAsync` can be given directly to any `IChatClient`:
 
 ```csharp
 // Get available tools.

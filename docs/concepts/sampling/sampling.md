@@ -23,7 +23,7 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 ### Server: requesting a completion
 
-Inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method to get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client:
+To get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client, inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method:
 
 ```csharp
 [McpServerTool(Name = "SummarizeContent"), Description("Summarizes the given text")]
@@ -171,4 +171,4 @@ public static string SampleWithMrtr(
 ```
 
 > [!TIP]
-> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.
+> For the full protocol details, including load shedding, multiple round trips, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).

@@ -704,8 +704,8 @@ internal sealed class StreamableHttpHandler(
     }
 
     /// <summary>
-    /// Validates that HTTP requests using per-request metadata declare the same protocol version in both
-    /// the <c>MCP-Protocol-Version</c> header and body <c>_meta</c> envelope.
+    /// Validates that HTTP requests declare matching protocol versions in the
+    /// <c>MCP-Protocol-Version</c> header and the corresponding body field.
     /// </summary>
     private static bool ValidateProtocolVersionEnvelope(
         HttpContext context,
@@ -719,6 +719,18 @@ internal sealed class StreamableHttpHandler(
         }
 
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+
+        if (message is JsonRpcRequest { Method: RequestMethods.Initialize, Params: JsonObject initializeParams } &&
+            initializeParams["protocolVersion"] is JsonValue initializeProtocolVersionValue &&
+            initializeProtocolVersionValue.TryGetValue(out string? initializeProtocolVersion) &&
+            !string.IsNullOrEmpty(protocolVersionHeader) &&
+            !string.Equals(protocolVersionHeader, initializeProtocolVersion, StringComparison.Ordinal))
+        {
+            errorDetail = CreateHeaderMismatchError(
+                $"Bad Request: The {McpProtocolVersionHeaderName} header value '{protocolVersionHeader}' does not match body params.protocolVersion value '{initializeProtocolVersion}'.");
+            return false;
+        }
+
         bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
 
         if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&

@@ -9,7 +9,7 @@ The Model Context Protocol C# SDK uses the [`[Experimental]`](https://learn.micr
 
 ## Suppressing experimental diagnostics
 
-When you use an experimental API, the compiler produces a diagnostic (e.g., `MCPEXP001`) to ensure you're aware the API may change. If you want to use the API, suppress the diagnostic in one of these ways:
+When you use an experimental API, the compiler produces a diagnostic (for example, `MCPEXP001`) to ensure you're aware the API might change. If you want to use the API, suppress the diagnostic in one of these ways:
 
 ### Project-wide suppression
 

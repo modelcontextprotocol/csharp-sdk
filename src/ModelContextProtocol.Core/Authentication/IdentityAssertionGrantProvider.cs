@@ -28,6 +28,12 @@ namespace ModelContextProtocol.Authentication;
 /// via the RFC 7523 JWT Bearer grant.
 /// </description></item>
 /// </list>
+/// <para>
+/// Concurrency: a single provider instance may be shared across concurrent requests. Token
+/// acquisition is coalesced through an internal lock, so if several callers observe an expired or
+/// absent token at the same time, only one runs the exchange flow and the others await and reuse
+/// its result. The cached token is refreshed at most once per expiry.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -55,6 +61,15 @@ public sealed class IdentityAssertionGrantProvider
     private readonly ILogger _logger;
 
     private TokenContainer? _cachedTokens;
+
+    // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
+    // expired/absent token at the same time, only the first runs the exchange flow while the others
+    // await its result. Also serializes writes to _cachedTokens and _resolvedIdpTokenEndpoint.
+    //
+    // Intentionally not disposed: this instance is only ever used via WaitAsync/Wait/Release (never
+    // its AvailableWaitHandle), so SemaphoreSlim allocates no unmanaged resource and there is nothing
+    // to dispose. Do not access AvailableWaitHandle, or this field will need deterministic disposal.
+    private readonly SemaphoreSlim _tokenAcquisitionLock = new(1, 1);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="IdentityAssertionGrantProvider"/> class.
@@ -105,12 +120,33 @@ public sealed class IdentityAssertionGrantProvider
         Uri authorizationServerUrl,
         CancellationToken cancellationToken = default)
     {
-        // Return cached token if still valid
+        // Return cached token if still valid. Read the field once into a local so a concurrent
+        // InvalidateCache (which nulls _cachedTokens) cannot turn this lock-free check into a null
+        // dereference or a null return between the null check and the return.
+        var cachedBeforeLock = _cachedTokens;
+        if (cachedBeforeLock is not null && !cachedBeforeLock.IsExpired)
+        {
+            return cachedBeforeLock;
+        }
+
+        // Serialize the exchange so concurrent callers that all saw the expired/absent token don't
+        // each run the full multi-step flow. Waiters re-check the cache after acquiring the lock and
+        // reuse the token produced by whoever ran the exchange first.
+        using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
         if (_cachedTokens is not null && !_cachedTokens.IsExpired)
         {
             return _cachedTokens;
         }
 
+        return await AcquireAccessTokenAsync(resourceUrl, authorizationServerUrl, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<TokenContainer> AcquireAccessTokenAsync(
+        Uri resourceUrl,
+        Uri authorizationServerUrl,
+        CancellationToken cancellationToken)
+    {
         _logger.LogDebug("Starting Cross-Application Access flow for resource {ResourceUrl}", resourceUrl);
 
         // Step 1: Discover MCP authorization server metadata to find the token endpoint
@@ -173,9 +209,21 @@ public sealed class IdentityAssertionGrantProvider
     /// <summary>
     /// Clears any cached tokens, forcing a fresh token exchange on the next call to <see cref="GetAccessTokenAsync"/>.
     /// </summary>
+    /// <remarks>
+    /// This blocks until any token acquisition that is currently in progress completes, so that the
+    /// invalidation is not silently overwritten by a concurrent exchange storing a freshly obtained token.
+    /// </remarks>
     public void InvalidateCache()
     {
-        _cachedTokens = null;
+        _tokenAcquisitionLock.Wait();
+        try
+        {
+            _cachedTokens = null;
+        }
+        finally
+        {
+            _tokenAcquisitionLock.Release();
+        }
     }
 
     private string? _resolvedIdpTokenEndpoint;
