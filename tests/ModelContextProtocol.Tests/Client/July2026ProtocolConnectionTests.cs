@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -85,5 +86,228 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         Assert.NotNull(discoverResult);
         Assert.Equal("complete", discoverResult.ResultType);
         Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], discoverResult.SupportedVersions);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_SkipsServerDiscover()
+    {
+        StartServer();
+
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+        var priorDiscoverResult = CreatePriorDiscoverResult();
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            PriorDiscoverResult = priorDiscoverResult,
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Empty(transport.SentMethods);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.ServerInfo.Name);
+        Assert.NotSame(priorDiscoverResult.Capabilities, client.ServerCapabilities);
+        Assert.NotNull(client.ServerCapabilities.Tools);
+
+        var reusableDiscoverResult = client.GetDiscoverResult();
+        Assert.NotSame(priorDiscoverResult, reusableDiscoverResult);
+        Assert.NotSame(priorDiscoverResult.SupportedVersions, reusableDiscoverResult.SupportedVersions);
+        Assert.NotSame(client.ServerCapabilities, reusableDiscoverResult.Capabilities);
+        Assert.NotSame(client.ServerInfo, reusableDiscoverResult.ServerInfo);
+        Assert.Equal(priorDiscoverResult.SupportedVersions, reusableDiscoverResult.SupportedVersions);
+        Assert.Equal(priorDiscoverResult.TimeToLive, reusableDiscoverResult.TimeToLive);
+        Assert.Equal(priorDiscoverResult.CacheScope, reusableDiscoverResult.CacheScope);
+
+        reusableDiscoverResult.SupportedVersions.Clear();
+        Assert.NotEmpty(client.GetDiscoverResult().SupportedVersions);
+        reusableDiscoverResult.Capabilities.Tools = null;
+        reusableDiscoverResult.ServerInfo.Name = "mutated";
+        Assert.NotNull(client.GetDiscoverResult().Capabilities.Tools);
+        Assert.Equal(priorDiscoverResult.ServerInfo.Name, client.ServerInfo.Name);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_AndPinnedModernVersion_UsesPinnedVersion()
+    {
+        StartServer();
+
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+            PriorDiscoverResult = CreatePriorDiscoverResult(),
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Empty(transport.SentMethods);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_AndLegacyProtocolVersion_Throws()
+    {
+        StartServer();
+
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+            {
+                ProtocolVersion = LatestStableVersion,
+                PriorDiscoverResult = CreatePriorDiscoverResult(),
+            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.Empty(transport.SentMethods);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_AndNoCompatibleModernVersion_FallsBackToInitialize()
+    {
+        StartServer();
+
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions
+            {
+                PriorDiscoverResult = CreatePriorDiscoverResult([LatestStableVersion]),
+            });
+
+        Assert.Equal(LatestStableVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_AndPinnedModernVersionMissingFromPrior_Throws()
+    {
+        StartServer();
+
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+            {
+                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+                PriorDiscoverResult = CreatePriorDiscoverResult(["2026-08-01"]),
+            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, exception.Message, StringComparison.Ordinal);
+        Assert.Empty(transport.SentMethods);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_IgnoresUnsupportedFutureVersion()
+    {
+        StartServer();
+
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            PriorDiscoverResult = CreatePriorDiscoverResult(["2026-08-01", McpProtocolVersions.July2026ProtocolVersion]),
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Empty(transport.SentMethods);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_AndPinnedFutureVersion_UsesPinnedVersion()
+    {
+        StartServer();
+
+        const string unsupportedVersion = "2026-08-01";
+        var ct = TestContext.Current.CancellationToken;
+        await using var transport = new RecordingClientTransport();
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = unsupportedVersion,
+            PriorDiscoverResult = CreatePriorDiscoverResult([unsupportedVersion]),
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Empty(transport.SentMethods);
+        Assert.Equal(unsupportedVersion, client.NegotiatedProtocolVersion);
+    }
+
+    private static DiscoverResult CreatePriorDiscoverResult(IList<string>? supportedVersions = null)
+    {
+        return new DiscoverResult
+        {
+            SupportedVersions = supportedVersions ?? [McpProtocolVersions.July2026ProtocolVersion, LatestStableVersion],
+            Capabilities = new ServerCapabilities
+            {
+                Tools = new ToolsCapability(),
+            },
+            ServerInfo = new Implementation { Name = "prior-discovery-test-server", Version = "1.0" },
+            Instructions = "Use prior knowledge.",
+            TimeToLive = TimeSpan.FromMinutes(10),
+            CacheScope = CacheScope.Private,
+        };
+    }
+
+    private sealed class RecordingClientTransport : IClientTransport, ITransport
+    {
+        private readonly Channel<JsonRpcMessage> _incomingToClient = Channel.CreateUnbounded<JsonRpcMessage>();
+        private readonly List<string> _sentMethods = [];
+
+        public string Name => "recording-client-transport";
+
+        public ChannelReader<JsonRpcMessage> MessageReader => _incomingToClient.Reader;
+
+        public bool IsConnected { get; private set; } = true;
+
+        public string? SessionId => null;
+
+        public IReadOnlyList<string> SentMethods => _sentMethods;
+
+        public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
+
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+        {
+            if (message is JsonRpcRequest request)
+            {
+                _sentMethods.Add(request.Method);
+
+                if (request.Method == RequestMethods.ServerDiscover)
+                {
+                    _incomingToClient.Writer.TryWrite(new JsonRpcError
+                    {
+                        Id = request.Id,
+                        Error = new JsonRpcErrorDetail
+                        {
+                            Code = (int)McpErrorCode.MethodNotFound,
+                            Message = "Method not found",
+                        },
+                    });
+                }
+                else if (request.Method == RequestMethods.Initialize)
+                {
+                    _incomingToClient.Writer.TryWrite(new JsonRpcResponse
+                    {
+                        Id = request.Id,
+                        Result = JsonSerializer.SerializeToNode(new InitializeResult
+                        {
+                            ProtocolVersion = LatestStableVersion,
+                            Capabilities = new ServerCapabilities(),
+                            ServerInfo = new Implementation { Name = "legacy-test-server", Version = "1.0" },
+                        }, McpJsonUtilities.DefaultOptions),
+                    });
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _incomingToClient.Writer.TryComplete();
+            IsConnected = false;
+            return default;
+        }
     }
 }
