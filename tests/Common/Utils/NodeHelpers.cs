@@ -541,16 +541,9 @@ public static class NodeHelpers
     /// </summary>
     public static bool HasTasksExtensionScenarios()
         => HasInstalledConformanceScenarios(
-            "tasks-lifecycle",
-            "tasks-capability-negotiation",
             "tasks-wire-fields",
             "tasks-request-state-removal",
-            "tasks-mrtr-input",
-            "tasks-request-headers",
-            "tasks-dispatch-and-envelope",
-            "tasks-status-notifications",
-            "tasks-required-task-error",
-            "tasks-mrtr-composition");
+            "tasks-mrtr-input");
 
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {

@@ -33,10 +33,7 @@ public class McpTaskStoreTests : ClientServerTestBase
             .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            }, options => options.ExecutionModeSelector = request =>
-                request.Params?.Name == "sync-tool"
-                    ? McpTaskExecutionMode.Synchronous
-                    : McpTaskExecutionMode.Optional);
+            });
     }
 
     [Fact]
@@ -81,19 +78,6 @@ public class McpTaskStoreTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         Assert.True(augmented.IsTask);
-    }
-
-    [Fact]
-    public async Task CallToolAsTaskAsync_WithSynchronousExecutionMode_ReturnsDirectResult()
-    {
-        await using var client = await CreateMcpClientForServer();
-
-        var result = await client.CallToolAsTaskAsync(
-            new CallToolRequestParams { Name = "sync-tool" },
-            TestContext.Current.CancellationToken);
-
-        Assert.False(result.IsTask);
-        Assert.Equal("sync result", Assert.IsType<TextContentBlock>(Assert.Single(result.Result!.Content)).Text);
     }
 
     [Fact]
@@ -634,9 +618,6 @@ public class McpTaskStoreTests : ClientServerTestBase
 
         [McpServerTool(Name = "fast-tool"), System.ComponentModel.Description("A fast tool")]
         public static string FastTool() => "fast result";
-
-        [McpServerTool(Name = "sync-tool"), System.ComponentModel.Description("A synchronous-only tool")]
-        public static string SyncTool() => "sync result";
 
         [McpServerTool(Name = "failing-tool"), System.ComponentModel.Description("A tool that fails")]
         public static string FailingTool() => throw new InvalidOperationException("intentional failure");
