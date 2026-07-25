@@ -13,10 +13,10 @@ namespace ModelContextProtocol;
 /// These APIs may change as the specification evolves.
 /// </description></item>
 /// <item><description>
-/// <c>MCPEXP002</c> covers experimental extensibility points in the C# SDK implementation
-/// that are unrelated to the MCP specification, such as subclassing internal types, custom
-/// request handlers, alternate handlers and filters, outgoing request interception, and
-/// routing metadata. These APIs may change or be removed based on SDK design feedback.
+/// <c>MCPEXP002</c> covers SDK extensibility APIs that enable features to be implemented
+/// in standalone packages without requiring Core to understand those features. The Tasks
+/// package is one such consumer. These APIs remain experimental until additional
+/// extensibility scenarios validate the design.
 /// </description></item>
 /// </list>
 /// <para>
@@ -66,9 +66,8 @@ internal static class Experimentals
     public const string Apps_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp003";
 
     /// <summary>
-    /// Diagnostic ID for experimental extensibility points in the C# SDK implementation,
-    /// such as subclassing <c>McpClient</c>/<c>McpServer</c>, custom request handlers,
-    /// alternate handlers and filters, outgoing request interception, and routing metadata.
+    /// Diagnostic ID for SDK extensibility APIs that enable independently packaged features,
+    /// such as Tasks, without requiring Core awareness of those features.
     /// </summary>
     /// <remarks>
     /// This diagnostic ID covers experimental SDK-level extensibility APIs. All constants
