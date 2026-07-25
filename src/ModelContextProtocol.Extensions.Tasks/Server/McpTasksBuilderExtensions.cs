@@ -29,13 +29,36 @@ public static class McpTasksBuilderExtensions
     /// <param name="store">The task store.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     public static IMcpServerBuilder WithTasks(this IMcpServerBuilder builder, IMcpTaskStore store)
+        => WithTasks(builder, store, static _ => { });
+
+    /// <summary>
+    /// Enables MCP Tasks support backed by the specified task store.
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="store">The task store.</param>
+    /// <param name="configure">A callback that configures per-call task execution behavior.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    public static IMcpServerBuilder WithTasks(
+        this IMcpServerBuilder builder,
+        IMcpTaskStore store,
+        Action<McpTasksOptions> configure)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(configure);
 #else
         if (builder is null) throw new ArgumentNullException(nameof(builder));
         if (store is null) throw new ArgumentNullException(nameof(store));
+        if (configure is null) throw new ArgumentNullException(nameof(configure));
+#endif
+
+        McpTasksOptions taskOptions = new();
+        configure(taskOptions);
+#if NET
+        ArgumentNullException.ThrowIfNull(taskOptions.ExecutionModeSelector);
+#else
+        if (taskOptions.ExecutionModeSelector is null) throw new ArgumentNullException(nameof(taskOptions.ExecutionModeSelector));
 #endif
 
         // Resolve ILoggerFactory from the provider (rather than requiring the caller to pass one) so the
@@ -45,18 +68,21 @@ public static class McpTasksBuilderExtensions
             sp => new McpTasksConfigureOptions(
                 store,
                 sp.GetRequiredService<IServiceScopeFactory>(),
-                sp.GetService<ILoggerFactory>()));
+                sp.GetService<ILoggerFactory>(),
+                taskOptions));
         return builder;
     }
 
     private sealed class McpTasksConfigureOptions(
         IMcpTaskStore store,
         IServiceScopeFactory serviceScopeFactory,
-        ILoggerFactory? loggerFactory) : IConfigureOptions<McpServerOptions>
+        ILoggerFactory? loggerFactory,
+        McpTasksOptions taskOptions) : IConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
+        private readonly McpTasksOptions _taskOptions = taskOptions;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
         public void Configure(McpServerOptions options)
@@ -108,9 +134,28 @@ public static class McpTasksBuilderExtensions
                 options.Filters.Request.CallToolWithAlternateFilters.Count,
                 async (request, next, cancellationToken) =>
                 {
+                    var executionMode = _taskOptions.ExecutionModeSelector(request);
+                    if (executionMode is not McpTaskExecutionMode.Synchronous and
+                        not McpTaskExecutionMode.Optional and
+                        not McpTaskExecutionMode.Required)
+                    {
+                        throw new InvalidOperationException(
+                            $"{nameof(McpTasksOptions.ExecutionModeSelector)} returned an invalid {nameof(McpTaskExecutionMode)} value.");
+                    }
+
+                    if (executionMode == McpTaskExecutionMode.Synchronous)
+                    {
+                        return await next(request, cancellationToken).ConfigureAwait(false);
+                    }
+
                     if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) ||
                         !HasTaskExtensionOptIn(request.JsonRpcRequest))
                     {
+                        if (executionMode == McpTaskExecutionMode.Required)
+                        {
+                            throw CreateMissingTasksCapabilityException();
+                        }
+
                         return await next(request, cancellationToken).ConfigureAwait(false);
                     }
 
