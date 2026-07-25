@@ -84,6 +84,7 @@ public sealed class JsonRpcMessageContext
     /// extension methods to identify the named resource targeted by a request.
     /// </remarks>
     [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [JsonIgnore]
     public string? RoutingName { get; set; }
 
     /// <summary>
