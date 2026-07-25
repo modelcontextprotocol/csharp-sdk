@@ -94,6 +94,41 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     }
 
     [Fact]
+    public async Task Authorize_Tool_ReauthorizesPrimitiveChangedByInterveningFilter()
+    {
+        await using var app = await StartServerWithAuth(builder =>
+        {
+            builder.WithTools<AuthorizationTestTools>();
+            builder.Services.Configure<McpServerOptions>(options =>
+            {
+                if (options.ToolCollection is null ||
+                    !options.ToolCollection.TryGetPrimitive("authorized_tool", out var authorizedTool))
+                {
+                    throw new InvalidOperationException("The replacement tool was not registered.");
+                }
+
+                options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+                {
+                    context.MatchedPrimitive = authorizedTool;
+                    return await next(context, cancellationToken);
+                });
+            });
+            builder.AddAuthorizationFilters();
+        });
+
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.CallToolAsync(
+                "anonymous_tool",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): Access forbidden: This tool requires authorization.", exception.Message);
+        Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
+    }
+
+    [Fact]
     public async Task AuthorizeWithRoles_Tool_RequiresAdminRole()
     {
         await using var app = await StartServerWithAuth(builder => builder.WithTools<AuthorizationTestTools>(), "TestUser", "User");

@@ -58,6 +58,7 @@ public static class HttpMcpServerBuilderExtensions
     /// authorization attributes such as <see cref="AuthorizeAttribute"/>
     /// and <see cref="AllowAnonymousAttribute"/>. Tool authorization runs in the alternate-result pipeline before
     /// the Tasks extension dispatches background execution, so an unauthorized tool call does not create a task.
+    /// Call this method again after any call-tool filter that changes the matched tool to authorize the replacement.
     /// </remarks>
     public static IMcpServerBuilder AddAuthorizationFilters(this IMcpServerBuilder builder)
     {
@@ -67,6 +68,9 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.TryAddSingleton<AuthorizationFiltersMarker>();
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        var callToolFilterCheckpoint = new AuthorizationCallToolFilterCheckpoint();
+        builder.Services.AddSingleton(callToolFilterCheckpoint);
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(callToolFilterCheckpoint);
 
         return builder;
     }
