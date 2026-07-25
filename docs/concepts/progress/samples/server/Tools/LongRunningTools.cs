@@ -22,7 +22,7 @@ public class LongRunningTools
         {
             await Task.Delay(stepDuration * 1000);
 
-            // <snippet_SendProgress >
+            // <snippet_SendProgress>
             if (progressToken is not null)
             {
                 await server.SendNotificationAsync("notifications/progress", new ProgressNotificationParams
@@ -36,7 +36,7 @@ public class LongRunningTools
                     },
                 });
             }
-            // </snippet_SendProgress >
+            // </snippet_SendProgress>
         }
 
         return $"Long running tool completed. Duration: {duration} seconds. Steps: {steps}.";

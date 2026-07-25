@@ -11,8 +11,11 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 [sampling]: https://modelcontextprotocol.io/specification/2025-11-25/client/sampling
 
+> [!IMPORTANT]
+> Sampling is **deprecated** as of MCP specification revision `2026-07-28` ([SEP-2577](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577), [MCP9005](xref:list-of-diagnostics#obsolete-apis)) and may be removed in a future version.
+
 > [!NOTE]
-> Sampling is a **server-to-client request** — the server sends a request back to the client over an open connection. This requires [stateful mode or stdio](xref:stateless). Sampling is not available in [stateless mode](xref:stateless#stateless-mode-recommended) because stateless servers cannot send requests to clients.
+> Sampling is a **server-to-client request** — the server sends a request back to the client over an open connection. This requires [stateful mode or stdio](xref:stateless). Sampling is not available in [stateless mode](xref:stateless#stateless-mode-recommended) because stateless servers cannot send requests to clients. For a stateless-compatible alternative, throw `InputRequiredException` from your handler through MRTR — see [Multi round-trip requests (MRTR)](#multi-round-trip-requests-mrtr).
 
 ### How sampling works
 

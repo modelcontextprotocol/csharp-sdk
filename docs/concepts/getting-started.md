@@ -87,7 +87,7 @@ builder.Services.AddMcpServer()
     {
         // Stateless mode is recommended for servers that don't need
         // server-to-client requests like sampling or elicitation.
-        // See the Sessions documentation for details.
+        // See the Stateless and Stateful documentation for details.
         options.Stateless = true;
     })
     .WithToolsFromAssembly();

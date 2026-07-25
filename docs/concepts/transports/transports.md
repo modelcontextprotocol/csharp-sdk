@@ -183,7 +183,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Sessions](xref:stateless).
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
 
 #### Host name validation
 
@@ -328,7 +328,7 @@ app.MapMcp();
 app.Run();
 ```
 
-See [Sessions — Legacy SSE transport](xref:stateless#legacy-sse-transport) for details on SSE session lifetime and configuration.
+See [Stateless and Stateful — Legacy SSE transport](xref:stateless#legacy-sse-transport) for details on SSE session lifetime and configuration.
 
 ### Transport mode comparison
 
@@ -345,7 +345,7 @@ See [Sessions — Legacy SSE transport](xref:stateless#legacy-sse-transport) for
 | Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
 | Best for | Local tools, IDE integrations | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
 
-For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Sessions](xref:stateless).
+For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Stateless and Stateful](xref:stateless).
 
 ### In-memory transport
 
@@ -380,7 +380,7 @@ var echo = tools.First(t => t.Name == "echo");
 Console.WriteLine(await echo.InvokeAsync(new() { ["arg"] = "Hello World" }));
 ```
 
-Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. For information about how session behavior varies across transports, see [Sessions](xref:stateless).
+Like [stdio](#stdio-transport), the in-memory transport is inherently single-session — there is no `Mcp-Session-Id` header, and server-to-client requests (sampling, elicitation, roots) work naturally over the bidirectional pipe. This makes it ideal for testing servers that depend on these features. For information about how session behavior varies across transports, see [Stateless and Stateful](xref:stateless).
 
 ## Cross-application access
 

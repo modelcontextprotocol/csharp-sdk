@@ -11,6 +11,9 @@ MCP servers can expose log messages to clients through the [Logging utility].
 
 [Logging utility]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging
 
+> [!IMPORTANT]
+> Logging is **deprecated** as of MCP specification revision `2026-07-28` ([SEP-2577](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577), [MCP9005](xref:list-of-diagnostics#obsolete-apis)) and may be removed in a future version.
+
 This document describes how to implement logging in MCP servers and how clients can consume log messages.
 
 ### Logging levels
@@ -32,8 +35,8 @@ different set of logging levels. The following table shows the levels and how th
 | `emergency` |      | System is unusable               |                            |
 
 **Note:** .NET's [ILogger] also supports a `Trace` level (more verbose than Debug) log level.
-As there is no equivalent level in the MCP logging levels, Trace level logs messages are silently
-dropped when sending messages to the client.
+As there is no more verbose level in the MCP logging levels, Trace level log messages are mapped to
+the MCP `debug` level when sent to the client.
 
 [ILogger]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger
 [ILoggerProvider]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider
