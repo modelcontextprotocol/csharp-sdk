@@ -75,5 +75,28 @@ public class CustomRequestHandlerCollisionTests(ITestOutputHelper testOutputHelp
         await using var server = McpServer.Create(transport, options, LoggerFactory);
         Assert.NotNull(server);
     }
+
+    [Fact]
+    public async Task CustomHandler_EmptyRoutingNameParameter_Throws()
+    {
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
+        var options = new McpServerOptions
+        {
+            RequestHandlers =
+            [
+                new McpServerRequestHandler
+                {
+                    Method = "custom/method",
+                    RoutingNameParameter = " ",
+                    Handler = (request, cancellationToken) => new ValueTask<JsonNode?>((JsonNode?)null),
+                },
+            ],
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => McpServer.Create(transport, options, LoggerFactory));
+
+        Assert.Contains(nameof(McpServerRequestHandler.RoutingNameParameter), ex.Message);
+    }
 #pragma warning restore MCPEXP002
 }

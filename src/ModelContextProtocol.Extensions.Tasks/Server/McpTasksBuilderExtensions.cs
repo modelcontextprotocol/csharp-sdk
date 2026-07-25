@@ -75,9 +75,24 @@ public static class McpTasksBuilderExtensions
             }
 
             options.RequestHandlers ??= new List<McpServerRequestHandler>();
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksGet, Handler = HandleGetTask });
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksUpdate, Handler = HandleUpdateTask });
-            options.RequestHandlers.Add(new McpServerRequestHandler { Method = TasksProtocol.MethodTasksCancel, Handler = HandleCancelTask });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksGet,
+                RoutingNameParameter = "taskId",
+                Handler = HandleGetTask,
+            });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksUpdate,
+                RoutingNameParameter = "taskId",
+                Handler = HandleUpdateTask,
+            });
+            options.RequestHandlers.Add(new McpServerRequestHandler
+            {
+                Method = TasksProtocol.MethodTasksCancel,
+                RoutingNameParameter = "taskId",
+                Handler = HandleCancelTask,
+            });
 
             if (options.Filters.Request.CallToolFilters.Count > 0)
             {
@@ -93,7 +108,8 @@ public static class McpTasksBuilderExtensions
                 options.Filters.Request.CallToolWithAlternateFilters.Count,
                 async (request, next, cancellationToken) =>
                 {
-                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) || !HasTaskExtensionOptIn(request.Params?.Meta))
+                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) ||
+                        !HasTaskExtensionOptIn(request.JsonRpcRequest))
                     {
                         return await next(request, cancellationToken).ConfigureAwait(false);
                     }
@@ -257,6 +273,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksGet);
+            GateToTasksCapability(request);
 
             var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.GetTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/get", McpErrorCode.InvalidParams);
@@ -273,6 +290,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleUpdateTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksUpdate);
+            GateToTasksCapability(request);
 
             var taskId = request.Params?["taskId"]?.GetValue<string>()
                 ?? throw new McpProtocolException("Missing params.taskId for tasks/update", McpErrorCode.InvalidParams);
@@ -292,6 +310,7 @@ public static class McpTasksBuilderExtensions
         private async ValueTask<JsonNode?> HandleCancelTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksCancel);
+            GateToTasksCapability(request);
 
             var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.CancelTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/cancel", McpErrorCode.InvalidParams);
@@ -319,11 +338,29 @@ public static class McpTasksBuilderExtensions
             }
         }
 
-        private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
-            meta is not null &&
-            meta[MetaKeys.ClientCapabilities] is JsonObject caps &&
-            caps["extensions"] is JsonObject exts &&
-            exts.ContainsKey(TasksProtocol.ExtensionId);
+        private static void GateToTasksCapability(JsonRpcRequest request)
+        {
+            if (!HasTaskExtensionOptIn(request))
+            {
+                throw CreateMissingTasksCapabilityException();
+            }
+        }
+
+        private static MissingRequiredClientCapabilityException CreateMissingTasksCapabilityException() =>
+            new(
+                new ClientCapabilities
+                {
+                    Extensions = new Dictionary<string, object>
+                    {
+                        [TasksProtocol.ExtensionId] = new JsonObject(),
+                    },
+                },
+                $"The request requires the '{TasksProtocol.ExtensionId}' client extension capability.");
+
+        private static bool HasTaskExtensionOptIn(JsonRpcRequest request) =>
+            request.Context?.ClientCapabilities?.Extensions?.ContainsKey(TasksProtocol.ExtensionId) is true ||
+            request.Params?["_meta"]?[MetaKeys.ClientCapabilities]?["extensions"] is JsonObject extensions &&
+                extensions.ContainsKey(TasksProtocol.ExtensionId);
 
         private static bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
             McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(request?.Context?.ProtocolVersion);

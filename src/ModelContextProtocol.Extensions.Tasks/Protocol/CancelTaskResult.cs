@@ -20,4 +20,9 @@ namespace ModelContextProtocol.Extensions.Tasks;
 /// </remarks>
 public sealed class CancelTaskResult : Result
 {
+    /// <summary>Initializes a new task cancellation acknowledgement.</summary>
+    public CancelTaskResult()
+    {
+        ResultType = "complete";
+    }
 }

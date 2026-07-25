@@ -110,7 +110,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value.ToolCollection, out var errorMessage))
+        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value, out var errorMessage))
         {
             await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
             return;
@@ -829,10 +829,10 @@ internal sealed class StreamableHttpHandler(
     /// </summary>
     /// <param name="context">The HTTP context containing the request headers.</param>
     /// <param name="message">The JSON-RPC message to validate against.</param>
-    /// <param name="toolCollection">The tool collection to look up tool schemas for parameter header validation.</param>
+    /// <param name="serverOptions">The server options containing tools and custom request routing metadata.</param>
     /// <param name="errorMessage">Set to the error message if validation fails; null otherwise.</param>
     /// <returns>True if validation passes; false otherwise.</returns>
-    internal static bool ValidateMcpHeaders(HttpContext context, JsonRpcMessage message, McpServerPrimitiveCollection<McpServerTool>? toolCollection, [NotNullWhen(false)] out string? errorMessage)
+    internal static bool ValidateMcpHeaders(HttpContext context, JsonRpcMessage message, McpServerOptions serverOptions, [NotNullWhen(false)] out string? errorMessage)
     {
         // Only validate for protocol versions that support standard headers.
         var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
@@ -871,8 +871,10 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        // From here on, only validate resources/read, tools/call, and prompts/get requests
-        if (mcpMethodInBody is not (RequestMethods.ToolsCall or RequestMethods.ResourcesRead or RequestMethods.PromptsGet))
+#pragma warning disable MCPEXP002
+        var routingNameParameter = GetRoutingNameParameter(mcpMethodInBody, serverOptions.RequestHandlers);
+#pragma warning restore MCPEXP002
+        if (routingNameParameter is null)
         {
             errorMessage = null;
             return true;
@@ -911,13 +913,7 @@ internal sealed class StreamableHttpHandler(
             JsonRpcNotification notification => notification.Params,
             _ => null,
         };
-        var mcpNameInBody = mcpMethodInBody switch
-        {
-            RequestMethods.ToolsCall => GetJsonNodeStringProperty(bodyParams, "name"),
-            RequestMethods.ResourcesRead => GetJsonNodeStringProperty(bodyParams, "uri"),
-            RequestMethods.PromptsGet => GetJsonNodeStringProperty(bodyParams, "name"),
-            _ => null,
-        };
+        var mcpNameInBody = GetJsonNodeStringProperty(bodyParams, routingNameParameter);
 
         // Check that the header value matches the body value if the body value is present.
         if (!string.Equals(decodedMcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
@@ -927,7 +923,7 @@ internal sealed class StreamableHttpHandler(
         }
 
         // Validate Mcp-Param-* custom headers against tool schema
-        if (!ValidateCustomParamHeaders(context, message, toolCollection, out errorMessage))
+        if (!ValidateCustomParamHeaders(context, message, serverOptions.ToolCollection, out errorMessage))
         {
             return false;
         }
@@ -935,6 +931,38 @@ internal sealed class StreamableHttpHandler(
         errorMessage = null;
         return true;
     }
+
+#pragma warning disable MCPEXP002
+    private static string? GetRoutingNameParameter(
+        string? method,
+        IList<McpServerRequestHandler>? requestHandlers)
+    {
+        var builtInParameter = method switch
+        {
+            RequestMethods.ToolsCall or RequestMethods.PromptsGet => "name",
+            RequestMethods.ResourcesRead => "uri",
+            _ => null,
+        };
+
+        if (builtInParameter is not null)
+        {
+            return builtInParameter;
+        }
+
+        if (requestHandlers is not null)
+        {
+            foreach (var requestHandler in requestHandlers)
+            {
+                if (string.Equals(requestHandler.Method, method, StringComparison.Ordinal))
+                {
+                    return requestHandler.RoutingNameParameter;
+                }
+            }
+        }
+
+        return null;
+    }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Validates that all parameters annotated with <c>x-mcp-header</c> in the tool's input schema

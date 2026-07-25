@@ -1011,6 +1011,12 @@ internal sealed partial class McpServerImpl : McpServer
                     $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
             }
 
+            if (entry.RoutingNameParameter is not null && string.IsNullOrWhiteSpace(entry.RoutingNameParameter))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
+            }
+
             // Custom handlers are registered after all built-in handlers, so a method already present
             // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
             // Silently overwriting it would bypass the built-in handler's filters and protocol gating,

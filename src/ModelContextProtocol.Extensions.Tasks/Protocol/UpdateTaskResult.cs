@@ -19,4 +19,9 @@ namespace ModelContextProtocol.Extensions.Tasks;
 /// </remarks>
 public sealed class UpdateTaskResult : Result
 {
+    /// <summary>Initializes a new task update acknowledgement.</summary>
+    public UpdateTaskResult()
+    {
+        ResultType = "complete";
+    }
 }
