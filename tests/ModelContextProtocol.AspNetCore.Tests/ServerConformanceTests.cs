@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
@@ -28,12 +27,9 @@ public class ServerConformanceTests(
     }
 
     [Fact]
-    public async Task RunPendingConformanceTest_JsonSchema202012()
+    public async Task RunConformanceTest_JsonSchema202012()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(
-            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
-            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario json-schema-2020-12");
 
@@ -42,12 +38,9 @@ public class ServerConformanceTests(
     }
 
     [Fact]
-    public async Task RunPendingConformanceTest_ServerSsePolling()
+    public async Task RunConformanceTest_ServerSsePolling()
     {
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-        Assert.SkipWhen(
-            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
-            "Pending Node-based conformance scenario is unstable on Windows due to a libuv shutdown assertion.");
 
         var result = await RunConformanceTestsAsync($"server --url {fixture.ServerUrl} --scenario server-sse-polling");
 
@@ -132,6 +125,34 @@ public class ServerConformanceTests(
 
         Assert.True(result.Success,
             $"MRTR conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Theory]
+    [InlineData("tasks-wire-fields")]
+    [InlineData("tasks-request-state-removal")]
+    [InlineData("tasks-mrtr-input")]
+    // Most remaining scenarios require per-tool task execution configuration that the SDK
+    // does not currently expose; status notifications await an upstream harness rewrite.
+    // Keep them listed here for incremental enablement.
+    // [InlineData("tasks-lifecycle")]
+    // [InlineData("tasks-capability-negotiation")]
+    // [InlineData("tasks-request-headers")]
+    // [InlineData("tasks-dispatch-and-envelope")]
+    // [InlineData("tasks-status-notifications")]
+    // [InlineData("tasks-required-task-error")]
+    // [InlineData("tasks-mrtr-composition")]
+    public async Task RunTasksExtensionConformanceTest(string scenario)
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(
+            !NodeHelpers.HasTasksExtensionScenarios(),
+            "SEP-2663 Tasks extension scenarios are not available in the installed conformance package.");
+
+        var result = await RunStatelessConformanceTestAsync(
+            $"server --url {fixture.StatelessServerUrl} --scenario {scenario}");
+
+        Assert.True(result.Success,
+            $"Tasks extension conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)

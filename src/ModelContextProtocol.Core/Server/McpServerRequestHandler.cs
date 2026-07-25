@@ -25,6 +25,17 @@ public sealed class McpServerRequestHandler
     public required string Method { get; init; }
 
     /// <summary>
+    /// Gets the name of the top-level request parameter whose value is mirrored in the
+    /// <c>Mcp-Name</c> HTTP routing header.
+    /// </summary>
+    /// <remarks>
+    /// When set, Streamable HTTP servers require the request to include an <c>Mcp-Name</c>
+    /// header whose decoded value matches the string value of this parameter.
+    /// </remarks>
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public string? RoutingNameParameter { get; init; }
+
+    /// <summary>
     /// Gets the handler function that processes incoming requests for the specified method.
     /// </summary>
     /// <remarks>

@@ -70,18 +70,44 @@ public sealed class ClientOAuthOptions
     public ScopeSelectorDelegate? ScopeSelector { get; set; }
 
     /// <summary>
-    /// Gets or sets the authorization redirect delegate for handling the OAuth authorization flow.
+    /// Gets or sets the callback that handles the OAuth authorization flow.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This delegate is responsible for handling the OAuth authorization URL and obtaining the authorization code.
-    /// If not specified, a default implementation will be used that prompts the user to enter the code manually.
+    /// This callback receives the authorization and redirect URIs in an
+    /// <see cref="AuthorizationCallbackContext"/> and returns the authorization response.
+    /// If not specified, a default implementation prompts the user to enter the full redirect URL manually.
     /// </para>
     /// <para>
     /// Custom implementations might open a browser, start an HTTP listener, or use other mechanisms to capture
-    /// the authorization code from the OAuth redirect.
+    /// the authorization response. They should return both the <c>code</c> and <c>iss</c> query parameters
+    /// from the redirect URI callback. This enables the SDK to validate the <c>iss</c> parameter per
+    /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>, which mitigates
+    /// mix-up attacks.
+    /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationRedirectDelegate"/>.
     /// </para>
     /// </remarks>
+    public Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the legacy authorization redirect delegate for handling the OAuth authorization flow.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This delegate returns only the authorization code and cannot provide the <c>iss</c> parameter from
+    /// the authorization response. Consequently, RFC 9207 issuer validation is skipped when this delegate
+    /// is used. Use <see cref="AuthorizationCallbackHandler"/> for issuer-aware authorization flows.
+    /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationCallbackHandler"/>.
+    /// </para>
+    /// </remarks>
+    [Obsolete(
+        ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_Message,
+        DiagnosticId = ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_DiagnosticId,
+        UrlFormat = ModelContextProtocol.Obsoletions.AuthorizationRedirectDelegate_Url)]
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>

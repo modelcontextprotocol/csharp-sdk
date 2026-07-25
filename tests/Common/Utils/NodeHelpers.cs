@@ -535,6 +535,16 @@ public static class NodeHelpers
             "input-required-result-ignore-extra-params",
             "input-required-result-validate-input");
 
+    /// <summary>
+    /// Checks whether the SEP-2663 Tasks extension server scenarios are available in the
+    /// installed conformance package.
+    /// </summary>
+    public static bool HasTasksExtensionScenarios()
+        => HasInstalledConformanceScenarios(
+            "tasks-wire-fields",
+            "tasks-request-state-removal",
+            "tasks-mrtr-input");
+
     private static ProcessStartInfo NpmStartInfo(string arguments, string workingDirectory)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

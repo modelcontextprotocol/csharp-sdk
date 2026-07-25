@@ -136,7 +136,7 @@ public class TaskRunnerLifecycleTests : ClientServerTestBase
     {
 #pragma warning disable MCPEXP002
         services.Configure<McpServerOptions>(options =>
-            options.Filters.Request.CallToolWithAlternateFilters.Add(next => async (request, cancellationToken) =>
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
             {
                 if (_delayRunnerRegistration && request.Params?.Name == "lifecycle-tool")
                 {

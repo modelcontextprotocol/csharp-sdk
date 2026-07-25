@@ -12,7 +12,8 @@ internal sealed class OAuthServerMetadata
     /// REQUIRED. The authorization server's issuer identifier, which is a URL that uses the "https" scheme and has no query or fragment components.
     /// </summary>
     [JsonPropertyName("issuer")]
-    public required string Issuer { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Issuer { get; init; }
 
     /// <summary>
     /// Gets or sets the authorization endpoint URL.
@@ -178,4 +179,11 @@ internal sealed class OAuthServerMetadata
     [JsonPropertyName("client_id_metadata_document_supported")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ClientIdMetadataDocumentSupported { get; init; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether authorization responses contain an issuer parameter.
+    /// </summary>
+    [JsonPropertyName("authorization_response_iss_parameter_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AuthorizationResponseIssParameterSupported { get; init; }
 }

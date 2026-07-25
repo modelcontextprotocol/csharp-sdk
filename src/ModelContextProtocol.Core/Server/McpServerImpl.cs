@@ -36,7 +36,6 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
     private readonly ConcurrentDictionary<Task, byte> _backgroundTasks = new();
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
-
     private static readonly string[] s_perRequestMetadataKeys =
     [
         MetaKeys.ProtocolVersion,
@@ -1061,6 +1060,12 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                     $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
             }
 
+            if (entry.RoutingNameParameter is not null && string.IsNullOrWhiteSpace(entry.RoutingNameParameter))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
+            }
+
             // Custom handlers are registered after all built-in handlers, so a method already present
             // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
             // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
@@ -1370,20 +1375,13 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
         var callToolFilters = options.Filters.Request.CallToolFilters;
         var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-alternate filters/handler with alternate filters/handler.
-        bool hasNonAlternatePath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasAlternatePath = callToolWithAlternateHandler is not null || callToolWithAlternateFilters.Count > 0;
-
-        if (hasNonAlternatePath && hasAlternatePath)
+        if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}) tool-call filters or handlers. " +
-                $"These two styles cannot currently be composed on the same server. " +
-                $"This most commonly happens when combining features that register different tool-call filter styles, " +
-                $"for example AddAuthorizationFilters() (which registers a {nameof(McpRequestFilters.CallToolFilters)} filter) together with " +
-                $"WithTasks() (which registers a {nameof(McpRequestFilters.CallToolWithAlternateFilters)} filter). " +
-                $"Configure only one style, or avoid combining features that require different styles.");
+                $"Cannot apply {nameof(McpRequestFilters.CallToolFilters)} when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler " +
+                $"replaces the ordinary tool-call pipeline. Move the behavior to " +
+                $"{nameof(McpRequestFilters.CallToolWithAlternateFilters)} or remove the explicit alternate handler.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1425,18 +1423,16 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified alternate-result handler from one of the two paths.
-        if (hasAlternatePath)
+        // An explicit alternate handler replaces the ordinary tool-call pipeline.
+        if (callToolWithAlternateHandler is not null)
         {
-            // Case 2: alternate filter + alternate handler
-            callToolWithAlternateHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-
             // Augment with DI tools.
             if (tools is not null)
             {
                 var originalHandler = callToolWithAlternateHandler;
                 callToolWithAlternateHandler = (request, cancellationToken) =>
                 {
+                    MatchTool(request, tools);
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
                         return InvokeToolWithAlternate(tool, request, cancellationToken);
@@ -1446,11 +1442,13 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                 };
             }
 
-            callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters, BuildInitialAlternateToolFilter(tools));
+            callToolWithAlternateHandler = BuildInvocationFilterPipeline(
+                callToolWithAlternateHandler,
+                callToolWithAlternateFilters,
+                BuildInitialAlternateToolFilter(tools));
         }
         else
         {
-            // Case 1: non-alternate filter + non-alternate handler -> apply filters, then convert to alternate-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1468,12 +1466,12 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                 };
             }
 
-            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
+            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters);
 
-            // Convert to alternate-based.
-            var finalCallToolHandler = callToolHandler;
-            callToolWithAlternateHandler = async (request, cancellationToken) =>
-                await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+            callToolWithAlternateHandler = BuildComposedCallToolHandler(
+                callToolHandler,
+                callToolWithAlternateFilters,
+                tools);
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 
@@ -1497,58 +1495,79 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
         return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private McpRequestFilter<CallToolRequestParams, CallToolResult> BuildInitialCallToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
+        IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> callToolWithAlternateFilters,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        return async (request, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
+
+            var invocation = new ComposedCallToolInvocationState();
+            var composedHandler = BuildInvocationFilterPipeline(
+                InvokeOrdinaryPipelineAsync,
+                callToolWithAlternateFilters);
 
             try
             {
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
+                var result = await composedHandler(request, cancellationToken).ConfigureAwait(false);
+                LogToolCallLifecycles(request, invocation.CompleteOuter(result));
                 return result;
             }
             catch (Exception e)
             {
-                // Skip logging for InputRequiredException - it's normal MRTR control flow,
-                // not an error (tools throw it to signal an InputRequiredResult).
-                if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-                }
+                LogToolCallLifecycles(
+                    request,
+                    invocation.CompleteOuterException(
+                        e,
+                        cancellationToken.IsCancellationRequested));
 
                 if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
                 {
                     throw;
                 }
 
-                return new()
+                return CreateToolCallErrorResult(request, e);
+            }
+
+            async ValueTask<ResultOrAlternate<CallToolResult>> InvokeOrdinaryPipelineAsync(
+                RequestContext<CallToolRequestParams> ordinaryRequest,
+                CancellationToken ordinaryCancellationToken)
+            {
+                try
                 {
-                    IsError = true,
-                    Content = [new TextContentBlock
+                    MatchTool(ordinaryRequest, tools);
+                    var result = await callToolHandler(ordinaryRequest, ordinaryCancellationToken).ConfigureAwait(false);
+                    LogToolCallLifecycles(ordinaryRequest, invocation.RecordOrdinaryResult(result));
+                    return result;
+                }
+                catch (Exception exception)
+                {
+                    LogToolCallLifecycles(
+                        ordinaryRequest,
+                        invocation.RecordOrdinaryException(
+                            exception,
+                            ordinaryCancellationToken.IsCancellationRequested));
+
+                    if ((exception is OperationCanceledException && ordinaryCancellationToken.IsCancellationRequested) ||
+                        exception is McpProtocolException ||
+                        exception is InputRequiredException)
                     {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                        throw;
+                    }
+
+                    return CreateToolCallErrorResult(ordinaryRequest, exception);
+                }
             }
         };
+    }
 
-    private McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
+        McpServerPrimitiveCollection<McpServerTool>? tools) =>
+        async (request, handler, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
 
             try
             {
@@ -1574,18 +1593,54 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                     throw;
                 }
 
-                return new CallToolResult
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock
-                    {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                return CreateToolCallErrorResult(request, e);
             }
         };
+
+    private static void MatchTool(
+        RequestContext<CallToolRequestParams> request,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        if (request.Params?.Name is { } toolName && tools is not null &&
+            tools.TryGetPrimitive(toolName, out var tool))
+        {
+            request.MatchedPrimitive = tool;
+        }
+    }
+
+    private static CallToolResult CreateToolCallErrorResult(
+        RequestContext<CallToolRequestParams> request,
+        Exception exception) =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = exception is McpException ?
+                    $"An error occurred invoking '{request.Params?.Name}': {exception.Message}" :
+                    $"An error occurred invoking '{request.Params?.Name}'.",
+            }],
+        };
+
+    private void LogToolCallLifecycles(
+        RequestContext<CallToolRequestParams> request,
+        IReadOnlyList<ToolCallLifecycle> lifecycles)
+    {
+        string toolName = request.Params?.Name ?? string.Empty;
+        foreach (var lifecycle in lifecycles)
+        {
+            if (lifecycle.Result is { } result)
+            {
+                ToolCallCompleted(toolName, result.IsError is true);
+            }
+            else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
+                lifecycle.Exception is not InputRequiredException)
+            {
+                ToolCallError(toolName, lifecycle.Exception!);
+            }
+        }
+    }
+
 #pragma warning restore MCPEXP002
 
     private void ConfigureLogging(McpServerOptions options)
@@ -1778,6 +1833,31 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
 
         return current;
     }
+
+#pragma warning disable MCPEXP002
+    private static McpRequestHandler<TParams, TResult> BuildInvocationFilterPipeline<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> baseHandler,
+        IList<McpRequestInvocationFilter<TParams, TResult>> filters,
+        McpRequestInvocationFilter<TParams, TResult>? initialHandler = null)
+    {
+        var current = baseHandler;
+
+        for (int i = filters.Count - 1; i >= 0; i--)
+        {
+            var next = current;
+            var filter = filters[i];
+            current = (request, cancellationToken) => filter(request, next, cancellationToken);
+        }
+
+        if (initialHandler is not null)
+        {
+            var next = current;
+            current = (request, cancellationToken) => initialHandler(request, next, cancellationToken);
+        }
+
+        return current;
+    }
+#pragma warning restore MCPEXP002
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {
