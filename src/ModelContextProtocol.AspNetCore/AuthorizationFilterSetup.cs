@@ -12,17 +12,15 @@ namespace ModelContextProtocol.AspNetCore;
 /// Evaluates authorization policies from endpoint metadata.
 /// </summary>
 internal sealed class AuthorizationFilterSetup(
-    IAuthorizationPolicyProvider? policyProvider = null,
-    AuthorizationFiltersMarker? marker = null,
-    IEnumerable<AuthorizationCallToolFilterCheckpoint>? callToolFilterCheckpoints = null) :
+    IAuthorizationPolicyProvider? policyProvider = null) :
     IConfigureOptions<McpServerOptions>, IPostConfigureOptions<McpServerOptions>
 {
     private static readonly string AuthorizationFilterInvokedKey = "ModelContextProtocol.AspNetCore.AuthorizationFilter.Invoked";
-    private static readonly string LastAuthorizedToolKey = "ModelContextProtocol.AspNetCore.AuthorizationFilter.LastAuthorizedTool";
 
     public void Configure(McpServerOptions options)
     {
         ConfigureListToolsFilter(options);
+        ConfigureCallToolFilter(options);
 
         ConfigureListResourcesFilter(options);
         ConfigureListResourceTemplatesFilter(options);
@@ -34,14 +32,6 @@ internal sealed class AuthorizationFilterSetup(
 
     public void PostConfigure(string? name, McpServerOptions options)
     {
-        ConfigureCallToolFilters(options);
-
-        // Add tool authorization after all regular configuration so it always wraps Tasks.
-        if (marker is not null)
-        {
-            ConfigureAlternateCallToolFilter(options);
-        }
-
         CheckListToolsFilter(options);
 
         CheckListResourcesFilter(options);
@@ -90,53 +80,17 @@ internal sealed class AuthorizationFilterSetup(
         });
     }
 
-    private void ConfigureCallToolFilters(McpServerOptions options)
+    private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        if (callToolFilterCheckpoints is null)
-        {
-            return;
-        }
-
-        int insertedFilters = 0;
-        foreach (var checkpoint in callToolFilterCheckpoints)
-        {
-            if (!checkpoint.TryTakeIndex(options, out var index))
-            {
-                continue;
-            }
-
-            options.Filters.Request.CallToolFilters.Insert(
-                index + insertedFilters++,
-                CreateCallToolFilter());
-        }
-    }
-
-    private McpRequestFilter<CallToolRequestParams, CallToolResult> CreateCallToolFilter()
-        => next => async (context, cancellationToken) =>
-        {
-            await AuthorizeToolAsync(context);
-            return await next(context, cancellationToken);
-        };
-
-    private void ConfigureAlternateCallToolFilter(McpServerOptions options)
-    {
-#pragma warning disable MCPEXP002 // Authorization must run in the alternate-result pipeline before task dispatch.
-        options.Filters.Request.CallToolWithAlternateFilters.Insert(0, async (context, next, cancellationToken) =>
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
             await AuthorizeToolAsync(context);
             return await next(context, cancellationToken);
         });
-#pragma warning restore MCPEXP002
     }
 
     private async ValueTask AuthorizeToolAsync(RequestContext<CallToolRequestParams> context)
     {
-        if (context.Items.TryGetValue(LastAuthorizedToolKey, out var lastAuthorizedTool) &&
-            ReferenceEquals(lastAuthorizedTool, context.MatchedPrimitive))
-        {
-            return;
-        }
-
         var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
         if (!authResult.Succeeded)
         {
@@ -144,7 +98,6 @@ internal sealed class AuthorizationFilterSetup(
         }
 
         context.Items[AuthorizationFilterInvokedKey] = true;
-        context.Items[LastAuthorizedToolKey] = context.MatchedPrimitive;
     }
 
     private void ConfigureListResourcesFilter(McpServerOptions options)
@@ -426,32 +379,4 @@ internal sealed class AuthorizationFilterSetup(
 
     private static bool HasAuthorizationMetadata(IEnumerable<IMcpServerPrimitive?> primitives)
         => primitives.Any(HasAuthorizationMetadata);
-}
-
-internal sealed class AuthorizationCallToolFilterCheckpoint : IConfigureOptions<McpServerOptions>
-{
-    private readonly Dictionary<McpServerOptions, int> _indices = new(ReferenceEqualityComparer.Instance);
-
-    public void Configure(McpServerOptions options)
-    {
-        lock (_indices)
-        {
-            _indices.Add(options, options.Filters.Request.CallToolFilters.Count);
-        }
-    }
-
-    public bool TryTakeIndex(McpServerOptions options, out int index)
-    {
-        lock (_indices)
-        {
-            if (_indices.TryGetValue(options, out index))
-            {
-                _indices.Remove(options);
-                return true;
-            }
-        }
-
-        index = 0;
-        return false;
-    }
 }
