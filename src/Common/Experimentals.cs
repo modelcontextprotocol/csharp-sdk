@@ -86,6 +86,21 @@ internal static class Experimentals
     public const string Subclassing_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
 
     /// <summary>
+    /// Diagnostic ID for experimental extensibility points in the C# SDK implementation.
+    /// </summary>
+    public const string Extensibility_DiagnosticId = Subclassing_DiagnosticId;
+
+    /// <summary>
+    /// Message for experimental extensibility points in the C# SDK implementation.
+    /// </summary>
+    public const string Extensibility_Message = "This C# SDK extensibility API is experimental and subject to change.";
+
+    /// <summary>
+    /// URL for experimental extensibility points in the C# SDK implementation.
+    /// </summary>
+    public const string Extensibility_Url = Subclassing_Url;
+
+    /// <summary>
     /// Diagnostic ID for the experimental <c>RunSessionHandler</c> API.
     /// </summary>
     /// <remarks>

@@ -83,7 +83,7 @@ public sealed class JsonRpcMessageContext
     /// Streamable HTTP transports emit this value in the <c>Mcp-Name</c> header. This enables
     /// extension methods to identify the named resource targeted by a request.
     /// </remarks>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     [JsonIgnore]
     public string? RoutingName { get; set; }
 
