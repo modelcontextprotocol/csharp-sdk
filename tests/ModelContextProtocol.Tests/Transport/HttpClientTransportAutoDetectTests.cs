@@ -50,12 +50,11 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
     }
 
     [Fact]
-    public async Task AutoDetectMode_WhenBothTransportsFail_ThrowsInvalidOperationException()
+    public async Task AutoDetectMode_WhenBothTransportsFail_PreservesStreamableHttpException()
     {
         // Regression test: when Streamable HTTP POST fails (e.g. 403) and the SSE GET
-        // fallback also fails (e.g. 405), ConnectAsync should wrap the error in an
-        // InvalidOperationException. Previously, CloseAsync() would re-throw the
-        // HttpRequestException from the faulted _receiveTask, preempting the wrapping.
+        // fallback also fails (e.g. 405), the original Streamable HTTP error should
+        // be preserved. The SSE connection failure is available as its inner exception.
         var options = new HttpClientTransportOptions
         {
             Endpoint = new Uri("http://localhost"),
@@ -96,11 +95,11 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         // any HTTP request. The auto-detection is triggered lazily by the first
         // SendMessageAsync call, which happens inside McpClient.CreateAsync when it
         // sends the JSON-RPC "initialize" message.
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
             () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Equal("Failed to connect transport", ex.Message);
-        Assert.IsType<HttpRequestException>(ex.InnerException);
+        Assert.Contains("403", ex.Message);
+        Assert.IsType<IOException>(ex.InnerException);
     }
 
     [Fact]

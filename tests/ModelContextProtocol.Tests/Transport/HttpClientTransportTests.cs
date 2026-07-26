@@ -78,9 +78,8 @@ public class HttpClientTransportTests : LoggedTest
             throw new Exception("Test exception");
         };
 
-        // SseClientSessionTransport.ConnectAsync wraps errors in InvalidOperationException
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
-        Assert.Equal("Failed to connect transport", exception.Message);
+        var exception = await Assert.ThrowsAsync<IOException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Failed to connect transport.", exception.Message);
         Assert.IsType<Exception>(exception.InnerException);
         Assert.Equal("Test exception", exception.InnerException!.Message);
         Assert.Equal(1, retries);
@@ -104,9 +103,8 @@ public class HttpClientTransportTests : LoggedTest
             });
         };
 
-        // SseClientSessionTransport.ConnectAsync wraps errors in InvalidOperationException
-        var wrappedException = await Assert.ThrowsAsync<InvalidOperationException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
-        Assert.Equal("Failed to connect transport", wrappedException.Message);
+        var wrappedException = await Assert.ThrowsAsync<IOException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Failed to connect transport.", wrappedException.Message);
         var httpException = Assert.IsType<HttpRequestException>(wrappedException.InnerException);
         Assert.Contains(errorDetails, httpException.Message);
         Assert.Contains("400", httpException.Message);
