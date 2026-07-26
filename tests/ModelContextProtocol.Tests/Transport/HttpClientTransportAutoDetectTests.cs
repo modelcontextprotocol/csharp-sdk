@@ -99,7 +99,8 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
             () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("403", ex.Message);
-        Assert.IsType<IOException>(ex.InnerException);
+        Assert.IsType<HttpRequestException>(ex.InnerException);
+        Assert.Contains("405", ex.InnerException.Message);
     }
 
     [Fact]
