@@ -9,6 +9,9 @@ public class McpHeaderAttributeTests
     [InlineData("TenantId")]
     [InlineData("Priority")]
     [InlineData("X-Custom")]
+    [InlineData("x!header")]
+    [InlineData("x#header")]
+    [InlineData("x~header")]
     public void Constructor_ValidHeaderName_Succeeds(string name)
     {
         var attr = new McpHeaderAttribute(name);
@@ -25,6 +28,23 @@ public class McpHeaderAttributeTests
     public void Constructor_NameWithColon_Throws()
     {
         Assert.Throws<ArgumentException>(() => new McpHeaderAttribute("Region:Primary"));
+    }
+
+    [Theory]
+    [InlineData("Region(1)")]
+    [InlineData("path/to")]
+    [InlineData("key=value")]
+    [InlineData("name@host")]
+    [InlineData("with,comma")]
+    [InlineData("with;semi")]
+    [InlineData("with[bracket")]
+    [InlineData("with{brace")]
+    [InlineData("with\"quote")]
+    [InlineData("with\\backslash")]
+    [InlineData("with?question")]
+    public void Constructor_NonTcharCharacter_Throws(string name)
+    {
+        Assert.Throws<ArgumentException>(() => new McpHeaderAttribute(name));
     }
 
     [Fact]

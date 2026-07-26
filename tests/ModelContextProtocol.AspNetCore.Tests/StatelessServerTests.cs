@@ -4,8 +4,12 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -316,6 +320,64 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Assert.Null(client.ServerCapabilities.Tools?.ListChanged);
         Assert.Null(client.ServerCapabilities.Prompts?.ListChanged);
         Assert.Null(client.ServerCapabilities.Resources?.ListChanged);
+    }
+
+    [Fact]
+    public async Task SubscriptionsListen_InStatelessMode_GrantsNothing_AndDoesNotHoldRequestOpen()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+            })
+            .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
+            .WithPrompts([McpServerPrompt.Create(() => new GetPromptResult(), new() { Name = "myPrompt" })])
+            .WithResources([McpServerResource.Create(() => new ReadResourceResult(), new() { UriTemplate = "resource://test" })]);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        var ackChannel = Channel.CreateUnbounded<JsonRpcNotification>();
+        await using var ackReg = client.RegisterNotificationHandler(NotificationMethods.SubscriptionsAcknowledgedNotification,
+            (notification, _) => { ackChannel.Writer.TryWrite(notification); return default; });
+
+        // Request every kind of subscription the protocol exposes, even though the server registers
+        // subscribable primitives. A stateless session cannot push out-of-band notifications, so the
+        // request must acknowledge with no grants and complete promptly instead of holding the POST
+        // (and its request scope) open forever - a regression would hang here until the timeout.
+        var listenRequest = new JsonRpcRequest
+        {
+            Method = RequestMethods.SubscriptionsListen,
+            Params = JsonSerializer.SerializeToNode(
+                new SubscriptionsListenRequestParams
+                {
+                    Notifications = new SubscriptionsListenNotifications
+                    {
+                        ToolsListChanged = true,
+                        PromptsListChanged = true,
+                        ResourcesListChanged = true,
+                        ResourceSubscriptions = ["resource://test"],
+                    },
+                },
+                McpJsonUtilities.DefaultOptions),
+        };
+
+        await client.SendRequestAsync(listenRequest, TestContext.Current.CancellationToken)
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // The acknowledgement is sent before the response completes, so it is already buffered here.
+        var ack = await ackChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
+        var grantedNotifications = Assert.IsType<JsonObject>(Assert.IsType<JsonObject>(ack.Params)["notifications"]);
+        Assert.Null(grantedNotifications["toolsListChanged"]);
+        Assert.Null(grantedNotifications["promptsListChanged"]);
+        Assert.Null(grantedNotifications["resourcesListChanged"]);
+        Assert.Null(grantedNotifications["resourceSubscriptions"]);
     }
 
     [McpServerTool(Name = "testSamplingErrors")]

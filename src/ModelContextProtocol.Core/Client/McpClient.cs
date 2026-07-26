@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
@@ -70,6 +71,33 @@ public abstract partial class McpClient : McpSession
     /// </para>
     /// </remarks>
     public abstract Task<ClientCompletionDetails> Completion { get; }
+
+    /// <summary>
+    /// Resolves input requests by dispatching
+    /// each request to the appropriate registered handler.
+    /// </summary>
+    /// <param name="inputRequests">
+    /// The input requests from the task, keyed by request identifier. Each value is an
+    /// <see cref="InputRequest"/> wrapping the server-to-client request payload.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
+    public abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+        IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Inspects a received cacheable result (<c>tools/list</c>, <c>prompts/list</c>, <c>resources/list</c>,
+    /// <c>resources/templates/list</c>, or <c>resources/read</c>) so derived clients can emit diagnostics.
+    /// </summary>
+    /// <param name="method">The request method that produced the result.</param>
+    /// <param name="result">The cacheable result returned by the server.</param>
+    /// <remarks>
+    /// This is used to warn (never throw) when a server that negotiated a protocol version requiring the
+    /// SEP-2549 <c>ttlMs</c>/<c>cacheScope</c> fields omits them. The default implementation does nothing.
+    /// </remarks>
+    private protected virtual void ValidateCacheableResult(string method, ICacheableResult result)
+    {
+    }
 
     /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport

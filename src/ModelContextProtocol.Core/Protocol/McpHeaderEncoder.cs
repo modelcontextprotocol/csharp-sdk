@@ -14,12 +14,18 @@ namespace ModelContextProtocol.Protocol;
 /// including Base64 encoding for values that cannot be safely transmitted as plain text.
 /// </para>
 /// <para>
+/// Per SEP-2243 only primitive parameter types are supported: <c>string</c>, <c>integer</c>, and
+/// <c>boolean</c>. The JSON Schema <c>number</c> type is not permitted, and integer values must be
+/// within the JavaScript safe integer range (−2^53+1 to 2^53−1).
+/// </para>
+/// <para>
 /// Encoding rules:
 /// <list type="bullet">
 /// <item><description>Plain ASCII values (0x20-0x7E): sent as-is</description></item>
 /// <item><description>Values with leading/trailing whitespace: Base64 encoded with <c>=?base64?{value}?=</c> wrapper</description></item>
 /// <item><description>Non-ASCII characters: Base64 encoded</description></item>
 /// <item><description>Control characters: Base64 encoded</description></item>
+/// <item><description>Plain ASCII values that themselves match the <c>=?base64?...?=</c> sentinel pattern: Base64 encoded to avoid ambiguity</description></item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -27,6 +33,10 @@ public static class McpHeaderEncoder
 {
     private const string Base64Prefix = "=?base64?";
     private const string Base64Suffix = "?=";
+
+    // Strict UTF-8 decoder that throws on invalid byte sequences rather than silently substituting
+    // U+FFFD replacement characters, so a malformed Base64-wrapped header value is rejected.
+    private static readonly UTF8Encoding s_strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>
     /// Encodes a string parameter value for use in an HTTP header.
@@ -58,26 +68,19 @@ public static class McpHeaderEncoder
     public static string EncodeValue(bool value) => value ? "true" : "false";
 
     /// <summary>
-    /// Encodes a numeric parameter value for use in an HTTP header.
+    /// Encodes an integer parameter value for use in an HTTP header.
     /// </summary>
-    /// <param name="value">The numeric value to encode.</param>
+    /// <param name="value">The integer value to encode.</param>
     /// <returns>The decimal string representation of the value.</returns>
     public static string EncodeValue(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Encodes a numeric parameter value for use in an HTTP header.
-    /// </summary>
-    /// <param name="value">The numeric value to encode.</param>
-    /// <returns>The decimal string representation of the value.</returns>
-    public static string EncodeValue(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-    /// <summary>
     /// Encodes a parameter value for use in an HTTP header.
     /// </summary>
-    /// <param name="value">The value to encode. Supported types are string, numeric types, and boolean.</param>
+    /// <param name="value">The value to encode. Supported types are <c>string</c>, integer, and <c>boolean</c>.</param>
     /// <returns>
     /// The encoded header value, or <see langword="null"/> if the value is <see langword="null"/>
-    /// or is not a supported type (string, numeric, or boolean).
+    /// or is not a supported type (string, integer, or boolean).
     /// </returns>
     public static string? EncodeValue(object? value)
     {
@@ -121,9 +124,9 @@ public static class McpHeaderEncoder
             return headerValue;
         }
 
-        // Check for Base64 wrapper. The spec defines the prefix as lowercase "=?base64?"
-        // but we match case-insensitively for robustness against non-conforming senders.
-        if (headerValue.StartsWith(Base64Prefix, StringComparison.OrdinalIgnoreCase) &&
+        // Check for Base64 wrapper. The spec requires the sentinel markers to be
+        // case-sensitive and exactly lowercase per SEP-2243.
+        if (headerValue.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
             headerValue.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
             var base64Content = headerValue.Substring(
@@ -133,9 +136,13 @@ public static class McpHeaderEncoder
             try
             {
                 var bytes = Convert.FromBase64String(base64Content);
-                return Encoding.UTF8.GetString(bytes);
+                return s_strictUtf8.GetString(bytes);
             }
             catch (FormatException)
+            {
+                return null;
+            }
+            catch (DecoderFallbackException)
             {
                 return null;
             }
@@ -201,9 +208,6 @@ public static class McpHeaderEncoder
             uint n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
             long n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ulong n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            float n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            double n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            decimal n => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
             _ => null
         };
     }
@@ -217,6 +221,14 @@ public static class McpHeaderEncoder
 
         // Check for leading/trailing whitespace (space or tab)
         if (value[0] is ' ' or '\t' || value[^1] is ' ' or '\t')
+        {
+            return true;
+        }
+
+        // Avoid sentinel collision: if the value matches the base64 wrapper pattern,
+        // it must be encoded to prevent ambiguity during decoding.
+        if (value.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
+            value.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
             return true;
         }

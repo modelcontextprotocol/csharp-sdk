@@ -154,6 +154,8 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         }
         
         string cliArgument = $"--cli-arg={cliArgumentValue}";
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
 
         StdioClientTransportOptions options = new()
         {
@@ -161,14 +163,14 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
                 (true, _) => "mono",
-                (_, true) => "TestServer.exe",
+                (_, true) => testServerExecutable,
                 _ => "dotnet",
             },
             Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
-                (true, _) => ["TestServer.exe", cliArgument],
+                (true, _) => [testServerExecutable, cliArgument],
                 (_, true) => [cliArgument],
-                _ => ["TestServer.dll", cliArgument],
+                _ => [testServerDll, cliArgument],
             },
         };
 

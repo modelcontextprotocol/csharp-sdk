@@ -760,6 +760,9 @@ public sealed class ResourceLinkBlock : ContentBlock
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>
 [DebuggerDisplay("Name = {Name}, Id = {Id}")]
+// Sampling support type: this content block only appears inside sampling messages (an assistant tool call),
+// so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ToolUseContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -789,6 +792,9 @@ public sealed class ToolUseContentBlock : ContentBlock
 
 /// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
+// Sampling support type: this content block only appears inside sampling messages (a tool result returned to
+// the assistant), so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ToolResultContentBlock : ContentBlock
 {
     /// <inheritdoc/>

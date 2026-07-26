@@ -23,7 +23,6 @@ public static class ElicitRequestParamsTests
                     ["age"] = new ElicitRequestParams.NumberSchema { Description = "Your age" }
                 }
             },
-            Task = new McpTaskMetadata { TimeToLive = TimeSpan.FromMinutes(10) },
             Meta = new JsonObject { ["progressToken"] = "tok-1" }
         };
 
@@ -37,8 +36,6 @@ public static class ElicitRequestParamsTests
         Assert.Equal("Please provide your details", deserialized.Message);
         Assert.NotNull(deserialized.RequestedSchema);
         Assert.Equal(2, deserialized.RequestedSchema.Properties.Count);
-        Assert.NotNull(deserialized.Task);
-        Assert.Equal(TimeSpan.FromMinutes(10), deserialized.Task.TimeToLive);
         Assert.NotNull(deserialized.Meta);
         Assert.Equal("tok-1", (string)deserialized.Meta["progressToken"]!);
     }
@@ -63,7 +60,6 @@ public static class ElicitRequestParamsTests
         Assert.Equal("https://example.com/auth", deserialized.Url);
         Assert.Equal("Please authenticate", deserialized.Message);
         Assert.Null(deserialized.RequestedSchema);
-        Assert.Null(deserialized.Task);
     }
 
     [Fact]
@@ -83,7 +79,6 @@ public static class ElicitRequestParamsTests
         Assert.Null(deserialized.ElicitationId);
         Assert.Null(deserialized.Url);
         Assert.Null(deserialized.RequestedSchema);
-        Assert.Null(deserialized.Task);
         Assert.Null(deserialized.Meta);
     }
 }

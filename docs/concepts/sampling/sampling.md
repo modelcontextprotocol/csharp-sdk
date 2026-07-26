@@ -23,7 +23,7 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 ### Server: requesting a completion
 
-Inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method to get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client:
+To get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client, inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method:
 
 ```csharp
 [McpServerTool(Name = "SummarizeContent"), Description("Summarizes the given text")]
@@ -120,3 +120,55 @@ McpClientOptions options = new()
 ### Capability negotiation
 
 Sampling requires the client to advertise the `sampling` capability. This is handled automatically — when a <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> is set, the client includes the sampling capability during initialization. The server can check whether the client supports sampling before calling <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>; if sampling is not supported, the method throws <xref:System.InvalidOperationException>.
+
+### Multi round-trip requests (MRTR)
+
+[MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `sampling/createMessage` request method is removed; the recommended way to ask the client to sample from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
+
+> [!IMPORTANT]
+> `SampleAsync` and `AsSamplingChatClient` throw `InvalidOperationException("Sampling is not supported in stateless mode.")` whenever the server is running stateless — including Streamable HTTP requests served under `2026-07-28` with `Stateless = true`. Stdio servers and initialize-handshake stateful Streamable HTTP sessions continue to work via the initialize-era server-to-client `sampling/createMessage` request flow; an HTTP server set to `Stateless = false` refuses `2026-07-28` so dual-path clients can fall back before using that flow. For code that needs to run on stateless servers — including `2026-07-28` Streamable HTTP — throw `InputRequiredException` from your handler instead. It works under both protocols and both session modes.
+
+For example:
+
+```csharp
+[McpServerTool, Description("Tool that samples via MRTR")]
+public static string SampleWithMrtr(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context)
+{
+    // On retry, process the client's sampling response
+    if (context.Params!.InputResponses?.TryGetValue("llm_call", out var response) is true)
+    {
+        var text = response.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)?.Content
+            .OfType<TextContentBlock>().FirstOrDefault()?.Text;
+        return $"LLM said: {text}";
+    }
+
+    if (!server.IsMrtrSupported)
+    {
+        return "This tool requires MRTR support (2026-07-28, or a stateful session using protocol revision 2025-11-25).";
+    }
+
+    // First call — request LLM completion from the client
+    throw new InputRequiredException(
+        inputRequests: new Dictionary<string, InputRequest>
+        {
+            ["llm_call"] = InputRequest.ForSampling(new CreateMessageRequestParams
+            {
+                Messages =
+                [
+                    new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content = [new TextContentBlock { Text = "Summarize the data" }]
+                    }
+                ],
+                MaxTokens = 256
+            })
+        },
+        requestState: "awaiting-sample");
+}
+```
+
+> [!TIP]
+> For the full protocol details, including load shedding, multiple round trips, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).

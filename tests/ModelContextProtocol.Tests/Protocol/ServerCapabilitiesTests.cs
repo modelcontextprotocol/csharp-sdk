@@ -15,7 +15,6 @@ public static class ServerCapabilitiesTests
             Resources = new ResourcesCapability { Subscribe = true, ListChanged = true },
             Tools = new ToolsCapability { ListChanged = false },
             Completions = new CompletionsCapability(),
-            Tasks = new McpTasksCapability(),
             Extensions = new Dictionary<string, object>
             {
                 ["io.modelcontextprotocol/apps"] = new object()
@@ -35,7 +34,6 @@ public static class ServerCapabilitiesTests
         Assert.NotNull(deserialized.Tools);
         Assert.False(deserialized.Tools.ListChanged);
         Assert.NotNull(deserialized.Completions);
-        Assert.NotNull(deserialized.Tasks);
         Assert.NotNull(deserialized.Extensions);
         Assert.True(deserialized.Extensions.ContainsKey("io.modelcontextprotocol/apps"));
     }
@@ -55,7 +53,6 @@ public static class ServerCapabilitiesTests
         Assert.Null(deserialized.Resources);
         Assert.Null(deserialized.Tools);
         Assert.Null(deserialized.Completions);
-        Assert.Null(deserialized.Tasks);
         Assert.Null(deserialized.Extensions);
     }
 

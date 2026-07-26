@@ -59,10 +59,9 @@ public class McpHeaderEncoderTests
 
     [Theory]
     [InlineData(42, "42")]
-    [InlineData(3.14, "3.14")]
     [InlineData(0, "0")]
     [InlineData(-1, "-1")]
-    public void EncodeValue_Number_ConvertsToString(object input, string expected)
+    public void EncodeValue_Integer_ConvertsToString(object input, string expected)
     {
         var result = McpHeaderEncoder.EncodeValue(input);
         Assert.Equal(expected, result);
@@ -106,16 +105,27 @@ public class McpHeaderEncoderTests
     }
 
     [Fact]
-    public void DecodeValue_CaseInsensitivePrefix_Decodes()
+    public void DecodeValue_CaseSensitivePrefix_ReturnsLiteralValue()
     {
+        // Per SEP-2243: sentinel markers are case-sensitive and MUST appear exactly as shown (lowercase).
+        // An uppercase prefix should NOT be decoded as base64.
         var result = McpHeaderEncoder.DecodeValue("=?BASE64?SGVsbG8=?=");
-        Assert.Equal("Hello", result);
+        Assert.Equal("=?BASE64?SGVsbG8=?=", result);
     }
 
     [Fact]
     public void DecodeValue_InvalidBase64_ReturnsNull()
     {
         var result = McpHeaderEncoder.DecodeValue("=?base64?SGVs!!!bG8=?=");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void DecodeValue_ValidBase64ButInvalidUtf8_ReturnsNull()
+    {
+        // "//4=" is valid Base64 that decodes to the bytes 0xFF 0xFE, which are not valid UTF-8.
+        // A strict decoder must reject this rather than substituting U+FFFD replacement characters.
+        var result = McpHeaderEncoder.DecodeValue("=?base64?//4=?=");
         Assert.Null(result);
     }
 
@@ -159,5 +169,35 @@ public class McpHeaderEncoderTests
         // Verify round-trip
         var decoded = McpHeaderEncoder.DecodeValue(result);
         Assert.Equal("col1\tcol2", decoded);
+    }
+
+    [Theory]
+    [InlineData("=?base64?literal?=")]
+    [InlineData("=?base64?SGVsbG8=?=")]
+    [InlineData("=?base64??=")]
+    public void EncodeValue_SentinelCollision_Base64Encodes(string input)
+    {
+        var result = McpHeaderEncoder.EncodeValue(input);
+        Assert.NotNull(result);
+        Assert.StartsWith("=?base64?", result);
+        Assert.EndsWith("?=", result);
+
+        // The encoded value must be different from the input to avoid ambiguity
+        Assert.NotEqual(input, result);
+
+        // Verify round-trip: decode must recover the original literal value
+        var decoded = McpHeaderEncoder.DecodeValue(result);
+        Assert.Equal(input, decoded);
+    }
+
+    [Theory]
+    [InlineData("=?BASE64?literal?=")]   // Case-sensitive: uppercase prefix does not match sentinel
+    [InlineData("=?base64?start")]       // Missing suffix: no sentinel match
+    [InlineData("end?=")]                // Missing prefix: no sentinel match
+    [InlineData("plain-text")]           // No sentinel pattern
+    public void EncodeValue_NonSentinelPattern_NotBase64Encoded(string input)
+    {
+        var result = McpHeaderEncoder.EncodeValue(input);
+        Assert.Equal(input, result);
     }
 }

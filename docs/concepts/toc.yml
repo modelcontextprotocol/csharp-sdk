@@ -3,6 +3,10 @@ items:
   href: index.md
 - name: Getting Started
   uid: getting-started
+- name: Deployment
+  items:
+  - name: Docker
+    uid: docker-deployment
 - name: Base Protocol
   items:
   - name: Capabilities
@@ -17,8 +21,8 @@ items:
     uid: progress
   - name: Cancellation
     uid: cancellation
-  - name: Tasks
-    uid: tasks
+  - name: Multi Round-Trip Requests (MRTR)
+    uid: mrtr
 - name: Client Features
   items:
   - name: Sampling
@@ -45,5 +49,11 @@ items:
     uid: httpcontext
   - name: Filters
     uid: filters
+- name: Extensions
+  items:
+  - name: MCP Apps
+    uid: apps
+  - name: Tasks
+    uid: tasks
   - name: Identity and Roles
     uid: identity

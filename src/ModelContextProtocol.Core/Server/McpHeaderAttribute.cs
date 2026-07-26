@@ -1,3 +1,5 @@
+using ModelContextProtocol.Client;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -10,8 +12,8 @@ namespace ModelContextProtocol.Server;
 /// HTTP header named <c>Mcp-Param-{Name}</c>.
 /// </para>
 /// <para>
-/// Only parameters with primitive types (string, number, boolean) may use this attribute.
-/// The header name must contain only ASCII characters (0x21-0x7E, excluding space and colon)
+/// Only parameters with primitive types (integer, string, boolean) may use this attribute.
+/// The header name must match HTTP field-name token syntax (tchar per RFC 9110 Section 5.6.2)
 /// and must be case-insensitively unique within the tool's input schema.
 /// </para>
 /// <para>
@@ -38,7 +40,7 @@ public sealed class McpHeaderAttribute : Attribute
     /// </summary>
     /// <param name="name">
     /// The name portion of the header. The full header name will be <c>Mcp-Param-{name}</c>.
-    /// Must contain only ASCII characters (0x21-0x7E, excluding space and colon).
+    /// Must match HTTP field-name token syntax (tchar per RFC 9110 Section 5.6.2).
     /// </param>
     /// <exception cref="ArgumentException">
     /// The name is null, empty, or contains invalid characters.
@@ -59,23 +61,20 @@ public sealed class McpHeaderAttribute : Attribute
     public string Name { get; }
 
     /// <summary>
-    /// Validates that a header name contains only valid characters.
+    /// Validates that a header name contains only valid HTTP token characters (tchar) per RFC 9110 Section 5.6.2.
     /// </summary>
     /// <param name="name">The header name to validate.</param>
     /// <exception cref="ArgumentException">The name contains invalid characters.</exception>
     internal static void ValidateHeaderName(string name)
     {
-        foreach (char c in name)
+        int idx = McpHeaderExtractor.FindFirstNonTchar(name);
+        if (idx >= 0)
         {
-            // Valid token characters per RFC 9110: visible ASCII (0x21-0x7E) excluding delimiters.
-            // Space (0x20) and colon (':') are explicitly prohibited.
-            if (c < 0x21 || c > 0x7E || c == ':')
-            {
-                throw new ArgumentException(
-                    $"Header name contains invalid character '{c}' (0x{(int)c:X2}). " +
-                    "Only ASCII characters (0x21-0x7E) excluding colon are allowed.",
-                    nameof(name));
-            }
+            char c = name[idx];
+            throw new ArgumentException(
+                $"Header name contains invalid character '{c}' (0x{(int)c:X2}). " +
+                "Only HTTP token characters (tchar per RFC 9110 Section 5.6.2) are allowed.",
+                nameof(name));
         }
     }
 }

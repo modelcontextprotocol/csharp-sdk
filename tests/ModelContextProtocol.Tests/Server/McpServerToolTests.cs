@@ -461,15 +461,22 @@ public partial class McpServerToolTests
     [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
     public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
     {
+        // Per SEP-2106 the output schema's top-level "type" matches the natural shape of the
+        // return value (e.g. "string", "integer", "array") rather than always being "object".
+        // The strict round-trip check is AssertMatchesJsonSchema below, which proves the
+        // emitted structuredContent validates against the published schema.
+        //
+        // Pinned to a SEP-2106 negotiated version because the assertion compares the natural
+        // in-memory schema against the emitted value. Under a legacy negotiated version the
+        // emitted value would be re-wrapped in {"result": <value>} for backward compatibility
+        // and would no longer validate against the natural schema.
         JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
-        var mockServer = new Mock<McpServer>();
-        var request = new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
+        var request = CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion);
 
         var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
         Assert.NotNull(result.StructuredContent);
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
@@ -594,9 +601,11 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public void OutputSchema_Options_NonObjectSchema_GetsWrapped()
+    public void OutputSchema_Options_NonObjectSchema_PassesThrough()
     {
-        // Non-object output schema should be wrapped in a "result" property envelope
+        // Per SEP-2106, outputSchema may be any valid JSON Schema document — including
+        // non-object schemas. The SDK no longer wraps non-object schemas in a
+        // {"type":"object","properties":{"result":<schema>}} envelope.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"string"}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -605,16 +614,15 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var resultProp));
-        Assert.Equal("string", resultProp.GetProperty("type").GetString());
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
     }
 
     [Fact]
-    public void OutputSchema_Options_NullableObjectSchema_BecomesObject()
+    public void OutputSchema_Options_NullableObjectSchema_PassesThrough()
     {
-        // ["object", "null"] type should be simplified to just "object"
+        // Per SEP-2106, the SDK no longer normalizes ["object","null"] type-arrays down
+        // to just "object". The schema author's intent is preserved on the wire.
         JsonElement outputSchema = JsonDocument.Parse("""{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
         McpServerTool tool = McpServerTool.Create(() => "result", new()
         {
@@ -623,7 +631,171 @@ public partial class McpServerToolTests
         });
 
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        var typeProperty = tool.ProtocolTool.OutputSchema.Value.GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, typeProperty.ValueKind);
+        Assert.Collection(typeProperty.EnumerateArray(),
+            t => Assert.Equal("object", t.GetString()),
+            t => Assert.Equal("null", t.GetString()));
+    }
+
+    [Fact]
+    public void OutputSchema_Create_StringReturn_NoEnvelope()
+    {
+        // End-to-end check: a tool with a string return type and UseStructuredContent
+        // produces an outputSchema describing the string directly (no "result" envelope)
+        // and emits the raw string value as structuredContent.
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { UseStructuredContent = true });
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
+    }
+
+    // SEP-2106 backward-compat: for clients negotiating a pre-2026-07-28 protocol version,
+    // non-object structured content is wrapped in the legacy {"result": <value>} envelope.
+    // Clients on the SEP-2106 protocol ("2026-07-28" and later) see the
+    // natural value shape. In-memory storage stays natural in both modes; only the wire
+    // emission flips.
+    private const string LegacyProtocolVersion = "2025-11-25";
+    private const string Sep2106ProtocolVersion = "2026-07-28";
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_StringReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => "hello", new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal("hello", inner.GetString());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.String, result.StructuredContent.Value.ValueKind);
+            Assert.Equal("hello", result.StructuredContent.Value.GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_IntegerReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => 42, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(42, inner.GetInt32());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Number, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(42, result.StructuredContent.Value.GetInt32());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion, true)]
+    [InlineData(null, true)]
+    [InlineData(Sep2106ProtocolVersion, false)]
+    public async Task StructuredContent_ArrayReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
+    {
+        McpServerTool tool = McpServerTool.Create(() => new[] { "a", "b" }, new() { Name = "tool", UseStructuredContent = true });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        if (expectWrapped)
+        {
+            Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+            Assert.True(result.StructuredContent.Value.TryGetProperty("result", out var inner));
+            Assert.Equal(JsonValueKind.Array, inner.ValueKind);
+            Assert.Equal(2, inner.GetArrayLength());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Array, result.StructuredContent.Value.ValueKind);
+            Assert.Equal(2, result.StructuredContent.Value.GetArrayLength());
+        }
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_ObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // Object-typed return: the stored schema is type:"object" — already the form
+        // expected by clients on protocol versions older than 2026-07-28, so no envelope
+        // is applied at any protocol version. Wire shape must be identical across versions.
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+        Assert.Equal(27, result.StructuredContent.Value.GetProperty("age").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(LegacyProtocolVersion)]
+    [InlineData(null)]
+    [InlineData(Sep2106ProtocolVersion)]
+    public async Task StructuredContent_NullableObjectReturn_NeverWrapped(string? protocolVersion)
+    {
+        // type:["object","null"]: for clients on protocol versions older than 2026-07-28,
+        // the SCHEMA is normalized to plain type:"object" (verified in
+        // Sep2106ListToolsBackCompatTests), but the value side is never envelope-wrapped at
+        // any protocol version. So the emitted structured content stays a plain object
+        // across versions.
+        JsonElement outputSchema = JsonDocument.Parse(
+            """{"type":["object","null"],"properties":{"name":{"type":"string"}}}""").RootElement;
+        McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
+        {
+            Name = "tool",
+            UseStructuredContent = true,
+            OutputSchema = outputSchema,
+            SerializerOptions = CreateSerializerOptionsWithPerson(),
+        });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Object, result.StructuredContent.Value.ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("result", out _));
+        Assert.Equal("John", result.StructuredContent.Value.GetProperty("name").GetString());
+    }
+
+    private static RequestContext<CallToolRequestParams> CreateRequestContextWithProtocolVersion(string? protocolVersion)
+    {
+        var mockServer = new Mock<McpServer>();
+        mockServer.SetupGet(s => s.NegotiatedProtocolVersion).Returns(protocolVersion);
+        return new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new CallToolRequestParams { Name = "tool" });
     }
 
     [Fact]
@@ -1004,15 +1176,15 @@ public partial class McpServerToolTests
     [Fact]
     public void ReturnDescription_StructuredOutputEnabled_NotIncludedInToolDescription()
     {
-        // When UseStructuredContent is true, return description should be in the output schema, not in tool description
+        // When UseStructuredContent is true, return description should be in the output schema, not in tool description.
+        // Per SEP-2106 the schema is no longer wrapped in a {"result": <schema>} envelope, so the description
+        // sits directly on the (non-object) output schema.
         McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { UseStructuredContent = true });
 
         Assert.Equal("Tool that returns data.", tool.ProtocolTool.Description);
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
-        // Verify the output schema contains the description
-        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
-        Assert.True(properties.TryGetProperty("result", out var result));
-        Assert.True(result.TryGetProperty("description", out var description));
+        Assert.Equal("string", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("description", out var description));
         Assert.Equal("The computed result", description.GetString());
     }
 
@@ -1079,82 +1251,6 @@ public partial class McpServerToolTests
         Assert.Contains("Streamable HTTP", exception.Message);
     }
 
-    [Fact]
-    public void AsyncTool_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools should automatically get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTask);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_ValueTask_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning ValueTask should also get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTask);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_TaskOfT_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning Task<T> should get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTaskOfT);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void AsyncTool_ValueTaskOfT_AutomaticallyMarkedWithTaskSupport()
-    {
-        // Async tools returning ValueTask<T> should get TaskSupport = Optional
-        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTaskOfT);
-
-        Assert.NotNull(tool.ProtocolTool.Execution);
-        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
-    }
-
-    [Fact]
-    public void SyncTool_NotMarkedWithTaskSupport()
-    {
-        // Synchronous tools should not have TaskSupport set
-        McpServerTool tool = McpServerTool.Create(SyncTool);
-
-        Assert.Null(tool.ProtocolTool.Execution);
-    }
-
-    private static async Task AsyncToolReturningTask()
-    {
-        await Task.Yield();
-    }
-
-    private static async ValueTask AsyncToolReturningValueTask()
-    {
-        await Task.Yield();
-    }
-
-    private static async Task<string> AsyncToolReturningTaskOfT()
-    {
-        await Task.Yield();
-        return "result";
-    }
-
-    private static async ValueTask<string> AsyncToolReturningValueTaskOfT()
-    {
-        await Task.Yield();
-        return "result";
-    }
-
-    private static string SyncTool()
-    {
-        return "sync result";
-    }
-
     [Description("Tool that returns data.")]
     [return: Description("The computed result")]
     private static string ToolWithReturnDescription() => "result";
@@ -1219,6 +1315,15 @@ public partial class McpServerToolTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithNonPrimitiveHeader))!));
+    }
+
+    [Fact]
+    public void Create_WithMcpHeaderOnUInt64Type_ThrowsInvalidOperationException()
+    {
+        // ulong is excluded per SEP-2243 because its domain extends beyond the JavaScript safe
+        // integer range (and beyond long), so it cannot be represented as a signed integer header.
+        Assert.Throws<InvalidOperationException>(() =>
+            McpServerTool.Create(typeof(McpHeaderToolType).GetMethod(nameof(McpHeaderToolType.ToolWithUInt64Header))!));
     }
 
     [Fact]
@@ -1307,6 +1412,11 @@ public partial class McpServerToolTests
 
         [McpServerTool]
         public static string ToolWithoutHeaders(string region, string query)
+            => "result";
+
+        [McpServerTool]
+        public static string ToolWithUInt64Header(
+            [McpHeader("Count")] ulong count)
             => "result";
     }
 }

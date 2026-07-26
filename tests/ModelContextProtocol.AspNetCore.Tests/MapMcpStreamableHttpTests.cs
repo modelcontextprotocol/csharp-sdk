@@ -8,6 +8,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -347,9 +348,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using var mcpClient = await ConnectAsync(configureClient: options =>
         {
-            ProtocolVersion = "2025-06-18",
+            options.ProtocolVersion = "2025-06-18";
         });
 
         Assert.Equal("2025-06-18", mcpClient.NegotiatedProtocolVersion);
@@ -409,7 +410,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        await using (var initialClient = await McpClient.CreateAsync(initialTransport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        await using (var initialClient = await McpClient.CreateAsync(initialTransport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
         {
             resumedSessionId = initialClient.SessionId ?? throw new InvalidOperationException("SessionId not negotiated.");
             serverCapabilities = initialClient.ServerCapabilities;
@@ -458,41 +459,6 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task EnablePollingAsync_ThrowsInvalidOperationException_InStatelessMode()
-    {
-        Assert.SkipUnless(Stateless, "This test only applies to stateless mode.");
-
-        InvalidOperationException? capturedException = null;
-        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
-        {
-            try
-            {
-                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
-            }
-            catch (InvalidOperationException ex)
-            {
-                capturedException = ex;
-            }
-
-            return "Complete";
-        }, options: new() { Name = "polling_tool" });
-
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools([pollingTool]);
-
-        await using var app = Builder.Build();
-        app.MapMcp();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        await using var mcpClient = await ConnectAsync();
-
-        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedException);
-        Assert.Contains("stateless", capturedException.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task EnablePollingAsync_ThrowsInvalidOperationException_WhenNoEventStreamStoreConfigured()
     {
         Assert.SkipWhen(Stateless, "This test only applies to stateful mode without an event stream store.");
@@ -520,7 +486,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync();
+        // Polling via an event-stream store is a stateful-session feature. Starting with the 2026-07-28
+        // protocol revision, Streamable HTTP no longer supports sessions, so pin to the latest stable version to keep exercising the stateful path.
+        await using var mcpClient = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25");
 
         await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -572,7 +540,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             },
         };
 
-        await using var mcpClient = await ConnectAsync(transportOptions: transportOptions);
+        // DELETE requests are only sent when there's a session ID to delete - a legacy stateful
+        // behavior. Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin to the latest stable version.
+        await using var mcpClient = await ConnectAsync(transportOptions: transportOptions, configureClient: options => options.ProtocolVersion = "2025-11-25");
 
         // Do a tool call to ensure there's more than just the initialize request
         await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -623,7 +593,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Call a tool to ensure the session is fully established
         var result = await client.CallToolAsync(
@@ -691,7 +661,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = "2025-11-25" }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await client.CallToolAsync(
             "echo_claims_principal",
@@ -751,7 +721,9 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         // Connect the first client and verify it works.
-        var client1 = await ConnectAsync();
+        // Server-side session expiry and reconnect rely on session IDs, a legacy stateful behavior.
+        // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin both clients to the latest stable version.
+        var client1 = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25");
         var originalSessionId = client1.SessionId;
         Assert.NotNull(originalSessionId);
 
@@ -773,7 +745,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await client1.DisposeAsync();
 
         // Reconnect with a brand-new session.
-        await using var client2 = await ConnectAsync();
+        await using var client2 = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2025-11-25");
         Assert.NotNull(client2.SessionId);
         Assert.NotEqual(originalSessionId, client2.SessionId);
 
@@ -787,18 +759,19 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     {
         var capturedSessionIds = new ConcurrentBag<(string? BeforeNext, string? AfterNext, string Method)>();
         var capturedActivityTags = new ConcurrentBag<(string? TagValue, bool HadActivity, string Method)>();
+        var requestObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         await using var app = Builder.Build();
 
-        // This is the pattern documented in sessions.md — verify it actually works.
+        // This is the pattern documented in sessions.md - verify it actually works.
         // Tag before next() so child spans inherit the value.
         app.MapMcp().AddEndpointFilter(async (context, next) =>
         {
             var httpContext = context.HttpContext;
 
-            // Read from request headers — available on all non-initialize requests in stateful mode.
+            // Read from request headers - available on all non-initialize requests in stateful mode.
             string? beforeSessionId = httpContext.Request.Headers["Mcp-Session-Id"];
 
             // Tag before next() so child activities created during the handler inherit it.
@@ -816,18 +789,31 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
             capturedSessionIds.Add((beforeSessionId, afterSessionId, httpContext.Request.Method));
             capturedActivityTags.Add((tagValue, activity is not null, httpContext.Request.Method));
+            requestObserved.TrySetResult();
 
             return result;
         });
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var client = await ConnectAsync();
+        // The stateful (else) branch below asserts session-ID behavior, which only exists under the
+        // legacy handshake. Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions. Pin legacy only for the stateful variant.
+        await using var client = await ConnectAsync(configureClient: options =>
+        {
+            if (!Stateless)
+            {
+                options.ProtocolVersion = "2025-11-25";
+            }
+        });
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // The filter must have observed at least one MCP request. Don't assert an exact
-        // minimum — the initialized notification or GET stream may not have completed yet.
+        // The filter records into the bag *after* await next(context) returns. For a streamed SSE
+        // response the client can observe completion (and ListToolsAsync can return) before that
+        // server-side continuation runs, so asserting the bag immediately races. Wait for the filter
+        // to record at least one request first. Don't assert an exact minimum - the initialized
+        // notification or GET stream may not have completed yet.
+        await requestObserved.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.NotEmpty(capturedSessionIds);
 
         if (Stateless)
@@ -854,7 +840,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             });
 
             // At least one POST should have the session ID in the request header too
-            // (the initialized notification or list_tools — but not the initial initialize request).
+            // (the initialized notification or list_tools - but not the initial initialize request).
             Assert.Contains(postCaptures, c => c.BeforeNext == client.SessionId);
 
             // Verify Activity.Current was available and the AddTag pattern works before next().
@@ -867,5 +853,77 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Assert.Equal(client.SessionId, c.TagValue);
             });
         }
+    }
+
+    [Fact]
+    public async Task DeleteRequest_FromDifferentUser_IsRejected_AndSessionSurvives()
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        // Pick the user from a test header so different HttpClient requests can act as different users.
+        app.Use(next => async context =>
+        {
+            var name = context.Request.Headers["X-Test-User"].ToString();
+            if (!string.IsNullOrEmpty(name))
+            {
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
+                    "TestAuthType", "name", "role"));
+            }
+            await next(context);
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        initRequest.Headers.Add("X-Test-User", "Alice");
+        initRequest.Headers.Accept.ParseAdd("application/json");
+        initRequest.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken);
+        Assert.True(initResponse.IsSuccessStatusCode);
+        var sessionId = Assert.Single(initResponse.Headers.GetValues("Mcp-Session-Id"));
+
+        // A DELETE from a different authenticated user must not be able to tear down Alice's session.
+        using var bobDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        bobDelete.Headers.Add("X-Test-User", "Bob");
+        bobDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var bobDeleteResponse = await HttpClient.SendAsync(bobDelete, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, bobDeleteResponse.StatusCode);
+
+        // Alice should still be able to use the session.
+        const string toolCallRequest = """
+            {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+            """;
+        using var aliceCall = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(toolCallRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        aliceCall.Headers.Add("X-Test-User", "Alice");
+        aliceCall.Headers.Add("Mcp-Session-Id", sessionId);
+        aliceCall.Headers.Accept.ParseAdd("application/json");
+        aliceCall.Headers.Accept.ParseAdd("text/event-stream");
+        using var aliceCallResponse = await HttpClient.SendAsync(aliceCall, TestContext.Current.CancellationToken);
+        Assert.True(aliceCallResponse.IsSuccessStatusCode);
+
+        // Alice can still terminate her own session.
+        using var aliceDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        aliceDelete.Headers.Add("X-Test-User", "Alice");
+        aliceDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var aliceDeleteResponse = await HttpClient.SendAsync(aliceDelete, TestContext.Current.CancellationToken);
+        Assert.True(aliceDeleteResponse.IsSuccessStatusCode);
     }
 }

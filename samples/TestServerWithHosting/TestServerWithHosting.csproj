@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishAot Condition="'$(TargetFramework)' == 'net9.0'">true</PublishAot>
+    <!-- This sample demonstrates the Sampling feature, which SEP-2577 deprecates (MCP9005) but
+         which continues to work. Suppress the deprecation warning for this sample only. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

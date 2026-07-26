@@ -25,6 +25,7 @@
   <!-- Product dependencies .NET Standard -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="$(System10Version)" />
+    <PackageVersion Include="System.Collections.Immutable" Version="$(System10Version)" />
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="$(System10Version)" />
     <PackageVersion Include="System.IO.Pipelines" Version="$(System10Version)" />
     <PackageVersion Include="System.Text.Json" Version="$(System10Version)" />
@@ -63,7 +64,7 @@
   <!-- Testing dependencies -->
   <ItemGroup>
     <PackageVersion Include="Anthropic" Version="12.17.0" />
-    <PackageVersion Include="coverlet.collector" Version="10.0.0">
+    <PackageVersion Include="coverlet.collector" Version="10.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
