@@ -7,7 +7,7 @@
     <TargetFrameworks></TargetFrameworks>
     <PublishAot>true</PublishAot>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
-    <!-- Suppress warnings for the experimental tasks and Apps APIs exercised by this test app. -->
+    <!-- Suppress warnings for the experimental APIs exercised by this test app. -->
     <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>
   </PropertyGroup>
 
