@@ -313,6 +313,88 @@ public sealed class IdentityAssertionGrantTests : IDisposable
             _httpClient));
     }
 
+    [Fact]
+    public async Task IdentityAssertionGrantProvider_ConcurrentCallers_RunExchangeOnce()
+    {
+        // Gate the first in-flight flow so multiple callers overlap while the first holds the
+        // acquisition lock. Without coalescing, each concurrent caller would run its own exchange.
+        var firstEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var mcpTokenCallCount = 0;
+        _mockHandler.AsyncHandler = async request =>
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.Contains(".well-known"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["authorization_endpoint"] = "https://auth.example.com/authorize",
+                    ["token_endpoint"] = "https://auth.example.com/token",
+                });
+            }
+
+            if (url.Contains("idp.example.com"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag",
+                    ["issued_token_type"] = "urn:ietf:params:oauth:token-type:id-jag",
+                    ["token_type"] = "N_A",
+                });
+            }
+
+            // MCP token endpoint: this is the exchange we expect to run exactly once.
+            if (Interlocked.Increment(ref mcpTokenCallCount) == 1)
+            {
+                firstEntered.TrySetResult(true);
+                await release.Task;
+            }
+
+            return JsonResponse(HttpStatusCode.OK, new JsonObject
+            {
+                ["access_token"] = "final-access-token",
+                ["token_type"] = "Bearer",
+                ["expires_in"] = 3600,
+            });
+        };
+
+        var idTokenCallCount = 0;
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "mcp-client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) =>
+                {
+                    Interlocked.Increment(ref idTokenCallCount);
+                    return Task.FromResult("mock-id-token");
+                },
+            },
+            _httpClient);
+
+        var ct = TestContext.Current.CancellationToken;
+        var resourceUrl = new Uri("https://resource.example.com");
+        var authUrl = new Uri("https://auth.example.com");
+
+        var tasks = Enumerable.Range(0, 8)
+            .Select(_ => provider.GetAccessTokenAsync(resourceUrl, authUrl, ct))
+            .ToArray();
+
+        // Wait until the first flow is inside the exchange (holding the lock), then let it finish.
+        var entered = await Task.WhenAny(firstEntered.Task, Task.Delay(TimeSpan.FromSeconds(30), ct));
+        Assert.Same(firstEntered.Task, entered);
+        release.SetResult(true);
+
+        var results = await Task.WhenAll(tasks);
+
+        Assert.Equal(1, mcpTokenCallCount);
+        Assert.Equal(1, idTokenCallCount);
+        Assert.All(results, r => Assert.Same(results[0], r));
+        Assert.Equal("final-access-token", results[0].AccessToken);
+    }
+
     #endregion
 
     #region IdentityAssertionGrantException Tests

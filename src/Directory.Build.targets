@@ -1,0 +1,13 @@
+<Project>
+  <Target Name="PinMcpProjectReferencePackageVersions"
+          AfterTargets="_GetProjectReferenceVersions"
+          Condition="'$(MSBuildProjectName)' == 'ModelContextProtocol'
+                  Or '$(MSBuildProjectName)' == 'ModelContextProtocol.AspNetCore'
+                  Or '$(MSBuildProjectName)' == 'ModelContextProtocol.Extensions.Tasks'">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+</Project>

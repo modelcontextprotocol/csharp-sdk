@@ -3,6 +3,7 @@ using ConformanceServer.Resources;
 using ConformanceServer.Tools;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Extensions.Tasks;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
@@ -52,7 +53,14 @@ public class Program
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
+            .WithTasks(
+                new InMemoryMcpTaskStore
+                {
+                    DefaultPollIntervalMs = 50,
+                    DefaultTimeToLive = TimeSpan.FromMinutes(5),
+                })
             .WithTools<ConformanceTools>()
+            .WithTools<ConformanceTaskTools>()
             .WithTools<IncompleteResultTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
             .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>

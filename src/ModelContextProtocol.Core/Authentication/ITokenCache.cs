@@ -3,6 +3,11 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Allows the client to cache access tokens beyond the lifetime of the transport.
 /// </summary>
+/// <remarks>
+/// Implementations must be safe for concurrent use. A single cache instance may be shared by multiple
+/// in-flight requests, and <see cref="GetTokensAsync"/> in particular can be invoked concurrently
+/// (it is called on the request hot path without holding the provider's token-acquisition lock).
+/// </remarks>
 public interface ITokenCache
 {
     /// <summary>

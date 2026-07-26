@@ -91,6 +91,18 @@ public static class TaskSerializationTests
 
     #endregion
 
+    [Theory]
+    [InlineData(typeof(UpdateTaskResult))]
+    [InlineData(typeof(CancelTaskResult))]
+    public static void TaskAcknowledgement_SerializesExplicitCompleteResultType(Type resultType)
+    {
+        var result = (Result)Activator.CreateInstance(resultType)!;
+
+        var json = JsonSerializer.SerializeToNode(result, resultType, McpTasksJsonContext.Default.Options)!;
+
+        Assert.Equal("complete", (string)json["resultType"]!);
+    }
+
     #region GetTaskResult Subtypes
 
     [Fact]

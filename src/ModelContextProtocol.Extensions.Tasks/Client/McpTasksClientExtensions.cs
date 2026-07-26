@@ -104,7 +104,7 @@ public static class McpTasksClientExtensions
     /// <summary>
     /// Retrieves a task using explicit request parameters.
     /// </summary>
-    public static ValueTask<GetTaskResult> GetTaskAsync(
+    public static async ValueTask<GetTaskResult> GetTaskAsync(
         this McpClient client,
         GetTaskRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -118,11 +118,19 @@ public static class McpTasksClientExtensions
 #endif
 
         ThrowIfTasksNotSupported(client, nameof(GetTaskAsync));
-        return client.SendRequestAsync<GetTaskRequestParams, GetTaskResult>(
+        requestParams = new GetTaskRequestParams
+        {
+            TaskId = requestParams.TaskId,
+            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+        };
+        JsonRpcRequest jsonRpcRequest = CreateTaskRequest(
             TasksProtocol.MethodTasksGet,
-            requestParams,
-            McpTasksJsonContext.Default.Options,
-            cancellationToken: cancellationToken);
+            JsonSerializer.SerializeToNode(requestParams, McpTasksJsonContext.Default.GetTaskRequestParams),
+            requestParams.TaskId);
+
+        JsonRpcResponse response = await client.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+        return response.Result?.Deserialize(McpTasksJsonContext.Default.GetTaskResult)
+            ?? throw new JsonException("Unexpected JSON result in response.");
     }
 
     /// <summary>
@@ -148,6 +156,7 @@ public static class McpTasksClientExtensions
         JsonObject paramsObj = new()
         {
             ["taskId"] = requestParams.TaskId,
+            ["_meta"] = GetMetaWithTaskCapability(requestParams.Meta),
         };
 
         if (requestParams.InputResponses is { Count: > 0 } inputResponses)
@@ -157,11 +166,10 @@ public static class McpTasksClientExtensions
                 McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, InputResponse>>());
         }
 
-        JsonRpcRequest jsonRpcRequest = new()
-        {
-            Method = TasksProtocol.MethodTasksUpdate,
-            Params = paramsObj,
-        };
+        JsonRpcRequest jsonRpcRequest = CreateTaskRequest(
+            TasksProtocol.MethodTasksUpdate,
+            paramsObj,
+            requestParams.TaskId);
 
         JsonRpcResponse response = await client.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
         return response.Result?.Deserialize(McpTasksJsonContext.Default.UpdateTaskResult)
@@ -190,7 +198,7 @@ public static class McpTasksClientExtensions
     /// <summary>
     /// Requests task cancellation using explicit request parameters.
     /// </summary>
-    public static ValueTask<CancelTaskResult> CancelTaskAsync(
+    public static async ValueTask<CancelTaskResult> CancelTaskAsync(
         this McpClient client,
         CancelTaskRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -204,12 +212,31 @@ public static class McpTasksClientExtensions
 #endif
 
         ThrowIfTasksNotSupported(client, nameof(CancelTaskAsync));
-        return client.SendRequestAsync<CancelTaskRequestParams, CancelTaskResult>(
+        requestParams = new CancelTaskRequestParams
+        {
+            TaskId = requestParams.TaskId,
+            Meta = GetMetaWithTaskCapability(requestParams.Meta),
+        };
+        JsonRpcRequest jsonRpcRequest = CreateTaskRequest(
             TasksProtocol.MethodTasksCancel,
-            requestParams,
-            McpTasksJsonContext.Default.Options,
-            cancellationToken: cancellationToken);
+            JsonSerializer.SerializeToNode(requestParams, McpTasksJsonContext.Default.CancelTaskRequestParams),
+            requestParams.TaskId);
+
+        JsonRpcResponse response = await client.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+        return response.Result?.Deserialize(McpTasksJsonContext.Default.CancelTaskResult)
+            ?? new CancelTaskResult();
     }
+
+    private static JsonRpcRequest CreateTaskRequest(string method, JsonNode? parameters, string taskId) =>
+        new()
+        {
+            Method = method,
+            Params = parameters,
+            Context = new JsonRpcMessageContext
+            {
+                RoutingName = taskId,
+            },
+        };
 
     private static async ValueTask<CallToolResult> PollTaskToCompletionAsync(
         McpClient client,
