@@ -217,6 +217,6 @@ public sealed class McpServerOptions
     /// Handlers registered here take precedence over built-in handlers for the same method.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }
