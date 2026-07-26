@@ -6,6 +6,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Provides read access to an SSE event stream, allowing events to be consumed asynchronously.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public interface ISseEventStreamReader
 {
     /// <summary>

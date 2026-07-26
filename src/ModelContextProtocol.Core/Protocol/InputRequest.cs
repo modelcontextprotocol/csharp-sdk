@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -20,7 +19,6 @@ namespace ModelContextProtocol.Protocol;
 /// parameters can be accessed via the typed accessor properties.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
 [JsonConverter(typeof(Converter))]
 public sealed class InputRequest
 {
@@ -54,6 +52,7 @@ public sealed class InputRequest
     /// </summary>
     /// <returns>The deserialized sampling parameters, or <see langword="null"/> if the method does not match or params are absent.</returns>
     [JsonIgnore]
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public CreateMessageRequestParams? SamplingParams =>
         string.Equals(Method, RequestMethods.SamplingCreateMessage, StringComparison.Ordinal) && Params is { } p
             ? JsonSerializer.Deserialize(p, McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams)
@@ -76,6 +75,7 @@ public sealed class InputRequest
     /// </summary>
     /// <returns>The deserialized roots list parameters, or <see langword="null"/> if the method does not match or params are absent.</returns>
     [JsonIgnore]
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ListRootsRequestParams? RootsParams =>
         string.Equals(Method, RequestMethods.RootsList, StringComparison.Ordinal) && Params is { } p
             ? JsonSerializer.Deserialize(p, McpJsonUtilities.JsonContext.Default.ListRootsRequestParams)
@@ -86,6 +86,7 @@ public sealed class InputRequest
     /// </summary>
     /// <param name="requestParams">The sampling request parameters.</param>
     /// <returns>A new <see cref="InputRequest"/> instance.</returns>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static InputRequest ForSampling(CreateMessageRequestParams requestParams)
     {
         Throw.IfNull(requestParams);
@@ -116,6 +117,7 @@ public sealed class InputRequest
     /// </summary>
     /// <param name="requestParams">The roots list request parameters.</param>
     /// <returns>A new <see cref="InputRequest"/> instance.</returns>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public static InputRequest ForRootsList(ListRootsRequestParams requestParams)
     {
         Throw.IfNull(requestParams);

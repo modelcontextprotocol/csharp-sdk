@@ -14,6 +14,7 @@ namespace ModelContextProtocol.Protocol;
 /// guidance rather than an access-control mechanism. Each root has a URI that uniquely identifies
 /// it and optional metadata like a human-readable name.
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class Root
 {
     /// <summary>

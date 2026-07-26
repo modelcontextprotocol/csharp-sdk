@@ -7,18 +7,18 @@ uid: pagination
 
 ## Pagination
 
-MCP uses [cursor-based pagination] for all list operations that may return large result sets.
+MCP uses [cursor-based pagination] for all list operations that can return large result sets.
 
 [cursor-based pagination]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/pagination
 
 ### Overview
 
-Instead of offset-based pagination (page 1, page 2, etc.), MCP uses opaque cursor tokens. Each paginated response may include a `NextCursor` value. If present, pass it in the next request to retrieve the next page of results.
+Instead of offset-based pagination (page 1, page 2, etc.), MCP uses opaque cursor tokens. Each paginated response might include a `NextCursor` value. If present, pass it in the next request to retrieve the next page of results.
 
 Two levels of API are provided for paginated operations:
 
-1. **Convenience methods** (e.g., `ListToolsAsync()` returning `IList<T>`) that automatically handle pagination and return all results.
-2. **Raw methods** (e.g., `ListToolsAsync(ListToolsRequestParams)` returning the result type directly) that provide direct control over pagination.
+1. **Convenience methods** (for example, `ListToolsAsync()` returning `IList<T>`) that automatically handle pagination and return all results.
+2. **Raw methods** (for example, `ListToolsAsync(ListToolsRequestParams)` returning the result type directly) that provide direct control over pagination.
 
 ### Automatic pagination
 

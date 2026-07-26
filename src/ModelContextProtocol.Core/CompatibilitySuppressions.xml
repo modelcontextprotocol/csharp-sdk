@@ -59,6 +59,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.CreateTaskResult</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.ElicitationMcpTasksCapability</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -67,6 +74,20 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.GetTaskPayloadRequestParams</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskRequestParams</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskResult</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -109,6 +130,13 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.McpTasksCapability</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.McpTaskStatus</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -213,6 +241,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.CreateTaskResult</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.ElicitationMcpTasksCapability</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -221,6 +256,20 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.GetTaskPayloadRequestParams</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskRequestParams</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskResult</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -263,6 +312,13 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.McpTasksCapability</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.McpTaskStatus</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -367,6 +423,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.CreateTaskResult</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.ElicitationMcpTasksCapability</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -375,6 +438,20 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.GetTaskPayloadRequestParams</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskRequestParams</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskResult</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -417,6 +494,13 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.McpTasksCapability</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.McpTaskStatus</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -521,6 +605,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.CreateTaskResult</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.ElicitationMcpTasksCapability</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
@@ -529,6 +620,20 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.GetTaskPayloadRequestParams</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskRequestParams</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.GetTaskResult</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -571,6 +676,13 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ModelContextProtocol.Protocol.McpTasksCapability</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ModelContextProtocol.Protocol.McpTaskStatus</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -626,6 +738,27 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.TaskStatusNotification</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksCancel</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksGet</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -787,20 +920,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.get_Task</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.set_Task(ModelContextProtocol.Protocol.McpTask)</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.get_Task</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
@@ -809,48 +928,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.set_Task(ModelContextProtocol.Protocol.McpTaskMetadata)</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.#ctor</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_PollInterval</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -970,6 +1047,13 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Server.McpServerOptions.set_SendTaskStatusNotifications(System.Boolean)</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerOptions.set_TaskStore(ModelContextProtocol.IMcpTaskStore)</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1011,6 +1095,27 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.TaskStatusNotification</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksCancel</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksGet</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -1172,20 +1277,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.get_Task</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.set_Task(ModelContextProtocol.Protocol.McpTask)</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.get_Task</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
@@ -1194,48 +1285,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.set_Task(ModelContextProtocol.Protocol.McpTaskMetadata)</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.#ctor</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_PollInterval</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1355,6 +1404,13 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Server.McpServerOptions.set_SendTaskStatusNotifications(System.Boolean)</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerOptions.set_TaskStore(ModelContextProtocol.IMcpTaskStore)</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1396,6 +1452,27 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.TaskStatusNotification</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksCancel</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksGet</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -1557,20 +1634,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.get_Task</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.set_Task(ModelContextProtocol.Protocol.McpTask)</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.get_Task</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
@@ -1579,48 +1642,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.set_Task(ModelContextProtocol.Protocol.McpTaskMetadata)</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.#ctor</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_PollInterval</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1740,6 +1761,13 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Server.McpServerOptions.set_SendTaskStatusNotifications(System.Boolean)</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerOptions.set_TaskStore(ModelContextProtocol.IMcpTaskStore)</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -1781,6 +1809,27 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.NotificationMethods.TaskStatusNotification</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksCancel</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksGet</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>F:ModelContextProtocol.Protocol.RequestMethods.TasksList</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
@@ -1942,20 +1991,6 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.get_Task</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.CreateTaskResult.set_Task(ModelContextProtocol.Protocol.McpTask)</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.get_Task</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
@@ -1964,48 +1999,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Protocol.ElicitRequestParams.set_Task(ModelContextProtocol.Protocol.McpTaskMetadata)</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.#ctor</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_PollInterval</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.get_TimeToLive</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_PollInterval(System.Nullable{System.TimeSpan})</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_Status(ModelContextProtocol.Protocol.McpTaskStatus)</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ModelContextProtocol.Protocol.GetTaskResult.set_TimeToLive(System.Nullable{System.TimeSpan})</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -2131,6 +2124,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerOptions.set_TaskStore(ModelContextProtocol.IMcpTaskStore)</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ModelContextProtocol.Server.McpServerToolAttribute.get_TaskSupport</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
@@ -2158,57 +2158,29 @@
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Cancelled</Target>
+    <DiagnosticId>CP0005</DiagnosticId>
+    <Target>M:ModelContextProtocol.Client.McpClient.ResolveInputRequestsAsync(System.Collections.Generic.IDictionary{System.String,ModelContextProtocol.Protocol.InputRequest},System.Threading.CancellationToken)</Target>
     <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Failed</Target>
-    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Cancelled</Target>
+    <DiagnosticId>CP0005</DiagnosticId>
+    <Target>M:ModelContextProtocol.Client.McpClient.ResolveInputRequestsAsync(System.Collections.Generic.IDictionary{System.String,ModelContextProtocol.Protocol.InputRequest},System.Threading.CancellationToken)</Target>
     <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Failed</Target>
-    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Cancelled</Target>
+    <DiagnosticId>CP0005</DiagnosticId>
+    <Target>M:ModelContextProtocol.Client.McpClient.ResolveInputRequestsAsync(System.Collections.Generic.IDictionary{System.String,ModelContextProtocol.Protocol.InputRequest},System.Threading.CancellationToken)</Target>
     <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Failed</Target>
-    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Cancelled</Target>
-    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
-    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0011</DiagnosticId>
-    <Target>F:ModelContextProtocol.Protocol.McpTaskStatus.Failed</Target>
+    <DiagnosticId>CP0005</DiagnosticId>
+    <Target>M:ModelContextProtocol.Client.McpClient.ResolveInputRequestsAsync(System.Collections.Generic.IDictionary{System.String,ModelContextProtocol.Protocol.InputRequest},System.Threading.CancellationToken)</Target>
     <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
     <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

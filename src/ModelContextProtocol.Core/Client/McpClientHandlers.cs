@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
@@ -50,6 +50,7 @@ public sealed class McpClientHandlers
     /// This handler is invoked when the server sends a <see cref="RequestMethods.RootsList"/> request to retrieve available roots.
     /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }
 
     /// <summary>
@@ -85,5 +86,6 @@ public sealed class McpClientHandlers
     /// method with any implementation of <see cref="IChatClient"/>.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
 }

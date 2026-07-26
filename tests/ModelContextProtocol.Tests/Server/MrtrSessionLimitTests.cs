@@ -49,7 +49,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
     {
         services.Configure<McpServerOptions>(options =>
         {
-            options.ProtocolVersion = "DRAFT-2026-v1";
+            options.ProtocolVersion = "2026-07-28";
             _messageTracker.AddFilters(options.Filters.Message);
 
             // Outgoing filter: detect InputRequiredResult responses and track per session.
@@ -131,7 +131,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
         // Verify that an outgoing message filter can observe InputRequiredResult responses
         // and track the pending MRTR flow count per session using context.Server.SessionId.
         StartServer();
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 
@@ -165,7 +165,7 @@ public class MrtrSessionLimitTests : ClientServerTestBase
         _maxFlowsPerSession = 0;
 
         StartServer();
-        var clientOptions = new McpClientOptions { ProtocolVersion = "DRAFT-2026-v1" };
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
 

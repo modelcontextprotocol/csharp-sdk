@@ -73,7 +73,7 @@ public abstract partial class McpClient : McpSession
     public abstract Task<ClientCompletionDetails> Completion { get; }
 
     /// <summary>
-    /// Resolves input requests embedded in an <see cref="InputRequiredTaskResult"/> by dispatching
+    /// Resolves input requests by dispatching
     /// each request to the appropriate registered handler.
     /// </summary>
     /// <param name="inputRequests">
@@ -82,15 +82,22 @@ public abstract partial class McpClient : McpSession
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A dictionary of responses keyed by the same identifiers as the input requests.</returns>
-    private protected abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+    public abstract ValueTask<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
         IDictionary<string, InputRequest> inputRequests, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Gets the maximum number of consecutive stuck-in-<see cref="McpTaskStatus.InputRequired"/> polls
-    /// allowed by <see cref="PollTaskToCompletionAsync"/> before the client cancels and throws.
-    /// Sourced from <see cref="McpClientOptions.MaxConsecutiveStuckPolls"/>.
+    /// Inspects a received cacheable result (<c>tools/list</c>, <c>prompts/list</c>, <c>resources/list</c>,
+    /// <c>resources/templates/list</c>, or <c>resources/read</c>) so derived clients can emit diagnostics.
     /// </summary>
-    private protected abstract int MaxConsecutiveStuckPolls { get; }
+    /// <param name="method">The request method that produced the result.</param>
+    /// <param name="result">The cacheable result returned by the server.</param>
+    /// <remarks>
+    /// This is used to warn (never throw) when a server that negotiated a protocol version requiring the
+    /// SEP-2549 <c>ttlMs</c>/<c>cacheScope</c> fields omits them. The default implementation does nothing.
+    /// </remarks>
+    private protected virtual void ValidateCacheableResult(string method, ICacheableResult result)
+    {
+    }
 
     /// <summary>
     /// Registers one or more tool definitions in the client's tool cache, enabling the transport

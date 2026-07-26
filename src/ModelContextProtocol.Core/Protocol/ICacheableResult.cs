@@ -7,8 +7,9 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// This interface corresponds to the <c>CacheableResult</c> type in the Model Context Protocol
-/// schema and is implemented by the results of <c>tools/list</c>, <c>prompts/list</c>,
-/// <c>resources/list</c>, <c>resources/templates/list</c>, and <c>resources/read</c>.
+/// schema and is implemented by the results of <c>server/discover</c>, <c>tools/list</c>,
+/// <c>prompts/list</c>, <c>resources/list</c>, <c>resources/templates/list</c>, and
+/// <c>resources/read</c>.
 /// </para>
 /// <para>
 /// The TTL is a freshness hint, not a guarantee. It supplements rather than replaces the existing

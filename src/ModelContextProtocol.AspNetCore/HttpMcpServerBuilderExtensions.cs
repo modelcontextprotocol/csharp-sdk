@@ -34,6 +34,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationCallToolFilterGuardSetup>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
@@ -55,14 +56,17 @@ public static class HttpMcpServerBuilderExtensions
     /// <remarks>
     /// This method automatically configures authorization filters for all MCP server handlers. These filters respect
     /// authorization attributes such as <see cref="AuthorizeAttribute"/>
-    /// and <see cref="AllowAnonymousAttribute"/>.
+    /// and <see cref="AllowAnonymousAttribute"/>. Tool authorization runs in the alternate-result pipeline before
+    /// the Tasks extension dispatches background execution, so an unauthorized tool call does not create a task.
     /// </remarks>
     public static IMcpServerBuilder AddAuthorizationFilters(this IMcpServerBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
+        builder.Services.TryAddSingleton<AuthorizationFiltersMarker>();
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
 
         return builder;
     }
@@ -84,6 +88,8 @@ public static class HttpMcpServerBuilderExtensions
     /// set the <see cref="DistributedCacheEventStreamStoreOptions.Cache"/> property in the <paramref name="configureOptions"/> callback.
     /// </para>
     /// </remarks>
+    [Obsolete(ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = ModelContextProtocol.Obsoletions.LegacyStatefulHttp_Url)]
+#pragma warning disable MCP9006 // The method is itself obsolete and intentionally wires up the legacy resumability store.
     public static IMcpServerBuilder WithDistributedCacheEventStreamStore(this IMcpServerBuilder builder, Action<DistributedCacheEventStreamStoreOptions>? configureOptions = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -99,4 +105,5 @@ public static class HttpMcpServerBuilderExtensions
 
         return builder;
     }
+#pragma warning restore MCP9006
 }

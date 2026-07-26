@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -11,7 +11,7 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
-    <NoWarn>$(NoWarn);NU1903;NU1902</NoWarn>
+    <NoWarn>$(NoWarn);NU1903;NU1902;MCP9006</NoWarn>
     <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
     <DefineConstants>$(DefineConstants);MCP_TEST_TIME_PROVIDER</DefineConstants>
   </PropertyGroup>
@@ -36,6 +36,7 @@
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
     <Compile Include="..\..\src\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\..\src\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -83,6 +84,7 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Tasks\ModelContextProtocol.Extensions.Tasks.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestServer\ModelContextProtocol.TestServer.csproj" />
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />
   </ItemGroup>

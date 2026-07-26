@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// SEP-2106 backward-compat at the tools/list emission boundary. Clients negotiating a
-/// pre-2026-06-30 protocol version must still receive the legacy
+/// pre-2026-07-28 protocol version must still receive the legacy
 /// <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>
 /// envelope for non-object output schemas. In-memory storage stays natural; only the
 /// wire emission flips on the negotiated version.
@@ -18,8 +18,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 {
     private const string LegacyProtocolVersion = "2025-11-25";
-    private const string DraftSep2106ProtocolVersion = "DRAFT-2026-06-v1";
-    private const string Sep2106ProtocolVersion = "2026-06-30";
+    private const string Sep2106ProtocolVersion = "2026-07-28";
 
     public Sep2106ListToolsBackCompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -28,7 +27,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_StringTool_WrapsOutputSchemaForLegacyClients(string serverProtocolVersion, bool expectWrapped)
     {
@@ -50,7 +48,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_IntegerTool_WrapsOutputSchemaForLegacyClients(string serverProtocolVersion, bool expectWrapped)
     {
@@ -71,7 +68,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_ArrayTool_WrapsOutputSchemaForLegacyClients(string serverProtocolVersion, bool expectWrapped)
     {
@@ -92,7 +88,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion)]
-    [InlineData(DraftSep2106ProtocolVersion)]
     [InlineData(Sep2106ProtocolVersion)]
     public async Task ListTools_ObjectTool_NeverWrapsOutputSchema(string serverProtocolVersion)
     {
@@ -110,14 +105,13 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_NullableObjectTool_NormalizesTypeArrayForLegacyClients(string serverProtocolVersion, bool expectNormalized)
     {
-        // For clients on protocol versions older than 2026-06-30, type:["object","null"]
+        // For clients on protocol versions older than 2026-07-28, type:["object","null"]
         // must be emitted as plain type:"object" (those versions accept object schemas but
-        // not type-arrays — and the value side stays a plain object, no envelope). SEP-2106
-        // clients (2026-06-30+) see the natural type-array intact per the SEP's
+        // not type-arrays, and the value side stays a plain object, no envelope). SEP-2106
+        // clients (2026-07-28+) see the natural type-array intact per the SEP's
         // any-JSON-Schema-2020-12 allowance.
         ConfigureServerWithTools(serverProtocolVersion);
         await using var client = await CreateMcpClientForServer(new() { ProtocolVersion = serverProtocolVersion });
@@ -152,7 +146,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_DuplicateTypeRefsTool_RewritesRefsWhenWrapped(string serverProtocolVersion, bool expectWrapped)
     {
@@ -169,7 +162,6 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task ListTools_RecursiveTypeRefsTool_RewritesRefsWhenWrapped(string serverProtocolVersion, bool expectWrapped)
     {

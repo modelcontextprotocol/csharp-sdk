@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);MCP9006</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
@@ -14,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
+    <ProjectReference Include="../../src/ModelContextProtocol.Extensions.Tasks/ModelContextProtocol.Extensions.Tasks.csproj" />
   </ItemGroup>
 
 </Project>

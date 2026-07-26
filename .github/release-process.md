@@ -12,11 +12,13 @@ The following process is used when publishing new releases to NuGet.org.
 
 From a local clone of the repository, use Copilot CLI to invoke the `prepare-release` skill. The skill assesses the semantic version, bumps the version in [`src/Directory.Build.props`](../src/Directory.Build.props), runs API compatibility checks, reviews documentation, drafts release notes, and creates a pull request with all release artifacts.
 
+As part of Step 9 (documentation review), the skill also updates the shared embedded NuGet README (`src/PACKAGE.md`) -- adding any newly introduced packages to the package-list closure, applying the correct badge style (`nuget/vpre` for a prerelease series or `nuget/v` for a stable release), adding a release-notes link pointing to the tag being created, and syncing the same closure changes to the root `README.md`.
+
 Review the PR, request changes if needed, and merge when ready.
 
 ## 3. Publish the release
 
-After the prepare-release PR is merged, invoke the `publish-release` skill. The skill checks for any late-arriving PRs that could affect the release, refreshes the release notes, and creates a **draft** GitHub release.
+After the prepare-release PR is merged, invoke the `publish-release` skill. The skill checks for any late-arriving PRs that could affect the release, refreshes the release notes, re-runs the README content checklist (confirming package closure, badge style, and release-notes link), and creates a **draft** GitHub release.
 
 Review the draft release on GitHub, check 'Set as a pre-release' if appropriate, and click 'Publish release'.
 

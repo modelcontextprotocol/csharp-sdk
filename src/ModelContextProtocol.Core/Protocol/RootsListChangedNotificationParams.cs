@@ -12,4 +12,5 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class RootsListChangedNotificationParams : NotificationParams;

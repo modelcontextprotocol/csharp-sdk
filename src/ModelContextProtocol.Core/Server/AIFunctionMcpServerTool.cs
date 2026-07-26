@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
@@ -236,8 +236,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>
     /// Returns a <see cref="Tool"/> clone whose <see cref="Tool.OutputSchema"/> is rewritten
     /// into the wire shape required by clients on protocol versions older than
-    /// <c>"2026-06-30"</c>. Those versions require <c>outputSchema.type == "object"</c>;
-    /// SEP-2106 (negotiated at <c>"2026-06-30"</c> and later) widens that to any JSON
+    /// <c>"2026-07-28"</c>. Those versions require <c>outputSchema.type == "object"</c>;
+    /// SEP-2106 (negotiated at <c>"2026-07-28"</c> and later) widens that to any JSON
     /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
     /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
     /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
@@ -510,7 +510,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Per SEP-2106, any valid JSON Schema document is acceptable for outputSchema —
         // arrays, primitives, compositions, and nullable types pass through unchanged.
         // Explicit OutputSchema takes precedence over AIFunction's return schema.
-        // Back-compat for pre-2026-06-30 clients is applied at the wire emission sites
+        // Back-compat for pre-2026-07-28 clients is applied at the wire emission sites
         // (CreateStructuredResponse for tools/call, listToolsHandler for tools/list).
         if (toolCreateOptions.OutputSchema is { } explicitSchema)
         {
@@ -531,7 +531,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// is neither plain object-typed (<c>type:"object"</c>) nor the
     /// <c>type:["object","null"]</c> array form. Used by <see cref="CreateStructuredResponse"/>
     /// to decide whether to apply the envelope when emitting to a client that negotiated a
-    /// protocol version older than <c>"2026-06-30"</c> (those versions pre-date SEP-2106's
+    /// protocol version older than <c>"2026-07-28"</c> (those versions pre-date SEP-2106's
     /// allowance of non-object output schemas). The inner <c>type:["object","null"]</c>
     /// check is hoisted into a named bool to keep the surrounding control flow free of
     /// empty branches.
@@ -565,11 +565,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <summary>
     /// Transforms <paramref name="naturalSchema"/> into the wire shape required by clients
-    /// on protocol versions older than <c>"2026-06-30"</c>: non-object schemas are wrapped
+    /// on protocol versions older than <c>"2026-07-28"</c>: non-object schemas are wrapped
     /// in <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>,
     /// the <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>,
     /// and plain object-typed schemas pass through unchanged. SEP-2106 clients
-    /// (<c>"2026-06-30"</c>+) see the natural schema and never need this transform.
+    /// (<c>"2026-07-28"</c>+) see the natural schema and never need this transform.
     /// Dispatches on <see cref="ShouldWrapValueForLegacyWire"/> so the wrap decision lives
     /// in one place.
     /// </summary>

@@ -130,12 +130,24 @@ Generate a human-readable diff of the public API surface between the previous re
 
 Review repository documentation for changes needed to compensate for or adapt to this release:
 
-1. **NuGet package READMEs** — Validate that code samples in `README.md` and `src/PACKAGE.md` compile against the current SDK. Follow [references/readme-snippets.md](references/readme-snippets.md) for the validation procedure. Propose fixes for any API mismatches.
-2. **Conceptual documentation** — Review `docs/` for content affected by the changes in this release. Update references to changed APIs, new features, or removed functionality.
-3. **Versioning documentation** — If the release introduces new versioning-relevant policies (new experimental APIs, obsoletion changes), verify `docs/versioning.md` reflects them.
-4. **Changelogs** — If the repository contains changelog files (e.g., `CHANGELOG.md`), update them with the release information. If no changelogs exist, skip this sub-step and note it in the summary.
+1. **NuGet package READMEs** -- Run the README content checklist from [references/readme-content.md](references/readme-content.md) and validate code samples:
+   a. **Content checklist** -- Open `src/PACKAGE.md` and verify each item in the checklist:
+      - **Package-list closure**: every shipping SDK package is listed. If a new package was introduced in this release, add it now. Use non-counting phrasing -- do not say "N main packages".
+      - **Badge strategy**: all package badges use `nuget/vpre` for a prerelease series or `nuget/v` for a stable release. Switch all badges together if the release type has changed.
+      - **Release-notes link**: add or update the link to `https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v{version}` for the confirmed release version. The tag does not yet exist at prepare time; the link is forward-referencing and resolves when the GitHub release is published.
+      - **Root README.md sync**: mirror any package-list closure changes in the root `README.md`.
+      - **Other salient content**: descriptions, getting-started links, version-specific notes.
+   b. **Snippet validation** -- Validate that `csharp`-fenced code blocks in `src/PACKAGE.md` and `README.md` compile against the current SDK. Follow [references/readme-snippets.md](references/readme-snippets.md) for the full procedure. Propose fixes for any API mismatches.
+2. **Conceptual documentation** -- Review `docs/` for content affected by the changes in this release. Update references to changed APIs, new features, or removed functionality.
+3. **Versioning documentation** -- If the release introduces new versioning-relevant policies (new experimental APIs, obsoletion changes), verify `docs/versioning.md` reflects them.
+4. **Changelogs** -- If the repository contains changelog files (e.g., `CHANGELOG.md`), update them with the release information. If no changelogs exist, skip this sub-step and note it in the summary.
 
 Stage all documentation changes for inclusion in the release commit.
+
+**Edge Cases for README updates:**
+- **New package introduced** -- Add it to the package-list closure in `src/PACKAGE.md` and `README.md`. Use the package's `<Description>` from its `.csproj` as the short description.
+- **Release type changes (prerelease to stable or vice versa)** -- Switch all package badges between `nuget/vpre` and `nuget/v` together.
+- **Release tag does not yet exist at prepare time** -- The release-notes link is forward-referencing; it is verified to resolve during the publish-release step.
 
 ### Step 10: Draft Release Notes
 

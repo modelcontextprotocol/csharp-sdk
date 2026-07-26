@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -22,7 +21,6 @@ namespace ModelContextProtocol.Protocol;
 /// This type is part of the Multi Round-Trip Requests (MRTR) mechanism defined in SEP-2322.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Mrtr_DiagnosticId, UrlFormat = Experimentals.Mrtr_Url)]
 public sealed class InputRequiredResult : Result
 {
     /// <summary>

@@ -4,11 +4,17 @@ Welcome to the conceptual documentation for the Model Context Protocol SDK. Here
 
 ## Contents
 
-### [Getting Started](getting-started.md)
+### Getting started
 
-Install the SDK and build your first MCP client and server.
+To install the SDK and build your first MCP client and server, see [Getting started](getting-started.md).
 
-### Base Protocol
+### Deployment
+
+| Title | Description |
+| - | - |
+| [Docker deployment](deployment/docker.md) | Learn how to package and run ASP.NET Core MCP servers in Docker containers using Streamable HTTP transport. |
+
+### Base protocol
 
 | Title | Description |
 | - | - |
@@ -17,10 +23,9 @@ Install the SDK and build your first MCP client and server.
 | [Ping](ping/ping.md) | Learn how to verify connection health using the ping mechanism. |
 | [Progress tracking](progress/progress.md) | Learn how to track progress for long-running operations through notification messages. |
 | [Cancellation](cancellation/cancellation.md) | Learn how to cancel in-flight MCP requests using cancellation tokens and notifications. |
-| [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 | [Multi Round-Trip Requests (MRTR)](mrtr/mrtr.md) | Learn how servers request client input during tool execution using input-required results and retries. |
 
-### Client Features
+### Client features
 
 | Title | Description |
 | - | - |
@@ -28,7 +33,7 @@ Install the SDK and build your first MCP client and server.
 | [Roots](roots/roots.md) | Learn how clients provide filesystem roots to servers for context-aware operations. |
 | [Elicitation](elicitation/elicitation.md) | Learn how to request additional information from users during interactions. |
 
-### Server Features
+### Server features
 
 | Title | Description |
 | - | - |
@@ -47,4 +52,5 @@ Install the SDK and build your first MCP client and server.
 | Title | Description |
 | - | - |
 | [MCP Apps](apps/apps.md) | Learn how to use the MCP Apps extension to deliver interactive UIs from MCP servers. |
+| [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
 | [Identity and Roles](identity/identity.md) | Learn how to access caller identity and roles in MCP tool, prompt, and resource handlers. |

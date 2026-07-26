@@ -651,19 +651,17 @@ public partial class McpServerToolTests
         Assert.False(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out _));
     }
 
-    // SEP-2106 backward-compat: for clients negotiating a pre-2026-06-30 protocol version,
+    // SEP-2106 backward-compat: for clients negotiating a pre-2026-07-28 protocol version,
     // non-object structured content is wrapped in the legacy {"result": <value>} envelope.
-    // Clients on the SEP-2106 protocol ("2026-06-30" and later, including the draft) see the
-    // natural value shape. In-memory storage stays natural in both modes — only the wire
+    // Clients on the SEP-2106 protocol ("2026-07-28" and later) see the
+    // natural value shape. In-memory storage stays natural in both modes; only the wire
     // emission flips.
     private const string LegacyProtocolVersion = "2025-11-25";
-    private const string DraftSep2106ProtocolVersion = "DRAFT-2026-06-v1";
-    private const string Sep2106ProtocolVersion = "2026-06-30";
+    private const string Sep2106ProtocolVersion = "2026-07-28";
 
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
     [InlineData(null, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task StructuredContent_StringReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
     {
@@ -689,7 +687,6 @@ public partial class McpServerToolTests
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
     [InlineData(null, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task StructuredContent_IntegerReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
     {
@@ -715,7 +712,6 @@ public partial class McpServerToolTests
     [Theory]
     [InlineData(LegacyProtocolVersion, true)]
     [InlineData(null, true)]
-    [InlineData(DraftSep2106ProtocolVersion, false)]
     [InlineData(Sep2106ProtocolVersion, false)]
     public async Task StructuredContent_ArrayReturn_WrapsForLegacyClients(string? protocolVersion, bool expectWrapped)
     {
@@ -742,12 +738,11 @@ public partial class McpServerToolTests
     [Theory]
     [InlineData(LegacyProtocolVersion)]
     [InlineData(null)]
-    [InlineData(DraftSep2106ProtocolVersion)]
     [InlineData(Sep2106ProtocolVersion)]
     public async Task StructuredContent_ObjectReturn_NeverWrapped(string? protocolVersion)
     {
         // Object-typed return: the stored schema is type:"object" — already the form
-        // expected by clients on protocol versions older than 2026-06-30, so no envelope
+        // expected by clients on protocol versions older than 2026-07-28, so no envelope
         // is applied at any protocol version. Wire shape must be identical across versions.
         McpServerTool tool = McpServerTool.Create(() => new Person("John", 27), new()
         {
@@ -769,11 +764,10 @@ public partial class McpServerToolTests
     [Theory]
     [InlineData(LegacyProtocolVersion)]
     [InlineData(null)]
-    [InlineData(DraftSep2106ProtocolVersion)]
     [InlineData(Sep2106ProtocolVersion)]
     public async Task StructuredContent_NullableObjectReturn_NeverWrapped(string? protocolVersion)
     {
-        // type:["object","null"] — for clients on protocol versions older than 2026-06-30,
+        // type:["object","null"]: for clients on protocol versions older than 2026-07-28,
         // the SCHEMA is normalized to plain type:"object" (verified in
         // Sep2106ListToolsBackCompatTests), but the value side is never envelope-wrapped at
         // any protocol version. So the emitted structured content stays a plain object

@@ -11,6 +11,8 @@ namespace ModelContextProtocol.Tests.Configuration;
 
 public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper testOutputHelper) : ClientServerTestBase(testOutputHelper, startServer: false)
 {
+    private const string LatestStableVersion = "2025-11-25";
+
     private static ILogger GetLogger(IServiceProvider? services, string categoryName)
     {
         var loggerFactory = services?.GetRequiredService<ILoggerFactory>() ?? throw new InvalidOperationException("LoggerFactory not available");
@@ -72,22 +74,25 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
     {
         List<string> messageTypes = [];
 
-        // The client sends notifications/initialized fire-and-forget, so unlike the initialize and
-        // tools/list request/response exchanges it has no synchronization point the test can await.
-        // Signal once the filter finishes processing it so the strict counts below observe a
-        // complete, stable log instead of racing the still-in-flight notification.
-        var initializedNotificationProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Under the 2026-07-28 protocol the client performs a server/discover + tools/list exchange (no
+        // fire-and-forget initialized notification), so the tools/list request is a deterministic
+        // synchronization point. Gate recording to it and signal once the filter finishes so a
+        // regression that invokes the filter pipeline more than once per message surfaces as an extra entry.
+        var toolsListProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         McpServerBuilder
             .WithMessageFilters(filters => filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
             {
-                var messageTypeName = context.JsonRpcMessage.GetType().Name;
-                messageTypes.Add(messageTypeName);
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ToolsList })
+                {
+                    messageTypes.Add(context.JsonRpcMessage.GetType().Name);
+                }
+
                 await next(context, cancellationToken);
 
-                if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ToolsList })
                 {
-                    initializedNotificationProcessed.TrySetResult(true);
+                    toolsListProcessed.TrySetResult(true);
                 }
             }))
             .WithTools<TestTool>();
@@ -98,51 +103,57 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // Wait for the fire-and-forget initialized notification to flow through the filter pipeline
-        // before snapshotting the counts; otherwise the strict counts below can race the notification.
-        await initializedNotificationProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await toolsListProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
-        // The message filter should intercept JsonRpcRequest messages.
-        // Use strict counts so a regression that invokes the filter pipeline more than once per
-        // incoming message (analogous to the SendRequestAsync double-wrap regression on the outgoing
-        // side) would fail this test instead of slipping through Assert.Contains.
-        // A single ListToolsAsync drives three server-bound messages: initialize (request),
-        // notifications/initialized (notification), and tools/list (request).
-        Assert.Equal(2, messageTypes.Count(m => m == nameof(JsonRpcRequest)));
-        Assert.Equal(1, messageTypes.Count(m => m == nameof(JsonRpcNotification)));
+        // The message filter should intercept the tools/list JsonRpcRequest exactly once.
+        Assert.Collection(messageTypes, m => Assert.Equal(nameof(JsonRpcRequest), m));
     }
 
     [Fact]
     public async Task AddIncomingMessageFilter_Multiple_Filters_Execute_In_Order()
     {
-        // The client sends notifications/initialized fire-and-forget, so unlike the initialize and
-        // tools/list request/response exchanges it has no synchronization point the test can await.
-        // Signal once the outermost filter finishes processing it so the strict counts below observe a
-        // complete, stable log instead of racing the still-in-flight notification.
-        var initializedNotificationProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Under the 2026-07-28 protocol the client performs a server/discover + tools/list exchange (no
+        // fire-and-forget initialized notification), so the tools/list request is a deterministic
+        // synchronization point. Gate the filter logging to it and signal once the outermost filter
+        // finishes so the assertions observe a complete, stable log.
+        var toolsListProcessed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         McpServerBuilder
             .WithMessageFilters(filters =>
             {
                 filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
                 {
+                    var isToolsList = context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ToolsList };
                     var logger = GetLogger(context.Services, "MessageFilter1");
-                    logger.LogInformation("MessageFilter1 before");
-                    await next(context, cancellationToken);
-                    logger.LogInformation("MessageFilter1 after");
-
-                    if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
+                    if (isToolsList)
                     {
-                        initializedNotificationProcessed.TrySetResult(true);
+                        logger.LogInformation("MessageFilter1 before");
+                    }
+
+                    await next(context, cancellationToken);
+
+                    if (isToolsList)
+                    {
+                        logger.LogInformation("MessageFilter1 after");
+                        toolsListProcessed.TrySetResult(true);
                     }
                 });
 
                 filters.AddIncomingFilter((next) => async (context, cancellationToken) =>
                 {
+                    var isToolsList = context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ToolsList };
                     var logger = GetLogger(context.Services, "MessageFilter2");
-                    logger.LogInformation("MessageFilter2 before");
+                    if (isToolsList)
+                    {
+                        logger.LogInformation("MessageFilter2 before");
+                    }
+
                     await next(context, cancellationToken);
-                    logger.LogInformation("MessageFilter2 after");
+
+                    if (isToolsList)
+                    {
+                        logger.LogInformation("MessageFilter2 after");
+                    }
                 });
             })
             .WithTools<TestTool>();
@@ -153,38 +164,23 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // Wait for the fire-and-forget initialized notification to flow through the filter pipeline
-        // before snapshotting the log; otherwise the strict counts below can race the notification.
-        await initializedNotificationProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        // Wait for the outermost filter to finish processing the tools/list request before
+        // snapshotting the log; otherwise the assertions can race the still-in-flight "after" logs.
+        await toolsListProcessed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         var logMessages = MockLoggerProvider.LogMessages
             .Where(m => m.Category.StartsWith("MessageFilter"))
             .Select(m => m.Message)
             .ToList();
 
-        // First filter registered is outermost
-        // We should see this pattern for each message: MessageFilter1 before -> MessageFilter2 before -> MessageFilter2 after -> MessageFilter1 after
-        int idx1Before = logMessages.IndexOf("MessageFilter1 before");
-        int idx2Before = logMessages.IndexOf("MessageFilter2 before");
-        int idx2After = logMessages.IndexOf("MessageFilter2 after");
-        int idx1After = logMessages.IndexOf("MessageFilter1 after");
-
-        Assert.True(idx1Before >= 0);
-        Assert.True(idx2Before >= 0);
-        Assert.True(idx2After >= 0);
-        Assert.True(idx1After >= 0);
-
-        // Verify ordering within a single request
-        Assert.True(idx1Before < idx2Before);
-        Assert.True(idx2Before < idx2After);
-        Assert.True(idx2After < idx1After);
-
-        // Verify each filter ran exactly once per incoming message (initialize + notifications/initialized + tools/list).
-        // Strict counts catch regressions where the incoming filter pipeline gets invoked more than once per message.
-        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter1 before"));
-        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter2 before"));
-        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter2 after"));
-        Assert.Equal(3, logMessages.Count(m => m == "MessageFilter1 after"));
+        // First filter registered is outermost. For the single gated tools/list request we expect the
+        // strict nested order. Assert.Collection also catches any regression that invokes the incoming
+        // filter pipeline more than once per message (which would add extra entries).
+        Assert.Collection(logMessages,
+            m => Assert.Equal("MessageFilter1 before", m),
+            m => Assert.Equal("MessageFilter2 before", m),
+            m => Assert.Equal("MessageFilter2 after", m),
+            m => Assert.Equal("MessageFilter1 after", m));
     }
 
     [Fact]
@@ -396,6 +392,11 @@ public class McpServerBuilderExtensionsMessageFilterTests(ITestOutputHelper test
 
         var clientOptions = new McpClientOptions
         {
+            // This test observes the legacy outgoing flow on the server side: the initialize response and
+            // the server->client sampling/createMessage request. Under the 2026-07-28 protocol those are replaced
+            // by server/discover and implicit MRTR (InputRequiredResult), which is covered by MrtrIntegrationTests.
+            // Pin to the latest stable version to keep exercising the legacy server->client request path here.
+            ProtocolVersion = LatestStableVersion,
             Capabilities = new() { Sampling = new() },
             Handlers = new()
             {

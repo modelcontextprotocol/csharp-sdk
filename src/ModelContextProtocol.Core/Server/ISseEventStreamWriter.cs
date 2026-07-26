@@ -6,6 +6,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Provides write access to an SSE event stream, allowing events to be written and tracked with unique IDs.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public interface ISseEventStreamWriter : IAsyncDisposable
 {
     /// <summary>
