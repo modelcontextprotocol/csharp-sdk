@@ -3,6 +3,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Configuration options for creating an SSE event stream.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public sealed class SseEventStreamOptions
 {
     /// <summary>

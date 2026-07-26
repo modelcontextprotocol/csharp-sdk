@@ -29,7 +29,7 @@ public class McpClientPromptTests : ClientServerTestBase
 
         [McpServerPrompt, Description("Echoes back the metadata it receives")]
         public static ChatMessage MetadataEcho(RequestContext<GetPromptRequestParams> context) =>
-            new(ChatRole.User, context.Params?.Meta?.ToJsonString() ?? "{}");
+            new(ChatRole.User, context.Params.Meta?.ToJsonString() ?? "{}");
     }
 
     [Fact]

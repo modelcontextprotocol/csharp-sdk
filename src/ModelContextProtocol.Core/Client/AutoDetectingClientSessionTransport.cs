@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Net;
+using System.Net.Http;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Client;
@@ -73,25 +74,52 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
             }
+            else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError)
+            {
+                // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server.
+                // It just rejected our specific request (e.g., -32022 UnsupportedProtocolVersion,
+                // -32021 MissingRequiredClientCapability, -32020 HeaderMismatch, or any other
+                // application-level error). Don't fall back to SSE — that would mask the real signal
+                // and surface a misleading "session id required" error from the SSE GET path.
+                // Adopt the Streamable HTTP transport and throw the structured exception so the
+                // connect-time fallback logic can react per spec PR #2844. Setting ActiveTransport
+                // first makes the catch filter below leave the now-owned transport alone.
+                LogUsingStreamableHttp(_name);
+                ActiveTransport = streamableHttpTransport;
+                throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
+            }
             else
             {
-                // If the status code is not success, fall back to SSE
+                // Non-JSON-RPC error response: either the server doesn't speak MCP at all, or this
+                // is an older deployment that expects the SSE transport (which establishes its
+                // protocol via GET /sse rather than POST). Fall back to SSE per the original
+                // behavior. Capture the underlying error (status + body) before falling back so that,
+                // if SSE also fails, we can surface the real Streamable HTTP diagnostic to the caller
+                // instead of dropping it on the floor (see https://github.com/modelcontextprotocol/csharp-sdk/issues/1526).
                 LogStreamableHttpFailed(_name, response.StatusCode);
 
+                // This reads the response body a second time for the application/json case, where
+                // TryReadJsonRpcErrorAsync above already read it. HttpContent buffers after the first
+                // read, so this returns the same buffered content and is safe (not a second stream
+                // consumption). For the common non-JSON error responses (415, 405, plain text)
+                // TryReadJsonRpcErrorAsync returns early on the content type, so there is no double read.
+                var streamableHttpError = await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
+
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
-                await InitializeSseTransportAsync(message, cancellationToken).ConfigureAwait(false);
+                await InitializeSseTransportAsync(message, streamableHttpError, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch
+        catch when (ActiveTransport is null)
         {
-            // If nothing threw inside the try block, we've either set streamableHttpTransport as the
-            // ActiveTransport, or else we will have disposed it in the !IsSuccessStatusCode else block.
+            // Only dispose the Streamable HTTP transport when we didn't adopt it. If we set
+            // ActiveTransport above (success path OR structured-error path), the transport's
+            // lifetime is owned by the outer transport from this point on.
             await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }
 
-    private async Task InitializeSseTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+    private async Task InitializeSseTransportAsync(JsonRpcMessage message, HttpRequestException? streamableHttpError, CancellationToken cancellationToken)
     {
         if (_options.KnownSessionId is not null)
         {
@@ -108,6 +136,24 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
             LogUsingSSE(_name);
             ActiveTransport = sseTransport;
+        }
+        catch (Exception sseError) when (streamableHttpError is not null && sseError is not OperationCanceledException)
+        {
+            // SSE fallback also failed. Surface the original Streamable HTTP error as the primary failure so the
+            // user sees the real server diagnostic (e.g. 415 Unsupported Media Type) instead of the unrelated
+            // SSE-fallback error (e.g. a 405 from a Streamable-HTTP-only server that doesn't accept GET). Preserve
+            // the original status code and attach the SSE failure as the inner exception so neither is lost, and
+            // keep HttpRequestException as the surfaced type so existing callers can still catch it and read StatusCode.
+            await sseTransport.DisposeAsync().ConfigureAwait(false);
+            LogSseFallbackFailedAfterStreamableHttp(_name, sseError);
+#if NET
+            throw new HttpRequestException(streamableHttpError.Message, sseError, streamableHttpError.StatusCode);
+#else
+            // net472 has no HttpRequestException overload that carries a status code, so this target
+            // preserves the status text in the message but not a programmatic StatusCode. Preserving the
+            // status code is intentionally net5+ only rather than an oversight.
+            throw new HttpRequestException(streamableHttpError.Message, sseError);
+#endif
         }
         catch
         {
@@ -147,4 +193,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using SSE transport.")]
     private partial void LogUsingSSE(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} SSE fallback failed after Streamable HTTP also failed; surfacing both errors.")]
+    private partial void LogSseFallbackFailedAfterStreamableHttp(string endpointName, Exception sseError);
 }

@@ -64,25 +64,4 @@ public sealed class CallToolResult : Result
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }
-
-    /// <summary>
-    /// Gets or sets the task data for the newly created task.
-    /// </summary>
-    /// <remarks>
-    /// This property is populated only for task-augmented tool calls. When present, the other properties
-    /// (<see cref="Content"/>, <see cref="StructuredContent"/>, <see cref="IsError"/>) may not be populated.
-    /// The actual tool result can be retrieved later via <c>tasks/result</c>.
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    [JsonIgnore]
-    public McpTask? Task
-    {
-        get => TaskCore;
-        set => TaskCore = value;
-    }
-
-    // See ExperimentalInternalPropertyTests.cs before modifying this property.
-    [JsonInclude]
-    [JsonPropertyName("task")]
-    internal McpTask? TaskCore { get; set; }
 }

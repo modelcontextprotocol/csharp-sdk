@@ -3,24 +3,30 @@ items:
   href: index.md
 - name: Getting Started
   uid: getting-started
+- name: Deployment
+  items:
+  - name: Docker
+    uid: docker-deployment
 - name: Base Protocol
   items:
   - name: Capabilities
     uid: capabilities
   - name: Transports
     uid: transports
+  - name: Stateless and Stateful
+    uid: stateless
   - name: Ping
     uid: ping
   - name: Progress
     uid: progress
   - name: Cancellation
     uid: cancellation
-  - name: Pagination
-    uid: pagination
-  - name: Tasks
-    uid: tasks
+  - name: Multi Round-Trip Requests (MRTR)
+    uid: mrtr
 - name: Client Features
   items:
+  - name: Sampling
+    uid: sampling
   - name: Roots
     uid: roots
   - name: Elicitation
@@ -37,7 +43,17 @@ items:
     uid: completions
   - name: Logging
     uid: logging
+  - name: Pagination
+    uid: pagination
   - name: HTTP Context
     uid: httpcontext
   - name: Filters
     uid: filters
+- name: Extensions
+  items:
+  - name: MCP Apps
+    uid: apps
+  - name: Tasks
+    uid: tasks
+  - name: Identity and Roles
+    uid: identity

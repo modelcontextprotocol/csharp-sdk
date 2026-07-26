@@ -31,14 +31,14 @@ public static class McpEndpointRouteBuilderExtensions
 
         var options = streamableHttpHandler.HttpServerTransportOptions;
 
-#pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
+#pragma warning disable MCP9004 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
         if (options.Stateless && options.EnableLegacySse)
         {
             throw new InvalidOperationException(
                 "Legacy SSE endpoints cannot be enabled in stateless mode because SSE requires in-memory session state " +
                 "shared between the GET /sse and POST /message requests. Remove the EnableLegacySse setting or disable stateless mode.");
         }
-#pragma warning restore MCP9003
+#pragma warning restore MCP9004
 
         var mcpGroup = endpoints.MapGroup(pattern);
         var streamableHttpGroup = mcpGroup.MapGroup("")
@@ -60,9 +60,9 @@ public static class McpEndpointRouteBuilderExtensions
             // The DELETE endpoint is not mapped in Stateless mode since there is no server-side state for the DELETE to clean up.
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
-#pragma warning disable MCP9003 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
+#pragma warning disable MCP9004 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
             if (options.EnableLegacySse)
-#pragma warning restore MCP9003
+#pragma warning restore MCP9004
             {
                 // Map legacy HTTP with SSE endpoints. These are disabled by default because the SSE transport
                 // has no built-in request backpressure (POST returns 202 immediately). Enable only for trusted clients.

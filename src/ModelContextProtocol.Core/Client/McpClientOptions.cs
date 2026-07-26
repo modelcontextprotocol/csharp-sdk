@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -32,18 +33,42 @@ public sealed class McpClientOptions
     public ClientCapabilities? Capabilities { get; set; }
 
     /// <summary>
+    /// Gets or sets the metadata to include in the <c>_meta</c> field of the <see cref="RequestMethods.Initialize"/> request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set, this value is sent as <see cref="RequestParams.Meta"/> on the <see cref="InitializeRequestParams"/> during the initialization handshake.
+    /// This allows passing implementation-specific data to the server alongside the standard <c>initialize</c> parameters,
+    /// such as authentication context a server validates before completing the handshake.
+    /// </para>
+    /// <para>
+    /// When <see langword="null"/>, no <c>_meta</c> field is sent.
+    /// </para>
+    /// </remarks>
+    public JsonObject? InitializeMeta { get; set; }
+
+    /// <summary>
     /// Gets or sets the protocol version to request from the server, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The protocol version is a key part of the initialization handshake. The client and server must
-    /// agree on a compatible protocol version to communicate successfully.
+    /// Supported values are <c>2024-11-05</c>, <c>2025-03-26</c>, <c>2025-06-18</c>, <c>2025-11-25</c>,
+    /// and <c>2026-07-28</c>.
     /// </para>
     /// <para>
-    /// If non-<see langword="null"/>, this version will be sent to the server, and the handshake
-    /// will fail if the version in the server's response does not match this version.
-    /// If <see langword="null"/>, the client will request the latest version supported by the server
-    /// but will allow any supported version that the server advertises in its response.
+    /// When <see langword="null"/> (the default), the client prefers the latest revision (<c>2026-07-28</c>),
+    /// which removed the <c>initialize</c> handshake and Streamable HTTP sessions. It probes with
+    /// <c>server/discover</c> and automatically falls back to the <c>initialize</c> handshake,
+    /// downgrading to an initialize-capable version the server advertises, when the server does not support that revision.
+    /// </para>
+    /// <para>
+    /// When non-<see langword="null"/>, this value is both the requested version and the minimum the client
+    /// will accept: the client requests exactly this version and refuses to downgrade below it, throwing an
+    /// <see cref="McpException"/> instead of falling back. Setting it to <c>2026-07-28</c> therefore disables
+    /// the automatic initialize-handshake server fallback, and setting it to a version that still supports Streamable HTTP
+    /// sessions, such as <c>2025-11-25</c>, forces the <c>initialize</c> handshake and fails if the server
+    /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
+    /// or retry the connection with a different value.
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
@@ -68,6 +93,52 @@ public sealed class McpClientOptions
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
+    /// before falling back to the <c>initialize</c> handshake.
+    /// </summary>
+    /// <value>
+    /// The probe timeout. The default value is 5 seconds. Use
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> to disable the separate probe timeout
+    /// and rely solely on <see cref="InitializationTimeout"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// This timeout only has an effect when the client prefers the <c>2026-07-28</c> protocol revision, that is,
+    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or <c>2026-07-28</c>.
+    /// In that mode the client first probes the server with a
+    /// <c>server/discover</c> request. A server that predates the <c>2026-07-28</c> revision may
+    /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
+    /// client concludes the server requires <c>initialize</c> and falls back to that handshake on the
+    /// same connection. When the caller pins an initialize-capable <see cref="ProtocolVersion"/>, no probe is issued
+    /// and this value has no effect.
+    /// </para>
+    /// <para>
+    /// The default is intentionally short so that dual-path clients fall back quickly against initialize-handshake
+    /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
+    /// satellite links) where a short probe could trigger the initialize fallback before a server on the
+    /// per-request metadata revision has had a chance to respond. The probe is always also bounded by
+    /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
+    /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
+    /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value is not positive and is not <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
+    public TimeSpan DiscoverProbeTimeout
+    {
+        get;
+        set
+        {
+            if (value <= TimeSpan.Zero && value != Timeout.InfiniteTimeSpan)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "must be positive or Timeout.InfiniteTimeSpan.");
+            }
+            field = value;
+        }
+    } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// Gets or sets the container of handlers used by the client for processing protocol messages.
     /// </summary>
     public McpClientHandlers Handlers
@@ -80,35 +151,4 @@ public sealed class McpClientOptions
         }
     }
 
-    /// <summary>
-    /// Gets or sets the task store for managing client-side tasks.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When a task store is configured, the client will support task-augmented requests from the server.
-    /// This allows the server to request sampling or elicitation as tasks, which the client executes
-    /// asynchronously and allows the server to poll for status and results.
-    /// </para>
-    /// <para>
-    /// If not set, task-augmented requests will not be supported, and the client will not advertise
-    /// task capabilities to the server.
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public IMcpTaskStore? TaskStore { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value indicating whether the client should send task status notifications to the server.
-    /// </summary>
-    /// <value>
-    /// <see langword="true"/> to send task status notifications; <see langword="false"/> otherwise.
-    /// The default is <see langword="true"/>.
-    /// </value>
-    /// <remarks>
-    /// When enabled and a <see cref="TaskStore"/> is configured, the client will send optional
-    /// <c>notifications/tasks/status</c> notifications to inform the server of task state changes.
-    /// Servers MUST NOT rely on receiving these notifications and should continue polling via <c>tasks/get</c>.
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public bool SendTaskStatusNotifications { get; set; } = true;
 }

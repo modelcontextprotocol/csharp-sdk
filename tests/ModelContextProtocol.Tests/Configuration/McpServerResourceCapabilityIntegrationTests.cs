@@ -106,9 +106,9 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
                 };
             })
             .WithResources<LiveResources>()
-            .WithStdioServerTransport();
+            .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Verify capabilities are preserved
@@ -122,15 +122,15 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
     }
 
     [Fact]
-    public void ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
+    public async Task ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
     {
         // Test that ResourcesCapability is created even without handlers or manual setting
         var services = new ServiceCollection();
         var builder = services.AddMcpServer()
             .WithResources<LiveResources>()
-            .WithStdioServerTransport();
+            .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Resources are registered

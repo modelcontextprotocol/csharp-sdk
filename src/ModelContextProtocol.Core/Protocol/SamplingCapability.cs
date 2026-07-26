@@ -17,6 +17,7 @@ namespace ModelContextProtocol.Protocol;
 /// using an AI model. The client must set a <see cref="McpClientHandlers.SamplingHandler"/> to process these requests.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class SamplingCapability
 {
     /// <summary>

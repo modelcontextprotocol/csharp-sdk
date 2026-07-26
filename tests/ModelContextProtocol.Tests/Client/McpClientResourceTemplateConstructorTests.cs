@@ -27,7 +27,7 @@ public class McpClientResourceTemplateConstructorTests : ClientServerTestBase
 
         [McpServerResource, Description("Echoes back the metadata it receives")]
         public static string MetadataEcho(RequestContext<ReadResourceRequestParams> context, [Description("An ID")] string id) =>
-            context.Params?.Meta?.ToJsonString() ?? "{}";
+            context.Params.Meta?.ToJsonString() ?? "{}";
     }
 
     [Fact]

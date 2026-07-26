@@ -58,11 +58,15 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
-            throw new InvalidOperationException("Failed to connect transport", ex);
+            throw new IOException("Failed to connect transport.", ex);
         }
     }
 
@@ -125,7 +129,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails()));
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 
@@ -186,7 +190,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             else
             {
-                SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails
+                SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails
                 {
                     HttpStatusCode = failureStatusCode,
                     Exception = ex,
@@ -199,7 +203,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new TransportClosedException(new HttpClientCompletionDetails()));
+            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 

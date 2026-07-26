@@ -9,7 +9,7 @@ The Model Context Protocol C# SDK uses the [`[Experimental]`](https://learn.micr
 
 ## Suppressing experimental diagnostics
 
-When you use an experimental API, the compiler produces a diagnostic (e.g., `MCPEXP001`) to ensure you're aware the API may change. If you want to use the API, suppress the diagnostic in one of these ways:
+When you use an experimental API, the compiler produces a diagnostic (for example, `MCPEXP001`) to ensure you're aware the API might change. If you want to use the API, suppress the diagnostic in one of these ways:
 
 ### Project-wide suppression
 
@@ -26,9 +26,9 @@ Add the diagnostic ID to `<NoWarn>` in your project file:
 Use `#pragma warning disable` around specific call sites:
 
 ```csharp
-#pragma warning disable MCPEXP001 // The Tasks feature is experimental per the MCP specification and is subject to change.
-tool.Execution = new ToolExecution { ... };
-#pragma warning restore MCPEXP001
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental and may change.
+options.RunSessionHandler = static (_, _, _) => Task.CompletedTask;
+#pragma warning restore MCPEXP002
 ```
 
 For a full list of experimental diagnostic IDs and their descriptions, see the [list of diagnostics](list-of-diagnostics.md#experimental-apis).
@@ -67,4 +67,3 @@ By placing the SDK's resolver first, MCP types are serialized using the SDK's co
 
 - [Versioning](versioning.md)
 - [List of diagnostics](list-of-diagnostics.md#experimental-apis)
-- [Tasks](concepts/tasks/tasks.md) (an experimental feature)

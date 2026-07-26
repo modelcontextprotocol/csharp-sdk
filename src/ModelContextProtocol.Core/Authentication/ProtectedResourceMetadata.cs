@@ -190,7 +190,8 @@ public sealed class ProtectedResourceMetadata
     /// The scopes included in the WWW-Authenticate challenge MAY match scopes_supported, be a subset or superset of it,
     /// or an alternative collection that is neither a strict subset nor superset. Clients MUST NOT assume any particular
     /// set relationship between the challenged scope set and scopes_supported. Clients MUST treat the scopes provided
-    /// in the challenge as authoritative for satisfying the current request.
+    /// in the challenge as authoritative for the current operation. When re-authorizing, clients SHOULD include these
+    /// scopes alongside any previously granted scopes to avoid losing permissions needed for other operations (SEP-2350).
     ///
     /// https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
     /// </summary>

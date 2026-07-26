@@ -141,7 +141,7 @@ builder.Services
         {
             throw new McpException("Cannot add subscription for server with null SessionId");
         }
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
 
@@ -165,7 +165,7 @@ builder.Services
         {
             throw new McpException("Cannot remove subscription for server with null SessionId");
         }
-        if (ctx.Params?.Uri is { } uri)
+        if (ctx.Params.Uri is { } uri)
         {
             subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
         }
@@ -223,11 +223,6 @@ builder.Services
     })
     .WithSetLoggingLevelHandler(async (ctx, ct) =>
     {
-        if (ctx.Params?.Level is null)
-        {
-            throw new McpProtocolException("Missing required argument 'level'", McpErrorCode.InvalidParams);
-        }
-
         // The SDK updates the LoggingLevel field of the IMcpServer
 
         await ctx.Server.SendNotificationAsync("notifications/message", new
