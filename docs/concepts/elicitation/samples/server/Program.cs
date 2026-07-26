@@ -6,11 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
-    {
-        // Elicitation requires stateful mode because it sends server-to-client requests.
-        // Set Stateless = false explicitly for forward compatibility in case the default changes.
-        options.Stateless = false;
-    })
+        options.IdleTimeout = Timeout.InfiniteTimeSpan // Never timeout
+    )
     .WithTools<InteractiveTools>();
 
 builder.Logging.AddConsole(options =>

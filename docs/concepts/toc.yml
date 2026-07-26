@@ -9,8 +9,6 @@ items:
     uid: capabilities
   - name: Transports
     uid: transports
-  - name: Sessions
-    uid: sessions
   - name: Ping
     uid: ping
   - name: Progress
@@ -23,8 +21,6 @@ items:
     uid: tasks
 - name: Client Features
   items:
-  - name: Sampling
-    uid: sampling
   - name: Roots
     uid: roots
   - name: Elicitation
