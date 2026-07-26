@@ -78,7 +78,7 @@ public sealed class McpServerHandlers
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>>? CallToolWithAlternateHandler
     {
         get;
