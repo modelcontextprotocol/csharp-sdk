@@ -13,8 +13,8 @@ namespace ModelContextProtocol.Analyzers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The default value of <c>Stateless</c> is <see langword="false"/> (stateful mode), but stateless mode is
-/// recommended for most servers. Setting the property explicitly protects against future changes to the default.
+/// The default value of <c>Stateless</c> can change with protocol revisions. Setting the property explicitly
+/// protects against future changes to the default, while stateless mode remains recommended for most servers.
 /// </para>
 /// <para>
 /// The analyzer detects the following patterns:
@@ -130,6 +130,7 @@ public sealed class WithHttpTransportAnalyzer : DiagnosticAnalyzer
         return invocation.Expression switch
         {
             MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name.Identifier.Text,
             IdentifierNameSyntax identifier => identifier.Identifier.Text,
             _ => null,
         };

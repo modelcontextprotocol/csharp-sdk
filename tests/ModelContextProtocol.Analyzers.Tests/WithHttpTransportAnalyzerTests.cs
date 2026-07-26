@@ -61,6 +61,25 @@ public class WithHttpTransportAnalyzerTests
     }
 
     [Fact]
+    public void ConditionalAccess_NoArguments_Reports()
+    {
+        var diagnostics = RunAnalyzer("""
+            using Microsoft.Extensions.DependencyInjection;
+            using ModelContextProtocol.Server;
+
+            class Test
+            {
+                void Configure(IMcpServerBuilder? builder)
+                {
+                    builder?.WithHttpTransport();
+                }
+            }
+            """);
+
+        Assert.Single(diagnostics, d => d.Id == "MCP003");
+    }
+
+    [Fact]
     public void NullArgument_Reports()
     {
         var diagnostics = RunAnalyzer("""
