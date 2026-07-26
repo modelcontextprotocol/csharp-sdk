@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Server;
 /// <see cref="JsonNode"/> response, giving extensions full control over request/response serialization.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+[Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
 public sealed class McpServerRequestHandler
 {
     /// <summary>

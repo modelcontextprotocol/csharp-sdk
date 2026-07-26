@@ -13,9 +13,9 @@ namespace ModelContextProtocol;
 /// These APIs may change as the specification evolves.
 /// </description></item>
 /// <item><description>
-/// <c>MCPEXP002</c> covers experimental SDK APIs that are unrelated to the MCP specification,
-/// such as subclassing internal types or SDK-specific extensibility hooks. These APIs may
-/// change or be removed based on SDK design feedback.
+/// <c>MCPEXP002</c> covers SDK extensibility APIs that enable features to be implemented
+/// in standalone packages without requiring Core to understand those features. These APIs
+/// remain experimental until additional extensibility scenarios validate the design.
 /// </description></item>
 /// </list>
 /// <para>
@@ -65,30 +65,15 @@ internal static class Experimentals
     public const string Apps_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp003";
 
     /// <summary>
-    /// Diagnostic ID for experimental SDK APIs unrelated to the MCP specification,
-    /// such as subclassing <c>McpClient</c>/<c>McpServer</c> or referencing <c>RunSessionHandler</c>.
+    /// Diagnostic ID for SDK extensibility APIs that enable independently packaged features,
+    /// such as Tasks, without requiring Core awareness of those features.
     /// </summary>
     /// <remarks>
     /// This diagnostic ID covers experimental SDK-level extensibility APIs. All constants
     /// in this group share the same diagnostic ID so users need only one suppression point
     /// for SDK design preview features.
     /// </remarks>
-    public const string Subclassing_DiagnosticId = "MCPEXP002";
-
-    /// <summary>
-    /// Message for experimental subclassing of McpClient and McpServer.
-    /// </summary>
-    public const string Subclassing_Message = "Subclassing McpClient and McpServer is experimental and subject to change.";
-
-    /// <summary>
-    /// URL for experimental subclassing of McpClient and McpServer.
-    /// </summary>
-    public const string Subclassing_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
-
-    /// <summary>
-    /// Diagnostic ID for experimental extensibility points in the C# SDK implementation.
-    /// </summary>
-    public const string Extensibility_DiagnosticId = Subclassing_DiagnosticId;
+    public const string Extensibility_DiagnosticId = "MCPEXP002";
 
     /// <summary>
     /// Message for experimental extensibility points in the C# SDK implementation.
@@ -98,13 +83,13 @@ internal static class Experimentals
     /// <summary>
     /// URL for experimental extensibility points in the C# SDK implementation.
     /// </summary>
-    public const string Extensibility_Url = Subclassing_Url;
+    public const string Extensibility_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
 
     /// <summary>
     /// Diagnostic ID for the experimental <c>RunSessionHandler</c> API.
     /// </summary>
     /// <remarks>
-    /// This uses the same diagnostic ID as <see cref="Subclassing_DiagnosticId"/> because
+    /// This uses the same diagnostic ID as <see cref="Extensibility_DiagnosticId"/> because
     /// both are experimental SDK APIs unrelated to the MCP specification.
     /// </remarks>
     public const string RunSessionHandler_DiagnosticId = "MCPEXP002";
