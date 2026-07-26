@@ -1,6 +1,7 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the parameters for a <c>tasks/cancel</c> request to signal intent to cancel an in-progress task.

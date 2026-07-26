@@ -178,7 +178,7 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
                         Result = JsonSerializer.SerializeToNode(new DiscoverResult
                         {
                             Capabilities = new ServerCapabilities(),
-                            SupportedVersions = [McpHttpHeaders.July2026ProtocolVersion],
+                            SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                             ServerInfo = new Implementation
                             {
                                 Name = "NopTransport",

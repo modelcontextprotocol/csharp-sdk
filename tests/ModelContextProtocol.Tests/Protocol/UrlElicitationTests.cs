@@ -190,6 +190,16 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         });
     }
 
+    // These tests assert on the root server's ClientCapabilities (see AssertServerElicitationCapability),
+    // which is only session-scoped under the initialize-handshake revisions. Pin to the latest such revision
+    // so the capabilities negotiated during initialize are observable on the root McpServer. Request-scoped
+    // capability behavior under the 2026-07-28 revision is covered by McpClientMetaTests.
+    private Task<McpClient> CreateLegacyClientForServer(McpClientOptions clientOptions)
+    {
+        clientOptions.ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion;
+        return CreateMcpClientForServer(clientOptions);
+    }
+
     [Fact]
     public async Task Can_Elicit_OutOfBand_With_Url()
     {
@@ -198,7 +208,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         string? capturedMessage = null;
         var completionNotification = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -283,7 +293,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task UrlElicitation_User_Can_Decline()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -322,7 +332,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task UrlElicitation_User_Can_Cancel()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -360,7 +370,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task UrlElicitation_Defaults_To_Unsupported_When_Handler_Provided()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Handlers = new McpClientHandlers()
             {
@@ -385,7 +395,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task FormElicitation_Defaults_To_Supported_When_Handler_Provided()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Handlers = new McpClientHandlers()
             {
@@ -406,7 +416,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task UrlElicitation_BlankCapability_Allows_Only_Form()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -435,7 +445,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task FormElicitation_UrlOnlyCapability_NotSupported()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -474,7 +484,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     {
         var elicitationHandlerCalled = false;
 
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -504,7 +514,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     [Fact]
     public async Task UrlElicitationRequired_Exception_Propagates_To_Client()
     {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {
@@ -532,7 +542,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
     {
         var elicitationHandlerCalled = false;
 
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateLegacyClientForServer(new McpClientOptions
         {
             Capabilities = new ClientCapabilities
             {

@@ -31,13 +31,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly ScopeSelectorDelegate? _scopeSelector;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
-    private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
+    private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
 
-    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrConfiguredApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
     private readonly Uri? _dcrClientUri;
     private readonly string? _dcrInitialAccessToken;
+    private readonly string? _dcrConfiguredApplicationType;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
     private readonly HttpClient _httpClient;
@@ -48,13 +50,24 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _tokenEndpointAuthMethod;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+
+    // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
+    // expired token (or a 401) at the same time, only the first runs the refresh/authorization flow
+    // while the others await its result. This also serializes all reads and writes to the mutable auth
+    // state below (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
+    // the accumulated scope set and step-up tracking (_accumulatedScopes, _hasAttemptedStepUp), so those
+    // fields need no separate lock.
+    //
+    // Intentionally not disposed: this instance is only ever used via WaitAsync/Release (never its
+    // AvailableWaitHandle), so SemaphoreSlim allocates no unmanaged resource and there is nothing to
+    // dispose. Do not access AvailableWaitHandle, or this field will need deterministic disposal.
+    private readonly SemaphoreSlim _tokenAcquisitionLock = new(1, 1);
     // The accumulated scope set lives for this provider's lifetime and is intentionally not keyed by
     // resource or authorization server. This is safe today because one ClientOAuthProvider is created
     // per HttpClientTransport, i.e. per endpoint/resource. If a provider were ever reused across
     // multiple resources or auth servers, accumulated scopes could be sent to a server that rejects
     // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
     private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
-    private readonly object _scopeAccumulatorLock = new();
     private bool _hasAttemptedStepUp;
 
     /// <summary>
@@ -92,13 +105,45 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
-        // Set up authorization URL handler (use default if not provided)
-        _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+        // Set up authorization callback handler (use default if not provided).
+#pragma warning disable MCP9007 // Read the obsolete property to provide source and binary compatibility.
+        var authorizationRedirectDelegate = options.AuthorizationRedirectDelegate;
+
+        if (options.AuthorizationCallbackHandler is not null && authorizationRedirectDelegate is not null)
+        {
+            throw new ArgumentException(
+                $"{nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} and {nameof(ClientOAuthOptions.AuthorizationRedirectDelegate)} cannot both be configured.",
+                nameof(options));
+        }
+#pragma warning restore MCP9007
+
+        if (options.AuthorizationCallbackHandler is not null)
+        {
+            _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
+        else if (authorizationRedirectDelegate is not null)
+        {
+            _authorizationCallbackHandler = async (context, cancellationToken) => new AuthorizationResult
+            {
+                Code = await authorizationRedirectDelegate(
+                    context.AuthorizationUri,
+                    context.RedirectUri,
+                    cancellationToken).ConfigureAwait(false),
+            };
+            _validateAuthorizationResponseIssuer = false;
+        }
+        else
+        {
+            _authorizationCallbackHandler = DefaultAuthorizationUrlHandler;
+            _validateAuthorizationResponseIssuer = true;
+        }
 
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+        _dcrConfiguredApplicationType = options.DynamicClientRegistration?.ApplicationType;
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
@@ -112,18 +157,30 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <summary>
     /// Default authorization URL handler that displays the URL to the user for manual input.
     /// </summary>
-    /// <param name="authorizationUrl">The authorization URL to handle.</param>
-    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
-    private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    /// <returns>The authorization result entered by the user, or null if none was provided.</returns>
+    private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
+        AuthorizationCallbackContext context,
+        CancellationToken cancellationToken)
     {
         Console.WriteLine($"Please open the following URL in your browser to authorize the application:");
-        Console.WriteLine($"{authorizationUrl}");
+        Console.WriteLine($"{context.AuthorizationUri}");
         Console.WriteLine();
-        Console.Write("Enter the authorization code from the redirect URL: ");
-        var authorizationCode = Console.ReadLine();
-        return Task.FromResult<string?>(authorizationCode);
+        Console.Write("Enter the full redirect URL: ");
+        var redirectUrl = Console.ReadLine();
+        if (!Uri.TryCreate(redirectUrl, UriKind.Absolute, out var responseUri))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The entered redirect URL is not a valid absolute URL. Paste the full redirect URL from the browser address bar.");
+        }
+
+        var queryParams = HttpUtility.ParseQueryString(responseUri.Query);
+        return Task.FromResult<AuthorizationResult?>(new()
+        {
+            Code = queryParams["code"],
+            Iss = queryParams["iss"],
+        });
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -145,7 +202,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (ShouldRetryWithNewAccessToken(response))
         {
-            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+            // Capture the token that produced this challenge so the retry path can detect whether
+            // another concurrent caller already replaced it in the cache.
+            var usedAccessToken = request.Headers.Authorization?.Parameter;
+            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
         }
 
         return response;
@@ -161,15 +221,32 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return (tokens.AccessToken, false);
         }
 
-        // Try to refresh the access token if it is invalid and we have a refresh token.
-        if (_authServerMetadata is not null && tokens?.RefreshToken is { Length: > 0 } refreshToken)
+        // A refresh is only possible if we have both the auth server metadata and a refresh token.
+        if (_authServerMetadata is null || tokens?.RefreshToken is not { Length: > 0 })
+        {
+            // No valid token - auth handler will trigger the 401 flow
+            return (null, false);
+        }
+
+        // Serialize the refresh so concurrent callers that all saw the expired token don't each fire
+        // their own refresh. Waiters re-check the cache after acquiring the lock and reuse the token
+        // produced by whoever refreshed first.
+        using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        var current = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        if (current is not null && !current.IsExpired)
+        {
+            return (current.AccessToken, true);
+        }
+
+        if (_authServerMetadata is not null && current?.RefreshToken is { Length: > 0 } refreshToken)
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
         // No valid token - auth handler will trigger the 401 flow
-        return (null, false);
+        return (null, true);
     }
 
     private static bool ShouldRetryWithNewAccessToken(HttpResponseMessage response)
@@ -208,6 +285,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         JsonRpcMessage? originalJsonRpcMessage,
         HttpResponseMessage response,
         bool attemptedRefresh,
+        string? usedAccessToken,
         CancellationToken cancellationToken)
     {
         if (response.Headers.WwwAuthenticate.Count == 0)
@@ -220,7 +298,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
+        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
@@ -241,8 +319,31 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="response">The HTTP response that triggered the authentication challenge.</param>
     /// <param name="attemptedRefresh">Indicates whether a token refresh has already been attempted.</param>
+    /// <param name="usedAccessToken">The access token that produced the challenge, or <see langword="null"/> if none was sent.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
+    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, string? usedAccessToken, CancellationToken cancellationToken)
+    {
+        // Serialize the authorization flow so concurrent 401/403 challenges don't each run a full
+        // refresh/registration/interactive authorization and race on the shared auth state below.
+        using var _ = await _tokenAcquisitionLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        // While we waited for the lock, another concurrent caller may have already acquired or
+        // refreshed the token. Reuse the cached token if it is both still valid and different from
+        // the one that produced this challenge (otherwise we'd just replay the rejected token). When
+        // no token was sent (usedAccessToken is null, e.g. concurrent cold-start requests), any valid
+        // cached token was obtained by another caller and is safe to reuse. This is limited to 401; a
+        // 403 insufficient_scope challenge must still run the step-up flow.
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } cached &&
+            !string.Equals(cached.AccessToken, usedAccessToken, StringComparison.Ordinal))
+        {
+            return cached.AccessToken;
+        }
+
+        return await GetAccessTokenCoreAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> GetAccessTokenCoreAsync(HttpResponseMessage response, bool attemptedRefresh, string? usedAccessToken, CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
@@ -262,17 +363,26 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
             bool introducesNewScopes = ChallengeIntroducesNewScopes(protectedResourceMetadata);
-            lock (_scopeAccumulatorLock)
+            if (_hasAttemptedStepUp && !introducesNewScopes)
             {
-                if (_hasAttemptedStepUp && !introducesNewScopes)
+                // A step-up has already run and this challenge asks for nothing new. If that step-up
+                // produced a different, still-valid token (for example another concurrent caller ran
+                // it while this one waited on the lock), reuse that token instead of failing, since it
+                // already reflects the accumulated scopes. Only fail when there is no newer token to
+                // try, which is the genuine repeated-failure case where the stepped-up token itself
+                // was rejected again.
+                if (await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } steppedUpToken &&
+                    !string.Equals(steppedUpToken.AccessToken, usedAccessToken, StringComparison.Ordinal))
                 {
-                    ThrowFailedToHandleUnauthorizedResponse(
-                        "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
-                        "so step-up authorization cannot satisfy the request.");
+                    return steppedUpToken.AccessToken;
                 }
 
-                _hasAttemptedStepUp = true;
+                ThrowFailedToHandleUnauthorizedResponse(
+                    "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
+                    "so step-up authorization cannot satisfy the request.");
             }
+
+            _hasAttemptedStepUp = true;
         }
 
         // Convert string URIs to Uri objects for the selector
@@ -307,13 +417,24 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
+        // Restore any client registration persisted alongside the tokens. On a cold start a durable
+        // token cache may hold a refresh token together with the client ID it was issued to, while this
+        // provider has not assigned a client ID yet. Restoring it here makes the refresh below possible
+        // and avoids a redundant dynamic client registration in the assignment block.
+        var cachedTokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        RestoreCachedClientCredentials(cachedTokens);
+
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
-        // should not be used for expired access tokens. This is important because 403 forbiden responses can
-        // be used for incremental consent which cannot be acheived with a simple refresh.
+        // should not be used for expired access tokens. This is important because 403 forbidden responses can
+        // be used for incremental consent which cannot be achieved with a simple refresh.
+        // A refresh also requires a client ID. On a cold start one may not be available yet (and could not
+        // be restored from the cache), in which case we fall through to the client-ID assignment block and
+        // the authorization-code flow below rather than throwing.
         if (!attemptedRefresh &&
             response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
-            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { Length: > 0 } refreshToken })
+            !string.IsNullOrEmpty(_clientId) &&
+            cachedTokens is { RefreshToken: { Length: > 0 } refreshToken })
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (accessToken is not null)
@@ -366,8 +487,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
+        // Tracks whether at least one well-known endpoint returned a structurally valid metadata document.
+        // This distinguishes "no metadata document was found" (eligible for the 2025-03-26 legacy fallback)
+        // from "a metadata document exists but failed PKCE validation" (must not fall back to synthesized defaults).
+        var metadataDocumentFound = false;
+        McpException? pkceValidationFailure = null;
+
         foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
+            AuthorizationServerMetadata? metadata;
             try
             {
                 var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
@@ -377,7 +505,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 }
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                var metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
+                metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
 
                 if (metadata is null)
                 {
@@ -395,23 +523,94 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
 
-                metadata.ResponseTypesSupported ??= ["code"];
-                metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
-                metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
-                metadata.CodeChallengeMethodsSupported ??= ["S256"];
+                // Validate the issuer in the metadata document per RFC 8414 Section 3.3:
+                // the issuer value MUST be identical to the issuer identifier used to construct
+                // the well-known URL.
+                // Skip validation in legacy backcompat mode (resourceUri is null) because the
+                // authServerUri was derived from the server origin rather than from Protected
+                // Resource Metadata, so it may not match the server's canonical issuer.
+                // Note: resourceUri is null exclusively in the 2025-03-26 legacy path. For newer
+                // protocol versions, ExtractProtectedResourceMetadata throws if the PRM document
+                // omits the resource field (VerifyResourceMatch returns false for null Resource),
+                // so we never reach this point with resourceUri == null in non-legacy flows.
+                if (resourceUri is not null && metadata.Issuer is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' did not provide the required issuer (RFC 8414 Section 2).");
+                }
 
-                return metadata;
+                // RFC 8414 requires an identical issuer value, so do not normalize URI case,
+                // trailing slashes, or percent-encoding before comparison.
+                if (resourceUri is not null &&
+                    !string.Equals(metadata.Issuer!.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata issuer '{metadata.Issuer}' does not match the expected issuer '{authServerUri}' (RFC 8414 Section 3.3).");
+                }
+
+                // A structurally valid metadata document was discovered. Even if it fails PKCE validation
+                // below, its existence disqualifies the legacy fallback that would otherwise synthesize S256.
+                metadataDocumentFound = true;
+            }
+            catch (McpException)
+            {
+                // Metadata validation failures are security signals and must not fall back to
+                // another well-known endpoint.
+                throw;
             }
             catch (Exception ex)
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
+                continue;
             }
+
+            try
+            {
+                // Per the MCP spec, clients MUST verify PKCE support via authorization server metadata and refuse
+                // to proceed without it. Rather than failing on the first document that lacks it, skip to the next
+                // discovery endpoint: different well-known endpoints (OAuth 2.0 vs OpenID Connect) can return
+                // different documents for the same server, and OpenID Connect metadata commonly includes the field.
+                var codeChallengeMethods = metadata.CodeChallengeMethodsSupported;
+                if (codeChallengeMethods is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not include 'code_challenge_methods_supported'. MCP clients require PKCE support and must refuse to proceed.");
+                }
+
+                if (!codeChallengeMethods.Contains("S256"))
+                {
+                    var advertisedMethods = codeChallengeMethods.Count > 0
+                        ? string.Join(", ", codeChallengeMethods)
+                        : "<none>";
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not advertise required PKCE method 'S256' in 'code_challenge_methods_supported'. Advertised methods: {advertisedMethods}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogAuthServerMetadataMissingPkceSupport(ex, wellKnownEndpoint);
+                pkceValidationFailure = ex as McpException ?? new McpException(ex.Message, ex);
+                continue;
+            }
+
+            metadata.ResponseTypesSupported ??= ["code"];
+            metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
+            metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
+
+            return metadata;
+        }
+
+        // A discovered metadata document that failed PKCE validation must not be replaced with synthesized
+        // defaults. Surface the specific PKCE failure regardless of whether PRM was available.
+        if (metadataDocumentFound && pkceValidationFailure is not null)
+        {
+            throw pkceValidationFailure;
         }
 
         if (resourceUri is null)
         {
-            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
-            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
+            // 2025-03-26 backcompat: when PRM is unavailable and no auth server metadata document was
+            // discovered, fall back to default endpoint paths per the 2025-03-26 spec.
             return BuildDefaultAuthServerMetadata(authServerUri);
         }
 
@@ -492,14 +691,31 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
 
         var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
-        var authCode = await _authorizationRedirectDelegate(authUrl, _redirectUri, cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(authCode))
+        var authResult = await _authorizationCallbackHandler(
+            new AuthorizationCallbackContext
+            {
+                AuthorizationUri = authUrl,
+                RedirectUri = _redirectUri,
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (authResult is null || string.IsNullOrEmpty(authResult.Code))
         {
-            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
         }
 
-        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        if (_validateAuthorizationResponseIssuer)
+        {
+            ValidateIssuerResponse(authResult!.Iss, authServerMetadata);
+        }
+
+        return await ExchangeCodeForTokenAsync(
+            protectedResourceMetadata,
+            authServerMetadata,
+            authResult.Code!,
+            codeVerifier,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
@@ -636,6 +852,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             TokenType = tokenResponse.TokenType,
             Scope = tokenResponse.Scope,
             ObtainedAt = DateTimeOffset.UtcNow,
+            // Persist the client registration alongside the tokens so a durable cache can use the
+            // refresh token after a process restart without re-running dynamic client registration.
+            ClientId = _clientId,
+            ClientSecret = _clientSecret,
+            TokenEndpointAuthMethod = _tokenEndpointAuthMethod,
         };
 
         await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
@@ -677,6 +898,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         LogPerformingDynamicClientRegistration(authServerMetadata.RegistrationEndpoint);
 
+        var dcrApplicationType = ResolveApplicationType(_dcrConfiguredApplicationType, _redirectUri);
         var registrationRequest = new DynamicClientRegistrationRequest
         {
             RedirectUris = [_redirectUri.ToString()],
@@ -686,6 +908,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
+            ApplicationType = dcrApplicationType,
         };
 
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
@@ -707,7 +930,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (!httpResponse.IsSuccessStatusCode)
         {
             var errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            ThrowFailedToHandleUnauthorizedResponse($"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent}");
+            ThrowFailedToHandleUnauthorizedResponse(
+                $"Dynamic client registration failed with status {httpResponse.StatusCode}: {errorContent} " +
+                $"(application_type: '{dcrApplicationType}', redirect_uri: '{_redirectUri}').");
         }
 
         using var responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -741,6 +966,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
+    private static string ResolveApplicationType(string? configuredApplicationType, Uri redirectUri)
+        => configuredApplicationType ?? InferApplicationType(redirectUri);
+
+    private static string InferApplicationType(Uri redirectUri)
+    {
+        if (redirectUri.Scheme is "http" or "https")
+        {
+            return redirectUri.IsLoopback ? "native" : "web";
+        }
+        return "native";
+    }
+
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
 
@@ -765,13 +1002,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (currentOperationScopes.Count == 0)
         {
-            lock (_scopeAccumulatorLock)
-            {
-                // If we have previously requested scopes but nothing new, return the accumulated set.
-                return _accumulatedScopes.Count > 0
-                    ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
-                    : null;
-            }
+            // If we have previously requested scopes but nothing new, return the accumulated set.
+            return _accumulatedScopes.Count > 0
+                ? string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal))
+                : null;
         }
 
         // Per SEP-2350: Compute the union of previously requested scopes and newly challenged scopes
@@ -780,16 +1014,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // offline_access (AugmentScopeWithOfflineAccess) and any ScopeSelector are applied per request
         // in ComputeEffectiveScope and are intentionally not accumulated, so the selector always sees
         // the full union and the operation stays idempotent.
-        lock (_scopeAccumulatorLock)
+        foreach (var scope in currentOperationScopes)
         {
-            foreach (var scope in currentOperationScopes)
-            {
-                _accumulatedScopes.Add(scope);
-            }
-
-            // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
-            return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
+            _accumulatedScopes.Add(scope);
         }
+
+        // Sort scopes for stable, deterministic output (scopes are unordered per RFC 6749 §3.3).
+        return string.Join(" ", _accumulatedScopes.OrderBy(s => s, StringComparer.Ordinal));
     }
 
     /// <summary>
@@ -834,14 +1065,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return false;
         }
 
-        lock (_scopeAccumulatorLock)
+        foreach (var scope in currentOperationScopes)
         {
-            foreach (var scope in currentOperationScopes)
+            if (!_accumulatedScopes.Contains(scope))
             {
-                if (!_accumulatedScopes.Contains(scope))
-                {
-                    return true;
-                }
+                return true;
             }
         }
 
@@ -877,6 +1105,56 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         return scope + " " + OfflineAccess;
+    }
+
+    /// <summary>
+    /// Validates the <c>iss</c> parameter from an authorization response per
+    /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>.
+    /// </summary>
+    /// <param name="iss">The issuer identifier received in the authorization response, or null if absent.</param>
+    /// <param name="authServerMetadata">The authorization server metadata containing the expected issuer.</param>
+    private void ValidateIssuerResponse(string? iss, AuthorizationServerMetadata authServerMetadata)
+    {
+        var expectedIssuer = authServerMetadata.Issuer?.OriginalString;
+
+        if ((authServerMetadata.AuthorizationResponseIssParameterSupported || !string.IsNullOrEmpty(iss)) &&
+            expectedIssuer is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "Authorization server metadata did not provide an issuer required to validate the authorization response.");
+        }
+
+        if (authServerMetadata.AuthorizationResponseIssParameterSupported)
+        {
+            // Server advertises iss support: iss MUST be present and match.
+            if (string.IsNullOrEmpty(iss))
+            {
+                ThrowFailedToHandleUnauthorizedResponse(
+                    "Authorization server advertises RFC 9207 iss parameter support but none was received in the authorization response.");
+            }
+
+            // Use exact string comparison per RFC 9207 / RFC 3986 §6.2.1.
+            if (!string.Equals(iss, expectedIssuer, StringComparison.Ordinal))
+            {
+                ThrowFailedToHandleUnauthorizedResponse(
+                    $"Authorization response issuer '{iss}' does not match expected issuer '{expectedIssuer}'.");
+            }
+        }
+        else
+        {
+            // Server does not advertise iss support: if iss is present, still validate it.
+            // RFC 9207 cannot protect against a server that neither advertises support nor
+            // returns an iss parameter, so an absent iss is accepted in that case.
+            if (!string.IsNullOrEmpty(iss))
+            {
+                if (!string.Equals(iss, expectedIssuer, StringComparison.Ordinal))
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization response issuer '{iss}' does not match expected issuer '{expectedIssuer}'.");
+                }
+            }
+            // If iss is absent and not advertised, proceed normally.
+        }
     }
 
     /// <summary>
@@ -1139,6 +1417,38 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException("Client ID is not available. This may indicate an issue with dynamic client registration.");
 
+    /// <summary>
+    /// Restores the client registration persisted alongside cached tokens when this provider has not been
+    /// assigned a client ID yet. This allows a durable <see cref="ITokenCache"/> to use a refresh token that
+    /// survived a process restart without re-running dynamic client registration. An explicitly configured
+    /// client ID always takes precedence, so nothing is restored when one is already available.
+    /// </summary>
+    /// <remarks>
+    /// Callers must hold <c>_tokenAcquisitionLock</c>: this writes the shared <c>_clientId</c>,
+    /// <c>_clientSecret</c>, and <c>_tokenEndpointAuthMethod</c> fields, which the lock serializes.
+    /// Like the persisted refresh token, the restored client ID assumes the durable cache belongs to the
+    /// current authorization server; a single cache shared across authorization servers is not supported
+    /// (an inherent property of the single-container <see cref="ITokenCache"/> design).
+    /// </remarks>
+    private void RestoreCachedClientCredentials(TokenContainer? tokens)
+    {
+        if (!string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(tokens?.ClientId))
+        {
+            return;
+        }
+
+        // The guard above guarantees a non-null container, but the older nullable flow analysis on
+        // netstandard2.0/net472 doesn't infer that from the null-conditional check, so capture a
+        // non-null local and use it for every assignment.
+        var cached = tokens!;
+
+        // Assign _clientId last. Callers treat a non-empty _clientId as "registration complete", so the
+        // secret and auth method must already be in place before _clientId becomes observable.
+        _clientSecret ??= cached.ClientSecret;
+        _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
+        _clientId = cached.ClientId;
+    }
+
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
         throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}");
@@ -1154,6 +1464,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Endpoint}")]
     partial void LogErrorFetchingAuthServerMetadata(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server metadata from {Endpoint} does not satisfy PKCE requirements; skipping it and trying the next discovery endpoint.")]
+    partial void LogAuthServerMetadataMissingPkceSupport(Exception ex, Uri endpoint);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
     partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);

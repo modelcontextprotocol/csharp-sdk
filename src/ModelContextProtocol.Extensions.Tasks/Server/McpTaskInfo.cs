@@ -1,7 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the state of a task in an <see cref="IMcpTaskStore"/>.

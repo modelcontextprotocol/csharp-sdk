@@ -1,6 +1,7 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Protocol;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Represents the result of a <c>tasks/update</c> request. This is an empty acknowledgement.
@@ -18,4 +19,9 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class UpdateTaskResult : Result
 {
+    /// <summary>Initializes a new task update acknowledgement.</summary>
+    public UpdateTaskResult()
+    {
+        ResultType = "complete";
+    }
 }

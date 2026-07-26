@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -7,6 +8,9 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public sealed class McpRequestFilters
 {
+#pragma warning disable MCPEXP002 // CallToolWithAlternateFilters references the experimental ResultOrAlternate seam
+    private IList<McpRequestFilter<CallToolRequestParams, CallToolResult>>? _callToolFilters;
+
     /// <summary>
     /// Gets or sets the filters for the list-tools handler pipeline.
     /// </summary>
@@ -42,36 +46,46 @@ public sealed class McpRequestFilters
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolWithTaskFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// These filters run inside <see cref="CallToolWithAlternateFilters"/>. Each ordinary filter runs exactly once
+    /// when an alternate-result filter invokes the ordinary tool pipeline. For task-backed calls, that invocation
+    /// occurs in the background after the task record is created and before the matched tool is executed. Filters
+    /// that must run before task creation should use the alternate-result pipeline instead.
+    /// </para>
+    /// <para>
+    /// These filters cannot be used with an explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>,
+    /// which replaces the ordinary tool-call pipeline rather than augmenting it.
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters
     {
-        get => field ??= [];
+        get => _callToolFilters ??= [];
         set
         {
             Throw.IfNull(value);
-            field = value;
+            _callToolFilters = value;
         }
     }
 
     /// <summary>
-    /// Gets or sets the filters for the call-tool handler pipeline with task support.
+    /// Gets or sets the filters for the call-tool handler pipeline with alternate result support.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// These filters wrap the task-augmented call-tool handler whose return type is
-    /// <see cref="ResultOrCreatedTask{TResult}"/>. Use these filters when the server's tool pipeline
-    /// supports returning either an immediate <see cref="CallToolResult"/> or a <see cref="CreateTaskResult"/>
-    /// for asynchronous execution.
+    /// These filters wrap the alternate-result call-tool handler whose return type is
+    /// <see cref="ResultOrAlternate{TResult}"/>. Use these filters when the server's tool pipeline
+    /// supports returning either an immediate <see cref="CallToolResult"/> or an alternate <see cref="Result"/>
+    /// subtype for asynchronous execution.
     /// </para>
     /// <para>
-    /// Cannot be used together with <see cref="CallToolFilters"/>. If both are non-empty at configuration time,
-    /// an <see cref="InvalidOperationException"/> will be thrown.
+    /// When no explicit <see cref="McpServerHandlers.CallToolWithAlternateHandler"/> is configured, these filters
+    /// compose outside <see cref="CallToolFilters"/>. Primitive matching occurs before either filter family runs, then
+    /// the ordinary pipeline is adapted to <see cref="ResultOrAlternate{TResult}"/> before these filters are applied.
+    /// Alternate-result filters run in registration order. If one filter dispatches the remainder of the pipeline
+    /// asynchronously, filters registered after it execute as part of that asynchronous operation.
     /// </para>
     /// </remarks>
-    public IList<McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>>> CallToolWithTaskFilters
+    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    public IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
         get => field ??= [];
         set
@@ -80,6 +94,7 @@ public sealed class McpRequestFilters
             field = value;
         }
     }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the filters for the list-prompts handler pipeline.

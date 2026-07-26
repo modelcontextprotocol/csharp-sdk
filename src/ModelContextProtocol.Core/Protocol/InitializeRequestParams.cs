@@ -22,16 +22,17 @@ namespace ModelContextProtocol.Protocol;
 public sealed class InitializeRequestParams : RequestParams
 {
     /// <summary>
-    /// Gets or sets the version of the Model Context Protocol that the client wants to use.
+    /// Gets or sets the initialize-handshake Model Context Protocol version that the client wants to use.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Protocol version is specified using a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// The client and server must agree on a protocol version to communicate successfully.
+    /// The client and server must agree on an initialize-capable protocol version to communicate successfully.
     /// </para>
     /// <para>
-    /// During initialization, the server will check if it supports this requested version. If there's a
-    /// mismatch, the server will reject the connection with a version mismatch error.
+    /// During initialization, the server will check if it supports this requested version. Protocol
+    /// revisions starting with <c>2026-07-28</c> do not use <c>initialize</c>; clients select them with
+    /// <c>server/discover</c> and per-request metadata instead.
     /// </para>
     /// <para>
     /// See the <see href="https://spec.modelcontextprotocol.io/specification/">protocol specification</see> for version details.

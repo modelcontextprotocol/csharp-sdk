@@ -29,18 +29,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         "mcp.server.operation.duration", "MCP request or notification duration as observed on the receiver from the time it was received until the result or ack is sent.");
 
     /// <summary>
-    /// All protocol versions supported by this implementation. The version constants live on
+    /// All protocol versions supported by this implementation. The era-specific lists live on
     /// <see cref="McpHttpHeaders"/> so the shared source file is the single source of truth.
-    /// Keep in sync with s_supportedProtocolVersions in StreamableHttpHandler.
     /// </summary>
-    internal static readonly string[] SupportedProtocolVersions =
-    [
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        McpHttpHeaders.November2025ProtocolVersion,
-        McpHttpHeaders.July2026ProtocolVersion,
-    ];
+    internal static readonly string[] SupportedProtocolVersions = McpProtocolVersions.SupportedProtocolVersions;
 
     /// <summary>
     /// Checks if the given protocol version supports priming events.
@@ -53,7 +45,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// </remarks>
     internal static bool SupportsPrimingEvent(string? protocolVersion)
     {
-        const string MinResumabilityProtocolVersion = McpHttpHeaders.November2025ProtocolVersion;
+        const string MinResumabilityProtocolVersion = McpProtocolVersions.November2025ProtocolVersion;
 
         if (protocolVersion is null)
         {
@@ -81,7 +73,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             return false;
         }
 
-        return string.Compare(protocolVersion, McpHttpHeaders.July2026ProtocolVersion, StringComparison.Ordinal) >= 0;
+        return string.Compare(protocolVersion, McpProtocolVersions.July2026ProtocolVersion, StringComparison.Ordinal) >= 0;
     }
 
     private readonly bool _isServer;
@@ -162,7 +154,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             (request, jsonRpcRequest, cancellationToken) =>
             {
                 string? perRequestVersion = jsonRpcRequest?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion;
-                if (McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(perRequestVersion))
+                if (McpProtocolVersions.RequiresPerRequestMetadata(perRequestVersion))
                 {
                     throw new McpProtocolException(
                         $"Method '{RequestMethods.Ping}' is not available on protocol version '{perRequestVersion}'.",
@@ -583,8 +575,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
             // populated this, validate the body _meta matches per SEP-2575. A disagreement is reported with
             // -32020 HeaderMismatch (the same code used for the Mcp-Method/Mcp-Name header-vs-body checks),
-            // which conformant 2026-07-28 clients recognize as a modern-server signal and surface as-is rather
-            // than mistaking it for a legacy server and falling back to the initialize handshake.
+            // which conformant 2026-07-28 clients recognize as a SEP-2575 signal and surface as-is rather
+            // than mistaking it for an initialize-handshake server and falling back to initialize.
             if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(
@@ -618,7 +610,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Used by <see cref="Client.McpClient"/> on a 2026-07-28 or later session to carry protocol version, client
-    /// info, and client capabilities on every outgoing request (replacing what the legacy
+    /// info, and client capabilities on every outgoing request (replacing what the
     /// <c>initialize</c> handshake previously negotiated once).
     /// </remarks>
     internal static void InjectRequestMeta(

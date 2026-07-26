@@ -1,6 +1,6 @@
 using ModelContextProtocol.Protocol;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
 /// Provides data for the <see cref="IMcpTaskStore.InputResponseReceived"/> event.

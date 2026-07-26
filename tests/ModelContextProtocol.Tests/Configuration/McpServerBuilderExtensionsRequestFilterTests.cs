@@ -280,7 +280,7 @@ public class McpServerBuilderExtensionsRequestFilterTests(ITestOutputHelper test
     [Fact]
     public async Task AddSetLoggingLevelFilter_Logs_When_SetLoggingLevel_Called()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
 
         await client.SetLoggingLevelAsync(LoggingLevel.Info, cancellationToken: TestContext.Current.CancellationToken);
 

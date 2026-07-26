@@ -54,7 +54,13 @@ public static partial class McpJsonUtilities
         return options;
     }
 
-    internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
+    /// <summary>
+    /// Gets the resolved <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/> from the specified options.
+    /// </summary>
+    /// <typeparam name="T">The type whose serialization metadata should be resolved.</typeparam>
+    /// <param name="options">The serializer options providing the type-info resolver chain.</param>
+    /// <returns>The resolved <see cref="JsonTypeInfo{T}"/>.</returns>
+    public static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
@@ -120,12 +126,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(RootsListChangedNotificationParams))]
     [JsonSerializable(typeof(ToolListChangedNotificationParams))]
-    [JsonSerializable(typeof(TaskStatusNotificationParams))]
-    [JsonSerializable(typeof(WorkingTaskNotificationParams))]
-    [JsonSerializable(typeof(CompletedTaskNotificationParams))]
-    [JsonSerializable(typeof(FailedTaskNotificationParams))]
-    [JsonSerializable(typeof(CancelledTaskNotificationParams))]
-    [JsonSerializable(typeof(InputRequiredTaskNotificationParams))]
 
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
@@ -173,19 +173,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(InputResponse))]
     [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
     [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
-
-    [JsonSerializable(typeof(GetTaskRequestParams))]
-    [JsonSerializable(typeof(GetTaskResult))]
-    [JsonSerializable(typeof(WorkingTaskResult))]
-    [JsonSerializable(typeof(CompletedTaskResult))]
-    [JsonSerializable(typeof(FailedTaskResult))]
-    [JsonSerializable(typeof(CancelledTaskResult))]
-    [JsonSerializable(typeof(InputRequiredTaskResult))]
-    [JsonSerializable(typeof(UpdateTaskRequestParams))]
-    [JsonSerializable(typeof(UpdateTaskResult))]
-    [JsonSerializable(typeof(CancelTaskRequestParams))]
-    [JsonSerializable(typeof(CancelTaskResult))]
-    [JsonSerializable(typeof(CreateTaskResult))]
 
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]

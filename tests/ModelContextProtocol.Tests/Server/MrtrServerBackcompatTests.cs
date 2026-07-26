@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -109,5 +111,91 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
         var content = Assert.Single(result.Content);
         var text = Assert.IsType<TextContentBlock>(content).Text;
         Assert.Equal("final-state:<null>", text);
+    }
+}
+
+/// <summary>
+/// Companion to <see cref="MrtrServerBackcompatTests"/> covering the other way a handler can surface an
+/// input-required result to a non-MRTR client: by RETURNING an <see cref="InputRequiredResult"/> through the
+/// alternate result path (<see cref="ResultOrAlternate{TResult}"/>) instead of throwing
+/// <see cref="InputRequiredException"/>. The legacy backcompat resolver must normalize both forms so a non-MRTR
+/// stateful client gets the same server-side resolution either way.
+/// </summary>
+public class MrtrReturnedInputRequiredResultBackcompatTests : ClientServerTestBase
+{
+    private static readonly JsonTypeInfo<InputRequiredResult> s_inputRequiredResultTypeInfo =
+        (JsonTypeInfo<InputRequiredResult>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputRequiredResult));
+
+    private int _attempt;
+
+    public MrtrReturnedInputRequiredResultBackcompatTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper, startServer: false)
+    {
+    }
+
+#pragma warning disable MCPEXP002 // exercises the experimental CallToolWithAlternateHandler/ResultOrAlternate seam
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
+        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
+            {
+                Interlocked.Increment(ref _attempt);
+
+                // Retry round: the backcompat resolver re-invoked us with the client's responses.
+                if (context.Params?.RequestState is not null)
+                {
+                    return new ValueTask<ResultOrAlternate<CallToolResult>>(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "resolved" }],
+                    });
+                }
+
+                // First round: RETURN an InputRequiredResult through the alternate path rather than throwing.
+                var inputRequired = new InputRequiredResult
+                {
+                    InputRequests = new Dictionary<string, InputRequest>
+                    {
+                        ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                        {
+                            Message = "need-input",
+                            RequestedSchema = new(),
+                        }),
+                    },
+                    RequestState = "round1",
+                };
+
+                return new ValueTask<ResultOrAlternate<CallToolResult>>(
+                    ResultOrAlternate<CallToolResult>.FromAlternate(inputRequired, s_inputRequiredResultTypeInfo));
+            };
+        });
+    }
+#pragma warning restore MCPEXP002
+
+    [Fact]
+    public async Task ReturnedInputRequiredResult_NonMrtrStatefulClient_ResolvedServerSide()
+    {
+        StartServer();
+
+        // Non-MRTR client → server falls into the legacy backcompat resolver path, which must handle a
+        // RETURNED InputRequiredResult exactly like a thrown InputRequiredException.
+        var clientOptions = new McpClientOptions
+        {
+            ProtocolVersion = "2025-06-18",
+            Capabilities = new ClientCapabilities { Elicitation = new() },
+        };
+        clientOptions.Handlers.ElicitationHandler = (_, _) =>
+            new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync(
+            "return-form",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Two handler invocations: initial (returned InputRequiredResult) + retry (final result).
+        Assert.Equal(2, _attempt);
+        var content = Assert.Single(result.Content);
+        Assert.Equal("resolved", Assert.IsType<TextContentBlock>(content).Text);
     }
 }

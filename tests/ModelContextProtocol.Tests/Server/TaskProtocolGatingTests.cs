@@ -1,3 +1,4 @@
+using ModelContextProtocol.Extensions.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -5,8 +6,6 @@ using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
-#pragma warning disable MCPEXP001
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -32,15 +31,12 @@ public class TaskProtocolGatingTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
-        {
-            options.TaskStore = new InMemoryMcpTaskStore
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            };
-        });
-
-        mcpServerBuilder.WithTools([McpServerTool.Create(
+            })
+            .WithTools([McpServerTool.Create(
             async (string input, CancellationToken ct) =>
             {
                 await Task.Delay(50, ct);
@@ -68,7 +64,7 @@ public class TaskProtocolGatingTests : ClientServerTestBase
             {
                 [ExtensionsKey] = new JsonObject
                 {
-                    [McpExtensions.Tasks] = new JsonObject(),
+                    [TasksProtocol.ExtensionId] = new JsonObject(),
                 },
             },
         };
@@ -115,7 +111,7 @@ public class TaskProtocolGatingTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
         var ct = TestContext.Current.CancellationToken;
 
-        var result = await client.CallToolRawAsync(
+        var result = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
@@ -127,24 +123,23 @@ public class TaskProtocolGatingTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LegacyClient_CallToolRaw_WithForgedTaskOptIn_ServerReturnsDirectResult()
+    public async Task LegacyClient_CallToolRaw_WithForgedTaskOptIn_RejectsReservedMetadata()
     {
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
         var ct = TestContext.Current.CancellationToken;
 
         // Forge a SEP-2575 capabilities envelope carrying the tasks extension opt-in on a legacy
-        // request. The server must still refuse to create a task because the per-request protocol
-        // version is not the 2026-07-28 protocol.
-        var result = await client.CallToolRawAsync(
+        // request. The server rejects reserved per-request metadata before it can affect behavior.
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",
                 Arguments = CreateArguments("input", "forged"),
                 Meta = CreateForgedTaskOptInMeta(),
-            }, ct);
+            }, ct));
 
-        Assert.False(result.IsTask);
-        Assert.NotNull(result.Result);
+        Assert.Equal(McpErrorCode.InvalidRequest, ex.ErrorCode);
+        Assert.Contains(ClientCapabilitiesMetaKey, ex.Message);
     }
 
     [Fact]
@@ -157,10 +152,9 @@ public class TaskProtocolGatingTests : ClientServerTestBase
         // gates tasks/* to the 2026-07-28 protocol and must reject this legacy request with MethodNotFound.
         var request = new JsonRpcRequest
         {
-            Method = RequestMethods.TasksGet,
+            Method = TasksProtocol.MethodTasksGet,
             Params = JsonSerializer.SerializeToNode(
-                new GetTaskRequestParams { TaskId = "some-task-id" },
-                McpJsonUtilities.DefaultOptions),
+                new GetTaskRequestParams { TaskId = "some-task-id" }, McpTasksJsonContext.Default.Options),
         };
 
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
@@ -176,7 +170,7 @@ public class TaskProtocolGatingTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        var result = await client.CallToolRawAsync(
+        var result = await client.CallToolAsTaskAsync(
             new CallToolRequestParams
             {
                 Name = "test-tool",

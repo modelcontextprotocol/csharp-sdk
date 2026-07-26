@@ -27,10 +27,19 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly NotificationHandlers _notificationHandlers;
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
+    private readonly string[] _supportedProtocolVersions;
+    private readonly string[] _initializeHandshakeProtocolVersions;
+    private readonly string[] _perRequestMetadataProtocolVersions;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _taskCancellationSources = new();
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
+    private static readonly string[] s_perRequestMetadataKeys =
+    [
+        MetaKeys.ProtocolVersion,
+        MetaKeys.ClientInfo,
+        MetaKeys.ClientCapabilities,
+        MetaKeys.LogLevel,
+    ];
 
     // Track MRTR handler tasks using the same inFlightCount + TCS pattern as
     // McpSessionHandler.ProcessMessagesCoreAsync. Starts at 1 for DisposeAsync itself.
@@ -72,6 +81,9 @@ internal sealed partial class McpServerImpl : McpServer
         _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
+        _supportedProtocolVersions = GetConfiguredSupportedProtocolVersions(options.ProtocolVersion);
+        _initializeHandshakeProtocolVersions = [.. _supportedProtocolVersions.Where(McpProtocolVersions.SupportsInitializeHandshake)];
+        _perRequestMetadataProtocolVersions = [.. _supportedProtocolVersions.Where(McpProtocolVersions.RequiresPerRequestMetadata)];
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
@@ -95,8 +107,8 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureCompletion(options);
         ConfigureSubscriptions(options);
         ConfigureExperimentalAndExtensions(options);
-        ConfigureTasks(options);
         ConfigureMrtr();
+        ConfigureCustomRequestHandlers(options);
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -152,56 +164,111 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps <paramref name="inner"/> so that, for every JSON-RPC request, a built-in filter first
-    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>,
-    /// <see cref="_clientCapabilities"/>, <see cref="_clientInfo"/>) from the per-request <c>_meta</c>
-    /// values projected onto <see cref="JsonRpcMessageContext"/> and validates the per-request protocol
-    /// version, before delegating to the user-supplied incoming filters.
+    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientInfo"/>)
+    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/> and
+    /// validates the per-request protocol version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
     /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. For legacy clients the per-request values are absent and the built-in
+    /// MUST be populated per-request. Per-request client capabilities and client info are consumed request-scoped
+    /// by <see cref="DestinationBoundMcpServer"/> and are not read from server-wide state by request handlers. The
+    /// shared <see cref="_clientInfo"/> write below is best-effort and used only to derive the session endpoint
+    /// name for logging/telemetry. For initialize-handshake clients the per-request values are absent and the built-in
     /// filter is a no-op (the values were captured during the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
         JsonRpcMessageFilter metaReadingFilter = next => async (message, cancellationToken) =>
         {
-            if (message is JsonRpcRequest { Method: not RequestMethods.Initialize } request && request.Context is { } context)
+            if (message is JsonRpcRequest { Method: RequestMethods.Initialize } initializeRequest)
             {
+                ValidateInitializeRequestBoundary(initializeRequest);
+            }
+            else if (message is JsonRpcRequest request)
+            {
+                var context = request.Context;
                 bool endpointNameNeedsRefresh = false;
+                bool hasProtocolVersionMeta = HasMetaKey(request, MetaKeys.ProtocolVersion);
+                bool hasReservedPerRequestMeta = TryGetPerRequestMetadataKey(request, out var reservedPerRequestMetaKey);
 
-                if (context.ProtocolVersion is { } protocolVersion)
+                if (context?.ProtocolVersion is { } protocolVersion)
                 {
+                    bool protocolVersionAlreadyEstablished = _negotiatedProtocolVersion is not null;
+                    if (protocolVersionAlreadyEstablished)
+                    {
+                        SetNegotiatedProtocolVersion(protocolVersion);
+                    }
+
                     // Per SEP-2575, the server MUST reject any request whose per-request
                     // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
                     // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
-                    if (!McpSessionHandler.SupportedProtocolVersions.Contains(protocolVersion))
+                    if (!_supportedProtocolVersions.Contains(protocolVersion))
                     {
                         throw new UnsupportedProtocolVersionException(
                             requested: protocolVersion,
-                            supported: McpSessionHandler.SupportedProtocolVersions);
+                            supported: _supportedProtocolVersions);
                     }
 
-                    SetNegotiatedProtocolVersion(protocolVersion);
-                }
+                    if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
+                    {
+                        ValidateRequiredPerRequestMetadata(
+                            protocolVersion,
+                            hasProtocolVersionMeta,
+                            context.ClientInfo is not null,
+                            context.ClientCapabilities is not null);
+                    }
+                    else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
+                    {
+                        if (_negotiatedProtocolVersion is null && hasProtocolVersionMeta)
+                        {
+                            throw new UnsupportedProtocolVersionException(
+                                requested: protocolVersion,
+                                supported: _perRequestMetadataProtocolVersions,
+                                message: $"Protocol version '{protocolVersion}' requires the initialize handshake and cannot be selected through per-request metadata.");
+                        }
 
-                if (context.ClientCapabilities is { } clientCapabilities && IsJuly2026OrLaterProtocol() && HasStatefulTransport())
+                        if (hasReservedPerRequestMeta)
+                        {
+                            ThrowReservedPerRequestMetadata(requestedProtocolVersion: protocolVersion, reservedPerRequestMetaKey);
+                        }
+                    }
+
+                    if (!protocolVersionAlreadyEstablished)
+                    {
+                        SetNegotiatedProtocolVersion(protocolVersion);
+                    }
+                }
+                else if (_negotiatedProtocolVersion is null)
                 {
-                    // Under the 2026-07-28 revision the per-request _meta envelope carries the client's FULL
-                    // capabilities (SEP-2575), so a plain overwrite is correct. The IsJuly2026OrLaterProtocol() gate
-                    // makes any legacy per-request envelope a no-op (legacy capabilities stay as the
-                    // initialize handshake established them); the HasStatefulTransport() gate keeps
-                    // _clientCapabilities null under StreamableHttpServerTransport { Stateless = true }
-                    // (where the same server instance handles every request, so persisting per-request
-                    // capability state would both leak across requests and break the StatelessServerTests
-                    // invariant that surfaces the "X is not supported in stateless mode" errors).
-                    _clientCapabilities = clientCapabilities;
+                    if (request.Method == RequestMethods.ServerDiscover)
+                    {
+                        throw new McpProtocolException(
+                            $"The '{RequestMethods.ServerDiscover}' request requires per-request metadata declaring a supported protocol version.",
+                            McpErrorCode.InvalidParams);
+                    }
+
+                    if (hasReservedPerRequestMeta)
+                    {
+                        ThrowReservedPerRequestMetadata(requestedProtocolVersion: null, reservedPerRequestMetaKey);
+                    }
+                }
+                else if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion) && hasReservedPerRequestMeta)
+                {
+                    ThrowReservedPerRequestMetadata(_negotiatedProtocolVersion, reservedPerRequestMetaKey);
                 }
 
-                if (context.ClientInfo is { } clientInfo &&
+                ValidateRequestMethodBoundary(request);
+
+                if (context?.ClientInfo is { } clientInfo &&
                     (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
                      !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
                 {
+                    // This shared write is best-effort and used only to derive the session endpoint name for
+                    // logging/telemetry. It is intentionally NOT read by request handlers on 2026-07-28+ sessions:
+                    // DestinationBoundMcpServer resolves ClientInfo (and ClientCapabilities) request-scoped from
+                    // the per-request _meta so concurrent requests never observe each other's values. Under a
+                    // draft stateful session with differing per-request client info, the last writer wins here,
+                    // which only affects the logged endpoint name and never the request-scoped values handlers see.
                     _clientInfo = clientInfo;
                     endpointNameNeedsRefresh = true;
                 }
@@ -212,11 +279,148 @@ internal sealed partial class McpServerImpl : McpServer
                     _sessionHandler.EndpointName = _endpointName;
                 }
             }
+            else if (message is JsonRpcNotification notification)
+            {
+                ValidateNotificationBoundary(notification);
+            }
 
             await next(message, cancellationToken).ConfigureAwait(false);
         };
 
         return next => metaReadingFilter(inner(next));
+    }
+
+    private static void ValidateRequiredPerRequestMetadata(
+        string protocolVersion,
+        bool hasProtocolVersionMeta,
+        bool hasClientInfoMeta,
+        bool hasClientCapabilitiesMeta)
+    {
+        if (!hasProtocolVersionMeta)
+        {
+            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
+        }
+
+        if (!hasClientInfoMeta)
+        {
+            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientInfo);
+        }
+
+        if (!hasClientCapabilitiesMeta)
+        {
+            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientCapabilities);
+        }
+    }
+
+    private static void ThrowMissingPerRequestMetadata(string protocolVersion, string key) =>
+        throw new McpProtocolException(
+            $"Requests using protocol version '{protocolVersion}' must include '_meta/{key}'.",
+            McpErrorCode.InvalidParams);
+
+    private static void ThrowReservedPerRequestMetadata(string? requestedProtocolVersion, string key) =>
+        throw new McpProtocolException(
+            requestedProtocolVersion is null
+                ? $"The reserved per-request metadata key '_meta/{key}' requires a protocol version that uses per-request metadata."
+                : $"The reserved per-request metadata key '_meta/{key}' is not valid with protocol version '{requestedProtocolVersion}'.",
+            McpErrorCode.InvalidRequest);
+
+    private static bool TryGetPerRequestMetadataKey(JsonRpcRequest request, out string key)
+    {
+        foreach (var candidate in s_perRequestMetadataKeys)
+        {
+            if (HasMetaKey(request, candidate))
+            {
+                key = candidate;
+                return true;
+            }
+        }
+
+        key = "";
+        return false;
+    }
+
+    private static bool HasMetaKey(JsonRpcRequest request, string key) =>
+        request.Params is JsonObject paramsObj &&
+        paramsObj["_meta"] is JsonObject metaObj &&
+        metaObj.ContainsKey(key);
+
+    private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
+    {
+        if (request.Context?.ProtocolVersion is { } protocolVersion &&
+            !McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
+        {
+            throw new UnsupportedProtocolVersionException(
+                requested: protocolVersion,
+                supported: _initializeHandshakeProtocolVersions,
+                message: $"Protocol version '{protocolVersion}' is not available through the initialize handshake.");
+        }
+
+        if (TryGetPerRequestMetadataKey(request, out var key))
+        {
+            ThrowReservedPerRequestMetadata(TryGetStringParam(request, "protocolVersion"), key);
+        }
+    }
+
+    private static string? TryGetStringParam(JsonRpcRequest request, string propertyName)
+    {
+        if (request.Params is JsonObject paramsObj &&
+            paramsObj[propertyName] is JsonValue value &&
+            value.TryGetValue(out string? result))
+        {
+            return result;
+        }
+
+        return null;
+    }
+
+    private static string[] GetConfiguredSupportedProtocolVersions(string? protocolVersion)
+    {
+        if (protocolVersion is null)
+        {
+            return McpProtocolVersions.SupportedProtocolVersions;
+        }
+
+        if (!McpProtocolVersions.IsSupportedProtocolVersion(protocolVersion))
+        {
+            throw new McpException(
+                $"Unsupported server protocol version '{protocolVersion}'. Supported protocol versions: " +
+                string.Join(", ", McpProtocolVersions.SupportedProtocolVersions) + ".");
+        }
+
+        return [protocolVersion];
+    }
+
+    private void ValidateNotificationBoundary(JsonRpcNotification notification)
+    {
+        if (notification.Method == NotificationMethods.InitializedNotification &&
+            McpProtocolVersions.RequiresPerRequestMetadata(notification.Context?.ProtocolVersion ?? _negotiatedProtocolVersion))
+        {
+            throw new McpProtocolException(
+                $"The notification '{NotificationMethods.InitializedNotification}' is only valid after the initialize handshake.",
+                McpErrorCode.InvalidRequest);
+        }
+    }
+
+    private void ValidateRequestMethodBoundary(JsonRpcRequest request)
+    {
+        bool usesPerRequestMetadata = IsJuly2026OrLaterProtocolRequest(request);
+
+        if (!usesPerRequestMetadata &&
+            request.Method is RequestMethods.SubscriptionsListen
+                or RequestMethods.ServerDiscover)
+        {
+            throw new McpProtocolException(
+                $"The method '{request.Method}' requires a newer protocol revision that supports per-request metadata; " +
+                $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
+                McpErrorCode.MethodNotFound);
+        }
+
+        if (usesPerRequestMetadata && request.Method == RequestMethods.LoggingSetLevel)
+        {
+            throw new McpProtocolException(
+                $"The method '{RequestMethods.LoggingSetLevel}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'. Use per-request _meta/{MetaKeys.LogLevel} instead.",
+                McpErrorCode.MethodNotFound);
+        }
     }
 
     /// <inheritdoc/>
@@ -312,13 +516,6 @@ internal sealed partial class McpServerImpl : McpServer
 
         _disposed = true;
 
-        foreach (var kvp in _taskCancellationSources)
-        {
-            kvp.Value.Cancel();
-            kvp.Value.Dispose();
-        }
-        _taskCancellationSources.Clear();
-
         // Dispose the session handler - cancels message processing and waits for all
         // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
         // After this returns, no new requests can be processed and no new MRTR continuations
@@ -361,29 +558,58 @@ internal sealed partial class McpServerImpl : McpServer
                 UpdateEndpointNameWithClientInfo();
                 _sessionHandler.EndpointName = _endpointName;
 
-                // Negotiate a protocol version. If the server options provide one, use that.
-                // Otherwise, try to use whatever the client requested as long as it's supported.
-                // If it's not supported, fall back to the latest supported version.
+                // Negotiate an initialize-handshake protocol version. initialize is not available in the 2026-07-28
+                // and later protocol revisions, so those versions must use server/discover with
+                // per-request _meta instead.
                 string? protocolVersion = options.ProtocolVersion;
-                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion &&
-                    McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
-                    clientProtocolVersion :
-                    McpHttpHeaders.November2025ProtocolVersion;
+                if (protocolVersion is { } configuredProtocolVersion &&
+                    McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(configuredProtocolVersion))
+                {
+                    throw new UnsupportedProtocolVersionException(
+                        configuredProtocolVersion,
+                        _initializeHandshakeProtocolVersions,
+                        $"Protocol version '{configuredProtocolVersion}' is not available through the initialize handshake.");
+                }
 
-                // The legacy initialize handshake is authoritative: it may supersede a protocol version
-                // a prior server/discover probe established on the same connection (the dual-era
+                if (protocolVersion is null)
+                {
+                    if (request?.ProtocolVersion is string clientProtocolVersion)
+                    {
+                        if (McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(clientProtocolVersion))
+                        {
+                            throw new UnsupportedProtocolVersionException(
+                                clientProtocolVersion,
+                                _initializeHandshakeProtocolVersions,
+                                $"Protocol version '{clientProtocolVersion}' is not available through the initialize handshake.");
+                        }
+
+                        protocolVersion = McpProtocolVersions.SupportsInitializeHandshake(clientProtocolVersion) ?
+                            clientProtocolVersion :
+                            McpProtocolVersions.November2025ProtocolVersion;
+                    }
+                    else
+                    {
+                        protocolVersion = McpProtocolVersions.November2025ProtocolVersion;
+                    }
+                }
+
+                string negotiatedProtocolVersion = protocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
+
+                // The initialize handshake is authoritative: it may supersede a protocol version
+                // a prior server/discover probe established on the same connection (the dual-path
                 // fallback path a permissive client takes against an unknown server). Unlike the
                 // per-request 2026-07-28 version - which SetNegotiatedProtocolVersion locks once negotiated -
                 // initialize force-sets the version.
-                _negotiatedProtocolVersion = protocolVersion;
-                _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+                _negotiatedProtocolVersion = negotiatedProtocolVersion;
+                _sessionHandler.NegotiatedProtocolVersion = negotiatedProtocolVersion;
 
                 return new InitializeResult
                 {
-                    ProtocolVersion = protocolVersion,
+                    ProtocolVersion = negotiatedProtocolVersion,
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
+                    ResultType = "complete",
                 };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
@@ -394,9 +620,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// Registers the <c>server/discover</c> request handler introduced by the 2026-07-28 protocol revision (SEP-2575).
     /// </summary>
     /// <remarks>
-    /// The handler is registered unconditionally so legacy clients can probe it too. It returns the server's
-    /// supported protocol versions (<see cref="McpSessionHandler.SupportedProtocolVersions"/>), server
-    /// capabilities, server info, and optional instructions.
+    /// The handler is registered unconditionally so requests can be routed to the protocol boundary filters. Successful
+    /// <c>server/discover</c> responses advertise only protocol versions available through per-request metadata; versions
+    /// that require the <c>initialize</c> handshake are negotiated through <c>initialize</c> instead.
     /// </remarks>
     private void ConfigureDiscover(McpServerOptions options)
     {
@@ -405,7 +631,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 return new ValueTask<DiscoverResult>(new DiscoverResult
                 {
-                    SupportedVersions = [.. McpSessionHandler.SupportedProtocolVersions],
+                    SupportedVersions = [.. _perRequestMetadataProtocolVersions],
                     Capabilities = ServerCapabilities ?? new(),
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
@@ -414,6 +640,7 @@ internal sealed partial class McpServerImpl : McpServer
                     // their "do not cache" behavior while satisfying the wire requirement.
                     TimeToLive = TimeSpan.Zero,
                     CacheScope = CacheScope.Private,
+                    ResultType = "complete",
                 });
             },
             McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
@@ -440,6 +667,14 @@ internal sealed partial class McpServerImpl : McpServer
         _requestHandlers.Set(RequestMethods.SubscriptionsListen,
             async (request, jsonRpcRequest, cancellationToken) =>
             {
+                if (!IsJuly2026OrLaterProtocolRequest(jsonRpcRequest))
+                {
+                    throw new McpProtocolException(
+                        $"The method '{RequestMethods.SubscriptionsListen}' requires a newer protocol revision that supports per-request subscriptions; " +
+                        $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
+                        McpErrorCode.MethodNotFound);
+                }
+
                 var requested = request?.Notifications ?? new SubscriptionsListenNotifications();
 
                 // A stateless session (Streamable HTTP with no session) cannot deliver out-of-band
@@ -447,7 +682,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // changes back to the client (tracked by #1662). Rather than hold the POST open forever only
                 // to deliver nothing - pinning the connection and its request scope - acknowledge the listen
                 // request granting no notifications and complete immediately. This runs after protocol
-                // negotiation, so it is not a legacy-server signal and never triggers a client fallback to the
+                // negotiation, so it is not an initialize-handshake-server signal and never triggers a client fallback to the
                 // initialize handshake.
                 if (!HasStatefulTransport())
                 {
@@ -458,7 +693,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                     await SendSubscriptionAckAsync(statelessSubscription, cancellationToken).ConfigureAwait(false);
 
-                    return new EmptyResult();
+                    return EmptyResult.Instance;
                 }
 
                 // Filter the requested notifications against what the server actually supports.
@@ -498,7 +733,7 @@ internal sealed partial class McpServerImpl : McpServer
                     _activeSubscriptions.TryRemove(jsonRpcRequest.Id, out _);
                 }
 
-                return new EmptyResult();
+                return EmptyResult.Instance;
             },
             McpJsonUtilities.JsonContext.Default.SubscriptionsListenRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
@@ -527,7 +762,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// </remarks>
     private async Task SendListChangedNotificationAsync(string notificationMethod)
     {
-        // Legacy clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
+        // Initialize-handshake clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
         // subscriptions/listen is a SEP-2575 feature, so clients on the 2026-07-28 or later revision instead get
         // a fan-out limited to the notification types they explicitly subscribed to.
         if (!IsJuly2026OrLaterProtocol())
@@ -754,115 +989,53 @@ internal sealed partial class McpServerImpl : McpServer
         return result;
     }
 
-    private void ConfigureTasks(McpServerOptions options)
-    {
-        var getTaskHandler = options.Handlers.GetTaskHandler;
-        var updateTaskHandler = options.Handlers.UpdateTaskHandler;
-        var cancelTaskHandler = options.Handlers.CancelTaskHandler;
-        var taskStore = options.TaskStore;
-
-        // If a task store is provided, wire up handlers from it for any that aren't explicitly set.
-        if (taskStore is not null)
-        {
-            getTaskHandler ??= async (request, cancellationToken) =>
-            {
-                var info = await taskStore.GetTaskAsync(request.Params!.TaskId, cancellationToken).ConfigureAwait(false);
-                return info is null
-                    ? throw new McpProtocolException($"Unknown task: '{request.Params.TaskId}'", McpErrorCode.InvalidParams)
-                    : ToGetTaskResult(info);
-            };
-
-            updateTaskHandler ??= async (request, cancellationToken) =>
-            {
-                var inputResponses = request.Params!.InputResponses ?? new Dictionary<string, InputResponse>();
-                await taskStore.ResolveInputRequestsAsync(request.Params.TaskId, inputResponses, cancellationToken).ConfigureAwait(false);
-
-                return new UpdateTaskResult();
-            };
-
-            cancelTaskHandler ??= async (request, cancellationToken) =>
-            {
-                // Idempotent ack per SEP-2663: always return CancelTaskResult regardless of whether
-                // the task was known/cancellable. The store's SetCancelledAsync no-ops for unknown
-                // or already-terminal tasks; we still surface a success response to the client.
-                await taskStore.SetCancelledAsync(request.Params!.TaskId, cancellationToken).ConfigureAwait(false);
-
-                // Signal the task's CancellationTokenSource if one exists. Whichever side
-                // (this handler or the background runner's finally block) wins TryRemove owns disposal,
-                // which prevents the runner from observing ObjectDisposedException through cts.Token.
-                if (_taskCancellationSources.TryRemove(request.Params.TaskId, out var cts))
-                {
-                    cts.Cancel();
-                    cts.Dispose();
-                }
-
-                return new CancelTaskResult();
-            };
-        }
-
-        if (getTaskHandler is null && updateTaskHandler is null && cancelTaskHandler is null)
-        {
-            return;
-        }
-
-        getTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
-        updateTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
-        cancelTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown task: '{request.Params?.TaskId}'", McpErrorCode.InvalidParams));
-
-        // The tasks/* methods do not exist before the 2026-07-28 revision (SEP-2663). Reject them with
-        // MethodNotFound when the request was negotiated under a legacy protocol version. The handlers
-        // stay registered so a dual-era server still serves them for 2026-07-28 requests.
-        getTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(getTaskHandler, RequestMethods.TasksGet);
-        updateTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(updateTaskHandler, RequestMethods.TasksUpdate);
-        cancelTaskHandler = GateTaskMethodToJuly2026OrLaterProtocol(cancelTaskHandler, RequestMethods.TasksCancel);
-
-        // Advertise tasks extension in server capabilities.
-        ServerCapabilities.Extensions ??= new Dictionary<string, object>();
-        ServerCapabilities.Extensions[McpExtensions.Tasks] = new JsonObject();
-
-        SetHandler(
-            RequestMethods.TasksGet,
-            getTaskHandler,
-            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.GetTaskResult);
-
-        SetHandler(
-            RequestMethods.TasksUpdate,
-            updateTaskHandler,
-            McpJsonUtilities.JsonContext.Default.UpdateTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.UpdateTaskResult);
-
-        SetHandler(
-            RequestMethods.TasksCancel,
-            cancelTaskHandler,
-            McpJsonUtilities.JsonContext.Default.CancelTaskRequestParams,
-            McpJsonUtilities.JsonContext.Default.CancelTaskResult);
-    }
-
-    /// <summary>
-    /// Wraps a tasks/* request handler so it throws <see cref="McpErrorCode.MethodNotFound"/> unless the
-    /// request was negotiated under the 2026-07-28 or later revision. The tasks extension (SEP-2663) only
-    /// interoperates on the 2026-07-28 revision, and these methods don't exist on older peers.
-    /// </summary>
-    private McpRequestHandler<TParams, TResult> GateTaskMethodToJuly2026OrLaterProtocol<TParams, TResult>(
-        McpRequestHandler<TParams, TResult> inner, string method)
-        => (request, cancellationToken) =>
-        {
-            if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
-            {
-                throw new McpProtocolException(
-                    $"The method '{method}' requires a newer protocol revision that supports tasks; " +
-                    $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
-                    McpErrorCode.MethodNotFound);
-            }
-
-            return inner(request, cancellationToken);
-        };
-
     private void ConfigureExperimentalAndExtensions(McpServerOptions options)
     {
         ServerCapabilities.Experimental = options.Capabilities?.Experimental;
         ServerCapabilities.Extensions = options.Capabilities?.Extensions;
+    }
+
+    private void ConfigureCustomRequestHandlers(McpServerOptions options)
+    {
+#pragma warning disable MCPEXP002
+        if (options.RequestHandlers is not { Count: > 0 } customHandlers)
+        {
+            return;
+        }
+
+        foreach (var entry in customHandlers)
+        {
+            if (string.IsNullOrEmpty(entry.Method))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
+            }
+
+            if (entry.RoutingNameParameter is not null && string.IsNullOrWhiteSpace(entry.RoutingNameParameter))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
+            }
+
+            // Custom handlers are registered after all built-in handlers, so a method already present
+            // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
+            // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
+            // so reject the collision instead.
+            if (_requestHandlers.ContainsKey(entry.Method))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} " +
+                    $"uses the method '{entry.Method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
+            }
+
+            SetRawHandler(entry.Method, entry.Handler);
+        }
+#pragma warning restore MCPEXP002
+    }
+
+    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
+    {
+        _requestHandlers[method] = (request, ct) => handler(request, ct).AsTask();
     }
 
     private void ConfigureResources(McpServerOptions options)
@@ -888,7 +1061,7 @@ internal sealed partial class McpServerImpl : McpServer
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
         readResourceHandler ??= (static async (request, _) =>
         {
-            var errorCode = McpHttpHeaders.UseInvalidParamsForMissingResource(request.Server.NegotiatedProtocolVersion)
+            var errorCode = McpProtocolVersions.UseInvalidParamsForMissingResource(request.Server.NegotiatedProtocolVersion)
                 ? McpErrorCode.InvalidParams
                 : McpErrorCode.ResourceNotFound;
             throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", errorCode);
@@ -1130,15 +1303,16 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.GetPromptResult);
     }
 
+#pragma warning disable MCPEXP002 // tool dispatch wires up the experimental alternate call-tool handler and filters
     private void ConfigureTools(McpServerOptions options)
     {
         var listToolsHandler = options.Handlers.ListToolsHandler;
         var callToolHandler = options.Handlers.CallToolHandler;
-        var callToolWithTaskHandler = options.Handlers.CallToolWithTaskHandler;
+        var callToolWithAlternateHandler = options.Handlers.CallToolWithAlternateHandler;
         var tools = options.ToolCollection;
         var toolsCapability = options.Capabilities?.Tools;
 
-        if (listToolsHandler is null && callToolHandler is null && callToolWithTaskHandler is null && tools is null &&
+        if (listToolsHandler is null && callToolHandler is null && callToolWithAlternateHandler is null && tools is null &&
             toolsCapability is null)
         {
             return;
@@ -1150,17 +1324,15 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = toolsCapability?.ListChanged;
 
         var callToolFilters = options.Filters.Request.CallToolFilters;
-        var callToolWithTaskFilters = options.Filters.Request.CallToolWithTaskFilters;
+        var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-task filters/handler with task filters/handler.
-        bool hasNonTaskPath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasTaskPath = callToolWithTaskHandler is not null || callToolWithTaskFilters.Count > 0;
-
-        if (hasNonTaskPath && hasTaskPath)
+        if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-task ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with task-based ({nameof(McpServerHandlers.CallToolWithTaskHandler)}/{nameof(McpRequestFilters.CallToolWithTaskFilters)}). Use one style or the other.");
+                $"Cannot apply {nameof(McpRequestFilters.CallToolFilters)} when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler " +
+                $"replaces the ordinary tool-call pipeline. Move the behavior to " +
+                $"{nameof(McpRequestFilters.CallToolWithAlternateFilters)} or remove the explicit alternate handler.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1202,32 +1374,32 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified task-augmented handler from one of the two paths.
-        if (hasTaskPath)
+        // An explicit alternate handler replaces the ordinary tool-call pipeline.
+        if (callToolWithAlternateHandler is not null)
         {
-            // Case 2: task filter + task handler
-            callToolWithTaskHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-
             // Augment with DI tools.
             if (tools is not null)
             {
-                var originalHandler = callToolWithTaskHandler;
-                callToolWithTaskHandler = (request, cancellationToken) =>
+                var originalHandler = callToolWithAlternateHandler;
+                callToolWithAlternateHandler = (request, cancellationToken) =>
                 {
+                    MatchTool(request, tools);
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return InvokeToolAsTask(tool, request, cancellationToken);
+                        return InvokeToolWithAlternate(tool, request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
                 };
             }
 
-            callToolWithTaskHandler = BuildFilterPipeline(callToolWithTaskHandler, callToolWithTaskFilters, BuildInitialTaskToolFilter(tools));
+            callToolWithAlternateHandler = BuildInvocationFilterPipeline(
+                callToolWithAlternateHandler,
+                callToolWithAlternateFilters,
+                BuildInitialAlternateToolFilter(tools));
         }
         else
         {
-            // Case 1: non-task filter + non-task handler → apply filters, then convert to task-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1245,116 +1417,13 @@ internal sealed partial class McpServerImpl : McpServer
                 };
             }
 
-            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
+            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters);
 
-            // Convert to task-based.
-            var finalCallToolHandler = callToolHandler;
-            callToolWithTaskHandler = async (request, cancellationToken) =>
-                await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+            callToolWithAlternateHandler = BuildComposedCallToolHandler(
+                callToolHandler,
+                callToolWithAlternateFilters,
+                tools);
         }
-
-        // If a task store is configured, wrap so that when the client signals task support
-        // the tool execution is offloaded to the background via the store.
-        if (options.TaskStore is { } taskStore)
-        {
-            var innerTaskHandler = callToolWithTaskHandler;
-            callToolWithTaskHandler = async (request, cancellationToken) =>
-            {
-                // The SEP-2663 Tasks extension requires the 2026-07-28 or later revision: the task wire shapes we ship do not
-                // interoperate with legacy (<= 2025-11-25) peers. Only materialize a task when the
-                // request was negotiated under the 2026-07-28 or later revision AND the client opted in; otherwise
-                // run the inner handler and return the direct result (best-effort downgrade, which also
-                // defends against a non-conformant legacy client that forges the opt-in envelope).
-                if (IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest) && HasTaskExtensionOptIn(request.Params?.Meta))
-                {
-                    var taskInfo = await taskStore.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
-                    var taskId = taskInfo.TaskId;
-
-                    var cts = new CancellationTokenSource();
-                    _taskCancellationSources[taskId] = cts;
-
-                    // Capture the token synchronously before Task.Run dispatches the work.
-                    // The cancel handler may race with the background runner: whichever side wins
-                    // the TryRemove call owns disposal. If we accessed cts.Token from inside the
-                    // lambda after the handler had already disposed cts, we'd hit ObjectDisposedException.
-                    var taskCancellationToken = cts.Token;
-
-                    _ = Task.Run(async () =>
-                    {
-                        using (CreateMcpTaskScope(taskId, taskStore))
-                        {
-                            try
-                            {
-                                var augmented = await innerTaskHandler(request, taskCancellationToken).ConfigureAwait(false);
-                                if (augmented.IsTask)
-                                {
-                                    // The handler created its own task externally, but the client already holds
-                                    // the store's taskId from the synchronous return below — we can't redirect.
-                                    // Fail the store's task so the client sees a clear error instead of polling forever.
-                                    var error = new JsonRpcErrorDetail
-                                    {
-                                        Code = (int)McpErrorCode.InternalError,
-                                        Message = $"{nameof(McpServerOptions.TaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithTaskHandler)} returned IsTask = true. Use only one mechanism to create the task.",
-                                    };
-                                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
-                                    await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                                    return;
-                                }
-
-                                var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.JsonContext.Default.CallToolResult);
-                                await taskStore.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
-                            {
-                                await taskStore.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
-                            }
-                            catch (InputRequiredException)
-                            {
-                                // MRTR (input requests) cannot be composed with the task-store wrapper for
-                                // [McpServerTool] methods today: the task ID was already returned synchronously,
-                                // so we have no way to surface InputRequiredResult to the client retroactively.
-                                // Fail the task with a clear, actionable error instead of leaking the raw
-                                // InputRequiredException through the generic catch below.
-                                var error = new JsonRpcErrorDetail
-                                {
-                                    Code = (int)McpErrorCode.InvalidRequest,
-                                    Message = "MRTR (input requests) and tasks cannot be composed via [McpServerTool] yet; " +
-                                              $"use {nameof(McpServerHandlers.CallToolWithTaskHandler)} to manage the input-request loop manually within the task body.",
-                                };
-                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
-                                await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                // SEP-2663 §186: failed.error MUST be a JSON-RPC error object {code, message, data?}.
-                                // McpProtocolException carries a JSON-RPC ErrorCode and is documented as safe to
-                                // propagate (Message + ErrorCode). For any other exception type, redact the message
-                                // and use InternalError (mirrors the redaction in BuildInitialCallToolFilter).
-                                var error = ex is McpProtocolException mcpEx
-                                    ? new JsonRpcErrorDetail { Code = (int)mcpEx.ErrorCode, Message = mcpEx.Message }
-                                    : new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = "An error occurred while executing the task." };
-                                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.JsonContext.Default.JsonRpcErrorDetail);
-                                await taskStore.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
-                            }
-                            finally
-                            {
-                                // Only the side that wins TryRemove disposes cts. This prevents a
-                                // double-dispose race with the default tasks/cancel handler.
-                                if (_taskCancellationSources.TryRemove(taskId, out var registeredCts))
-                                {
-                                    registeredCts.Dispose();
-                                }
-                            }
-                        }
-                    }, CancellationToken.None);
-
-                    return ToCreateTaskResult(taskInfo);
-                }
-
-                return await innerTaskHandler(request, cancellationToken).ConfigureAwait(false);
-            };
-        }
-
         ServerCapabilities.Tools.ListChanged = listChanged;
 
         SetHandler(
@@ -1363,94 +1432,13 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        SetTaskAugmentedHandler(
+        SetWithAlternateHandler(
             RequestMethods.ToolsCall,
-            callToolWithTaskHandler,
+            callToolWithAlternateHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult,
-            McpJsonUtilities.JsonContext.Default.CreateTaskResult);
+            McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
-
-    private static CreateTaskResult ToCreateTaskResult(McpTaskInfo info) => new()
-    {
-        TaskId = info.TaskId,
-        Status = info.Status,
-        CreatedAt = info.CreatedAt,
-        LastUpdatedAt = info.LastUpdatedAt,
-        TimeToLive = info.TimeToLive,
-        PollIntervalMs = info.PollIntervalMs,
-        StatusMessage = info.StatusMessage,
-        ResultType = "task",
-    };
-
-    private static GetTaskResult ToGetTaskResult(McpTaskInfo info) => info.Status switch
-    {
-        McpTaskStatus.Working => new WorkingTaskResult
-        {
-            TaskId = info.TaskId,
-            CreatedAt = info.CreatedAt,
-            LastUpdatedAt = info.LastUpdatedAt,
-            TimeToLive = info.TimeToLive,
-            PollIntervalMs = info.PollIntervalMs,
-            StatusMessage = info.StatusMessage,
-            ResultType = "complete",
-        },
-        McpTaskStatus.Completed => new CompletedTaskResult
-        {
-            TaskId = info.TaskId,
-            CreatedAt = info.CreatedAt,
-            LastUpdatedAt = info.LastUpdatedAt,
-            TimeToLive = info.TimeToLive,
-            PollIntervalMs = info.PollIntervalMs,
-            StatusMessage = info.StatusMessage,
-            Result = info.Result ?? throw new InvalidOperationException($"Task '{info.TaskId}' is completed but has no result."),
-            ResultType = "complete",
-        },
-        McpTaskStatus.Failed => new FailedTaskResult
-        {
-            TaskId = info.TaskId,
-            CreatedAt = info.CreatedAt,
-            LastUpdatedAt = info.LastUpdatedAt,
-            TimeToLive = info.TimeToLive,
-            PollIntervalMs = info.PollIntervalMs,
-            StatusMessage = info.StatusMessage,
-            Error = info.Error ?? throw new InvalidOperationException($"Task '{info.TaskId}' is failed but has no error."),
-            ResultType = "complete",
-        },
-        McpTaskStatus.Cancelled => new CancelledTaskResult
-        {
-            TaskId = info.TaskId,
-            CreatedAt = info.CreatedAt,
-            LastUpdatedAt = info.LastUpdatedAt,
-            TimeToLive = info.TimeToLive,
-            PollIntervalMs = info.PollIntervalMs,
-            StatusMessage = info.StatusMessage,
-            ResultType = "complete",
-        },
-        McpTaskStatus.InputRequired => new InputRequiredTaskResult
-        {
-            TaskId = info.TaskId,
-            CreatedAt = info.CreatedAt,
-            LastUpdatedAt = info.LastUpdatedAt,
-            TimeToLive = info.TimeToLive,
-            PollIntervalMs = info.PollIntervalMs,
-            StatusMessage = info.StatusMessage,
-            // McpTaskInfo.InputRequests is IReadOnlyDictionary (covers immutable store
-            // implementations like InMemoryMcpTaskStore's ImmutableDictionary), while the wire
-            // DTO uses IDictionary like every other Protocol type. Most concrete stores back
-            // their dictionaries with a type that implements both interfaces (Dictionary,
-            // ImmutableDictionary, ConcurrentDictionary), so the cast usually succeeds and we
-            // only allocate a copy as a fallback.
-            InputRequests = info.InputRequests is IDictionary<string, InputRequest> dict
-                ? dict
-                : info.InputRequests?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                    ?? new Dictionary<string, InputRequest>(),
-            ResultType = "complete",
-        },
-        _ => throw new InvalidOperationException($"Unknown task status: {info.Status}"),
-    };
-
-    private static async ValueTask<ResultOrCreatedTask<CallToolResult>> InvokeToolAsTask(
+    private static async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
@@ -1458,63 +1446,84 @@ internal sealed partial class McpServerImpl : McpServer
         return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private McpRequestFilter<CallToolRequestParams, CallToolResult> BuildInitialCallToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
+        IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> callToolWithAlternateFilters,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        return async (request, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
+
+            var invocation = new ComposedCallToolInvocationState();
+            var composedHandler = BuildInvocationFilterPipeline(
+                InvokeOrdinaryPipelineAsync,
+                callToolWithAlternateFilters);
 
             try
             {
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
+                var result = await composedHandler(request, cancellationToken).ConfigureAwait(false);
+                LogToolCallLifecycles(request, invocation.CompleteOuter(result));
                 return result;
             }
             catch (Exception e)
             {
-                // Skip logging for InputRequiredException - it's normal MRTR control flow,
-                // not an error (tools throw it to signal an InputRequiredResult).
-                if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-                }
+                LogToolCallLifecycles(
+                    request,
+                    invocation.CompleteOuterException(
+                        e,
+                        cancellationToken.IsCancellationRequested));
 
                 if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
                 {
                     throw;
                 }
 
-                return new()
+                return CreateToolCallErrorResult(request, e);
+            }
+
+            async ValueTask<ResultOrAlternate<CallToolResult>> InvokeOrdinaryPipelineAsync(
+                RequestContext<CallToolRequestParams> ordinaryRequest,
+                CancellationToken ordinaryCancellationToken)
+            {
+                try
                 {
-                    IsError = true,
-                    Content = [new TextContentBlock
+                    MatchTool(ordinaryRequest, tools);
+                    var result = await callToolHandler(ordinaryRequest, ordinaryCancellationToken).ConfigureAwait(false);
+                    LogToolCallLifecycles(ordinaryRequest, invocation.RecordOrdinaryResult(result));
+                    return result;
+                }
+                catch (Exception exception)
+                {
+                    LogToolCallLifecycles(
+                        ordinaryRequest,
+                        invocation.RecordOrdinaryException(
+                            exception,
+                            ordinaryCancellationToken.IsCancellationRequested));
+
+                    if ((exception is OperationCanceledException && ordinaryCancellationToken.IsCancellationRequested) ||
+                        exception is McpProtocolException ||
+                        exception is InputRequiredException)
                     {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                        throw;
+                    }
+
+                    return CreateToolCallErrorResult(ordinaryRequest, exception);
+                }
             }
         };
+    }
 
-    private McpRequestFilter<CallToolRequestParams, ResultOrCreatedTask<CallToolResult>> BuildInitialTaskToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
+        McpServerPrimitiveCollection<McpServerTool>? tools) =>
+        async (request, handler, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
 
             try
             {
                 var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                if (!result.IsTask)
+                if (!result.IsAlternate)
                 {
                     ToolCallCompleted(request.Params?.Name ?? string.Empty, result.Result!.IsError is true);
                 }
@@ -1535,18 +1544,55 @@ internal sealed partial class McpServerImpl : McpServer
                     throw;
                 }
 
-                return new CallToolResult
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock
-                    {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                return CreateToolCallErrorResult(request, e);
             }
         };
+
+    private static void MatchTool(
+        RequestContext<CallToolRequestParams> request,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        if (request.Params?.Name is { } toolName && tools is not null &&
+            tools.TryGetPrimitive(toolName, out var tool))
+        {
+            request.MatchedPrimitive = tool;
+        }
+    }
+
+    private static CallToolResult CreateToolCallErrorResult(
+        RequestContext<CallToolRequestParams> request,
+        Exception exception) =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = exception is McpException ?
+                    $"An error occurred invoking '{request.Params?.Name}': {exception.Message}" :
+                    $"An error occurred invoking '{request.Params?.Name}'.",
+            }],
+        };
+
+    private void LogToolCallLifecycles(
+        RequestContext<CallToolRequestParams> request,
+        IReadOnlyList<ToolCallLifecycle> lifecycles)
+    {
+        string toolName = request.Params?.Name ?? string.Empty;
+        foreach (var lifecycle in lifecycles)
+        {
+            if (lifecycle.Result is { } result)
+            {
+                ToolCallCompleted(toolName, result.IsError is true);
+            }
+            else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
+                lifecycle.Exception is not InputRequiredException)
+            {
+                ToolCallError(toolName, lifecycle.Exception!);
+            }
+        }
+    }
+
+#pragma warning restore MCPEXP002
 
     private void ConfigureLogging(McpServerOptions options)
     {
@@ -1565,6 +1611,13 @@ internal sealed partial class McpServerImpl : McpServer
             RequestMethods.LoggingSetLevel,
             (request, jsonRpcRequest, cancellationToken) =>
             {
+                if (IsJuly2026OrLaterProtocolRequest(jsonRpcRequest))
+                {
+                    throw new McpProtocolException(
+                        $"The method '{RequestMethods.LoggingSetLevel}' is not available on protocol version '{jsonRpcRequest.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'. Use per-request _meta/{MetaKeys.LogLevel} instead.",
+                        McpErrorCode.MethodNotFound);
+                }
+
                 // Store the provided level.
                 if (request is not null)
                 {
@@ -1627,7 +1680,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     private DestinationBoundMcpServer CreateDestinationBoundServer(JsonRpcRequest jsonRpcRequest)
     {
-        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport);
+        var server = new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport, jsonRpcRequest.Context);
 
         if (_mrtrContextsByRequestId.TryRemove(jsonRpcRequest.Id, out var mrtrContext))
         {
@@ -1664,25 +1717,53 @@ internal sealed partial class McpServerImpl : McpServer
             };
         }
 
+        if (typeof(Result).IsAssignableFrom(typeof(TResult)))
+        {
+            var innerHandler = handler;
+            handler = async (request, cancellationToken) =>
+            {
+                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+                if (result is Result protocolResult && protocolResult.ResultType is null)
+                {
+                    protocolResult.ResultType = "complete";
+                }
+
+                return result;
+            };
+        }
+
         _requestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
             requestTypeInfo, responseTypeInfo);
     }
 
-    private void SetTaskAugmentedHandler<TParams, TResult>(
+#pragma warning disable MCPEXP002 // SetWithAlternateHandler wraps the experimental ResultOrAlternate seam
+    private void SetWithAlternateHandler<TParams, TResult>(
         string method,
-        McpRequestHandler<TParams, ResultOrCreatedTask<TResult>> handler,
+        McpRequestHandler<TParams, ResultOrAlternate<TResult>> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
-        JsonTypeInfo<TResult> responseTypeInfo,
-        JsonTypeInfo<CreateTaskResult> taskResultTypeInfo)
+        JsonTypeInfo<TResult> responseTypeInfo)
         where TResult : Result
     {
-        _requestHandlers.SetTaskAugmented(method,
+        var innerHandler = handler;
+        handler = async (request, cancellationToken) =>
+        {
+            var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
+            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult)
+            {
+                immediateResult.ResultType = "complete";
+            }
+
+            return result;
+        };
+
+        _requestHandlers.SetWithAlternate(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
-            requestTypeInfo, responseTypeInfo, taskResultTypeInfo);
+            requestTypeInfo, responseTypeInfo);
     }
+#pragma warning restore MCPEXP002
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
@@ -1704,14 +1785,30 @@ internal sealed partial class McpServerImpl : McpServer
         return current;
     }
 
-    // Per SEP-2663 §51, the client opts in to the tasks extension on a per-request basis
-    // via the SEP-2575 capabilities envelope:
-    //   _meta/io.modelcontextprotocol/clientCapabilities/extensions/io.modelcontextprotocol/tasks = {}
-    private static bool HasTaskExtensionOptIn(JsonObject? meta) =>
-        meta is not null &&
-        meta[MetaKeys.ClientCapabilities] is JsonObject caps &&
-        caps["extensions"] is JsonObject exts &&
-        exts.ContainsKey(McpExtensions.Tasks);
+#pragma warning disable MCPEXP002
+    private static McpRequestHandler<TParams, TResult> BuildInvocationFilterPipeline<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> baseHandler,
+        IList<McpRequestInvocationFilter<TParams, TResult>> filters,
+        McpRequestInvocationFilter<TParams, TResult>? initialHandler = null)
+    {
+        var current = baseHandler;
+
+        for (int i = filters.Count - 1; i >= 0; i--)
+        {
+            var next = current;
+            var filter = filters[i];
+            current = (request, cancellationToken) => filter(request, next, cancellationToken);
+        }
+
+        if (initialHandler is not null)
+        {
+            var next = current;
+            current = (request, cancellationToken) => initialHandler(request, next, cancellationToken);
+        }
+
+        return current;
+    }
+#pragma warning restore MCPEXP002
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {
@@ -1740,7 +1837,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 // Ensure message has a Context so Items can be shared through the pipeline
                 message.Context ??= new();
-                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport), message);
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport, message.Context), message);
                 await current(context, cancellationToken).ConfigureAwait(false);
             };
         };
@@ -1787,16 +1884,18 @@ internal sealed partial class McpServerImpl : McpServer
     /// </summary>
     internal bool HasStatefulTransport() =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
-
     /// <summary>
     /// Returns <see langword="true"/> when the given request was negotiated under the 2026-07-28 or later protocol
     /// revision, derived from the per-request <c>_meta</c>/<c>MCP-Protocol-Version</c> value (so it works
     /// for requests over stateless HTTP) and falling back to the session-negotiated version.
-    /// Used to gate the SEP-2663 Tasks extension, which only interoperates on the 2026-07-28 revision.
     /// </summary>
     private bool IsJuly2026OrLaterProtocolRequest(JsonRpcRequest? request) =>
-        McpHttpHeaders.IsJuly2026OrLaterProtocolVersion(
-            request?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion);
+        IsJuly2026OrLaterProtocolRequest(request?.Context);
+
+    /// <inheritdoc cref="IsJuly2026OrLaterProtocolRequest(JsonRpcRequest?)"/>
+    internal bool IsJuly2026OrLaterProtocolRequest(JsonRpcMessageContext? requestContext) =>
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(
+            requestContext?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />
     public override bool IsMrtrSupported => ClientSupportsMrtr() || HasStatefulTransport();
@@ -1817,75 +1916,92 @@ internal sealed partial class McpServerImpl : McpServer
 
         for (int retry = 0; ; retry++)
         {
+            InputRequiredResult inputRequiredResult;
+            Exception? inputRequiredException = null;
+
             try
             {
-                return await handler(request, cancellationToken).ConfigureAwait(false);
+                var result = await handler(request, cancellationToken).ConfigureAwait(false);
+
+                // A handler can surface an input-required result two ways: by throwing InputRequiredException,
+                // or by RETURNING an InputRequiredResult through the alternate result path (ResultOrAlternate).
+                // Normalize both forms so a client that doesn't natively support MRTR gets the same server-side
+                // resolution either way.
+                if (GetReturnedInputRequiredResult(result) is not { } returnedInputRequired)
+                {
+                    return result;
+                }
+
+                inputRequiredResult = returnedInputRequired;
             }
             catch (InputRequiredException ex)
             {
-                // If the client natively supports MRTR, serialize and return directly -
-                // the client will drive the retry loop.
-                if (ClientSupportsMrtr())
-                {
-                    return SerializeInputRequiredResult(ex.Result);
-                }
-
-                // In stateless mode without MRTR, the server can't resolve input requests via
-                // JSON-RPC (no persistent session for server-to-client requests), and the client
-                // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-                if (!HasStatefulTransport())
-                {
-                    throw new McpException(
-                        "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
-                        "MRTR-native tools require either an MRTR-capable client or a stateful server for backward-compatible resolution.", ex);
-                }
-
-                // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.
-                if (ex.Result.InputRequests is not { Count: > 0 } inputRequests)
-                {
-                    throw new McpException(
-                        "A tool handler returned an incomplete result without input requests, and the client does not support MRTR.", ex);
-                }
-
-                if (retry >= MaxRetries)
-                {
-                    throw new McpException(
-                        $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.", ex);
-                }
-
-                // Resolve each input request by sending the corresponding JSON-RPC call to the client.
-                // Route the outgoing requests via the same DestinationBoundMcpServer used for normal tool
-                // handlers, so they go through the POST's response stream (RelatedTransport) rather than
-                // the session-level transport. Without this, the messages can race with the client's GET
-                // stream startup and be silently dropped by StreamableHttpServerTransport.SendMessageAsync
-                // when no GET request has arrived yet.
-                var destinationServer = CreateDestinationBoundServer(request);
-                var inputResponses = await ResolveInputRequestsAsync(destinationServer, inputRequests, cancellationToken).ConfigureAwait(false);
-
-                // Reconstruct request params with inputResponses and requestState for the retry.
-                var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-                paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
-                    (IDictionary<string, InputResponse>)inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
-
-                if (ex.Result.RequestState is { } requestState)
-                {
-                    paramsObj["requestState"] = requestState;
-                }
-                else
-                {
-                    // Strip any stale requestState carried over from the previous round's clone so
-                    // the next tool invocation doesn't see a continuation token the current round is not using.
-                    paramsObj.Remove("requestState");
-                }
-
-                request = new JsonRpcRequest
-                {
-                    Id = request.Id,
-                    Method = request.Method,
-                    Params = paramsObj,
-                    Context = request.Context,
-                };
+                inputRequiredResult = ex.Result;
+                inputRequiredException = ex;
             }
+
+            // If the client natively supports MRTR, serialize and return directly -
+            // the client will drive the retry loop.
+            if (ClientSupportsMrtr())
+            {
+                return SerializeInputRequiredResult(inputRequiredResult);
+            }
+
+            // In stateless mode without MRTR, the server can't resolve input requests via
+            // JSON-RPC (no persistent session for server-to-client requests), and the client
+            // won't recognize the InputRequiredResult. This is the one unsupported configuration.
+            if (!HasStatefulTransport())
+            {
+                throw new McpException(
+                    "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
+                    "MRTR-native tools require either an MRTR-capable client or a stateful server for backward-compatible resolution.", inputRequiredException);
+            }
+
+            // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.
+            if (inputRequiredResult.InputRequests is not { Count: > 0 } inputRequests)
+            {
+                throw new McpException(
+                    "A tool handler returned an incomplete result without input requests, and the client does not support MRTR.", inputRequiredException);
+            }
+
+            if (retry >= MaxRetries)
+            {
+                throw new McpException(
+                    $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.", inputRequiredException);
+            }
+
+            // Resolve each input request by sending the corresponding JSON-RPC call to the client.
+            // Route the outgoing requests via the same DestinationBoundMcpServer used for normal tool
+            // handlers, so they go through the POST's response stream (RelatedTransport) rather than
+            // the session-level transport. Without this, the messages can race with the client's GET
+            // stream startup and be silently dropped by StreamableHttpServerTransport.SendMessageAsync
+            // when no GET request has arrived yet.
+            var destinationServer = CreateDestinationBoundServer(request);
+            var inputResponses = await ResolveInputRequestsAsync(destinationServer, inputRequests, cancellationToken).ConfigureAwait(false);
+
+            // Reconstruct request params with inputResponses and requestState for the retry.
+            var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
+            paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
+                (IDictionary<string, InputResponse>)inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
+
+            if (inputRequiredResult.RequestState is { } requestState)
+            {
+                paramsObj["requestState"] = requestState;
+            }
+            else
+            {
+                // Strip any stale requestState carried over from the previous round's clone so
+                // the next tool invocation doesn't see a continuation token the current round is not using.
+                paramsObj.Remove("requestState");
+            }
+
+            request = new JsonRpcRequest
+            {
+                Id = request.Id,
+                Method = request.Method,
+                Params = paramsObj,
+                Context = request.Context,
+            };
         }
     }
 
@@ -1972,6 +2088,24 @@ internal sealed partial class McpServerImpl : McpServer
 
     private static JsonNode? SerializeInputRequiredResult(InputRequiredResult inputRequiredResult) =>
         JsonSerializer.SerializeToNode(inputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
+
+    /// <summary>
+    /// Detects an <see cref="InputRequiredResult"/> that a handler surfaced by RETURNING it through the alternate
+    /// result path (rather than throwing <see cref="InputRequiredException"/>), so both forms can be resolved
+    /// identically for clients that don't natively support MRTR. Returns <see langword="null"/> for any other result.
+    /// </summary>
+    private static InputRequiredResult? GetReturnedInputRequiredResult(JsonNode? result)
+    {
+        if (result is JsonObject resultObject &&
+            resultObject.TryGetPropertyValue("resultType", out var resultTypeNode) &&
+            resultTypeNode?.GetValueKind() == JsonValueKind.String &&
+            resultTypeNode.GetValue<string>() == "input_required")
+        {
+            return JsonSerializer.Deserialize(result, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync/RequestRootsAsync,

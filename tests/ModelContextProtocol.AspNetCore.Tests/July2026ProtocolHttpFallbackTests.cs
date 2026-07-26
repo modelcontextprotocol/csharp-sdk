@@ -14,7 +14,8 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
-/// Regression tests for the 2026-07-28-to-legacy fallback path over Streamable HTTP. These
+/// Regression tests for the fallback from a 2026-07-28 per-request-metadata probe to the initialize
+/// handshake over Streamable HTTP. These
 /// hand-craft minimal HTTP servers that mimic real-world peer behavior (e.g. Python's
 /// <c>simple-streamablehttp-stateless</c> returns a JSON-RPC error envelope in a <c>400</c> body
 /// on a 2026-07-28 probe; vanilla Go does the same on <c>POST /</c>) so the client's HTTP-fallback
@@ -29,15 +30,15 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 ///   <item>
 ///     <see cref="StreamableHttpClientSessionTransport"/> only surfaced the three error codes
 ///     introduced by the 2026-07-28 revision (<c>-32022</c>, <c>-32021</c>, <c>-32020</c>) as <see cref="McpProtocolException"/>;
-///     any other JSON-RPC error code in a <c>400</c> body (e.g. <c>-32600</c> from a legacy server
+///     any other JSON-RPC error code in a <c>400</c> body (e.g. <c>-32600</c> from an initialize-handshake server
 ///     that doesn't understand the 2026-07-28 <c>_meta</c> envelope) threw <see cref="HttpRequestException"/>
 ///     and bypassed the connect-time fallback logic. Per spec PR #2844, the fallback must trigger
-///     on ANY non-modern JSON-RPC error in a <c>400</c> body.
+///     on ANY non-SEP-2575 JSON-RPC error in a <c>400</c> body.
 ///   </item>
 ///   <item>
 ///     <see cref="AutoDetectingClientSessionTransport"/> treated any non-2xx HTTP response as a
 ///     signal to abandon the Streamable HTTP transport and fall back to SSE. That masked
-///     application-level errors (including the three modern codes) because the SSE GET would
+///     application-level errors (including the three SEP-2575/SEP-2567 codes) because the SSE GET would
 ///     either fail with "session id required" or succeed against a different endpoint and lose
 ///     the actual signal.
 ///   </item>
@@ -86,11 +87,11 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
     /// <summary>
     /// Mimics Python's <c>simple-streamablehttp-stateless</c> on a 2026-07-28 probe: returns
     /// <c>400</c> + JSON-RPC <c>-32600</c> ("Bad Request: Unsupported protocol version") for the
-    /// initial <c>server/discover</c>, then performs a normal legacy <c>initialize</c> handshake
+    /// initial <c>server/discover</c>, then performs a normal <c>initialize</c> handshake
     /// when the client falls back.
     /// </summary>
     [Fact]
-    public async Task Client_AgainstLegacyHttpServer_FallsBack_To_Initialize_When_400_Contains_JsonRpcError()
+    public async Task Client_AgainstInitializeHandshakeHttpServer_FallsBack_To_Initialize_When_400_Contains_JsonRpcError()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -107,7 +108,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                 return;
             }
 
-            // 2026-07-28 probe: simulate a legacy server that rejects the unknown protocol version with
+            // 2026-07-28 probe: simulate an initialize-handshake server that rejects the unknown protocol version with
             // a -32600 envelope (matches Python's wire shape verified in cross-SDK testing).
             if (request.Method == RequestMethods.ServerDiscover)
             {
@@ -115,7 +116,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                 return;
             }
 
-            // Legacy initialize: respond with the highest version the legacy server speaks.
+            // Initialize handshake: respond with the highest version this server speaks.
             if (request.Method == RequestMethods.Initialize)
             {
                 var response = new JsonRpcResponse
@@ -123,9 +124,9 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2025-06-18",
+                        ProtocolVersion = McpProtocolVersions.June2025ProtocolVersion,
                         Capabilities = new() { Tools = new() },
-                        ServerInfo = new Implementation { Name = "legacy", Version = "1.0" },
+                        ServerInfo = new Implementation { Name = "initialize-handshake", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions),
                 };
 
@@ -157,11 +158,11 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.Equal("2025-06-18", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
         // Sanity: subsequent traffic still works post-fallback.
         var tools = await client.ListToolsAsync(cancellationToken: ct);
@@ -170,7 +171,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
     /// <summary>
     /// Mimics vanilla Go: returns <c>400</c> + JSON-RPC <c>-32022</c> with
-    /// <c>data.supported[]</c> on a 2026-07-28 probe so the client retries legacy
+    /// <c>data.supported[]</c> on a 2026-07-28 probe so the client retries
     /// <c>initialize</c> with one of the advertised versions.
     /// </summary>
     [Fact]
@@ -197,8 +198,8 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                 // Use the typed payload type so the source-generated serializer can handle it.
                 var data = JsonSerializer.SerializeToNode(new UnsupportedProtocolVersionErrorData
                 {
-                    Supported = new List<string> { "2025-11-25" },
-                    Requested = "2026-07-28",
+                    Supported = new List<string> { McpProtocolVersions.November2025ProtocolVersion },
+                    Requested = McpProtocolVersions.July2026ProtocolVersion,
                 }, GetJsonTypeInfo<UnsupportedProtocolVersionErrorData>());
 
                 var rpcError = new JsonRpcError
@@ -225,7 +226,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2025-11-25",
+                        ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
                         Capabilities = new() { Tools = new() },
                         ServerInfo = new Implementation { Name = "go-shaped", Version = "1.0" },
                     }, McpJsonUtilities.DefaultOptions),
@@ -244,16 +245,16 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        // Default options prefer 2026-07-28 but allow automatic fallback to a legacy server.
+        // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
-        Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
     }
 
     /// <summary>
     /// A 400 with a JSON-RPC <c>-32020 HeaderMismatch</c> envelope must be surfaced to the
-    /// caller (no legacy fallback). Falling back wouldn't fix a malformed envelope.
+    /// caller (no initialize fallback). Falling back wouldn't fix a malformed envelope.
     /// </summary>
     [Fact]
     public async Task Client_OnHeaderMismatch_400_Surfaces_McpProtocolException_NoFallback()
@@ -293,11 +294,133 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         {
             await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion,
+                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
             }, loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
         Assert.Equal(McpErrorCode.HeaderMismatch, exception.ErrorCode);
         Assert.False(initializeReceived);
+    }
+
+    [Fact]
+    public async Task Client_OnPerRequestMetadataResponseWithMcpSessionId_IgnoresSessionState()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string? toolsListSessionId = null;
+
+        await StartServerAsync(async context =>
+        {
+            var message = await JsonSerializer.DeserializeAsync(
+                context.Request.Body,
+                GetJsonTypeInfo<JsonRpcMessage>(),
+                ct);
+
+            if (message is JsonRpcRequest { Method: RequestMethods.ServerDiscover } request)
+            {
+                var response = new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new DiscoverResult
+                    {
+                        SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
+                        Capabilities = new ServerCapabilities(),
+                        ServerInfo = new Implementation { Name = "bad-per-request-metadata-server", Version = "1.0" },
+                        TimeToLive = TimeSpan.Zero,
+                        CacheScope = CacheScope.Private,
+                    }, McpJsonUtilities.DefaultOptions),
+                };
+
+                context.Response.Headers[McpHttpHeaders.SessionId] = "unexpected-session";
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), ct);
+                return;
+            }
+
+            if (message is JsonRpcRequest { Method: RequestMethods.ToolsList } toolsListRequest)
+            {
+                toolsListSessionId = context.Request.Headers[McpHttpHeaders.SessionId].ToString();
+
+                var response = new JsonRpcResponse
+                {
+                    Id = toolsListRequest.Id,
+                    Result = JsonSerializer.SerializeToNode(new ListToolsResult { Tools = [] }, McpJsonUtilities.DefaultOptions),
+                };
+
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), ct);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        await client.ListToolsAsync(cancellationToken: ct);
+
+        Assert.Null(client.SessionId);
+        Assert.Equal("", toolsListSessionId);
+    }
+
+    [Fact]
+    public async Task Client_WithKnownSessionId_DoesNotEchoIt_OnPerRequestMetadataRequest()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string? discoverSessionId = null;
+
+        await StartServerAsync(async context =>
+        {
+            var message = await JsonSerializer.DeserializeAsync(
+                context.Request.Body,
+                GetJsonTypeInfo<JsonRpcMessage>(),
+                ct);
+
+            if (message is JsonRpcRequest { Method: RequestMethods.ServerDiscover } request)
+            {
+                discoverSessionId = context.Request.Headers[McpHttpHeaders.SessionId].ToString();
+
+                var response = new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new DiscoverResult
+                    {
+                        SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
+                        Capabilities = new ServerCapabilities(),
+                        ServerInfo = new Implementation { Name = "per-request-metadata-server", Version = "1.0" },
+                        TimeToLive = TimeSpan.Zero,
+                        CacheScope = CacheScope.Private,
+                    }, McpJsonUtilities.DefaultOptions),
+                };
+
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), ct);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            KnownSessionId = "legacy-session",
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Equal("", discoverSessionId);
     }
 }

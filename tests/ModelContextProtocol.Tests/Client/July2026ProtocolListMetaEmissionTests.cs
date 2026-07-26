@@ -76,7 +76,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
     public async Task Client_ListTools_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -87,7 +87,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
     public async Task Client_ListPrompts_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
 
         await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -98,7 +98,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
     public async Task Client_ListResources_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
 
         await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -109,7 +109,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
     public async Task Client_ListResourceTemplates_NoOptions_EmitsRequiredMeta()
     {
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
 
         await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -122,7 +122,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
         // server/discover has no public List-style helper; we drive it via SendRequestAsync directly,
         // which still flows through the client's per-request _meta injector.
         StartServer();
-        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpHttpHeaders.July2026ProtocolVersion });
+        await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
 
         // Hook the server-side handler invocation via a notification handler is awkward here; assert
         // instead by sending the request and parsing the wire-shape echo from the response context.
@@ -136,7 +136,7 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
 
         Assert.NotNull(response.Result);
         var discover = JsonSerializer.Deserialize<DiscoverResult>(response.Result, McpJsonUtilities.DefaultOptions)!;
-        Assert.Contains(McpHttpHeaders.July2026ProtocolVersion, discover.SupportedVersions);
+        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, discover.SupportedVersions);
 
         // The server enforces the per-request envelope shape; if the client had omitted _meta, the
         // request would have failed with -32602 / -32021 rather than returning a DiscoverResult. The
@@ -144,11 +144,11 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task LegacyClient_ListTools_DoesNotEmitMeta()
+    public async Task InitializeHandshakeClient_ListTools_DoesNotEmitMeta()
     {
-        // Sanity guard: a client on the session-supporting (legacy) protocol must NOT emit the SEP-2575
+        // Sanity guard: a client on the session-supporting initialize-handshake protocol must NOT emit the SEP-2575
         // envelope. The injector is gated on the negotiated protocol version; if it ever started writing
-        // those keys on a legacy request, every legacy server would reject it.
+        // those keys on an initialize-handshake request, every initialize-handshake server would reject it.
         StartServer();
         await using var client = await CreateMcpClientForServer(new McpClientOptions { ProtocolVersion = LatestStableVersion });
 
@@ -175,6 +175,6 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
             $"Missing clientCapabilities key on {method} _meta envelope");
 
         // The protocolVersion value must match the negotiated 2026-07-28 protocol version.
-        Assert.Equal(McpHttpHeaders.July2026ProtocolVersion, meta[MetaKeys.ProtocolVersion]!.GetValue<string>());
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, meta[MetaKeys.ProtocolVersion]!.GetValue<string>());
     }
 }

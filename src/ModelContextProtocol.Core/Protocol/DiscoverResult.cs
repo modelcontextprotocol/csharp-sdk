@@ -8,16 +8,19 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// Introduced by the 2026-07-28 protocol revision (SEP-2575) as the canonical way for a client
-/// to learn what a server supports without performing the legacy <c>initialize</c> handshake.
+/// to learn what a server supports without performing the <c>initialize</c> handshake.
 /// </para>
 /// </remarks>
 public sealed class DiscoverResult : Result, ICacheableResult
 {
     /// <summary>
-    /// Gets or sets the list of MCP protocol version strings that the server supports.
+    /// Gets or sets the list of MCP protocol version strings the server supports for subsequent
+    /// per-request metadata requests.
     /// </summary>
     /// <remarks>
-    /// The client should choose a version from this list for use in subsequent requests.
+    /// The client should choose a version from this list for subsequent requests that carry the
+    /// 2026-07-28-style per-request <c>_meta</c> envelope. Versions that require the
+    /// <c>initialize</c> handshake are negotiated through <c>initialize</c> instead.
     /// </remarks>
     [JsonPropertyName("supportedVersions")]
     public required IList<string> SupportedVersions { get; set; }
