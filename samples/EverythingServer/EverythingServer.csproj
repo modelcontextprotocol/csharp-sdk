@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Exe</OutputType>
+    <!-- This sample demonstrates the Logging and Sampling features, which SEP-2577 deprecates
+         (MCP9005) but which continue to work. Suppress the deprecation warning for this sample only. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenTelemetry" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
   </ItemGroup>
 

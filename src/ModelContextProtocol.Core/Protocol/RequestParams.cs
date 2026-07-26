@@ -11,8 +11,8 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class RequestParams
 {
-    /// <summary>Prevent external derivations.</summary>
-    private protected RequestParams()
+    /// <summary>Initializes the base request parameter type.</summary>
+    protected RequestParams()
     {
     }
 
@@ -24,6 +24,32 @@ public abstract class RequestParams
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the responses to server-initiated input requests from a previous <see cref="InputRequiredResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>.
+    /// Each key corresponds to a key from the <see cref="InputRequiredResult.InputRequests"/> map, and
+    /// the value is the client's response to that input request.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("inputResponses")]
+    public IDictionary<string, InputResponse>? InputResponses { get; set; }
+
+    /// <summary>
+    /// Gets or sets opaque request state echoed back from a previous <see cref="InputRequiredResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>
+    /// that included a <see cref="InputRequiredResult.RequestState"/> value. The client must echo back the
+    /// exact value without modification.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("requestState")]
+    public string? RequestState { get; set; }
 
     /// <summary>
     /// Gets the opaque token that will be attached to any subsequent progress notifications.

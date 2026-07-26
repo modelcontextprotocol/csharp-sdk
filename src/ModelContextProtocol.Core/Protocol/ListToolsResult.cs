@@ -18,11 +18,21 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public sealed class ListToolsResult : PaginatedResult
+public sealed class ListToolsResult : PaginatedResult, ICacheableResult
 {
     /// <summary>
     /// Gets or sets the server's response to a tools/list request from the client.
     /// </summary>
     [JsonPropertyName("tools")]
     public IList<Tool> Tools { get; set; } = [];
+
+    /// <inheritdoc />
+    [JsonPropertyName("ttlMs")]
+    [JsonConverter(typeof(TimeSpanMillisecondsConverter))]
+    public TimeSpan? TimeToLive { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("cacheScope")]
+    [JsonConverter(typeof(CacheScopeConverter))]
+    public CacheScope? CacheScope { get; set; }
 }

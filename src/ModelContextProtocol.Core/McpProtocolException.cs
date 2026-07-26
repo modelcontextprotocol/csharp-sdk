@@ -76,7 +76,7 @@ public class McpProtocolException : McpException
     /// <item><description>-32700: Parse error - Invalid JSON received</description></item>
     /// <item><description>-32600: Invalid request - The JSON is not a valid Request object</description></item>
     /// <item><description>-32601: Method not found - The method does not exist or is not available</description></item>
-    /// <item><description>-32602: Invalid params - Malformed request or unknown primitive name (tool/prompt/resource)</description></item>
+    /// <item><description>-32602: Invalid params - Malformed request, unknown primitive name (tool/prompt/resource), or unresolvable resource URI</description></item>
     /// <item><description>-32603: Internal error - Internal JSON-RPC error</description></item>
     /// </list>
     /// </remarks>

@@ -10,6 +10,7 @@
     <Description>ASP.NET Core extensions for the C# Model Context Protocol (MCP) SDK.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
+    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +23,9 @@
 
   <ItemGroup>
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
   <ItemGroup>

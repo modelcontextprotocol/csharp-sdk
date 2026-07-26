@@ -122,7 +122,7 @@ Before dismissing a potential break, review the PR description and all PR commen
 Every dismissed potential break must be reported to the user with enough detail for them to verify the conclusion. The audit must:
 
 1. **Identify what would normally be breaking and why** (e.g., "CP0005 — adding abstract member `Completion` to abstract class `McpClient`")
-2. **Explain the specific reason for dismissal** (e.g., "Bug fix correcting incorrect behavior per the MCP spec" or "`McpClient`'s only accessible constructor is `protected` and marked `[Experimental(MCPEXP002)]` with message 'Subclassing McpClient and McpServer is experimental and subject to change.'")
+2. **Explain the specific reason for dismissal** (e.g., "Bug fix correcting incorrect behavior per the MCP spec" or "`McpClient`'s only accessible constructor is `protected` and marked `[Experimental(MCPEXP002)]` with message 'This C# SDK extensibility API is experimental and subject to change.'")
 3. **Cite any supporting discussion** from the PR description or comments (e.g., "Reviewers discussed the addition and did not flag it as a breaking concern; compatibility suppressions were added for CP0005")
 4. **Conclude with the dismissal and its category** (e.g., "Dismissed — bug fix correcting spec-non-compliant behavior" or "Dismissed — exclusively gated by `[Experimental]` API. Do not apply the `breaking-change` label.")
 

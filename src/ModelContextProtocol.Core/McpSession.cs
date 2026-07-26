@@ -46,6 +46,18 @@ public abstract partial class McpSession : IAsyncDisposable
     public abstract string? NegotiatedProtocolVersion { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the negotiated protocol version is <c>2026-07-28</c> or later: the
+    /// revision that removed the <c>initialize</c> handshake (SEP-2575) and <c>Mcp-Session-Id</c> (SEP-2567)
+    /// and enabled MRTR (SEP-2322).
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="false"/> when no version has been negotiated yet. This is the shared
+    /// definition of "is this peer speaking the 2026-07-28 or later revision" used by both the client and server.
+    /// </remarks>
+    internal bool IsJuly2026OrLaterProtocol() =>
+        McpProtocolVersions.IsJuly2026OrLaterProtocolVersion(NegotiatedProtocolVersion);
+
+    /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
@@ -68,7 +80,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="InvalidOperationException">The transport is not connected.</exception>
+    /// <exception cref="InvalidOperationException">The transport is not connected, or <paramref name="message"/> is a <see cref="JsonRpcRequest"/>. Use <see cref="SendRequestAsync"/> for requests.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>

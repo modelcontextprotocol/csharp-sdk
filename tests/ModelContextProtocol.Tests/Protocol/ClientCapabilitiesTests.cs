@@ -21,7 +21,6 @@ public static class ClientCapabilitiesTests
                 Form = new FormElicitationCapability(),
                 Url = new UrlElicitationCapability()
             },
-            Tasks = new McpTasksCapability(),
             Extensions = new Dictionary<string, object>
             {
                 ["io.modelcontextprotocol/test"] = new object()
@@ -40,7 +39,6 @@ public static class ClientCapabilitiesTests
         Assert.NotNull(deserialized.Elicitation);
         Assert.NotNull(deserialized.Elicitation.Form);
         Assert.NotNull(deserialized.Elicitation.Url);
-        Assert.NotNull(deserialized.Tasks);
         Assert.NotNull(deserialized.Extensions);
         Assert.True(deserialized.Extensions.ContainsKey("io.modelcontextprotocol/test"));
     }
@@ -58,7 +56,6 @@ public static class ClientCapabilitiesTests
         Assert.Null(deserialized.Roots);
         Assert.Null(deserialized.Sampling);
         Assert.Null(deserialized.Elicitation);
-        Assert.Null(deserialized.Tasks);
         Assert.Null(deserialized.Extensions);
     }
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,7 +30,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         mcpServerBuilder
             .WithListToolsHandler(async (request, cancellationToken) =>
             {
-                var cursor = request.Params?.Cursor;
+                var cursor = request.Params.Cursor;
                 switch (cursor)
                 {
                     case null:
@@ -93,7 +93,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             })
             .WithCallToolHandler(async (request, cancellationToken) =>
             {
-                switch (request.Params?.Name)
+                switch (request.Params.Name)
                 {
                     case "FirstCustomTool":
                     case "SecondCustomTool":
@@ -104,7 +104,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
+                        throw new McpProtocolException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
@@ -188,7 +188,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Be_Notified_Of_Tool_Changes()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
+        // initialize-handshake revision to keep coverage of the session-wide broadcast that older clients still rely on.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(19, tools.Count);
@@ -224,6 +230,50 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(19, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
+    }
+
+    [Fact]
+    public async Task DeferChangedEvents_BatchAddTools_EmitsExactlyOneNotification()
+    {
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverTools = serverOptions.ToolCollection;
+        Assert.NotNull(serverTools);
+
+        int notificationCount = 0;
+        var firstNotification = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (notification, cancellationToken) =>
+            {
+                if (Interlocked.Increment(ref notificationCount) == 1)
+                {
+                    firstNotification.TrySetResult(true);
+                }
+                return default;
+            }))
+        {
+            using (serverTools.DeferChangedEvents())
+            {
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool1")] () => "1"));
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool2")] () => "2"));
+                serverTools.Add(McpServerTool.Create([McpServerTool(Name = "BatchTool3")] () => "3"));
+            }
+
+            await firstNotification.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // Do a round-trip so that any second (erroneous) notification has time to arrive.
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Contains(tools, t => t.Name == "BatchTool1");
+            Assert.Contains(tools, t => t.Name == "BatchTool2");
+            Assert.Contains(tools, t => t.Name == "BatchTool3");
+
+            Assert.Equal(1, notificationCount);
+        }
     }
 
     [Fact]
@@ -594,7 +644,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer().WithTools(target, BuilderToolsJsonContext.Default.Options);
 
         McpServerTool tool = sc.BuildServiceProvider().GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "get_ctor_parameter");
-        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }, new() { Name = "" }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.GetCtorParameter(), (result.Content[0] as TextContentBlock)?.Text);
     }

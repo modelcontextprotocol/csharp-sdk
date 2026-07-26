@@ -54,7 +54,7 @@ public class McpServerPromptTests
         Assert.DoesNotContain("server", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.NotNull(result.Messages);
@@ -83,7 +83,7 @@ public class McpServerPromptTests
         }, new() { Services = services });
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.NotNull(result.Messages);
@@ -133,11 +133,11 @@ public class McpServerPromptTests
         Assert.DoesNotContain("actualMyService", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
         await Assert.ThrowsAnyAsync<ArgumentException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken));
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Services = services },
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }) { Services = services },
             TestContext.Current.CancellationToken);
         Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -158,7 +158,7 @@ public class McpServerPromptTests
         }, new() { Services = services });
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -171,7 +171,7 @@ public class McpServerPromptTests
             _ => new DisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.Equal("disposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -184,7 +184,7 @@ public class McpServerPromptTests
             _ => new AsyncDisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.Equal("asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -197,7 +197,7 @@ public class McpServerPromptTests
             _ => new AsyncDisposableAndDisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
         Assert.Equal("disposals:0, asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -213,7 +213,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.Same(expected, actual);
@@ -230,7 +230,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -256,7 +256,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -288,7 +288,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -315,7 +315,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -347,7 +347,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -368,7 +368,7 @@ public class McpServerPromptTests
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken));
     }
 
@@ -381,7 +381,7 @@ public class McpServerPromptTests
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
             TestContext.Current.CancellationToken));
     }
 

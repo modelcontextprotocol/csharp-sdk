@@ -146,27 +146,6 @@ public class Program
                                 }
                                 """),
                         },
-                        new Tool
-                        {
-                            Name = "longRunning",
-                            Description = "Simulates a long-running operation that supports task-based execution.",
-                            InputSchema = JsonElement.Parse("""
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "durationMs": {
-                                            "type": "number",
-                                            "description": "Duration of the operation in milliseconds"
-                                        }
-                                    },
-                                    "required": ["durationMs"]
-                                }
-                                """),
-                            Execution = new ToolExecution
-                            {
-                                TaskSupport = ToolTaskSupport.Optional
-                            }
-                        }
                     ]
                 };
             },
@@ -210,19 +189,6 @@ public class Program
                     return new CallToolResult
                     {
                         Content = [new TextContentBlock { Text = $"LLM sampling result: {sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}" }]
-                    };
-                }
-                else if (request.Params.Name == "longRunning")
-                {
-                    if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("durationMs", out var durationMsValue))
-                    {
-                        throw new McpProtocolException("Missing required argument 'durationMs'", McpErrorCode.InvalidParams);
-                    }
-                    int durationMs = Convert.ToInt32(durationMsValue.ToString());
-                    await Task.Delay(durationMs, cancellationToken);
-                    return new CallToolResult
-                    {
-                        Content = [new TextContentBlock { Text = $"Long-running operation completed after {durationMs}ms" }]
                     };
                 }
                 else
@@ -280,7 +246,7 @@ public class Program
 
             ReadResourceHandler = async (request, cancellationToken) =>
             {
-                if (request.Params?.Uri is null)
+                if (request.Params.Uri is null)
                 {
                     throw new McpProtocolException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                 }
@@ -307,7 +273,7 @@ public class Program
                 }
 
                 ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ??
-                    throw new McpProtocolException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.ResourceNotFound);
+                    throw new McpProtocolException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
 
                 return new ReadResourceResult
                 {
@@ -459,7 +425,13 @@ public class Program
         }
 
         builder.Services.AddMcpServer(ConfigureOptions)
-            .WithHttpTransport();
+            .WithHttpTransport(options =>
+            {
+                // The test fixture exercises legacy stateful behaviors (SSE + session-id flows).
+                // Set Stateless = false explicitly now that the 2026-07-28 protocol (SEP-2567) defaults to true.
+                options.Stateless = false;
+                options.EnableLegacySse = true;
+            });
 
         var app = builder.Build();
 

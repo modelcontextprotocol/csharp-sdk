@@ -38,21 +38,21 @@ jobs:
 
     steps:
     - name: 📥 Clone the repo
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
     - name: 🔧 Set up .NET
-      uses: actions/setup-dotnet@baa11fbfe1d6520db94683bd5c7a3818018e4309 # v5.1.0
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: |
           10.0.x
           9.0.x
 
     - name: 🔧 Set up Node.js
-      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: 📦 Install pinned npm dependencies for tests
       run: npm ci
@@ -76,7 +76,7 @@ jobs:
 
     - name: 📤 Upload test results artifact
       if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
         path: artifacts/testresults/**

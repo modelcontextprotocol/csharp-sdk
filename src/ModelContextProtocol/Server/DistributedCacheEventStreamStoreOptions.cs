@@ -5,6 +5,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Configuration options for <see cref="DistributedCacheEventStreamStore"/>.
 /// </summary>
+[Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
 public sealed class DistributedCacheEventStreamStoreOptions
 {
     /// <summary>

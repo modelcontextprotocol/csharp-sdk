@@ -56,13 +56,31 @@ Recommend a PATCH version increment if no MAJOR or MINOR criteria are met.
    - MINOR: `MAJOR.(MINOR+1).0`
    - PATCH: `MAJOR.MINOR.(PATCH+1)`
 
-**Examples** from previous release `v1.2.0`:
+### Prereleases
 
-| Level | Recommended |
-|-------|-------------|
-| PATCH | `v1.2.1` |
-| MINOR | `v1.3.0` |
-| MAJOR | `v2.0.0` |
+While the candidate version uses a prerelease suffix (e.g., `X.Y.Z-preview.N`, `X.Y.Z-rc.N`), the recommended next version increments the trailing integer of the suffix: `preview.3` → `preview.4`, `rc.1` → `rc.2`.
+
+Going to GA drops the suffix entirely: `2.0.0-rc.2` → `2.0.0`.
+
+This is purely about how to *compute* the next version. It does **not** declare any new policy about what kinds of changes are permitted between previews — refer to the existing [versioning documentation](../../../../docs/versioning.html) for breaking-change policy.
+
+### Branch context
+
+The "previous release" lookup is constrained to tags matching `v{MAJOR}.*` when assessing from a `release/{MAJOR}.x` servicing branch. On `main`, the lookup is unconstrained (most recent published release globally).
+
+The MAJOR/MINOR/PATCH classification criteria above are unchanged regardless of branch.
+
+See [release-branches.md](../../shared-resources/release-branches.md) for branch-role definitions and previous-release lookup rules.
+
+**Examples**:
+
+| Previous release   | Branch        | Level                 | Recommended            |
+|--------------------|---------------|-----------------------|------------------------|
+| `v1.2.0`           | `main`        | PATCH                 | `v1.2.1`               |
+| `v1.2.0`           | `main`        | MINOR                 | `v1.3.0`               |
+| `v1.2.0`           | `main`        | MAJOR                 | `v2.0.0`               |
+| `v2.0.0-preview.1` | `main`        | (prerelease bump)     | `v2.0.0-preview.2`     |
+| `v1.3.0`           | `release/1.x` | PATCH                 | `v1.3.1`               |
 
 ## Comparing Against the Candidate Version
 
@@ -83,6 +101,7 @@ Present the assessment as a summary table followed by a rationale:
 
 | Aspect | Finding |
 |--------|---------|
+| Branch context | release/1.x |
 | Previous release | v1.0.0 |
 | Breaking changes | None confirmed |
 | New API surface | Yes — 3 PRs add new public APIs |

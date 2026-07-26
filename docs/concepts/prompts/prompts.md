@@ -11,7 +11,7 @@ MCP [prompts] allow servers to expose reusable prompt templates to clients. Prom
 
 [prompts]: https://modelcontextprotocol.io/specification/2025-11-25/server/prompts
 
-This document covers implementing prompts on the server, consuming them from the client, rich content types, and change notifications.
+This document covers implementing prompts on the server, consuming prompts from the client, rich content types, and change notifications.
 
 ### Defining prompts on the server
 
@@ -63,14 +63,14 @@ Register prompt types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(o => o.Stateless = true)
     .WithPrompts<MyPrompts>()
     .WithPrompts<CodePrompts>();
 ```
 
 ### Rich content in prompts
 
-Prompt messages can contain more than just text. For text and image content, use `ChatMessage` from Microsoft.Extensions.AI. `DataContent` is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents. For text embedded resources specifically, use <xref:ModelContextProtocol.Protocol.PromptMessage> directly.
+Prompt messages can contain more than just text. For text and image content, use [`ChatMessage`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.ai.chatmessage) from Microsoft.Extensions.AI. `DataContent` is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents. For text-embedded resources specifically, use <xref:ModelContextProtocol.Protocol.PromptMessage> directly.
 
 #### Image content
 
@@ -197,7 +197,7 @@ foreach (var message in result.Messages)
 
 ### Prompt list change notifications
 
-Servers can dynamically add, remove, or modify prompts at runtime and notify connected clients.
+Servers can dynamically add, remove, or modify prompts at runtime and notify connected clients. These are unsolicited notifications, so they require [stateful mode or stdio](xref:stateless) — [stateless](xref:stateless#stateless-mode-recommended) servers cannot send unsolicited notifications.
 
 #### Sending notifications from the server
 
