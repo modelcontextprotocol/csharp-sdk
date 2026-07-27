@@ -58,7 +58,18 @@ public class Program
                 {
                     DefaultPollIntervalMs = 50,
                     DefaultTimeToLive = TimeSpan.FromMinutes(5),
-                })
+                },
+                options => options.ExecutionModeSelector = request =>
+                    request.Params?.Name switch
+                    {
+                        "slow_compute" or "protocol_error_job" or "confirm_delete" or "multi_input"
+                            => McpTaskExecutionMode.Optional,
+                        "failing_job"
+                            => McpTaskExecutionMode.Required,
+                        "test_tool_with_task" when request.Params.InputResponses is { Count: > 0 }
+                            => McpTaskExecutionMode.Required,
+                        _ => McpTaskExecutionMode.Synchronous,
+                    })
             .WithTools<ConformanceTools>()
             .WithTools<ConformanceTaskTools>()
             .WithTools<IncompleteResultTools>()
