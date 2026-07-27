@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Server;
 /// <param name="next">The next request handler in the pipeline for this invocation.</param>
 /// <param name="cancellationToken">The cancellation token for the current request.</param>
 /// <returns>The result of the filtered request invocation.</returns>
-[Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+[Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
 public delegate ValueTask<TResult> McpRequestInvocationFilter<TParams, TResult>(
     RequestContext<TParams> context,
     McpRequestHandler<TParams, TResult> next,

@@ -66,7 +66,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         {
             LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
-            throw new IOException("Failed to connect transport.", ex);
+            throw;
         }
     }
 
@@ -198,7 +198,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
                 LogTransportReadMessagesFailed(Name, ex);
                 _connectionEstablished.TrySetException(ex);
-                throw;
             }
         }
         finally
