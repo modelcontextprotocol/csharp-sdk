@@ -247,19 +247,106 @@ public static string WizardTool(
 }
 ```
 
-### Providing custom error messages
+### Supporting down-level clients
 
-When MRTR is not supported, you can provide domain-specific guidance:
+When <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> is `false`, the tool
+can't obtain client input through an input request — but that doesn't have to be a dead
+end. Handle down-level and stateless callers along a spectrum, from a helpful message to a
+fully functional non-interactive path.
+
+#### Return actionable guidance
+
+At minimum, tell the caller how to proceed instead of failing opaquely. Explain what kind
+of session would enable the interactive path, and — when the tool exposes one — how to
+invoke the non-interactive path described below:
 
 ```csharp
 if (!server.IsMrtrSupported)
 {
-    return "This tool requires interactive input. To use it:\n"
-         + "1. Connect with a client that negotiates MCP protocol revision 2026-07-28, or\n"
-         + "2. Use a stateful session using protocol revision 2025-11-25 so the server can resolve the input requests for you.\n"
-         + "\nStateless sessions using protocol revision 2025-11-25 and earlier cannot resolve MRTR input requests.";
+    return "This tool needs interactive input. Connect with a client that negotiates MCP "
+         + "protocol revision 2026-07-28, or use a stateful session using revision 2025-11-25 "
+         + "so the server can resolve the input requests for you.";
 }
 ```
+
+#### Offer a non-interactive fallback
+
+When a tool *can* complete without a prompt, expose an explicit argument that lets a
+down-level or stateless caller opt in directly. The tool stays usable everywhere: it
+elicits confirmation when MRTR is available, and otherwise returns guidance the caller
+(or its model) can act on by resending with the argument set.
+
+The confirmation tool below is just an example of a tool that has a sensible
+non-interactive fallback. It also shows how to branch on the elicitation **action** rather
+than assuming acceptance: the deserialized <xref:ModelContextProtocol.Protocol.ElicitResult>
+carries an <xref:ModelContextProtocol.Protocol.ElicitResult.Action> of `"accept"`,
+`"decline"`, or `"cancel"`, surfaced through the
+<xref:ModelContextProtocol.Protocol.ElicitResult.IsAccepted> shorthand.
+
+```csharp
+[McpServerTool, Description("Deletes a file (with required confirmation).")]
+public static string DeleteFile(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context,
+    [Description("The path of the file to delete")] string path,
+    [Description("User confirmation to delete the file")] bool confirm = false)
+{
+    // Handles four client scenarios:
+    //  1. Explicit opt-in: client sends `confirm: true`
+    //  2. MRTR round-trip request: client sends `InputResponses["confirm"]` with action `accept`
+    //  3. MRTR initial request: server elicits input (with automatic SDK down-level bridge)
+    //  4. Session-less down-level: server returns a guidance message requesting explicit opt-in
+
+    // (1) Explicit opt-in. Works on any client, including down-level session-less
+    //     because a previous response gave instructions for passing `confirm: true`.
+    //     These requests are typically sent after (4) returns a guidance message.
+    var deletionConfirmed = confirm;
+
+    // (2) MRTR round-trip request. Works with native MRTR support or the automatic down-level
+    //     SDK bridge after (3) throws an `InputRequiredException` to elicit input.
+    if (!confirm && context.Params?.InputResponses?.TryGetValue("confirm", out var confirmResponse) is true)
+    {
+        var confirmResult = confirmResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+        deletionConfirmed = confirmResult?.IsAccepted is true;
+
+        if (!deletionConfirmed) return "Deletion cancelled";
+    }
+
+    // (1) or (2) Explicit opt-in or confirmation input received; proceed with the deletion
+    if (deletionConfirmed)
+        return $"Deleted {path}.";
+
+    // (3) MRTR initial request: elicit input to confirm the deletion. This uses the
+    //     2026-07-28 MRTR input request, but the SDK provides an automatic bridge to
+    //     a legacy elicitation on a down-level, stateful session. When the bridge can
+    //     be provided, `server.IsMrtrSupported` is `true` and the exception leads to
+    //     a legacy elicitation response automatically.
+    if (server.IsMrtrSupported)
+    {
+        throw new InputRequiredException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = $"Delete {path}? This cannot be undone.",
+                    RequestedSchema = new(),
+                })
+            },
+            requestState: path);   // opaque; echoed back to us on the retry
+    }
+
+    // (4) Down-level and stateless: we can't prompt an elicitation through an MRTR
+    //     round-trip request or an elicitation. Return a natural language response
+    //     with guidance for sending an explicit opt-in.
+    return $"Deletion requires user confirmation. Confirm by resending with `confirm: true`.";
+}
+```
+
+> [!IMPORTANT]
+> A confirmation prompt collects no form fields, but you must still set
+> `RequestedSchema = new()`. The empty schema is accepted by native `2026-07-28` MRTR, and
+> it's **required** by the down-level stateful elicitation bridge under `2025-11-25`:
+> omitting it throws `ArgumentException: "Form mode elicitation requests require a requested schema."`.
 
 ## Compatibility
 
