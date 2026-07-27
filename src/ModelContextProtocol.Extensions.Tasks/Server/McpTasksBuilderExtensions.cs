@@ -148,14 +148,25 @@ public static class McpTasksBuilderExtensions
             executionRequest.Server = request.Server.WithMcpTaskOutgoingRequestInterceptor(taskId, _store);
             var serverLifetime = request.Server as IMcpServerLifetimeFeature;
             var cancellationState = new TaskCancellationState(
-                serverLifetime?.BackgroundTaskCancellationToken ?? CancellationToken.None);
+                serverLifetime?.ServerCancellationToken ?? CancellationToken.None);
             _cancellationStates[taskId] = cancellationState;
 
             var taskCancellationToken = cancellationState.Token;
             var backgroundTask = Task.Run(
                 () => ExecuteTaskAsync(next, executionRequest, taskId, taskCancellationToken, executionScope),
                 CancellationToken.None);
-            serverLifetime?.RegisterBackgroundTask(backgroundTask);
+            cancellationState.SetBackgroundTask(backgroundTask);
+            try
+            {
+                cancellationState.SetServerLifetimeRegistration(
+                    serverLifetime?.RegisterForDisposeAsync(cancellationState));
+            }
+            catch
+            {
+                cancellationState.Cancel();
+                await backgroundTask.ConfigureAwait(false);
+                throw;
+            }
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(
                 ToCreateTaskResult(taskInfo),
@@ -326,27 +337,63 @@ public static class McpTasksBuilderExtensions
             return JsonSerializer.SerializeToNode(new CancelTaskResult(), McpTasksJsonContext.Default.CancelTaskResult);
         }
 
-        private sealed class TaskCancellationState
+        private sealed class TaskCancellationState : IAsyncDisposable
         {
             private readonly CancellationTokenSource _source = new();
             private readonly CancellationTokenRegistration _serverLifetimeRegistration;
+            private Task? _backgroundTask;
+            private IDisposable? _serverLifetimeUnregistration;
+            private int _completed;
 
             public TaskCancellationState(CancellationToken serverLifetimeToken)
             {
                 _serverLifetimeRegistration = serverLifetimeToken.Register(
-                    static state => ((CancellationTokenSource)state!).Cancel(),
-                    _source);
+                    static state => ((TaskCancellationState)state!).Cancel(),
+                    this);
             }
 
             public CancellationToken Token => _source.Token;
 
             public void Cancel() => _source.Cancel();
 
+            public void SetBackgroundTask(Task backgroundTask) => _backgroundTask = backgroundTask;
+
+            public void SetServerLifetimeRegistration(IDisposable? registration)
+            {
+                if (registration is null)
+                {
+                    return;
+                }
+
+                if (Volatile.Read(ref _completed) != 0)
+                {
+                    registration.Dispose();
+                    return;
+                }
+
+                Interlocked.CompareExchange(ref _serverLifetimeUnregistration, registration, null);
+                if (Volatile.Read(ref _completed) != 0)
+                {
+                    Interlocked.Exchange(ref _serverLifetimeUnregistration, null)?.Dispose();
+                }
+            }
+
             public void UnregisterServerLifetime()
             {
                 // Cancellation can arrive concurrently from tasks/cancel and server disposal.
                 // Once the dictionary entry and server registration are gone, the CTS is collectible.
+                Interlocked.Exchange(ref _completed, 1);
                 _serverLifetimeRegistration.Dispose();
+                Interlocked.Exchange(ref _serverLifetimeUnregistration, null)?.Dispose();
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                Cancel();
+                if (_backgroundTask is { } backgroundTask)
+                {
+                    await backgroundTask.ConfigureAwait(false);
+                }
             }
         }
 

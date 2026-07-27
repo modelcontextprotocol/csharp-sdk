@@ -8,15 +8,19 @@ namespace ModelContextProtocol.Server;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMcpServerLifetimeFeature
 {
-    /// <summary>Gets the token that should cancel background work owned by this server.</summary>
+    /// <summary>Gets the token that is cancelled when this server starts disposing.</summary>
     /// <remarks>
-    /// The token is <see cref="CancellationToken.None"/> when background work intentionally outlives
-    /// the server instance, as it does for per-request servers in stateless HTTP mode.
+    /// The token is <see cref="CancellationToken.None"/> when work intentionally outlives the server,
+    /// as it does for per-request servers in stateless HTTP mode.
     /// </remarks>
-    CancellationToken BackgroundTaskCancellationToken { get; }
+    CancellationToken ServerCancellationToken { get; }
 
-    /// <summary>Registers background work that server disposal must await.</summary>
-    /// <param name="backgroundTask">The background work to track.</param>
-    /// <remarks>This is a no-op when background work intentionally outlives the server instance.</remarks>
-    void RegisterBackgroundTask(Task backgroundTask);
+    /// <summary>Registers an asynchronously disposable resource that server disposal must await.</summary>
+    /// <param name="disposable">The resource to dispose when this server is disposed.</param>
+    /// <returns>A handle that unregisters the resource without disposing it.</returns>
+    /// <remarks>
+    /// Dispose the returned handle when the resource completes independently so the server does not
+    /// retain it until shutdown. Registration is a no-op when the server does not own the resource.
+    /// </remarks>
+    IDisposable RegisterForDisposeAsync(IAsyncDisposable disposable);
 }

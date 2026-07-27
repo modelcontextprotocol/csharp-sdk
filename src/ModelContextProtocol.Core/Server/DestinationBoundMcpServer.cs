@@ -73,11 +73,11 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
 
     public override bool IsMrtrSupported => server.IsMrtrSupported;
 
-    CancellationToken IMcpServerLifetimeFeature.BackgroundTaskCancellationToken =>
-        ((IMcpServerLifetimeFeature)server).BackgroundTaskCancellationToken;
+    CancellationToken IMcpServerLifetimeFeature.ServerCancellationToken =>
+        ((IMcpServerLifetimeFeature)server).ServerCancellationToken;
 
-    void IMcpServerLifetimeFeature.RegisterBackgroundTask(Task backgroundTask) =>
-        ((IMcpServerLifetimeFeature)server).RegisterBackgroundTask(backgroundTask);
+    IDisposable IMcpServerLifetimeFeature.RegisterForDisposeAsync(IAsyncDisposable disposable) =>
+        ((IMcpServerLifetimeFeature)server).RegisterForDisposeAsync(disposable);
 
     public override ValueTask DisposeAsync() => server.DisposeAsync();
 
