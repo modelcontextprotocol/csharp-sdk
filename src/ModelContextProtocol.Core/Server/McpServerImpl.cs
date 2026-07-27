@@ -687,7 +687,10 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
-                    ResultType = "complete",
+
+                    // resultType is a 2026-07-28 result field. The initialize handshake is only available on
+                    // 2025-11-25 and earlier revisions (2026-07-28+ negotiate via server/discover and throw
+                    // above), so InitializeResult must never carry resultType (issue #1721).
                 };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
@@ -1713,8 +1716,12 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
                     return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
-                // Otherwise, consider it handled.
-                return new ValueTask<EmptyResult>(EmptyResult.Instance);
+                // Otherwise, consider it handled. logging/setLevel is a legacy (<= 2025-11-25) method
+                // (2026-07-28+ is rejected above), so the response must not carry the 2026-07-28 resultType
+                // field. Return a fresh EmptyResult rather than the shared EmptyResult.Instance, which is
+                // pre-stamped with resultType="complete" for the 2026-07-28-only subscriptions/listen path
+                // (issue #1721).
+                return new ValueTask<EmptyResult>(new EmptyResult());
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
@@ -1785,7 +1792,11 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
             handler = async (request, cancellationToken) =>
             {
                 var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is ICacheableResult cacheable)
+
+                // ttlMs and cacheScope are 2026-07-28 result fields; only stamp them when the request
+                // was negotiated under that revision or later. Earlier revisions (e.g. 2025-11-25) reject
+                // these as unrecognized keys (issue #1721).
+                if (result is ICacheableResult cacheable && IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
                 {
                     cacheable.TimeToLive ??= TimeSpan.Zero;
                     cacheable.CacheScope ??= CacheScope.Private;
@@ -1801,7 +1812,12 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
             handler = async (request, cancellationToken) =>
             {
                 var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is Result protocolResult && protocolResult.ResultType is null)
+
+                // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
+                // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
+                // unrecognized key (issue #1721).
+                if (result is Result protocolResult && protocolResult.ResultType is null &&
+                    IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
                 {
                     protocolResult.ResultType = "complete";
                 }
@@ -1828,7 +1844,12 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
         handler = async (request, cancellationToken) =>
         {
             var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult)
+
+            // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
+            // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
+            // unrecognized key (issue #1721).
+            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult &&
+                IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
             {
                 immediateResult.ResultType = "complete";
             }
