@@ -146,10 +146,12 @@ internal sealed partial class McpServerImpl : McpServer
                 ServerCapabilities.Resources.ListChanged = null;
         }
 
-        // And initialize the session. The built-in meta-reading filter runs ahead of any
-        // user-supplied incoming filters; see PrependMetaReadingFilter for what it records and why.
+        // And initialize the session. The built-in protocol metadata filters run ahead of any
+        // user-supplied message filters.
         var incomingMessageFilter = PrependMetaReadingFilter(BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters));
-        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
+        var outgoingMessageFilter = PrependServerInfoFilter(
+            BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters),
+            options.ServerInfo ?? DefaultImplementation);
 
         _sessionHandler = new McpSessionHandler(
             isServer: true,
@@ -169,12 +171,13 @@ internal sealed partial class McpServerImpl : McpServer
     /// validates the per-request protocol version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
-    /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. Per-request client capabilities and client info are consumed request-scoped
-    /// by <see cref="DestinationBoundMcpServer"/> and are not read from server-wide state by request handlers. The
-    /// shared <see cref="_clientInfo"/> write below is best-effort and used only to derive the session endpoint
-    /// name for logging/telemetry. For initialize-handshake clients the per-request values are absent and the built-in
-    /// filter is a no-op (the values were captured during the initialize handler).
+    /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so the protocol
+    /// version and client capabilities MUST be populated per-request. Client info is optional. Per-request client
+    /// capabilities and client info are consumed request-scoped by <see cref="DestinationBoundMcpServer"/> and are
+    /// not read from server-wide state by request handlers. The shared <see cref="_clientInfo"/> write below is
+    /// best-effort and used only to derive the session endpoint name for logging/telemetry. For initialize-handshake
+    /// clients the per-request values are absent and the built-in filter is a no-op (the values were captured during
+    /// the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
@@ -204,9 +207,14 @@ internal sealed partial class McpServerImpl : McpServer
                     // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
                     if (!_supportedProtocolVersions.Contains(protocolVersion))
                     {
+                        var supportedVersions =
+                            hasProtocolVersionMeta && _perRequestMetadataProtocolVersions.Length > 0 ?
+                                _perRequestMetadataProtocolVersions :
+                                _supportedProtocolVersions;
+
                         throw new UnsupportedProtocolVersionException(
                             requested: protocolVersion,
-                            supported: _supportedProtocolVersions);
+                            supported: supportedVersions);
                     }
 
                     if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
@@ -214,7 +222,6 @@ internal sealed partial class McpServerImpl : McpServer
                         ValidateRequiredPerRequestMetadata(
                             protocolVersion,
                             hasProtocolVersionMeta,
-                            context.ClientInfo is not null,
                             context.ClientCapabilities is not null);
                     }
                     else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
@@ -293,7 +300,6 @@ internal sealed partial class McpServerImpl : McpServer
     private static void ValidateRequiredPerRequestMetadata(
         string protocolVersion,
         bool hasProtocolVersionMeta,
-        bool hasClientInfoMeta,
         bool hasClientCapabilitiesMeta)
     {
         if (!hasProtocolVersionMeta)
@@ -301,10 +307,7 @@ internal sealed partial class McpServerImpl : McpServer
             ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
         }
 
-        if (!hasClientInfoMeta)
-        {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientInfo);
-        }
+        // clientInfo is optional: requests whose _meta omits it are served, not rejected.
 
         if (!hasClientCapabilitiesMeta)
         {
@@ -344,8 +347,46 @@ internal sealed partial class McpServerImpl : McpServer
         paramsObj["_meta"] is JsonObject metaObj &&
         metaObj.ContainsKey(key);
 
+    /// <summary>
+    /// Adds the server identity to every successful result on per-request-metadata protocol revisions.
+    /// The filter runs before application filters so they can inspect or intentionally remove the metadata.
+    /// </summary>
+    private JsonRpcMessageFilter PrependServerInfoFilter(JsonRpcMessageFilter inner, Implementation serverInfo)
+    {
+        JsonRpcMessageFilter serverInfoFilter = next => async (message, cancellationToken) =>
+        {
+            if (message is JsonRpcResponse { Result: JsonObject result } &&
+                McpProtocolVersions.RequiresPerRequestMetadata(
+                    message.Context?.ProtocolVersion ?? _negotiatedProtocolVersion))
+            {
+                if (result["_meta"] is not JsonObject meta)
+                {
+                    meta = new JsonObject();
+                    result["_meta"] = meta;
+                }
+
+                meta[MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(
+                    serverInfo,
+                    McpJsonUtilities.JsonContext.Default.Implementation);
+            }
+
+            await next(message, cancellationToken).ConfigureAwait(false);
+        };
+
+        return next => serverInfoFilter(inner(next));
+    }
+
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
+        // Per-request-metadata revisions (SEP-2575) removed the initialize handshake entirely:
+        // the request is for a method the server does not implement on that revision.
+        if (McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion))
+        {
+            throw new McpProtocolException(
+                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{request.Context?.ProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
+                McpErrorCode.MethodNotFound);
+        }
+
         if (request.Context?.ProtocolVersion is { } protocolVersion &&
             !McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
         {
@@ -415,13 +456,31 @@ internal sealed partial class McpServerImpl : McpServer
                 McpErrorCode.MethodNotFound);
         }
 
-        if (usesPerRequestMetadata && request.Method == RequestMethods.LoggingSetLevel)
+        if (usesPerRequestMetadata &&
+            request.Method is RequestMethods.Ping or RequestMethods.LoggingSetLevel
+                or RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe)
         {
+            var replacement = GetRemovedMethodReplacementHint(request.Method);
             throw new McpProtocolException(
-                $"The method '{RequestMethods.LoggingSetLevel}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'. Use per-request _meta/{MetaKeys.LogLevel} instead.",
+                $"The method '{request.Method}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'." +
+                    (replacement is null ? "" : $" {replacement}"),
                 McpErrorCode.MethodNotFound);
         }
     }
+
+    /// <summary>
+    /// Returns guidance on the per-request-metadata replacement for a method that SEP-2575 removed,
+    /// or <see langword="null"/> when the method has no direct replacement. Surfaced in the
+    /// <see cref="McpErrorCode.MethodNotFound"/> error so a client that still calls the legacy RPC
+    /// (for example <c>resources/subscribe</c>) learns how to migrate.
+    /// </summary>
+    private static string? GetRemovedMethodReplacementHint(string method) => method switch
+    {
+        RequestMethods.LoggingSetLevel => $"Use the per-request '_meta/{MetaKeys.LogLevel}' field instead.",
+        RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe =>
+            $"Use '{RequestMethods.SubscriptionsListen}' with 'resourceSubscriptions' instead.",
+        _ => null,
+    };
 
     /// <inheritdoc/>
     public override string? SessionId => _sessionTransport.SessionId;
@@ -636,7 +695,6 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     SupportedVersions = [.. _perRequestMetadataProtocolVersions],
                     Capabilities = ServerCapabilities ?? new(),
-                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep

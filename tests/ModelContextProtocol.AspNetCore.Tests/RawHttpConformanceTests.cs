@@ -32,7 +32,8 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
                 options.ProtocolVersion = protocolVersion;
             })
             .WithHttpTransport()
-            .WithTools([McpServerTool.Create((string text) => $"echo:{text}", new() { Name = "echo" })]);
+            .WithTools([McpServerTool.Create((string text) => $"echo:{text}", new() { Name = "echo" })])
+            .WithTools<CapabilityTools>();
 
         _app = Builder.Build();
         _app.MapMcp();
@@ -106,6 +107,9 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal("echo:hi", json["result"]!["content"]![0]!["text"]!.GetValue<string>());
+        Assert.Equal(
+            nameof(RawHttpConformanceTests),
+            json["result"]!["_meta"]![MetaKeys.ServerInfo]!["name"]!.GetValue<string>());
 
         // Per SEP-2567, starting with the 2026-07-28 protocol revision Streamable HTTP no longer
         // supports sessions: the server MUST NOT issue a Mcp-Session-Id.
@@ -134,6 +138,73 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(JsonValueKind.Number, json["result"]!["ttlMs"]!.GetValueKind());
         Assert.Equal(0, json["result"]!["ttlMs"]!.GetValue<long>());
         Assert.Equal("private", json["result"]!["cacheScope"]!.GetValue<string>());
+        Assert.Null(json["result"]!["serverInfo"]);
+        Assert.Equal(
+            nameof(RawHttpConformanceTests),
+            json["result"]!["_meta"]![MetaKeys.ServerInfo]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task July2026Post_UnknownMethod_Returns404_WithMethodNotFound()
+    {
+        await StartAsync();
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":17,""method"":""unknown/method"",""params"":{" + July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "unknown/method");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(17, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MethodNotFound, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    [Theory]
+    [InlineData("initialize")]
+    [InlineData("ping")]
+    [InlineData("logging/setLevel")]
+    [InlineData("resources/subscribe")]
+    [InlineData("resources/unsubscribe")]
+    public async Task July2026Post_RemovedMethod_Returns404_WithMethodNotFound(string method)
+    {
+        await StartAsync();
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":18,""method"":""" + method +
+            @""",""params"":{" + July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", method);
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(18, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MethodNotFound, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task July2026Post_MissingRequiredCapability_Returns400()
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":19,""method"":""tools/call"",""params"":{""name"":""requires_sampling"",""arguments"":{}," +
+            July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "requires_sampling");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(19, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
     }
 
     [Fact]
@@ -179,7 +250,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supported);
+        Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
     }
 
     [Fact]
@@ -258,7 +329,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsHeaderMismatch_Minus32020()
+    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsInvalidParams_Minus32602()
     {
         await StartAsync();
 
@@ -269,9 +340,12 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
+        // A missing (rather than mismatched) _meta protocol version is an Invalid params rejection
+        // per SEP-2575; -32020 HeaderMismatch is reserved for values present on both sides that
+        // disagree.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
-        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
         Assert.Contains(MetaKeys.ProtocolVersion, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
@@ -371,5 +445,65 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         // stream is replaced by subscriptions/listen POST requests. Existing routing in
         // McpEndpointRouteBuilderExtensions only maps GET when Stateless == false.
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task July2026Post_MissingClientCapabilities_Returns400_WithInvalidParams()
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":20,""method"":""server/discover"",""params"":{""_meta"":{" +
+            @"""io.modelcontextprotocol/protocolVersion"":""" + McpProtocolVersions.July2026ProtocolVersion + @"""}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(20, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
+        Assert.Contains(MetaKeys.ClientCapabilities, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("5")]
+    [InlineData("\"caps\"")]
+    [InlineData("[]")]
+    [InlineData("true")]
+    public async Task July2026Post_MalformedClientCapabilities_Returns400_WithInvalidParams(string clientCapabilitiesJson)
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":21,""method"":""server/discover"",""params"":{""_meta"":{" +
+            @"""io.modelcontextprotocol/protocolVersion"":""" + McpProtocolVersions.July2026ProtocolVersion + @"""," +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
+            @"""io.modelcontextprotocol/clientCapabilities"":" + clientCapabilitiesJson + "}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // A present-but-wrong-shape clientCapabilities must be rejected up front with -32602 / 400,
+        // not surface later as a generic internal error on a 200 response.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(21, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
+        Assert.Contains(MetaKeys.ClientCapabilities, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [McpServerToolType]
+    private sealed class CapabilityTools
+    {
+        [McpServerTool(Name = "requires_sampling")]
+        public static string RequiresSampling() =>
+            throw new MissingRequiredClientCapabilityException(
+                new ClientCapabilities { Sampling = new() },
+                "sampling capability required but not declared by client");
     }
 }
