@@ -156,7 +156,13 @@ internal sealed partial class StreamableHttpPostTransport(
         }
         catch (Exception ex)
         {
-            _httpResponseTcs.TrySetException(ex);
+            // Surface the failure to the awaiting HandlePostAsync when possible. If the response
+            // future has already been resolved (the response started or completed on another path),
+            // TrySetException is a no-op, so log here to keep the deferred-flush failure diagnosable.
+            if (!_httpResponseTcs.TrySetException(ex))
+            {
+                LogDeferredHeaderFlushFailed(ex);
+            }
         }
     }
 
@@ -336,4 +342,7 @@ internal sealed partial class StreamableHttpPostTransport(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to dispose SSE event stream writer.")]
     private partial void LogStoreStreamDisposalFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to flush deferred Streamable HTTP response headers.")]
+    private partial void LogDeferredHeaderFlushFailed(Exception exception);
 }
