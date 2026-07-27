@@ -277,6 +277,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> tcs = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
             Handlers = new()
             {
                 NotificationHandlers =
@@ -307,6 +308,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
             Handlers = new()
             {
                 NotificationHandlers =
@@ -727,6 +729,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> tcs = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
             Handlers = new()
             {
                 NotificationHandlers =
@@ -756,6 +759,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
             Handlers = new()
             {
                 NotificationHandlers =

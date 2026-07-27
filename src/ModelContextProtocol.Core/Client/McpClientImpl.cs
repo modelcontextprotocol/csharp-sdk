@@ -170,7 +170,8 @@ internal sealed partial class McpClientImpl : McpClient
     public override ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
 
     /// <inheritdoc/>
-    public override Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException("The client is not connected.");
+    public override Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException(
+        "The client is not connected, or the connected server did not provide optional server identity metadata.");
 
     /// <inheritdoc/>
     public override string? ServerInstructions => _serverInstructions;
@@ -432,15 +433,19 @@ internal sealed partial class McpClientImpl : McpClient
                     }
                     else
                     {
+                        var discoveredServerInfo = GetServerInfoFromDiscover(discoverResult!);
+
                         if (_logger.IsEnabled(LogLevel.Information))
                         {
                             LogServerCapabilitiesReceived(_endpointName,
                                 capabilities: JsonSerializer.Serialize(discoverResult!.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                                serverInfo: discoveredServerInfo is null
+                                    ? "(none)"
+                                    : JsonSerializer.Serialize(discoveredServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
                         }
 
                         _serverCapabilities = discoverResult!.Capabilities;
-                        _serverInfo = discoverResult.ServerInfo;
+                        _serverInfo = discoveredServerInfo;
                         _serverInstructions = discoverResult.Instructions;
                     }
 
@@ -482,6 +487,30 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         LogClientConnected(_endpointName);
+    }
+
+    /// <summary>
+    /// Resolves the server identity from a <c>server/discover</c> result. The 2026-07-28 revision carries
+    /// <c>serverInfo</c> in the result's <c>_meta/io.modelcontextprotocol/serverInfo</c> field rather than
+    /// the result body. Identity is optional, so a server that omits it yields <see langword="null"/>.
+    /// </summary>
+    private static Implementation? GetServerInfoFromDiscover(DiscoverResult discoverResult)
+    {
+        if (discoverResult.Meta is { } meta &&
+            meta.TryGetPropertyValue(MetaKeys.ServerInfo, out JsonNode? serverInfoNode))
+        {
+            if (serverInfoNode is null)
+            {
+                throw new JsonException(
+                    $"Discover result metadata '{MetaKeys.ServerInfo}' must contain a server implementation.");
+            }
+
+            return JsonSerializer.Deserialize(serverInfoNode, McpJsonUtilities.JsonContext.Default.Implementation)
+                ?? throw new JsonException(
+                    $"Discover result metadata '{MetaKeys.ServerInfo}' must contain a server implementation.");
+        }
+
+        return null;
     }
 
     /// <summary>

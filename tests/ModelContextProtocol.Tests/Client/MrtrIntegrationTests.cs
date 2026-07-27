@@ -195,7 +195,10 @@ public class MrtrIntegrationTests : ClientServerTestBase
             {
                 SupportedVersions = new List<string> { "2026-07-28" },
                 Capabilities = new ServerCapabilities(),
-                ServerInfo = new Implementation { Name = "MockMrtrServer", Version = "1.0" },
+                Meta = new JsonObject
+                {
+                    [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "MockMrtrServer", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                },
             }, McpJsonUtilities.DefaultOptions),
         };
         await WriteJsonRpcAsync(serverWriter, discoverResponse);
@@ -445,7 +448,10 @@ public class MrtrIntegrationTests : ClientServerTestBase
             {
                 SupportedVersions = ["2026-07-28"],
                 Capabilities = new ServerCapabilities { Tools = new() },
-                ServerInfo = new Implementation { Name = "MrtrServer", Version = "1.0" }
+                Meta = new JsonObject
+                {
+                    [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "MrtrServer", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                },
             }, McpJsonUtilities.DefaultOptions),
         };
         await WriteJsonRpcAsync(serverWriter, discoverResponse);

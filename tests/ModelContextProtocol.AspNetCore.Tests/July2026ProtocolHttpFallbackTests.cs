@@ -324,7 +324,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     {
                         SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                         Capabilities = new ServerCapabilities(),
-                        ServerInfo = new Implementation { Name = "bad-per-request-metadata-server", Version = "1.0" },
+                        Meta = new JsonObject
+                        {
+                            [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "bad-per-request-metadata-server", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                        },
                         TimeToLive = TimeSpan.Zero,
                         CacheScope = CacheScope.Private,
                     }, McpJsonUtilities.DefaultOptions),
@@ -394,7 +397,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
                     {
                         SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                         Capabilities = new ServerCapabilities(),
-                        ServerInfo = new Implementation { Name = "per-request-metadata-server", Version = "1.0" },
+                        Meta = new JsonObject
+                        {
+                            [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "per-request-metadata-server", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                        },
                         TimeToLive = TimeSpan.Zero,
                         CacheScope = CacheScope.Private,
                     }, McpJsonUtilities.DefaultOptions),

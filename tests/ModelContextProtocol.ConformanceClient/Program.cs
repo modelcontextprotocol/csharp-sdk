@@ -321,6 +321,27 @@ try
             }
             break;
         }
+        case "json-schema-ref-no-deref":
+        {
+            // SEP-2106: listing tools must not dereference network $refs in a tool's
+            // inputSchema — the scenario's canary endpoint observes any such fetch.
+            await mcpClient.ListToolsAsync();
+            break;
+        }
+        case "sep-2322-client-request-state":
+        {
+            // SEP-2322 (MRTR): drive the client's input-required auto-loop. The mock
+            // inspects the raw tools/call params: requestState echoed byte-exact (and
+            // omitted when the server sent none), a fresh JSON-RPC id per retry, no
+            // MRTR params bleeding into the unrelated call, and a missing resultType
+            // parsing as a terminal (complete) result.
+            await mcpClient.ListToolsAsync();
+            await mcpClient.CallToolAsync(toolName: "test_mrtr_echo_state", arguments: new Dictionary<string, object?>());
+            await mcpClient.CallToolAsync(toolName: "test_mrtr_unrelated", arguments: new Dictionary<string, object?>());
+            await mcpClient.CallToolAsync(toolName: "test_mrtr_no_state", arguments: new Dictionary<string, object?>());
+            await mcpClient.CallToolAsync(toolName: "test_mrtr_no_result_type", arguments: new Dictionary<string, object?>());
+            break;
+        }
         default:
             // No extra processing for other scenarios
             break;
