@@ -20,6 +20,7 @@ internal sealed class AuthorizationFilterSetup(
     public void Configure(McpServerOptions options)
     {
         ConfigureListToolsFilter(options);
+        ConfigureOrdinaryCallToolFilter(options);
 
         ConfigureListResourcesFilter(options);
         ConfigureListResourceTemplatesFilter(options);
@@ -82,6 +83,22 @@ internal sealed class AuthorizationFilterSetup(
 
                 return result;
             };
+        });
+    }
+
+    private void ConfigureOrdinaryCallToolFilter(McpServerOptions options)
+    {
+        options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+        {
+            var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
+            if (!authResult.Succeeded)
+            {
+                throw new McpProtocolException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
+            }
+
+            context.Items[AuthorizationFilterInvokedKey] = true;
+
+            return await next(context, cancellationToken);
         });
     }
 
