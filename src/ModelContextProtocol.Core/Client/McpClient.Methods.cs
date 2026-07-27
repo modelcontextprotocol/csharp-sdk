@@ -733,6 +733,12 @@ public abstract partial class McpClient : McpSession
     /// For a simpler API that handles both subscription and notification registration in a single call,
     /// use <see cref="SubscribeToResourceAsync(Uri, Func{ResourceUpdatedNotificationParams, CancellationToken, ValueTask}, RequestOptions?, CancellationToken)"/>.
     /// </para>
+    /// <para>
+    /// The 2026-07-28 protocol revision (SEP-2575) removed <c>resources/subscribe</c> in favor of
+    /// <see cref="RequestMethods.SubscriptionsListen"/> with <c>resourceSubscriptions</c>. On a session that
+    /// negotiated that revision or later, this method throws an <see cref="McpException"/> with
+    /// <see cref="McpErrorCode.MethodNotFound"/>.
+    /// </para>
     /// </remarks>
     public Task SubscribeToResourceAsync(
         SubscribeRequestParams requestParams,
@@ -931,6 +937,12 @@ public abstract partial class McpClient : McpSession
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// The 2026-07-28 protocol revision (SEP-2575) removed <c>resources/unsubscribe</c> in favor of
+    /// <see cref="RequestMethods.SubscriptionsListen"/> with <c>resourceSubscriptions</c>. On a session that
+    /// negotiated that revision or later, this method throws an <see cref="McpException"/> with
+    /// <see cref="McpErrorCode.MethodNotFound"/>.
+    /// </remarks>
     public Task UnsubscribeFromResourceAsync(
         UnsubscribeRequestParams requestParams,
         CancellationToken cancellationToken = default)

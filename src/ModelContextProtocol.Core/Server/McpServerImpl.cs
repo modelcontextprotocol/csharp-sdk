@@ -460,11 +460,27 @@ internal sealed partial class McpServerImpl : McpServer
             request.Method is RequestMethods.Ping or RequestMethods.LoggingSetLevel
                 or RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe)
         {
+            var replacement = GetRemovedMethodReplacementHint(request.Method);
             throw new McpProtocolException(
-                $"The method '{request.Method}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'.",
+                $"The method '{request.Method}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'." +
+                    (replacement is null ? "" : $" {replacement}"),
                 McpErrorCode.MethodNotFound);
         }
     }
+
+    /// <summary>
+    /// Returns guidance on the per-request-metadata replacement for a method that SEP-2575 removed,
+    /// or <see langword="null"/> when the method has no direct replacement. Surfaced in the
+    /// <see cref="McpErrorCode.MethodNotFound"/> error so a client that still calls the legacy RPC
+    /// (for example <c>resources/subscribe</c>) learns how to migrate.
+    /// </summary>
+    private static string? GetRemovedMethodReplacementHint(string method) => method switch
+    {
+        RequestMethods.LoggingSetLevel => $"Use the per-request '_meta/{MetaKeys.LogLevel}' field instead.",
+        RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe =>
+            $"Use '{RequestMethods.SubscriptionsListen}' with 'resourceSubscriptions' instead.",
+        _ => null,
+    };
 
     /// <inheritdoc/>
     public override string? SessionId => _sessionTransport.SessionId;
