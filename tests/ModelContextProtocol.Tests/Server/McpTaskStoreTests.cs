@@ -33,7 +33,13 @@ public class McpTaskStoreTests : ClientServerTestBase
             .WithTasks(new InMemoryMcpTaskStore
             {
                 DefaultPollIntervalMs = 50,
-            });
+            }, options => options.ExecutionModeSelector = request =>
+                request.Params?.Name switch
+                {
+                    "sync-tool" => McpTaskExecutionMode.Synchronous,
+                    "required-tool" => McpTaskExecutionMode.Required,
+                    _ => McpTaskExecutionMode.Optional,
+                });
     }
 
     [Fact]
@@ -50,6 +56,79 @@ public class McpTaskStoreTests : ClientServerTestBase
         Assert.True(augmented.IsTask);
         Assert.NotNull(augmented.TaskCreated);
         Assert.Equal(McpTaskStatus.Working, augmented.TaskCreated.Status);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_SynchronousExecutionMode_ReturnsResultDirectly()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        CallToolResult result = await client.CallToolAsync(
+            "sync-tool",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("sync", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_RequiredExecutionModeWithoutCapability_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        MissingRequiredClientCapabilityException exception = await Assert.ThrowsAsync<MissingRequiredClientCapabilityException>(async () =>
+            await client.CallToolAsync(
+                "required-tool",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(McpErrorCode.MissingRequiredClientCapability, exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_RequiredExecutionModeWithLegacyProtocol_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
+        MissingRequiredClientCapabilityException exception = await Assert.ThrowsAsync<MissingRequiredClientCapabilityException>(async () =>
+            await client.CallToolAsync(
+                "required-tool",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(McpErrorCode.MissingRequiredClientCapability, exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CallToolAsTaskAsync_RequiredExecutionMode_ReturnsTask()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        ResultOrCreatedTask<CallToolResult> result = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "required-tool" },
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsTask);
+
+        CallToolResult completedResult = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "required-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("required", Assert.IsType<TextContentBlock>(completedResult.Content[0]).Text);
+    }
+
+    [Fact]
+    public void WithTasks_NullExecutionModeSelector_Throws()
+    {
+        ServiceCollection services = new();
+
+        Assert.Throws<ArgumentNullException>(() =>
+            services
+                .AddMcpServer()
+                .WithStreamServerTransport(Stream.Null, Stream.Null)
+                .WithTasks(
+                    new InMemoryMcpTaskStore(),
+                    options => options.ExecutionModeSelector = null!));
     }
 
     [Fact]
@@ -609,6 +688,12 @@ public class McpTaskStoreTests : ClientServerTestBase
     [McpServerToolType]
     private sealed class TaskStoreTestTools
     {
+        [McpServerTool(Name = "sync-tool")]
+        public static string SyncTool() => "sync";
+
+        [McpServerTool(Name = "required-tool")]
+        public static string RequiredTool() => "required";
+
         [McpServerTool(Name = "slow-tool"), System.ComponentModel.Description("A tool that takes time")]
         public static async Task<string> SlowTool(CancellationToken cancellationToken)
         {
