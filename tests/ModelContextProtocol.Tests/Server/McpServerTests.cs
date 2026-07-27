@@ -1012,6 +1012,23 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Can_Handle_SetLoggingLevel_Requests_WithoutCustomHandler()
+    {
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Logging = new()
+            },
+            method: RequestMethods.LoggingSetLevel,
+            configureOptions: null,
+            assertResult: (_, response) =>
+            {
+                var obj = Assert.IsType<JsonObject>(response);
+                Assert.Empty(obj);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpException()
     {
         const string errorMessage = "Tool execution failed with detailed error";

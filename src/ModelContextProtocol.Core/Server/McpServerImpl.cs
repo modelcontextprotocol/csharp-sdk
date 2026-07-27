@@ -610,7 +610,6 @@ internal sealed partial class McpServerImpl : McpServer
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
-                    ResultType = "complete",
                 };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
@@ -1581,7 +1580,7 @@ internal sealed partial class McpServerImpl : McpServer
                 }
 
                 // Otherwise, consider it handled.
-                return new ValueTask<EmptyResult>(EmptyResult.Instance);
+                return new ValueTask<EmptyResult>(new EmptyResult());
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
@@ -1641,45 +1640,13 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
-        // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
-        // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
-        // When a handler leaves them unset, fill in conservative defaults (immediately stale and not
-        // shareable) so the wire form always carries the fields while preserving today's "don't cache"
-        // behavior. Any value supplied by the handler or a filter is left untouched.
-        if (typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
-        {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
-            {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is ICacheableResult cacheable)
-                {
-                    cacheable.TimeToLive ??= TimeSpan.Zero;
-                    cacheable.CacheScope ??= CacheScope.Private;
-                }
-
-                return result;
-            };
-        }
-
-        if (typeof(Result).IsAssignableFrom(typeof(TResult)))
-        {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
-            {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is Result protocolResult && protocolResult.ResultType is null)
-                {
-                    protocolResult.ResultType = "complete";
-                }
-
-                return result;
-            };
-        }
-
         _requestHandlers.Set(method,
-            (request, jsonRpcRequest, cancellationToken) =>
-                InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
+            async (request, jsonRpcRequest, cancellationToken) =>
+            {
+                var result = await InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+                NormalizeResultForProtocol(result, jsonRpcRequest);
+                return result;
+            },
             requestTypeInfo, responseTypeInfo);
     }
 
@@ -1691,24 +1658,44 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TResult> responseTypeInfo)
         where TResult : Result
     {
-        var innerHandler = handler;
-        handler = async (request, cancellationToken) =>
-        {
-            var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult)
-            {
-                immediateResult.ResultType = "complete";
-            }
-
-            return result;
-        };
-
         _requestHandlers.SetWithAlternate(method,
-            (request, jsonRpcRequest, cancellationToken) =>
-                InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
+            async (request, jsonRpcRequest, cancellationToken) =>
+            {
+                var result = await InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken).ConfigureAwait(false);
+                if (!result.IsAlternate)
+                {
+                    NormalizeResultForProtocol(result.Result, jsonRpcRequest);
+                }
+
+                return result;
+            },
             requestTypeInfo, responseTypeInfo);
     }
 #pragma warning restore MCPEXP002
+
+    private void NormalizeResultForProtocol<TResult>(TResult result, JsonRpcRequest request)
+    {
+        bool isJuly2026OrLater = IsJuly2026OrLaterProtocolRequest(request);
+
+        if (result is ICacheableResult cacheable)
+        {
+            if (isJuly2026OrLater)
+            {
+                cacheable.TimeToLive ??= TimeSpan.Zero;
+                cacheable.CacheScope ??= CacheScope.Private;
+            }
+            else
+            {
+                cacheable.TimeToLive = null;
+                cacheable.CacheScope = null;
+            }
+        }
+
+        if (result is Result protocolResult)
+        {
+            protocolResult.ResultType = isJuly2026OrLater ? protocolResult.ResultType ?? "complete" : null;
+        }
+    }
 
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
