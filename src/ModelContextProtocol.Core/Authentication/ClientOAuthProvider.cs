@@ -163,7 +163,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization result parsed from the redirect URL, or null if no valid URL was provided.</returns>
+    /// <returns>The authorization result parsed from the redirect URL.</returns>
     private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
         AuthorizationCallbackContext context,
         CancellationToken cancellationToken)
@@ -718,7 +718,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (string.IsNullOrEmpty(authResult.Code))
         {
-            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null or empty authorization code.");
+            ThrowFailedToHandleUnauthorizedResponse("The authorization callback returned a null or empty authorization code.");
         }
 
         if (_validateAuthorizationResponseIssuer)
