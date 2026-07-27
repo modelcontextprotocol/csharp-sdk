@@ -136,7 +136,7 @@ public class TaskRunnerLifecycleTests : ClientServerTestBase
     {
 #pragma warning disable MCPEXP002
         services.Configure<McpServerOptions>(options =>
-            options.Filters.Request.CallToolWithAlternateFilters.Add(next => async (request, cancellationToken) =>
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
             {
                 if (_delayRunnerRegistration && request.Params?.Name == "lifecycle-tool")
                 {
@@ -177,6 +177,45 @@ public class TaskRunnerLifecycleTests : ClientServerTestBase
                 Name = "lifecycle-tool",
                 Description = "A tool used to verify task runner lifecycle"
             })]);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DisposesAndWaitsForRegisteredLifetimeResource()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
+        var resource = new BlockingAsyncDisposable();
+        using var registration = serverLifetime.RegisterForDisposeAsync(resource);
+
+        Task disposeTask = Server.DisposeAsync().AsTask();
+
+        try
+        {
+            await resource.DisposeStarted.WaitAsync(TestConstants.DefaultTimeout, ct);
+            Assert.False(disposeTask.IsCompleted, "DisposeAsync should await the registered resource.");
+
+            resource.Release();
+            await disposeTask.WaitAsync(TestConstants.DefaultTimeout, ct);
+        }
+        finally
+        {
+            resource.Release();
+        }
+    }
+
+    [Fact]
+    public async Task LifetimeRegistration_DisposeUnregistersResource()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
+        var resource = new RecordingAsyncDisposable();
+        using var registration = serverLifetime.RegisterForDisposeAsync(resource);
+
+        registration.Dispose();
+        await Server.DisposeAsync();
+
+        Assert.False(resource.IsDisposed);
     }
 
     [Fact]
@@ -230,7 +269,7 @@ public class TaskRunnerLifecycleTests : ClientServerTestBase
 
         var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
         var serverCancellationFired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registration = serverLifetime.BackgroundTaskCancellationToken.Register(
+        using var registration = serverLifetime.ServerCancellationToken.Register(
             static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), serverCancellationFired);
 
         Task disposeTask = Server.DisposeAsync().AsTask();
@@ -283,6 +322,33 @@ public class TaskRunnerLifecycleTests : ClientServerTestBase
             return await base.SetCancelledAsync(taskId, cancellationToken);
         }
     }
+
+    private sealed class BlockingAsyncDisposable : IAsyncDisposable
+    {
+        private readonly TaskCompletionSource<bool> _disposeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task DisposeStarted => _disposeStarted.Task;
+
+        public void Release() => _release.TrySetResult(true);
+
+        public async ValueTask DisposeAsync()
+        {
+            _disposeStarted.TrySetResult(true);
+            await _release.Task;
+        }
+    }
+
+    private sealed class RecordingAsyncDisposable : IAsyncDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return default;
+        }
+    }
 }
 
 public class McpServerLifetimeFeatureTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
@@ -299,24 +365,26 @@ public class McpServerLifetimeFeatureTests(ITestOutputHelper testOutputHelper) :
             },
             LoggerFactory);
         var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(statelessServer);
-        var releaseBackgroundTask = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task backgroundTask = releaseBackgroundTask.Task;
+        var backgroundResource = new RecordingAsyncDisposable();
 
-        serverLifetime.RegisterBackgroundTask(backgroundTask);
+        using var registration = serverLifetime.RegisterForDisposeAsync(backgroundResource);
 
-        try
+        await statelessServer.DisposeAsync().AsTask()
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        Assert.False(serverLifetime.ServerCancellationToken.CanBeCanceled);
+        Assert.False(backgroundResource.IsDisposed,
+            "A stateless per-request server should not own background work that outlives the request.");
+    }
+
+    private sealed class RecordingAsyncDisposable : IAsyncDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public ValueTask DisposeAsync()
         {
-            await statelessServer.DisposeAsync().AsTask()
-                .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-
-            Assert.False(serverLifetime.BackgroundTaskCancellationToken.CanBeCanceled);
-            Assert.False(backgroundTask.IsCompleted,
-                "A stateless per-request server should not own background work that outlives the request.");
-        }
-        finally
-        {
-            releaseBackgroundTask.TrySetResult(true);
-            await backgroundTask;
+            IsDisposed = true;
+            return default;
         }
     }
 }

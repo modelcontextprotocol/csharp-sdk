@@ -32,8 +32,8 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
     private readonly string[] _perRequestMetadataProtocolVersions;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly CancellationTokenSource _serverLifetimeCts = new();
-    private readonly object _backgroundTasksLock = new();
-    private readonly ConcurrentDictionary<Task, byte> _backgroundTasks = new();
+    private readonly object _serverLifetimeRegistrationsLock = new();
+    private readonly HashSet<ServerLifetimeRegistration> _serverLifetimeRegistrations = [];
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
     private static readonly string[] s_perRequestMetadataKeys =
@@ -58,7 +58,7 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
     private int _started;
 
     private bool _disposed;
-    private bool _backgroundTaskRegistrationClosed;
+    private bool _serverLifetimeRegistrationClosed;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
     /// <remarks>
@@ -601,36 +601,40 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
         => _sessionHandler.RegisterNotificationHandler(method, handler);
 
-    CancellationToken IMcpServerLifetimeFeature.BackgroundTaskCancellationToken =>
+    CancellationToken IMcpServerLifetimeFeature.ServerCancellationToken =>
         HasStatefulTransport() ? _serverLifetimeCts.Token : CancellationToken.None;
 
-    void IMcpServerLifetimeFeature.RegisterBackgroundTask(Task backgroundTask)
+    IDisposable IMcpServerLifetimeFeature.RegisterForDisposeAsync(IAsyncDisposable disposable)
     {
-        Throw.IfNull(backgroundTask);
+        Throw.IfNull(disposable);
 
         // Stateless HTTP servers are request-scoped, while Tasks runners intentionally outlive
         // the originating request and are governed by tasks/cancel and task-store retention.
         if (!HasStatefulTransport())
         {
-            return;
+            return NoopRegistration.Instance;
         }
 
-        lock (_backgroundTasksLock)
+        var registration = new ServerLifetimeRegistration(this, disposable);
+        lock (_serverLifetimeRegistrationsLock)
         {
-            if (_backgroundTaskRegistrationClosed)
+            if (_serverLifetimeRegistrationClosed)
             {
                 throw new ObjectDisposedException(nameof(McpServer));
             }
 
-            _backgroundTasks.TryAdd(backgroundTask, 0);
+            _serverLifetimeRegistrations.Add(registration);
         }
 
-        _ = backgroundTask.ContinueWith(
-            static (task, state) => ((ConcurrentDictionary<Task, byte>)state!).TryRemove(task, out _),
-            _backgroundTasks,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        return registration;
+    }
+
+    private void UnregisterServerLifetime(ServerLifetimeRegistration registration)
+    {
+        lock (_serverLifetimeRegistrationsLock)
+        {
+            _serverLifetimeRegistrations.Remove(registration);
+        }
     }
 
     /// <inheritdoc/>
@@ -653,11 +657,11 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
 
-        Task[] backgroundTasks;
-        lock (_backgroundTasksLock)
+        ServerLifetimeRegistration[] serverLifetimeRegistrations;
+        lock (_serverLifetimeRegistrationsLock)
         {
-            _backgroundTaskRegistrationClosed = true;
-            backgroundTasks = [.. _backgroundTasks.Keys];
+            _serverLifetimeRegistrationClosed = true;
+            serverLifetimeRegistrations = [.. _serverLifetimeRegistrations];
         }
 
         // Cancel all orphaned MRTR handlers still suspended in continuations (waiting for
@@ -682,9 +686,34 @@ internal sealed partial class McpServerImpl : McpServer, IMcpServerLifetimeFeatu
             await _allMrtrHandlersCompleted.Task.ConfigureAwait(false);
         }
 
-        if (backgroundTasks.Length > 0)
+        if (serverLifetimeRegistrations.Length > 0)
         {
-            await Task.WhenAll(backgroundTasks).ConfigureAwait(false);
+            await Task.WhenAll(
+                serverLifetimeRegistrations.Select(static registration => registration.DisposeResourceAsync().AsTask())
+            ).ConfigureAwait(false);
+        }
+    }
+
+    private sealed class ServerLifetimeRegistration(
+        McpServerImpl server,
+        IAsyncDisposable resource) : IDisposable
+    {
+        private McpServerImpl? _server = server;
+
+        public ValueTask DisposeResourceAsync() => resource.DisposeAsync();
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _server, null)?.UnregisterServerLifetime(this);
+        }
+    }
+
+    private sealed class NoopRegistration : IDisposable
+    {
+        public static NoopRegistration Instance { get; } = new();
+
+        public void Dispose()
+        {
         }
     }
 
