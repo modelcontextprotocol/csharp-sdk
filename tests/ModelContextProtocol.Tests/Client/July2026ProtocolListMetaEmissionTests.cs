@@ -163,6 +163,25 @@ public class July2026ProtocolListMetaEmissionTests : ClientServerTestBase
         }
     }
 
+    [Fact]
+    public async Task Client_WithPriorDiscoverResult_ListTools_EmitsRequiredMeta()
+    {
+        StartServer();
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            PriorDiscoverResult = new DiscoverResult
+            {
+                SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
+                Capabilities = new ServerCapabilities { Tools = new ToolsCapability() },
+                ServerInfo = new Implementation { Name = "prior-discovery-test-server", Version = "1.0" },
+            },
+        });
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertRequiredMetaPresent(RequestMethods.ToolsList);
+    }
+
     private void AssertRequiredMetaPresent(string method)
     {
         Assert.True(_capturedMeta.TryGetValue(method, out var meta), $"No capture for {method}");

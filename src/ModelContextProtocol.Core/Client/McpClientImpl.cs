@@ -31,6 +31,7 @@ internal sealed partial class McpClientImpl : McpClient
     private Implementation? _serverInfo;
     private string? _serverInstructions;
     private string? _negotiatedProtocolVersion;
+    private DiscoverResult? _discoverResult;
 
     private bool _disposed;
 
@@ -296,11 +297,19 @@ internal sealed partial class McpClientImpl : McpClient
                 // prefers the 2026-07-28 revision and automatically falls back to the initialize
                 // handshake when the server doesn't support it. The initialize branch below runs only when
                 // the caller explicitly pins a version that still supports Streamable HTTP sessions (opting out of the default).
+                if (_options.PriorDiscoverResult is not null &&
+                    _options.ProtocolVersion is { } requestedProtocolVersion &&
+                    !McpProtocolVersions.RequiresPerRequestMetadata(requestedProtocolVersion))
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(McpClientOptions.PriorDiscoverResult)} can only be used with protocol version {McpProtocolVersions.July2026ProtocolVersion} or later.");
+                }
+
                 if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
                 {
                     string preferredVersion = _options.ProtocolVersion ?? McpProtocolVersions.July2026ProtocolVersion;
 
-                    DiscoverResult? discoverResult = null;
+                    DiscoverResult? discoverResult = _options.PriorDiscoverResult;
                     bool fallbackToInitialize = false;
                     IList<string>? serverSupportedVersions = null;
                     string discoverVersion = preferredVersion;
@@ -318,7 +327,7 @@ internal sealed partial class McpClientImpl : McpClient
 
                     try
                     {
-                        discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
+                        discoverResult ??= await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
                     }
                     catch (UnsupportedProtocolVersionException ex)
                     {
@@ -432,16 +441,7 @@ internal sealed partial class McpClientImpl : McpClient
                     }
                     else
                     {
-                        if (_logger.IsEnabled(LogLevel.Information))
-                        {
-                            LogServerCapabilitiesReceived(_endpointName,
-                                capabilities: JsonSerializer.Serialize(discoverResult!.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
-                        }
-
-                        _serverCapabilities = discoverResult!.Capabilities;
-                        _serverInfo = discoverResult.ServerInfo;
-                        _serverInstructions = discoverResult.Instructions;
+                        AdoptDiscoverResult(discoverResult!, discoverVersion);
                     }
 
                     async Task<DiscoverResult> SendDiscoverAsync(string protocolVersion, CancellationToken cancellationToken)
@@ -482,6 +482,34 @@ internal sealed partial class McpClientImpl : McpClient
         }
 
         LogClientConnected(_endpointName);
+    }
+
+    /// <inheritdoc/>
+    public override DiscoverResult GetDiscoverResult()
+    {
+        if (_discoverResult is not null)
+        {
+            return DiscoverResultCloner.Clone(_discoverResult);
+        }
+
+        return base.GetDiscoverResult();
+    }
+
+    private void AdoptDiscoverResult(DiscoverResult discoverResult, string negotiatedVersion)
+    {
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            LogServerCapabilitiesReceived(_endpointName,
+                capabilities: JsonSerializer.Serialize(discoverResult.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                serverInfo: JsonSerializer.Serialize(discoverResult.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+        }
+
+        _discoverResult = DiscoverResultCloner.Clone(discoverResult);
+        _serverCapabilities = _discoverResult.Capabilities;
+        _serverInfo = _discoverResult.ServerInfo;
+        _serverInstructions = _discoverResult.Instructions;
+        _negotiatedProtocolVersion = negotiatedVersion;
+        _sessionHandler.NegotiatedProtocolVersion = negotiatedVersion;
     }
 
     /// <summary>
