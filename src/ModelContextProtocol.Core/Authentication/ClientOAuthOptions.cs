@@ -80,8 +80,10 @@ public sealed class ClientOAuthOptions
     /// </para>
     /// <para>
     /// Custom implementations might open a browser, start an HTTP listener, or use other mechanisms to capture
-    /// the authorization response. They should return both the <c>code</c> and <c>iss</c> query parameters
-    /// from the redirect URI callback. This enables the SDK to validate the <c>iss</c> parameter per
+    /// the authorization response. They must return the <c>code</c> and <c>state</c> query parameters,
+    /// and should return the <c>iss</c> query parameter when present, from the redirect URI callback.
+    /// The SDK requires an exact state match before exchanging the code. Returning <c>iss</c> enables
+    /// the SDK to validate the parameter per
     /// <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>, which mitigates
     /// mix-up attacks.
     /// </para>
@@ -96,9 +98,10 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This delegate returns only the authorization code and cannot provide the <c>iss</c> parameter from
-    /// the authorization response. Consequently, RFC 9207 issuer validation is skipped when this delegate
-    /// is used. Use <see cref="AuthorizationCallbackHandler"/> for issuer-aware authorization flows.
+    /// This delegate returns only the authorization code and cannot provide the <c>state</c> or <c>iss</c>
+    /// parameter from the authorization response. Consequently, state and RFC 9207 issuer validation are
+    /// skipped when this delegate is used. Use <see cref="AuthorizationCallbackHandler"/> for response-bound,
+    /// issuer-aware authorization flows.
     /// </para>
     /// <para>
     /// This property cannot be configured together with <see cref="AuthorizationCallbackHandler"/>.
@@ -139,8 +142,9 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri",
-    /// which should instead be configured via <see cref="RedirectUri"/>.
+    /// Parameters specified cannot override or append to any automatically set parameters like
+    /// <c>redirect_uri</c> or <c>state</c>. The redirect URI should instead be configured via
+    /// <see cref="RedirectUri"/>, while state is generated uniquely for each authorization transaction.
     /// </para>
     /// </remarks>
     public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();

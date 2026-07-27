@@ -120,6 +120,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
             return new ModelContextProtocol.Authentication.AuthorizationResult
             {
                 Code = queryParams["code"],
+                State = queryParams["state"],
                 Iss = queryParams.TryGetValue("iss", out var iss) ? (string?)iss : null,
             };
         }

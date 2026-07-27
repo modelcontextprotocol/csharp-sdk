@@ -360,9 +360,10 @@ static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
 
     if (location is not null && !string.IsNullOrEmpty(location.Query))
     {
-        // Parse query string to extract "code" and "iss" parameters
+        // Parse query string to extract "code", "state", and "iss" parameters
         var query = location.Query.TrimStart('?');
         string? code = null;
+        string? state = null;
         string? iss = null;
         foreach (var pair in query.Split('&'))
         {
@@ -373,6 +374,10 @@ static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
                 {
                     code = HttpUtility.UrlDecode(parts[1]);
                 }
+                else if (parts[0] == "state")
+                {
+                    state = HttpUtility.UrlDecode(parts[1]);
+                }
                 else if (parts[0] == "iss")
                 {
                     iss = HttpUtility.UrlDecode(parts[1]);
@@ -382,7 +387,7 @@ static async Task<AuthorizationResult?> HandleAuthorizationUrlAsync(
 
         if (code is not null)
         {
-            return new AuthorizationResult { Code = code, Iss = iss };
+            return new AuthorizationResult { Code = code, State = state, Iss = iss };
         }
     }
 

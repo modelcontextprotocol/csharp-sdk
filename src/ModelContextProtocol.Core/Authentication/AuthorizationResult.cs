@@ -1,10 +1,15 @@
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// Represents the result of an OAuth authorization redirect, containing the authorization code
-/// and optionally the issuer identifier from the authorization response.
+/// Represents the result of an OAuth authorization redirect, containing the authorization code,
+/// state, and optionally the issuer identifier from the authorization response.
 /// </summary>
 /// <remarks>
+/// <para>
+/// The <see cref="State"/> property must be populated from the <c>state</c> query parameter in the
+/// redirect URI. The SDK validates it against the value sent in the authorization request to bind
+/// the response to the initiating transaction and mitigate cross-site request forgery attacks.
+/// </para>
 /// <para>
 /// The <see cref="Iss"/> property should be populated from the <c>iss</c> query parameter in the
 /// redirect URI when present, as specified by
@@ -19,6 +24,16 @@ public sealed class AuthorizationResult
     /// Gets the authorization code returned by the authorization server.
     /// </summary>
     public string? Code { get; init; }
+
+    /// <summary>
+    /// Gets the state value returned in the authorization response.
+    /// </summary>
+    /// <remarks>
+    /// Implementations of <see cref="ClientOAuthOptions.AuthorizationCallbackHandler"/> must populate this
+    /// property from the <c>state</c> query parameter of the redirect URI callback. The SDK requires an
+    /// exact match with the state sent in the authorization request before exchanging the authorization code.
+    /// </remarks>
+    public string? State { get; init; }
 
     /// <summary>
     /// Gets the issuer identifier returned in the authorization response per

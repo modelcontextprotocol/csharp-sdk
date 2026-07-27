@@ -177,6 +177,77 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CanAuthenticate_WhenAuthorizationResponseStateMatches()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedState = null;
+        await using var transport = CreateOAuthTransport((context, cancellationToken) =>
+        {
+            requestedState = QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["state"];
+            return HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedState);
+        Assert.True(requestedState.Length >= 43);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseStateIsMissing()
+    {
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport(
+            (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(new() { Code = "unused-code" }));
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not include the required state parameter", ex.Message);
+        Assert.Equal(0, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseStateMismatches()
+    {
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport(
+            (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(
+                new() { Code = "unused-code", State = "unexpected-state" }));
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("state did not match", ex.Message);
+        Assert.Equal(0, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task AuthorizationRequests_UseUniqueStateValues()
+    {
+        await using var app = await StartMcpServerAsync();
+        List<string> requestedStates = [];
+
+        for (var i = 0; i < 2; i++)
+        {
+            await using var transport = CreateOAuthTransport((context, cancellationToken) =>
+            {
+                requestedStates.Add(QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["state"].ToString());
+                return HandleAuthorizationUrlAsync(context, cancellationToken);
+            });
+
+            await using var client = await McpClient.CreateAsync(
+                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(2, requestedStates.Count);
+        Assert.Equal(2, requestedStates.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public async Task CannotAuthenticate_WithoutOAuthConfiguration()
     {
         await using var app = await StartMcpServerAsync();
@@ -550,8 +621,10 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("custom_param=custom_value", lastAuthorizationUri?.Query);
     }
 
-    [Fact]
-    public async Task CannotOverrideExistingParameters_WithExtraParams()
+    [Theory]
+    [InlineData("redirect_uri")]
+    [InlineData("state")]
+    public async Task CannotOverrideExistingParameters_WithExtraParams(string parameterName)
     {
         await using var app = await StartMcpServerAsync();
 
@@ -566,7 +639,7 @@ public class AuthTests : OAuthTestBase
                 AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
-                    ["redirect_uri"] = "custom_value",
+                    [parameterName] = "custom_value",
                 }
             },
         }, HttpClient, LoggerFactory);
@@ -2434,7 +2507,9 @@ public class AuthTests : OAuthTestBase
         Assert.False(scopePresent);
     }
 
-    private HttpClientTransport CreateOAuthTransport() =>
+    private HttpClientTransport CreateOAuthTransport(
+        Func<AuthorizationCallbackContext, CancellationToken, Task<ModelContextProtocol.Authentication.AuthorizationResult?>>?
+            authorizationCallbackHandler = null) =>
         new(new()
         {
             Endpoint = new(McpServerUrl),
@@ -2443,7 +2518,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = authorizationCallbackHandler ?? HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
