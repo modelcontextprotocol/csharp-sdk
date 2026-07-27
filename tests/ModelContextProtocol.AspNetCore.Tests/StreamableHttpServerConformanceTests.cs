@@ -1160,7 +1160,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         var discoverResult = AssertType<DiscoverResult>(rpcResponse.Result);
 
         // Server identity is carried in the result _meta, not the discover body.
-        Assert.Null(discoverResult.ServerInfo);
         var serverInfoNode = discoverResult.Meta?[MetaKeys.ServerInfo];
         Assert.NotNull(serverInfoNode);
         var serverInfo = JsonSerializer.Deserialize<Implementation>(serverInfoNode, McpJsonUtilities.DefaultOptions);

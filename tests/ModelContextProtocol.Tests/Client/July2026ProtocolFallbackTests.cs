@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -351,7 +352,10 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                             {
                                 SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
                                 Capabilities = new ServerCapabilities(),
-                                ServerInfo = new Implementation { Name = "per-request-metadata-test-server", Version = "1.0.0" },
+                                Meta = new JsonObject
+                                {
+                                    [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "per-request-metadata-test-server", Version = "1.0.0" }, McpJsonUtilities.DefaultOptions),
+                                },
                             }, McpJsonUtilities.DefaultOptions),
                         });
                     }

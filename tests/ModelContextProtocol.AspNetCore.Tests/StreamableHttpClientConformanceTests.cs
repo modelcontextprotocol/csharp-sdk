@@ -766,7 +766,10 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                                 ["io.modelcontextprotocol/tasks"] = new JsonObject(),
                             },
                         },
-                        ServerInfo = new Implementation { Name = "header-capture", Version = "1.0" },
+                        Meta = new JsonObject
+                        {
+                            [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "header-capture", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                        },
                         TimeToLive = TimeSpan.Zero,
                         CacheScope = CacheScope.Private,
                         ResultType = "complete",

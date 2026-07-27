@@ -32,20 +32,6 @@ public sealed class DiscoverResult : Result, ICacheableResult
     public required ServerCapabilities Capabilities { get; set; }
 
     /// <summary>
-    /// Gets or sets information about the server implementation.
-    /// </summary>
-    /// <remarks>
-    /// The 2026-07-28 specification moved <c>serverInfo</c> from the <c>server/discover</c> result
-    /// body to each result's <c>_meta/io.modelcontextprotocol/serverInfo</c> field
-    /// (<see cref="MetaKeys.ServerInfo"/>). This property remains so clients can read the body field
-    /// from servers that implemented the earlier draft shape; it is omitted from serialization when
-    /// <see langword="null"/>.
-    /// </remarks>
-    [JsonPropertyName("serverInfo")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Implementation? ServerInfo { get; set; }
-
-    /// <summary>
     /// Gets or sets optional instructions describing how to use the server and its features.
     /// </summary>
     /// <remarks>

@@ -44,7 +44,6 @@ public static class DiscoverProtocolTests
             {
                 Tools = new ToolsCapability { ListChanged = true },
             },
-            ServerInfo = new Implementation { Name = "test-server", Version = "2.0" },
             Instructions = "Use this server for testing.",
         };
 
@@ -55,7 +54,6 @@ public static class DiscoverProtocolTests
         Assert.Equal(["2025-11-25", "2026-07-28"], deserialized.SupportedVersions);
         Assert.NotNull(deserialized.Capabilities.Tools);
         Assert.True(deserialized.Capabilities.Tools.ListChanged);
-        Assert.Equal("test-server", deserialized.ServerInfo?.Name);
         Assert.Equal("Use this server for testing.", deserialized.Instructions);
     }
 
@@ -66,7 +64,6 @@ public static class DiscoverProtocolTests
         {
             SupportedVersions = new List<string> { "2026-07-28" },
             Capabilities = new ServerCapabilities(),
-            ServerInfo = new Implementation { Name = "minimal-server", Version = "1.0" },
         };
 
         var json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);

@@ -490,11 +490,9 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <summary>
-    /// Resolves the server identity from a <c>server/discover</c> result. The 2026-07-28 revision moved
-    /// <c>serverInfo</c> from the result body into the result's
-    /// <c>_meta/io.modelcontextprotocol/serverInfo</c> field. The body remains a fallback for servers
-    /// that implemented the earlier draft shape. Identity is optional, so a server that provides
-    /// neither yields <see langword="null"/>.
+    /// Resolves the server identity from a <c>server/discover</c> result. The 2026-07-28 revision carries
+    /// <c>serverInfo</c> in the result's <c>_meta/io.modelcontextprotocol/serverInfo</c> field rather than
+    /// the result body. Identity is optional, so a server that omits it yields <see langword="null"/>.
     /// </summary>
     private static Implementation? GetServerInfoFromDiscover(DiscoverResult discoverResult)
     {
@@ -512,7 +510,7 @@ internal sealed partial class McpClientImpl : McpClient
                     $"Discover result metadata '{MetaKeys.ServerInfo}' must contain a server implementation.");
         }
 
-        return discoverResult.ServerInfo;
+        return null;
     }
 
     /// <summary>
