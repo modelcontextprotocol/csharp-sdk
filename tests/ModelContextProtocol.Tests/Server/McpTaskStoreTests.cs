@@ -109,6 +109,12 @@ public class McpTaskStoreTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         Assert.True(result.IsTask);
+
+        CallToolResult completedResult = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "required-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("required", Assert.IsType<TextContentBlock>(completedResult.Content[0]).Text);
     }
 
     [Fact]
