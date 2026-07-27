@@ -28,9 +28,9 @@ public static class MetaKeys
     /// The metadata key used to identify the server software in a response's <c>_meta</c> field.
     /// </summary>
     /// <remarks>
-    /// Spec PR #3002 moved server identity out of the <c>server/discover</c> result body: servers
-    /// SHOULD identify themselves by carrying an <see cref="Protocol.Implementation"/> under this
-    /// key in response <c>_meta</c>.
+    /// Introduced by the 2026-07-28 protocol revision. Servers SHOULD identify themselves by
+    /// carrying an <see cref="Protocol.Implementation"/> under this key in every result's
+    /// <c>_meta</c>.
     /// </remarks>
     public const string ServerInfo = "io.modelcontextprotocol/serverInfo";
 

@@ -125,7 +125,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// to the SSE response stream until cancellation is requested or the transport is disposed.
     /// </summary>
     /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="sseResponseStream"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">
@@ -234,7 +234,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// <see langword="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>
-    public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, Func<JsonRpcMessage?, ValueTask>? onResponseStarting, CancellationToken cancellationToken = default)
+    public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, Func<JsonRpcMessage?, ValueTask>? onResponseStarting, CancellationToken cancellationToken)
     {
         Throw.IfNull(message);
         Throw.IfNull(responseStream);

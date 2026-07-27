@@ -171,8 +171,7 @@ internal sealed partial class McpClientImpl : McpClient
 
     /// <inheritdoc/>
     public override Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException(
-        "The client is not connected, or the connected server did not identify itself. " +
-        $"Server identity is optional on per-request-metadata revisions (spec PR #3002): servers SHOULD carry it in the server/discover result's '_meta/{MetaKeys.ServerInfo}'.");
+        "The client is not connected, or the connected server did not provide optional server identity metadata.");
 
     /// <inheritdoc/>
     public override string? ServerInstructions => _serverInstructions;
@@ -491,23 +490,26 @@ internal sealed partial class McpClientImpl : McpClient
     }
 
     /// <summary>
-    /// Resolves the server identity from a <c>server/discover</c> result. Spec PR #3002 moved
+    /// Resolves the server identity from a <c>server/discover</c> result. The 2026-07-28 revision moved
     /// <c>serverInfo</c> from the result body into the result's
-    /// <c>_meta/io.modelcontextprotocol/serverInfo</c> field; prefer the <c>_meta</c> field and fall
-    /// back to the body for pre-#3002 servers. Identity is a SHOULD, so a server that provides
-    /// neither (or a malformed value) yields <see langword="null"/> rather than a connection failure.
+    /// <c>_meta/io.modelcontextprotocol/serverInfo</c> field. The body remains a fallback for servers
+    /// that implemented the earlier draft shape. Identity is optional, so a server that provides
+    /// neither yields <see langword="null"/>.
     /// </summary>
     private static Implementation? GetServerInfoFromDiscover(DiscoverResult discoverResult)
     {
-        if (discoverResult.Meta?[MetaKeys.ServerInfo] is JsonNode serverInfoNode)
+        if (discoverResult.Meta is { } meta &&
+            meta.TryGetPropertyValue(MetaKeys.ServerInfo, out JsonNode? serverInfoNode))
         {
-            try
+            if (serverInfoNode is null)
             {
-                return JsonSerializer.Deserialize(serverInfoNode, McpJsonUtilities.JsonContext.Default.Implementation);
+                throw new JsonException(
+                    $"Discover result metadata '{MetaKeys.ServerInfo}' must contain a server implementation.");
             }
-            catch (JsonException)
-            {
-            }
+
+            return JsonSerializer.Deserialize(serverInfoNode, McpJsonUtilities.JsonContext.Default.Implementation)
+                ?? throw new JsonException(
+                    $"Discover result metadata '{MetaKeys.ServerInfo}' must contain a server implementation.");
         }
 
         return discoverResult.ServerInfo;

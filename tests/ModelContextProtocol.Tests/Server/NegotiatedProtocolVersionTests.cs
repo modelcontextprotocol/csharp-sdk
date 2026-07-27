@@ -86,7 +86,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // clientInfo is a SHOULD (spec PR #3002): a request whose _meta omits it is served.
+        // clientInfo is optional: a request whose _meta omits it is served.
         var response = await RoundTripAsync(
             id: 1,
             McpProtocolVersions.July2026ProtocolVersion,
@@ -191,25 +191,29 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         Assert.Contains(RequestMethods.SubscriptionsListen, error.Error.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task LoggingSetLevel_WithPerRequestMetadataProtocolVersion_IsRejected()
+    [Theory]
+    [InlineData("initialize")]
+    [InlineData("ping")]
+    [InlineData("logging/setLevel")]
+    [InlineData("resources/subscribe")]
+    [InlineData("resources/unsubscribe")]
+    public async Task RemovedMethod_WithPerRequestMetadataProtocolVersion_IsRejected(string method)
     {
         var ct = TestContext.Current.CancellationToken;
 
         var request = new JsonRpcRequest
         {
             Id = new RequestId(1),
-            Method = RequestMethods.LoggingSetLevel,
+            Method = method,
             Params = new JsonObject
             {
-                ["level"] = "info",
                 ["_meta"] = PerRequestMetadata(),
             },
         };
 
         var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
         Assert.Equal((int)McpErrorCode.MethodNotFound, error.Error.Code);
-        Assert.Contains(RequestMethods.LoggingSetLevel, error.Error.Message, StringComparison.Ordinal);
+        Assert.Contains(method, error.Error.Message, StringComparison.Ordinal);
     }
 
     private async Task<JsonRpcMessage> RoundTripAsync(

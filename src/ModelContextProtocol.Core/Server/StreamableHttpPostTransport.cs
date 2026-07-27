@@ -77,6 +77,8 @@ internal sealed partial class StreamableHttpPostTransport(
         }
 
         CancellationTokenSource? deferredFlushCts = null;
+        Task? deferredFlushTask = null;
+        bool deferHeaderFlush = false;
         using (await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
             var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
@@ -94,17 +96,20 @@ internal sealed partial class StreamableHttpPostTransport(
             }
             else
             {
-                // When onResponseStarting is provided, defer the flush (and the header commit it
-                // implies) so the callback can still choose the HTTP status line, e.g. to map
-                // JSON-RPC error codes to statuses per SEP-2575. The deferral is bounded: after a
-                // short grace window the headers are flushed anyway so a long-running handler does
-                // not leave the client waiting on response headers (see DeferredHeaderFlushAsync).
-                deferredFlushCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _ = DeferredHeaderFlushAsync(deferredFlushCts.Token);
+                deferHeaderFlush = true;
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
             await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (deferHeaderFlush)
+        {
+            // Defer the flush (and the header commit it implies) so the callback can still choose
+            // the HTTP status line for an immediate JSON-RPC error. Start the bounded grace period
+            // only after the request has been queued for dispatch.
+            deferredFlushCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deferredFlushTask = DeferredHeaderFlushAsync(deferredFlushCts.Token);
         }
 
         try
@@ -118,6 +123,7 @@ internal sealed partial class StreamableHttpPostTransport(
             if (deferredFlushCts is not null)
             {
                 deferredFlushCts.Cancel();
+                await deferredFlushTask!.ConfigureAwait(false);
                 deferredFlushCts.Dispose();
             }
         }
@@ -144,11 +150,13 @@ internal sealed partial class StreamableHttpPostTransport(
                 await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Cancelled because the response was written (or the request ended) before the grace
-            // window elapsed, or the flush failed on an aborted response; the request path
-            // surfaces its own errors.
+            // The response was written or the request ended before the grace window elapsed.
+        }
+        catch (Exception ex)
+        {
+            _httpResponseTcs.TrySetException(ex);
         }
     }
 

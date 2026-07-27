@@ -98,8 +98,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
             .ToList();
         Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supportedVersions);
 
-        // Capabilities are mandatory in DiscoverResult per SEP-2575; spec PR #3002 moved the
-        // server identity out of the body into _meta/io.modelcontextprotocol/serverInfo.
+        // Capabilities are mandatory in DiscoverResult; server identity is result metadata.
         Assert.NotNull(result["capabilities"]);
         Assert.Null(result["serverInfo"]);
         Assert.Equal("raw-conformance-server", result["_meta"]![MetaKeys.ServerInfo]!["name"]!.GetValue<string>());
@@ -127,6 +126,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var content = result!["content"]!.AsArray();
         Assert.Single(content);
         Assert.Equal("echo:hello", content[0]!["text"]!.GetValue<string>());
+        Assert.Equal("raw-conformance-server", result["_meta"]![MetaKeys.ServerInfo]!["name"]!.GetValue<string>());
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.NotNull(data);
         Assert.Equal("9999-99-99", data!["requested"]!.GetValue<string>());
         var supported = data["supported"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supported);
+        Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
     }
 
     [Fact]
@@ -162,6 +162,7 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var result = response["result"];
         Assert.NotNull(result);
         Assert.Equal("2025-11-25", result!["protocolVersion"]!.GetValue<string>());
+        Assert.Null(result["_meta"]?[MetaKeys.ServerInfo]);
     }
 
     [Fact]

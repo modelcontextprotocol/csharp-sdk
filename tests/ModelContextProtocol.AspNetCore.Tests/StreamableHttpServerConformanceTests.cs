@@ -1159,7 +1159,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     {
         var discoverResult = AssertType<DiscoverResult>(rpcResponse.Result);
 
-        // Spec PR #3002: server identity is carried in the result _meta, not the body.
+        // Server identity is carried in the result _meta, not the discover body.
         Assert.Null(discoverResult.ServerInfo);
         var serverInfoNode = discoverResult.Meta?[MetaKeys.ServerInfo];
         Assert.NotNull(serverInfoNode);

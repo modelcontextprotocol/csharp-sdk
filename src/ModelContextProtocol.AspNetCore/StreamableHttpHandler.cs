@@ -127,9 +127,9 @@ internal sealed class StreamableHttpHandler(
         // SEP-2575 removed these RPCs from the per-request-metadata HTTP surface (initialize and
         // ping in favor of server/discover, logging/setLevel in favor of _meta logLevel, and the
         // resource subscription pair in favor of subscriptions/listen). A request for a method the
-        // server does not implement is rejected with 404 Not Found and Method not found. This is a
-        // property of the stateless HTTP surface only: other transports keep serving these methods
-        // on the revisions that define them.
+        // server does not implement is rejected with 404 Not Found and Method not found. Rejecting
+        // here gives HTTP the required status; the server protocol boundary enforces the same method
+        // set for other transports.
 #pragma warning disable MCP9005 // logging/setLevel is deprecated (SEP-2577); referenced here only to reject it as removed.
         if (RequiresPerRequestMetadataProtocol(context) &&
             message is JsonRpcRequest
@@ -710,8 +710,8 @@ internal sealed class StreamableHttpHandler(
     /// Validates that a request riding a per-request-metadata protocol revision carries the required
     /// <c>_meta</c> fields beyond the protocol version (which <see cref="ValidateProtocolVersionEnvelope"/>
     /// already checked): <c>io.modelcontextprotocol/clientCapabilities</c>. Performed at the HTTP layer
-    /// so the rejection can use 400 Bad Request as SEP-2575 requires. <c>clientInfo</c> is a SHOULD
-    /// (spec PR #3002), so its absence is not rejected.
+    /// so the rejection can use 400 Bad Request as SEP-2575 requires. <c>clientInfo</c> is optional,
+    /// so its absence is not rejected.
     /// </summary>
     private static bool ValidateRequiredPerRequestMeta(
         HttpContext context,
