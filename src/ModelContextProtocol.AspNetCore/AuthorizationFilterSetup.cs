@@ -12,15 +12,15 @@ namespace ModelContextProtocol.AspNetCore;
 /// Evaluates authorization policies from endpoint metadata.
 /// </summary>
 internal sealed class AuthorizationFilterSetup(
-    IAuthorizationPolicyProvider? policyProvider = null) :
-    IConfigureOptions<McpServerOptions>, IPostConfigureOptions<McpServerOptions>
+    IAuthorizationPolicyProvider? policyProvider = null,
+    AuthorizationFiltersMarker? marker = null) : IConfigureOptions<McpServerOptions>, IPostConfigureOptions<McpServerOptions>
 {
     private static readonly string AuthorizationFilterInvokedKey = "ModelContextProtocol.AspNetCore.AuthorizationFilter.Invoked";
 
     public void Configure(McpServerOptions options)
     {
         ConfigureListToolsFilter(options);
-        ConfigureCallToolFilter(options);
+        ConfigureOrdinaryCallToolFilter(options);
 
         ConfigureListResourcesFilter(options);
         ConfigureListResourceTemplatesFilter(options);
@@ -32,6 +32,12 @@ internal sealed class AuthorizationFilterSetup(
 
     public void PostConfigure(string? name, McpServerOptions options)
     {
+        // Add tool authorization after all regular configuration so it always wraps Tasks.
+        if (marker is not null)
+        {
+            ConfigureCallToolFilter(options);
+        }
+
         CheckListToolsFilter(options);
 
         CheckListResourcesFilter(options);
@@ -80,24 +86,38 @@ internal sealed class AuthorizationFilterSetup(
         });
     }
 
-    private void ConfigureCallToolFilter(McpServerOptions options)
+    private void ConfigureOrdinaryCallToolFilter(McpServerOptions options)
     {
         options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
-            await AuthorizeToolAsync(context);
+            var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
+            if (!authResult.Succeeded)
+            {
+                throw new McpProtocolException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
+            }
+
+            context.Items[AuthorizationFilterInvokedKey] = true;
+
             return await next(context, cancellationToken);
         });
     }
 
-    private async ValueTask AuthorizeToolAsync(RequestContext<CallToolRequestParams> context)
+    private void ConfigureCallToolFilter(McpServerOptions options)
     {
-        var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
-        if (!authResult.Succeeded)
+#pragma warning disable MCPEXP002 // Authorization must run in the alternate-result pipeline before task dispatch.
+        options.Filters.Request.CallToolWithAlternateFilters.Insert(0, async (context, next, cancellationToken) =>
         {
-            throw new McpProtocolException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
-        }
+            var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
+            if (!authResult.Succeeded)
+            {
+                throw new McpProtocolException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
+            }
 
-        context.Items[AuthorizationFilterInvokedKey] = true;
+            context.Items[AuthorizationFilterInvokedKey] = true;
+
+            return await next(context, cancellationToken);
+        });
+#pragma warning restore MCPEXP002
     }
 
     private void ConfigureListResourcesFilter(McpServerOptions options)
