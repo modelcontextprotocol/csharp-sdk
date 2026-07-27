@@ -39,7 +39,7 @@ public abstract partial class McpServer : McpSession
     /// On the returned facade, redirected methods skip their client-capability checks,
     /// because the alternate channel is responsible for delivering the request to the client.
     /// </remarks>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public McpServer WithOutgoingRequestInterceptor(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
     {
         Throw.IfNull(interceptor);
