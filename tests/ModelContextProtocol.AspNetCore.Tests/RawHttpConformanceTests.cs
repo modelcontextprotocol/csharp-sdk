@@ -322,6 +322,40 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal("2025-11-25", json["result"]!["protocolVersion"]!.GetValue<string>());
+
+        // resultType is a 2026-07-28 result field, and the initialize handshake only ever negotiates
+        // 2025-11-25 or earlier. It must not appear on the InitializeResult, or strict 2025-11-25 clients
+        // reject the handshake (issue #1721).
+        Assert.False(json["result"]!.AsObject().ContainsKey("resultType"),
+            "InitializeResult must not carry resultType on a 2025-11-25 handshake.");
+    }
+
+    [Fact]
+    public async Task DownlevelToolsList_On2025_11_25_OmitsResultTypeAndCacheHints()
+    {
+        await StartAsync();
+
+        // A 2025-11-25 client completes the initialize handshake and then sends subsequent requests with
+        // the MCP-Protocol-Version header pinned to the negotiated revision. The server must not decorate
+        // the result with the 2026-07-28-exclusive resultType/ttlMs/cacheScope fields (issue #1721).
+        var initBody = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}";
+        using (var initRequest = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(initBody) })
+        using (var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.OK, initResponse.StatusCode);
+        }
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":2,""method"":""tools/list"",""params"":{}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.November2025ProtocolVersion);
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        var result = json["result"]!.AsObject();
+        Assert.False(result.ContainsKey("resultType"), "resultType must be absent on a 2025-11-25 tools/list result.");
+        Assert.False(result.ContainsKey("ttlMs"), "ttlMs must be absent on a 2025-11-25 tools/list result.");
+        Assert.False(result.ContainsKey("cacheScope"), "cacheScope must be absent on a 2025-11-25 tools/list result.");
     }
 
     [Fact]
