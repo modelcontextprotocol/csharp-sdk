@@ -709,9 +709,11 @@ internal sealed class StreamableHttpHandler(
     /// <summary>
     /// Validates that a request riding a per-request-metadata protocol revision carries the required
     /// <c>_meta</c> fields beyond the protocol version (which <see cref="ValidateProtocolVersionEnvelope"/>
-    /// already checked): <c>io.modelcontextprotocol/clientCapabilities</c>. Performed at the HTTP layer
-    /// so the rejection can use 400 Bad Request as SEP-2575 requires. <c>clientInfo</c> is optional,
-    /// so its absence is not rejected.
+    /// already checked): <c>io.modelcontextprotocol/clientCapabilities</c>, which must be present and a
+    /// JSON object. Performed at the HTTP layer so the rejection can use 400 Bad Request as SEP-2575
+    /// requires; a malformed (non-object) value would otherwise fail later during deserialization as a
+    /// generic internal error on a 200 response. <c>clientInfo</c> is optional, so its absence is not
+    /// rejected.
     /// </summary>
     private static bool ValidateRequiredPerRequestMeta(
         HttpContext context,
@@ -723,12 +725,12 @@ internal sealed class StreamableHttpHandler(
             McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
             (requestParams is not JsonObject paramsObj ||
              paramsObj["_meta"] is not JsonObject metaObj ||
-             metaObj[MetaKeys.ClientCapabilities] is null))
+             metaObj[MetaKeys.ClientCapabilities] is not JsonObject))
         {
             errorDetail = new JsonRpcErrorDetail
             {
                 Code = (int)McpErrorCode.InvalidParams,
-                Message = $"Requests using protocol version '{protocolVersionHeader}' must include '_meta/{MetaKeys.ClientCapabilities}'.",
+                Message = $"Requests using protocol version '{protocolVersionHeader}' must include '_meta/{MetaKeys.ClientCapabilities}' as a JSON object.",
             };
             return false;
         }

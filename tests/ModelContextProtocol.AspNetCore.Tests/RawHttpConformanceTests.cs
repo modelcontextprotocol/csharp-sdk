@@ -413,6 +413,56 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
+    [Fact]
+    public async Task July2026Post_MissingClientCapabilities_Returns400_WithInvalidParams()
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":20,""method"":""server/discover"",""params"":{""_meta"":{" +
+            @"""io.modelcontextprotocol/protocolVersion"":""" + McpProtocolVersions.July2026ProtocolVersion + @"""}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(20, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
+        Assert.Contains(MetaKeys.ClientCapabilities, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("5")]
+    [InlineData("\"caps\"")]
+    [InlineData("[]")]
+    [InlineData("true")]
+    public async Task July2026Post_MalformedClientCapabilities_Returns400_WithInvalidParams(string clientCapabilitiesJson)
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":21,""method"":""server/discover"",""params"":{""_meta"":{" +
+            @"""io.modelcontextprotocol/protocolVersion"":""" + McpProtocolVersions.July2026ProtocolVersion + @"""," +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""}," +
+            @"""io.modelcontextprotocol/clientCapabilities"":" + clientCapabilitiesJson + "}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // A present-but-wrong-shape clientCapabilities must be rejected up front with -32602 / 400,
+        // not surface later as a generic internal error on a 200 response.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(21, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
+        Assert.Contains(MetaKeys.ClientCapabilities, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
     [McpServerToolType]
     private sealed class CapabilityTools
     {
