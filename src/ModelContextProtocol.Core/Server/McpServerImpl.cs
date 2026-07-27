@@ -214,7 +214,6 @@ internal sealed partial class McpServerImpl : McpServer
                         ValidateRequiredPerRequestMetadata(
                             protocolVersion,
                             hasProtocolVersionMeta,
-                            context.ClientInfo is not null,
                             context.ClientCapabilities is not null);
                     }
                     else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
@@ -293,7 +292,6 @@ internal sealed partial class McpServerImpl : McpServer
     private static void ValidateRequiredPerRequestMetadata(
         string protocolVersion,
         bool hasProtocolVersionMeta,
-        bool hasClientInfoMeta,
         bool hasClientCapabilitiesMeta)
     {
         if (!hasProtocolVersionMeta)
@@ -301,10 +299,8 @@ internal sealed partial class McpServerImpl : McpServer
             ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
         }
 
-        if (!hasClientInfoMeta)
-        {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientInfo);
-        }
+        // clientInfo is a SHOULD (spec PR #3002): requests whose _meta omits
+        // io.modelcontextprotocol/clientInfo are served, not rejected.
 
         if (!hasClientCapabilitiesMeta)
         {
@@ -346,6 +342,15 @@ internal sealed partial class McpServerImpl : McpServer
 
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
+        // Per-request-metadata revisions (SEP-2575) removed the initialize handshake entirely:
+        // the request is for a method the server does not implement on that revision.
+        if (McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion))
+        {
+            throw new McpProtocolException(
+                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{request.Context?.ProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
+                McpErrorCode.MethodNotFound);
+        }
+
         if (request.Context?.ProtocolVersion is { } protocolVersion &&
             !McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
         {
@@ -421,6 +426,7 @@ internal sealed partial class McpServerImpl : McpServer
                 $"The method '{RequestMethods.LoggingSetLevel}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'. Use per-request _meta/{MetaKeys.LogLevel} instead.",
                 McpErrorCode.MethodNotFound);
         }
+
     }
 
     /// <inheritdoc/>
@@ -633,8 +639,15 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     SupportedVersions = [.. _perRequestMetadataProtocolVersions],
                     Capabilities = ServerCapabilities ?? new(),
-                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
+                    // Spec PR #3002: server identity moved from the result body to the result _meta,
+                    // carried under _meta/io.modelcontextprotocol/serverInfo.
+                    Meta = new JsonObject
+                    {
+                        [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(
+                            options.ServerInfo ?? DefaultImplementation,
+                            McpJsonUtilities.JsonContext.Default.Implementation),
+                    },
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep
                     // their "do not cache" behavior while satisfying the wire requirement.

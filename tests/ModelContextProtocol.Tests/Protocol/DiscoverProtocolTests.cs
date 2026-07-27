@@ -55,7 +55,7 @@ public static class DiscoverProtocolTests
         Assert.Equal(["2025-11-25", "2026-07-28"], deserialized.SupportedVersions);
         Assert.NotNull(deserialized.Capabilities.Tools);
         Assert.True(deserialized.Capabilities.Tools.ListChanged);
-        Assert.Equal("test-server", deserialized.ServerInfo.Name);
+        Assert.Equal("test-server", deserialized.ServerInfo?.Name);
         Assert.Equal("Use this server for testing.", deserialized.Instructions);
     }
 

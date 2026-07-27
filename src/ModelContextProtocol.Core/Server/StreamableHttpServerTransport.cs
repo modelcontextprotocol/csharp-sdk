@@ -207,12 +207,39 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
     /// </remarks>
-    public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
+    public Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
+        => HandlePostRequestAsync(message, responseStream, onResponseStarting: null, cancellationToken);
+
+    /// <summary>
+    /// Handles a Streamable HTTP POST request, processing the JSON-RPC message and writing any
+    /// JSON-RPC responses to the response stream.
+    /// This overload additionally reports the first JSON-RPC message written to the response via
+    /// <paramref name="onResponseStarting"/>, before any response bytes are written, so the HTTP
+    /// application can still choose the response status line (SEP-2575 maps some JSON-RPC error
+    /// codes to HTTP statuses). When <paramref name="onResponseStarting"/> is provided, the eager
+    /// response-header flush that normally precedes request processing is deferred until that first
+    /// message; the callback receives <see langword="null"/> when the first write is not a JSON-RPC
+    /// message (e.g. a resumability priming event).
+    /// The status line can only be influenced by the FIRST write: when a handler streams a
+    /// notification (e.g. progress) before failing, or runs past the transport's bounded
+    /// header-flush grace window, the status is already committed and a later JSON-RPC error
+    /// rides the committed status.
+    /// </summary>
+    /// <param name="message">The JSON-RPC message to process.</param>
+    /// <param name="responseStream">The response stream to write any JSON-RPC responses to.</param>
+    /// <param name="onResponseStarting">Callback invoked once, immediately before the first write to <paramref name="responseStream"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> if data was written to the response body.
+    /// <see langword="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>
+    public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, Func<JsonRpcMessage?, ValueTask>? onResponseStarting, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token, _logger);
+        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token, _logger, onResponseStarting);
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
         await using (postTransport.ConfigureAwait(false))
         {

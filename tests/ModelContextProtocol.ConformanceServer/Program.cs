@@ -62,6 +62,7 @@ public class Program
             .WithTools<ConformanceTools>()
             .WithTools<ConformanceTaskTools>()
             .WithTools<IncompleteResultTools>()
+            .WithTools<Sep2575DiagnosticTools>()
             .WithTools([ConformanceTools.CreateJsonSchema202012Tool()])
             .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
             {

@@ -25,6 +25,16 @@ public static class MetaKeys
     public const string ClientInfo = "io.modelcontextprotocol/clientInfo";
 
     /// <summary>
+    /// The metadata key used to identify the server software in a response's <c>_meta</c> field.
+    /// </summary>
+    /// <remarks>
+    /// Spec PR #3002 moved server identity out of the <c>server/discover</c> result body: servers
+    /// SHOULD identify themselves by carrying an <see cref="Protocol.Implementation"/> under this
+    /// key in response <c>_meta</c>.
+    /// </remarks>
+    public const string ServerInfo = "io.modelcontextprotocol/serverInfo";
+
+    /// <summary>
     /// The metadata key used to declare client capabilities in a request's <c>_meta</c> field.
     /// </summary>
     /// <remarks>

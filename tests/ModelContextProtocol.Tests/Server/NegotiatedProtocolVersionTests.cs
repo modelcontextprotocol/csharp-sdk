@@ -82,7 +82,22 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task PerRequestMetadata_RejectsRequestMissingRequiredMetadata()
+    public async Task PerRequestMetadata_ServesRequestMissingClientInfo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // clientInfo is a SHOULD (spec PR #3002): a request whose _meta omits it is served.
+        var response = await RoundTripAsync(
+            id: 1,
+            McpProtocolVersions.July2026ProtocolVersion,
+            ct,
+            includeClientInfo: false);
+
+        Assert.IsType<JsonRpcResponse>(response);
+    }
+
+    [Fact]
+    public async Task PerRequestMetadata_RejectsRequestMissingClientCapabilities()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -91,10 +106,10 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
                 id: 1,
                 McpProtocolVersions.July2026ProtocolVersion,
                 ct,
-                includeClientInfo: false));
+                includeClientCapabilities: false));
 
         Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
-        Assert.Contains(MetaKeys.ClientInfo, error.Error.Message, StringComparison.Ordinal);
+        Assert.Contains(MetaKeys.ClientCapabilities, error.Error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

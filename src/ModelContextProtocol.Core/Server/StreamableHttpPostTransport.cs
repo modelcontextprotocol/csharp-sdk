@@ -15,7 +15,8 @@ internal sealed partial class StreamableHttpPostTransport(
     StreamableHttpServerTransport parentTransport,
     Stream responseStream,
     CancellationToken sessionCancellationToken,
-    ILogger logger) : ITransport
+    ILogger logger,
+    Func<JsonRpcMessage?, ValueTask>? onResponseStarting = null) : ITransport
 {
     private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -29,6 +30,7 @@ internal sealed partial class StreamableHttpPostTransport(
     private RequestId _pendingRequest;
     private bool _finalResponseMessageSent;
     private bool _httpResponseCompleted;
+    private bool _httpResponseStarted;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
@@ -50,8 +52,13 @@ internal sealed partial class StreamableHttpPostTransport(
             _pendingRequest = request.Id;
             message.Context.RelatedTransport = this;
 
-            // Invoke the initialize request handler if applicable.
-            if (request.Method == RequestMethods.Initialize)
+            // Invoke the initialize request handler if applicable. On a per-request-metadata
+            // protocol revision (2026-07-28+) initialize is a removed method: skip the eager
+            // params deserialization (whose required properties would throw on an arbitrary
+            // payload) and let the session's protocol boundary reject the request with
+            // Method not found.
+            if (request.Method == RequestMethods.Initialize &&
+                !McpProtocolVersions.RequiresPerRequestMetadata(message.Context.ProtocolVersion))
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
                 await parentTransport.HandleInitializeRequestAsync(initializeRequest).ConfigureAwait(false);
@@ -69,30 +76,101 @@ internal sealed partial class StreamableHttpPostTransport(
             return false;
         }
 
+        CancellationTokenSource? deferredFlushCts = null;
         using (await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
             var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
             if (primingItem.HasValue)
             {
+                await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
                 await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
             }
-            else
+            else if (onResponseStarting is null)
             {
                 // If there's no priming write, flush the stream to ensure HTTP response headers are
                 // sent to the client now that the server is ready to process the request.
                 // This prevents HttpClient timeout for long-running requests.
                 await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
+            else
+            {
+                // When onResponseStarting is provided, defer the flush (and the header commit it
+                // implies) so the callback can still choose the HTTP status line, e.g. to map
+                // JSON-RPC error codes to statuses per SEP-2575. The deferral is bounded: after a
+                // short grace window the headers are flushed anyway so a long-running handler does
+                // not leave the client waiting on response headers (see DeferredHeaderFlushAsync).
+                deferredFlushCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                _ = DeferredHeaderFlushAsync(deferredFlushCts.Token);
+            }
 
             // Ensure that we've sent the priming event before processing the incoming request.
             await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
-        // Wait for the response to be written before returning from the handler.
-        // This keeps the HTTP response open until the final response message is sent.
-        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Wait for the response to be written before returning from the handler.
+            // This keeps the HTTP response open until the final response message is sent.
+            await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (deferredFlushCts is not null)
+            {
+                deferredFlushCts.Cancel();
+                deferredFlushCts.Dispose();
+            }
+        }
 
         return true;
+    }
+
+    /// <summary>
+    /// Bounds the deferred header flush: after a short grace window, flushes the response headers
+    /// if no response message has been written yet. Immediate rejections land well inside the
+    /// window, so the response-starting callback can still map their JSON-RPC error codes onto the
+    /// HTTP status line; a handler that runs longer commits the headers here so clients see them
+    /// promptly (long-running tool calls must not trip HttpClient's response timeout).
+    /// </summary>
+    private async Task DeferredHeaderFlushAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(DeferredHeaderFlushGrace, cancellationToken).ConfigureAwait(false);
+            using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
+            if (!_httpResponseStarted && !_httpResponseCompleted)
+            {
+                await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
+                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Cancelled because the response was written (or the request ended) before the grace
+            // window elapsed, or the flush failed on an aborted response; the request path
+            // surfaces its own errors.
+        }
+    }
+
+    /// <summary>How long the response-header flush may be deferred waiting for the first response message.</summary>
+    internal static readonly TimeSpan DeferredHeaderFlushGrace = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Invokes the response-starting callback exactly once, immediately before the first write to
+    /// the HTTP response stream, so the HTTP application can still set the response status line.
+    /// </summary>
+    private async ValueTask NotifyResponseStartingAsync(JsonRpcMessage? firstMessage)
+    {
+        if (_httpResponseStarted)
+        {
+            return;
+        }
+
+        _httpResponseStarted = true;
+        if (onResponseStarting is not null)
+        {
+            await onResponseStarting(firstMessage).ConfigureAwait(false);
+        }
     }
 
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -130,6 +208,7 @@ internal sealed partial class StreamableHttpPostTransport(
 
                 try
                 {
+                    await NotifyResponseStartingAsync(message).ConfigureAwait(false);
                     await _httpSseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -173,6 +252,7 @@ internal sealed partial class StreamableHttpPostTransport(
         // Write to the response stream if it still exists.
         if (!_httpResponseCompleted)
         {
+            await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
             await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
         }
 

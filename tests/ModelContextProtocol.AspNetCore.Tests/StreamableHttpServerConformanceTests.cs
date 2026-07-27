@@ -1158,8 +1158,15 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     private static DiscoverResult AssertDiscoverServerInfo(JsonRpcResponse rpcResponse)
     {
         var discoverResult = AssertType<DiscoverResult>(rpcResponse.Result);
-        Assert.Equal(nameof(StreamableHttpServerConformanceTests), discoverResult.ServerInfo.Name);
-        Assert.Equal("73", discoverResult.ServerInfo.Version);
+
+        // Spec PR #3002: server identity is carried in the result _meta, not the body.
+        Assert.Null(discoverResult.ServerInfo);
+        var serverInfoNode = discoverResult.Meta?[MetaKeys.ServerInfo];
+        Assert.NotNull(serverInfoNode);
+        var serverInfo = JsonSerializer.Deserialize<Implementation>(serverInfoNode, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(serverInfo);
+        Assert.Equal(nameof(StreamableHttpServerConformanceTests), serverInfo.Name);
+        Assert.Equal("73", serverInfo.Version);
         return discoverResult;
     }
 

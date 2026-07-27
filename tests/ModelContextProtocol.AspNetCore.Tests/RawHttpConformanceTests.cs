@@ -258,7 +258,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsHeaderMismatch_Minus32020()
+    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsInvalidParams_Minus32602()
     {
         await StartAsync();
 
@@ -269,9 +269,12 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
+        // A missing (rather than mismatched) _meta protocol version is an Invalid params rejection
+        // per SEP-2575; -32020 HeaderMismatch is reserved for values present on both sides that
+        // disagree.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
-        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal((int)McpErrorCode.InvalidParams, json["error"]!["code"]!.GetValue<int>());
         Assert.Contains(MetaKeys.ProtocolVersion, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 

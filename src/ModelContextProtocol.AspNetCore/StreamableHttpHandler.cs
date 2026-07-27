@@ -55,13 +55,6 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
-        var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
-        {
-            await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
-            return;
-        }
-
         // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
         // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
@@ -104,6 +97,15 @@ internal sealed class StreamableHttpHandler(
         // Notifications carry no id, so this stays default (null), which is correct.
         var requestId = message is JsonRpcRequest jsonRpcRequest ? jsonRpcRequest.Id : default;
 
+        // Validated after the body parse (rather than first) so the rejection can echo the request's
+        // JSON-RPC id: every error response for a parseable request MUST carry its id.
+        var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
+        {
+            await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest, requestId);
+            return;
+        }
+
         if (!ValidateProtocolVersionEnvelope(context, message, out var protocolVersionEnvelopeError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionEnvelopeError, StatusCodes.Status400BadRequest, requestId);
@@ -116,6 +118,33 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
+        if (!ValidateRequiredPerRequestMeta(context, message, out var requiredMetaError))
+        {
+            await WriteJsonRpcErrorDetailAsync(context, requiredMetaError, StatusCodes.Status400BadRequest, requestId);
+            return;
+        }
+
+        // SEP-2575 removed these RPCs from the per-request-metadata HTTP surface (initialize and
+        // ping in favor of server/discover, logging/setLevel in favor of _meta logLevel, and the
+        // resource subscription pair in favor of subscriptions/listen). A request for a method the
+        // server does not implement is rejected with 404 Not Found and Method not found. This is a
+        // property of the stateless HTTP surface only: other transports keep serving these methods
+        // on the revisions that define them.
+#pragma warning disable MCP9005 // logging/setLevel is deprecated (SEP-2577); referenced here only to reject it as removed.
+        if (RequiresPerRequestMetadataProtocol(context) &&
+            message is JsonRpcRequest
+            {
+                Method: RequestMethods.Initialize or RequestMethods.Ping or RequestMethods.LoggingSetLevel
+                    or RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe,
+            } removedMethodRequest)
+#pragma warning restore MCP9005
+        {
+            await WriteJsonRpcErrorAsync(context,
+                $"Method '{removedMethodRequest.Method}' is not available on protocol version '{context.Request.Headers[McpProtocolVersionHeaderName]}'.",
+                StatusCodes.Status404NotFound, (int)McpErrorCode.MethodNotFound, requestId);
+            return;
+        }
+
         var session = await GetOrCreateSessionAsync(context, message, requestId);
         if (session is null)
         {
@@ -124,8 +153,33 @@ internal sealed class StreamableHttpHandler(
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
+        Func<JsonRpcMessage?, ValueTask>? onResponseStarting = null;
+        if (RequiresPerRequestMetadataProtocol(context))
+        {
+            // SEP-2575 maps some JSON-RPC error codes onto HTTP statuses (404 for a method the server
+            // does not implement, 400 for missing-capability and unsupported-version rejections). The
+            // status line can only be chosen before the first response byte, so the transport defers
+            // its eager header flush and reports the first response message here.
+            onResponseStarting = firstMessage =>
+            {
+                if (firstMessage is JsonRpcError { Error: { } errorDetail } && !context.Response.HasStarted)
+                {
+                    context.Response.StatusCode = (McpErrorCode)errorDetail.Code switch
+                    {
+                        McpErrorCode.MethodNotFound => StatusCodes.Status404NotFound,
+                        McpErrorCode.MissingRequiredClientCapability => StatusCodes.Status400BadRequest,
+                        McpErrorCode.UnsupportedProtocolVersion => StatusCodes.Status400BadRequest,
+                        McpErrorCode.HeaderMismatch => StatusCodes.Status400BadRequest,
+                        _ => context.Response.StatusCode,
+                    };
+                }
+
+                return default;
+            };
+        }
+
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, onResponseStarting, context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -137,7 +191,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleGetRequestAsync(HttpContext context)
     {
         var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -256,7 +310,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
         var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, out var protocolVersionError))
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -653,6 +707,37 @@ internal sealed class StreamableHttpHandler(
     internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
     /// <summary>
+    /// Validates that a request riding a per-request-metadata protocol revision carries the required
+    /// <c>_meta</c> fields beyond the protocol version (which <see cref="ValidateProtocolVersionEnvelope"/>
+    /// already checked): <c>io.modelcontextprotocol/clientCapabilities</c>. Performed at the HTTP layer
+    /// so the rejection can use 400 Bad Request as SEP-2575 requires. <c>clientInfo</c> is a SHOULD
+    /// (spec PR #3002), so its absence is not rejected.
+    /// </summary>
+    private static bool ValidateRequiredPerRequestMeta(
+        HttpContext context,
+        JsonRpcMessage message,
+        [NotNullWhen(false)] out JsonRpcErrorDetail? errorDetail)
+    {
+        var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+        if (message is JsonRpcRequest { Params: var requestParams } &&
+            McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
+            (requestParams is not JsonObject paramsObj ||
+             paramsObj["_meta"] is not JsonObject metaObj ||
+             metaObj[MetaKeys.ClientCapabilities] is null))
+        {
+            errorDetail = new JsonRpcErrorDetail
+            {
+                Code = (int)McpErrorCode.InvalidParams,
+                Message = $"Requests using protocol version '{protocolVersionHeader}' must include '_meta/{MetaKeys.ClientCapabilities}'.",
+            };
+            return false;
+        }
+
+        errorDetail = null;
+        return true;
+    }
+
+    /// <summary>
     /// Validates the MCP-Protocol-Version header if present. A missing header is allowed for backwards compatibility,
     /// but an invalid or unsupported value must be rejected with 400 Bad Request per the MCP spec. Per SEP-2575, the
     /// rejection uses the <see cref="McpErrorCode.UnsupportedProtocolVersion"/> error code with a data payload
@@ -661,12 +746,30 @@ internal sealed class StreamableHttpHandler(
     private static bool ValidateProtocolVersionHeader(
         HttpContext context,
         IReadOnlyList<string> supportedProtocolVersions,
+        bool stateless,
         [NotNullWhen(false)] out JsonRpcErrorDetail? errorDetail)
     {
         var protocolVersionHeader = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
         if (!string.IsNullOrEmpty(protocolVersionHeader) &&
             !supportedProtocolVersions.Contains(protocolVersionHeader))
         {
+            // On a stateless server, restrict the advertised list to the per-request-metadata
+            // revisions: those are what server/discover advertises, and SEP-2575 clients use this
+            // list to pick a retry version for server/discover, so the two must agree. Requests for
+            // the older initialize-handshake revisions are still accepted above; only the error
+            // payload for unknown versions narrows. Stateful servers keep the full configured list
+            // (their 2026-07-28 refusal advertises the session-supporting versions separately in
+            // WriteUnsupportedProtocolVersionErrorAsync).
+            IReadOnlyList<string> advertisedVersions = supportedProtocolVersions;
+            if (stateless)
+            {
+                var metadataVersions = supportedProtocolVersions.Where(McpProtocolVersions.RequiresPerRequestMetadata).ToArray();
+                if (metadataVersions.Length > 0)
+                {
+                    advertisedVersions = metadataVersions;
+                }
+            }
+
             errorDetail = new JsonRpcErrorDetail
             {
                 Code = (int)McpErrorCode.UnsupportedProtocolVersion,
@@ -674,7 +777,7 @@ internal sealed class StreamableHttpHandler(
                 Data = JsonSerializer.SerializeToNode(
                     new UnsupportedProtocolVersionErrorData
                     {
-                        Supported = [.. supportedProtocolVersions],
+                        Supported = [.. advertisedVersions],
                         Requested = protocolVersionHeader,
                     },
                     GetRequiredJsonTypeInfo<UnsupportedProtocolVersionErrorData>()),
@@ -749,8 +852,23 @@ internal sealed class StreamableHttpHandler(
 
         if (!hasProtocolVersionMeta)
         {
-            errorDetail = CreateHeaderMismatchError(
-                $"Bad Request: The body _meta/{MetaKeys.ProtocolVersion} field is required when the {McpProtocolVersionHeaderName} header declares a per-request metadata protocol version.");
+            // Notifications are exempt from the required-_meta rejection: they are fire-and-forget
+            // (a JSON-RPC error response has no recipient), and rejecting them silently drops
+            // client signals like notifications/cancelled, leaving server-side work running.
+            if (message is not JsonRpcRequest)
+            {
+                errorDetail = null;
+                return true;
+            }
+
+            // A missing (rather than mismatched) per-request metadata field is an Invalid params
+            // rejection per SEP-2575; HeaderMismatch (-32020) is reserved for values that are
+            // present on both sides but disagree.
+            errorDetail = new JsonRpcErrorDetail
+            {
+                Code = (int)McpErrorCode.InvalidParams,
+                Message = $"Requests using protocol version '{protocolVersionHeader}' must include '_meta/{MetaKeys.ProtocolVersion}'.",
+            };
             return false;
         }
 

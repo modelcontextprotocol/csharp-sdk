@@ -34,8 +34,15 @@ public sealed class DiscoverResult : Result, ICacheableResult
     /// <summary>
     /// Gets or sets information about the server implementation.
     /// </summary>
+    /// <remarks>
+    /// Spec PR #3002 removed <c>serverInfo</c> from the <c>server/discover</c> result body: servers
+    /// SHOULD identify themselves via the result's <c>_meta/io.modelcontextprotocol/serverInfo</c>
+    /// field (<see cref="MetaKeys.ServerInfo"/>) instead. This property remains so clients can read
+    /// the body field from pre-#3002 servers; it is omitted from serialization when <see langword="null"/>.
+    /// </remarks>
     [JsonPropertyName("serverInfo")]
-    public required Implementation ServerInfo { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Implementation? ServerInfo { get; set; }
 
     /// <summary>
     /// Gets or sets optional instructions describing how to use the server and its features.

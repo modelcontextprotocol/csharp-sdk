@@ -98,10 +98,11 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
             .ToList();
         Assert.Contains(McpProtocolVersions.July2026ProtocolVersion, supportedVersions);
 
-        // Capabilities and serverInfo are mandatory in DiscoverResult per SEP-2575.
+        // Capabilities are mandatory in DiscoverResult per SEP-2575; spec PR #3002 moved the
+        // server identity out of the body into _meta/io.modelcontextprotocol/serverInfo.
         Assert.NotNull(result["capabilities"]);
-        Assert.NotNull(result["serverInfo"]);
-        Assert.Equal("raw-conformance-server", result["serverInfo"]!["name"]!.GetValue<string>());
+        Assert.Null(result["serverInfo"]);
+        Assert.Equal("raw-conformance-server", result["_meta"]![MetaKeys.ServerInfo]!["name"]!.GetValue<string>());
 
         // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
         // safest defaults (immediately stale, not shareable) when the application hasn't customized.
