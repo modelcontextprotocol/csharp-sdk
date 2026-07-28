@@ -273,63 +273,84 @@ if (!server.IsMrtrSupported)
 
 When a tool *can* complete without a prompt, expose an explicit argument that lets a
 down-level or stateless caller opt in directly. The tool stays usable everywhere: it
-elicits confirmation when MRTR is available, and otherwise returns guidance the caller
+elicits input when MRTR is available, and otherwise returns guidance the caller
 (or its model) can act on by resending with the argument set.
 
-The confirmation tool below is just an example of a tool that has a sensible
-non-interactive fallback. It also shows how to branch on the elicitation **action** rather
-than assuming acceptance: the deserialized <xref:ModelContextProtocol.Protocol.ElicitResult>
-carries an <xref:ModelContextProtocol.Protocol.ElicitResult.Action> of `"accept"`,
-`"decline"`, or `"cancel"`, surfaced through the
+The tool below is just an example that has a sensible non-interactive fallback. It also
+shows how to branch on the elicitation **action** rather than assuming acceptance: the
+deserialized <xref:ModelContextProtocol.Protocol.ElicitResult> carries an
+<xref:ModelContextProtocol.Protocol.ElicitResult.Action> of `"accept"`, `"decline"`, or
+`"cancel"`, surfaced through the
 <xref:ModelContextProtocol.Protocol.ElicitResult.IsAccepted> shorthand.
 
 ```csharp
-[McpServerTool, Description("Closes a support ticket (with confirmation).")]
+[McpServerTool, Description("Closes a support ticket, recording why it was closed.")]
 public static string CloseSupportTicket(
     McpServer server,
     RequestContext<CallToolRequestParams> context,
     [Description("The ID of the ticket to close")] long ticketId,
-    [Description("User confirmation to close the ticket")] bool confirm = false)
+    [Description("Why the ticket is being closed")] string? closeReason = null)
 {
     // Handles four client scenarios:
-    //  1. Explicit opt-in: client sends `confirm: true`
-    //  2. MRTR round-trip request: client sends `InputResponses["confirm"]` with action `accept`
-    //  3. MRTR initial request: server elicits input (with automatic SDK down-level bridge)
-    //  4. Session-less down-level: server returns a guidance message requesting explicit opt-in
+    //  1. Provided up-front: client sends `closeReason` in the initial call
+    //  2. MRTR round-trip request: client confirms via `InputResponses["closeReason"]`
+    //  3. MRTR initial request: server proposes a default reason and asks for confirmation
+    //     (with automatic SDK down-level bridge)
+    //  4. Session-less down-level: server returns a guidance message requesting the reason up-front
 
-    // (1) Explicit opt-in. Works on any client, including down-level session-less
-    //     because a previous response gave instructions for passing `confirm: true`.
+    // The default reason proposed to the caller and used if none is provided.
+    string defaultCloseReason = "completed";
+
+    // (1) Provided up-front. Works on any client, including down-level session-less.
     //     These requests are typically sent after (4) returns a guidance message.
-    var closeConfirmed = confirm;
+    var confirmedReason = closeReason;
 
     // (2) MRTR round-trip request. Works with native MRTR support or the automatic down-level
-    //     SDK bridge after (3) throws an `InputRequiredException` to elicit input.
-    if (!confirm && context.Params?.InputResponses?.TryGetValue("confirm", out var confirmResponse) is true)
+    //     SDK bridge after (3) throws an `InputRequiredException` to request a `closeReason`.
+    if (string.IsNullOrWhiteSpace(confirmedReason) &&
+        context.Params?.InputResponses?.TryGetValue("closeReason", out var reasonResponse) is true)
     {
-        var confirmResult = confirmResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
-        closeConfirmed = confirmResult?.IsAccepted is true;
+        var reasonResult = reasonResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
 
-        if (!closeConfirmed) return "Ticket close cancelled";
+        // Branch on the elicitation action: `decline` or `cancel` leaves the ticket open.
+        if (reasonResult?.IsAccepted is not true) return "Ticket close cancelled";
+
+        // Accepted: use the reason the caller confirmed, falling back to the proposed default.
+        confirmedReason = reasonResult.Content?.TryGetValue("closeReason", out var reasonValue) is true
+            ? reasonValue.GetString()
+            : null;
+        confirmedReason = string.IsNullOrWhiteSpace(confirmedReason) ? defaultCloseReason : confirmedReason;
     }
 
-    // (1) or (2) Explicit opt-in or confirmation input received; proceed with closing the ticket
-    if (closeConfirmed)
-        return $"Closed ticket {ticketId}.";
+    // (1) or (2) A reason is in hand; proceed with closing the ticket.
+    if (!string.IsNullOrWhiteSpace(confirmedReason))
+        return $"Closed ticket {ticketId}: {confirmedReason}";
 
-    // (3) MRTR initial request: elicit input to confirm closing the ticket. This uses the
-    //     2026-07-28 MRTR input request, but the SDK provides an automatic bridge to
-    //     a legacy elicitation on a down-level, stateful session. When the bridge can
-    //     be provided, `server.IsMrtrSupported` is `true` and the exception leads to
-    //     a legacy elicitation response automatically.
+    // (3) MRTR initial request: propose "completed" as the default reason and ask the caller
+    //     to confirm (or adjust) it. This uses the 2026-07-28 MRTR input request, but the SDK
+    //     provides an automatic bridge to a legacy elicitation on a down-level, stateful
+    //     session. When the bridge can be provided, `server.IsMrtrSupported` is `true` and the
+    //     exception leads to a legacy elicitation response automatically.
     if (server.IsMrtrSupported)
     {
         throw new InputRequiredException(
             inputRequests: new Dictionary<string, InputRequest>
             {
-                ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                ["closeReason"] = InputRequest.ForElicitation(new ElicitRequestParams
                 {
-                    Message = $"Close ticket '{ticketId}'? This will notify the requester.",
-                    RequestedSchema = new(),
+                    Message = $"Close ticket '{ticketId}'? Accept the default reason or provide your own.",
+                    RequestedSchema = new()
+                    {
+                        Properties =
+                        {
+                            ["closeReason"] = new ElicitRequestParams.StringSchema
+                            {
+                                Title = "Close reason",
+                                Description = "The reason for closing the ticket",
+                                Default = defaultCloseReason,
+                            },
+                        },
+                    },
                 })
             },
             requestState: ticketId.ToString());   // opaque; echoed back to us on the retry
@@ -337,16 +358,18 @@ public static string CloseSupportTicket(
 
     // (4) Down-level and stateless: we can't prompt an elicitation through an MRTR
     //     round-trip request or an elicitation. Return a natural language response
-    //     with guidance for sending an explicit opt-in.
-    return "Closing a ticket requires user confirmation. Confirm by resending with `confirm: true`.";
+    //     with guidance for providing the reason up-front.
+    return "Closing a ticket requires a reason. Resend with `closeReason`.";
 }
 ```
 
 > [!IMPORTANT]
-> A confirmation prompt collects no form fields, but you must still set
-> `RequestedSchema = new()`. The empty schema is accepted by native `2026-07-28` MRTR, and
-> it's **required** by the down-level stateful elicitation bridge under `2025-11-25`:
-> omitting it throws `ArgumentException: "Form mode elicitation requests require a requested schema."`.
+> Form-mode elicitations must set `RequestedSchema`. This tool proposes a default, so its
+> schema declares an optional `closeReason` string with a `Default` the caller can accept or
+> override. A confirmation prompt that collects no fields still needs a schema — set
+> `RequestedSchema = new()` (an empty object schema): it's accepted by native `2026-07-28` MRTR
+> and **required** by the down-level stateful elicitation bridge under `2025-11-25`, which
+> otherwise throws `ArgumentException: "Form mode elicitation requests require a requested schema."`.
 
 ## Compatibility
 
