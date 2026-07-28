@@ -284,12 +284,12 @@ carries an <xref:ModelContextProtocol.Protocol.ElicitResult.Action> of `"accept"
 <xref:ModelContextProtocol.Protocol.ElicitResult.IsAccepted> shorthand.
 
 ```csharp
-[McpServerTool, Description("Deletes a file (with required confirmation).")]
-public static string DeleteFile(
+[McpServerTool, Description("Closes a support ticket (with confirmation).")]
+public static string CloseSupportTicket(
     McpServer server,
     RequestContext<CallToolRequestParams> context,
-    [Description("The path of the file to delete")] string path,
-    [Description("User confirmation to delete the file")] bool confirm = false)
+    [Description("The ID of the ticket to close")] long ticketId,
+    [Description("User confirmation to close the ticket")] bool confirm = false)
 {
     // Handles four client scenarios:
     //  1. Explicit opt-in: client sends `confirm: true`
@@ -300,23 +300,23 @@ public static string DeleteFile(
     // (1) Explicit opt-in. Works on any client, including down-level session-less
     //     because a previous response gave instructions for passing `confirm: true`.
     //     These requests are typically sent after (4) returns a guidance message.
-    var deletionConfirmed = confirm;
+    var closeConfirmed = confirm;
 
     // (2) MRTR round-trip request. Works with native MRTR support or the automatic down-level
     //     SDK bridge after (3) throws an `InputRequiredException` to elicit input.
     if (!confirm && context.Params?.InputResponses?.TryGetValue("confirm", out var confirmResponse) is true)
     {
         var confirmResult = confirmResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
-        deletionConfirmed = confirmResult?.IsAccepted is true;
+        closeConfirmed = confirmResult?.IsAccepted is true;
 
-        if (!deletionConfirmed) return "Deletion cancelled";
+        if (!closeConfirmed) return "Ticket close cancelled";
     }
 
-    // (1) or (2) Explicit opt-in or confirmation input received; proceed with the deletion
-    if (deletionConfirmed)
-        return $"Deleted {path}.";
+    // (1) or (2) Explicit opt-in or confirmation input received; proceed with closing the ticket
+    if (closeConfirmed)
+        return $"Closed ticket {ticketId}.";
 
-    // (3) MRTR initial request: elicit input to confirm the deletion. This uses the
+    // (3) MRTR initial request: elicit input to confirm closing the ticket. This uses the
     //     2026-07-28 MRTR input request, but the SDK provides an automatic bridge to
     //     a legacy elicitation on a down-level, stateful session. When the bridge can
     //     be provided, `server.IsMrtrSupported` is `true` and the exception leads to
@@ -328,17 +328,17 @@ public static string DeleteFile(
             {
                 ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
                 {
-                    Message = $"Delete {path}? This cannot be undone.",
+                    Message = $"Close ticket '{ticketId}'? This will notify the requester.",
                     RequestedSchema = new(),
                 })
             },
-            requestState: path);   // opaque; echoed back to us on the retry
+            requestState: ticketId.ToString());   // opaque; echoed back to us on the retry
     }
 
     // (4) Down-level and stateless: we can't prompt an elicitation through an MRTR
     //     round-trip request or an elicitation. Return a natural language response
     //     with guidance for sending an explicit opt-in.
-    return $"Deletion requires user confirmation. Confirm by resending with `confirm: true`.";
+    return "Closing a ticket requires user confirmation. Confirm by resending with `confirm: true`.";
 }
 ```
 
