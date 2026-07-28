@@ -309,7 +309,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // SSE requires stateful mode (the default). Set explicitly for forward compatibility.
+        // SSE requires stateful mode; opt in explicitly because stateless mode is the default.
         options.Stateless = false;
 
 #pragma warning disable MCP9004 // EnableLegacySse is obsolete

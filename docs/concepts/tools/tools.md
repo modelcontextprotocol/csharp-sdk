@@ -139,6 +139,16 @@ public static IEnumerable<ContentBlock> DescribeImage()
 }
 ```
 
+#### Structured content
+
+Set `UseStructuredContent = true` on <xref:ModelContextProtocol.Server.McpServerToolAttribute> or
+<xref:ModelContextProtocol.Server.McpServerToolCreateOptions> to advertise an output schema and
+serialize the return value into <xref:ModelContextProtocol.Protocol.CallToolResult.StructuredContent>.
+The output schema may be any JSON Schema 2020-12 document. Non-object return values are represented
+directly, so a tool returning `72` produces `structuredContent: 72`, not
+`structuredContent: { "result": 72 }`. Clients should read the value according to the advertised
+output schema rather than assuming a `result` wrapper.
+
 #### Content annotations
 
 Any content block can include <xref:ModelContextProtocol.Protocol.Annotations> to provide hints about the intended audience and priority:
