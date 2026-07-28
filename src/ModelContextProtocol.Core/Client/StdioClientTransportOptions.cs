@@ -94,6 +94,13 @@ public sealed class StdioClientTransportOptions
     /// <summary>
     /// Gets or sets the command to execute to start the server process.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On Windows, commands other than <c>cmd.exe</c> are launched through <c>cmd.exe /c</c>. As a result, the
+    /// command is interpreted by the Windows command shell rather than passed directly to the child process. Do not
+    /// construct this value from untrusted input.
+    /// </para>
+    /// </remarks>
     /// <exception cref="ArgumentException">The value is <see langword="null"/>, empty, or composed entirely of whitespace.</exception>
     public required string Command
     {
@@ -112,6 +119,16 @@ public sealed class StdioClientTransportOptions
     /// <summary>
     /// Gets or sets the arguments to pass to the server process when it is started.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On Windows, commands other than <c>cmd.exe</c> are launched through <c>cmd.exe /c</c>, so these values are
+    /// interpreted by the Windows command shell even though they are supplied as a list. For values without
+    /// whitespace, the transport applies limited caret-escaping for <c>&amp;</c>, <c>^</c>, <c>&gt;</c>, <c>&lt;</c>, and
+    /// <c>|</c>, but callers must not rely on the list representation or that escaping as a general-purpose defense
+    /// against command injection. Validate or allowlist any values derived from external input before including them
+    /// here.
+    /// </para>
+    /// </remarks>
     public IList<string>? Arguments { get; set; }
 
     /// <summary>
