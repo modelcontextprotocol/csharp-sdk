@@ -110,6 +110,14 @@ public sealed class IdentityAssertionGrantProvider
                 $"{nameof(options)}.{nameof(options.TokenEndpointAuthMethod)}");
         }
 
+        if (options.TokenEndpointAuthMethod is "client_secret_basic" or "client_secret_post" &&
+            string.IsNullOrEmpty(options.ClientSecret))
+        {
+            throw new ArgumentException(
+                $"{nameof(options.ClientSecret)} is required when {nameof(options.TokenEndpointAuthMethod)} is '{options.TokenEndpointAuthMethod}'.",
+                $"{nameof(options)}.{nameof(options.ClientSecret)}");
+        }
+
         _options = options;
         _httpClient = httpClient;
         _logger = (ILogger?)loggerFactory?.CreateLogger<IdentityAssertionGrantProvider>() ?? NullLogger.Instance;
