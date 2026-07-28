@@ -47,7 +47,7 @@ compatibility with the down-level implementation: a v2 Tasks client or server do
 
 ## Breaking changes
 
-The 2.0.0 SDK is a stable release. The SDK follows Semantic Versioning, and breaking changes against stable releases require increments to the MAJOR version.
+The 2.0.0 SDK will be a stable release after its general availability release. The SDK follows Semantic Versioning, and breaking changes against stable releases require increments to the MAJOR version.
 
 If feasible, the SDK will support all versions of the MCP spec. However, if breaking changes to the spec make this infeasible, preference will be given to the most recent version of the MCP spec. This would be considered a breaking change necessitating a new MAJOR version.
 
