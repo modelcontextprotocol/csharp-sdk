@@ -344,6 +344,39 @@ public sealed class IdentityAssertionGrantTests : IDisposable
             _httpClient));
     }
 
+    [Theory]
+    [InlineData("client_secret_basic")]
+    [InlineData("client_secret_post")]
+    public void IdentityAssertionGrantProvider_TokenEndpointAuthMethodRequiresSecret_MissingClientSecret_ThrowsArgumentException(string tokenEndpointAuthMethod)
+    {
+        Assert.Throws<ArgumentException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("test"),
+                TokenEndpointAuthMethod = tokenEndpointAuthMethod,
+                ClientSecret = null,
+            },
+            _httpClient));
+    }
+
+    [Fact]
+    public void IdentityAssertionGrantProvider_UnsupportedTokenEndpointAuthMethod_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("test"),
+                TokenEndpointAuthMethod = "private_key_jwt",
+            },
+            _httpClient));
+    }
+
     [Fact]
     public async Task IdentityAssertionGrantProvider_ConcurrentCallers_RunExchangeOnce()
     {
