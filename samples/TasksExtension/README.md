@@ -34,10 +34,6 @@ Expected output:
 
 ## Notes
 
-- The `MCPEXP001` warning is suppressed because the tasks extension is still experimental. The
-  project's `<NoWarn>` already includes it; if you copy this pattern into your own project,
-  either suppress the diagnostic or wrap the experimental APIs in
-  `#pragma warning disable MCPEXP001`.
 - For production deployments — especially stateless HTTP servers — implement
   `IMcpTaskStore` against durable storage and register it as a singleton (see
   [docs/concepts/tasks/tasks.md](../../docs/concepts/tasks/tasks.md) for the contract).
