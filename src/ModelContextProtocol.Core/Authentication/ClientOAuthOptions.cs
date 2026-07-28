@@ -25,14 +25,16 @@ public sealed class ClientOAuthOptions
 
     /// <summary>
     /// Gets or sets the token endpoint authentication method (<c>token_endpoint_auth_method</c>) to use when
-    /// requesting tokens, for example <c>"none"</c>, <c>"client_secret_basic"</c>, or <c>"client_secret_post"</c>.
+    /// requesting tokens.
     /// </summary>
     /// <remarks>
-    /// When not set, the method is inferred from the dynamic client registration response (when DCR is used), and
-    /// otherwise from the first entry in the authorization server's <c>token_endpoint_auth_methods_supported</c>.
-    /// Set this explicitly when that inference is incorrect — most notably for a public client identified by a
-    /// <see cref="ClientMetadataDocumentUri">Client ID Metadata Document</see>, which must authenticate with
-    /// <c>"none"</c> (relying on PKCE) even when the authorization server advertises a different method first.
+    /// Supported values are <c>none</c>, <c>client_secret_basic</c>, and <c>client_secret_post</c>.
+    /// When not set, the method is inferred from the dynamic client registration response (when DCR is used),
+    /// and otherwise from the first entry in the authorization server's
+    /// <c>token_endpoint_auth_methods_supported</c>. For DCR, this value is requested during registration,
+    /// but the method returned by the authorization server is authoritative.
+    /// Set this explicitly when inference is incorrect, most notably for a public client identified by a
+    /// <see cref="ClientMetadataDocumentUri">Client ID Metadata Document</see>, which commonly uses <c>none</c>.
     /// </remarks>
     public string? TokenEndpointAuthMethod { get; set; }
 

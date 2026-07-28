@@ -50,6 +50,32 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
+    [Theory]
+    [InlineData("client_secret_basic")]
+    [InlineData("client_secret_post")]
+    public async Task CanAuthenticate_WithExplicitTokenEndpointAuthMethod(string tokenEndpointAuthMethod)
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                TokenEndpointAuthMethod = tokenEndpointAuthMethod,
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(tokenEndpointAuthMethod, TestOAuthServer.LastTokenEndpointAuthMethod);
+    }
+
     [Fact]
     public async Task AuthorizationCallbackHandler_ReceivesConfiguredRedirectUri()
     {
@@ -174,6 +200,28 @@ public class AuthTests : OAuthTestBase
 #pragma warning disable MCP9007 // The obsolete property name should be included in the diagnostic.
         Assert.Contains(nameof(ClientOAuthOptions.AuthorizationRedirectDelegate), ex.Message);
 #pragma warning restore MCP9007
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("None")]
+    [InlineData("private_key_jwt")]
+    public void HttpClientTransport_RejectsUnsupportedTokenEndpointAuthMethod(string tokenEndpointAuthMethod)
+    {
+        var ex = Assert.Throws<ArgumentException>(() => new HttpClientTransport(
+            new()
+            {
+                Endpoint = new(McpServerUrl),
+                OAuth = new()
+                {
+                    RedirectUri = new Uri("http://localhost:1179/callback"),
+                    TokenEndpointAuthMethod = tokenEndpointAuthMethod,
+                },
+            },
+            HttpClient,
+            LoggerFactory));
+
+        Assert.Equal("options.TokenEndpointAuthMethod", ex.ParamName);
     }
 
     [Fact]
@@ -309,6 +357,80 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("native", TestOAuthServer.LastApplicationType);
+        Assert.Equal("client_secret_post", TestOAuthServer.LastRegistrationTokenEndpointAuthMethod);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_ResponseTokenEndpointAuthMethodIsAuthoritative()
+    {
+        TestOAuthServer.DynamicRegistrationTokenEndpointAuthMethod = "client_secret_post";
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new(),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastRegistrationTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_post", TestOAuthServer.LastTokenEndpointAuthMethod);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_UsesRequestedMethodWhenResponseOmitsIt()
+    {
+        TestOAuthServer.DynamicRegistrationTokenEndpointAuthMethod = null;
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new(),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastRegistrationTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastTokenEndpointAuthMethod);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_RejectsUnsupportedResponseTokenEndpointAuthMethod()
+    {
+        TestOAuthServer.DynamicRegistrationTokenEndpointAuthMethod = "private_key_jwt";
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new(),
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("private_key_jwt", ex.Message);
     }
 
     [Fact]
@@ -457,7 +579,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
             },
         }, HttpClient, LoggerFactory);
@@ -482,7 +604,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
                 TokenEndpointAuthMethod = "none",
             },
@@ -490,6 +612,77 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ClientMetadataDocument_PreservesConfiguredMethodAfterAuthorizationServerMigration()
+    {
+        TestOAuthServer.SupportedTokenEndpointAuthMethods = ["client_secret_basic", "none"];
+        var selectedAuthorizationServer = OAuthServerUrl;
+        var migrationChallengeSent = 0;
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.Events.OnResourceMetadataRequest = async context =>
+            {
+                context.HandleResponse();
+                var metadata = new ProtectedResourceMetadata
+                {
+                    Resource = McpServerUrl,
+                    AuthorizationServers = { selectedAuthorizationServer },
+                    ScopesSupported = ["mcp:tools"],
+                };
+                await Results.Json(metadata, McpJsonUtilities.DefaultOptions).ExecuteAsync(context.HttpContext);
+            };
+        });
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest { Method: "ping" } &&
+                        Interlocked.CompareExchange(ref migrationChallengeSent, 1, 0) == 0)
+                    {
+                        selectedAuthorizationServer = $"{OAuthServerUrl}/tenant";
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        context.Response.Headers.WWWAuthenticate =
+                            $"{JwtBearerDefaults.AuthenticationScheme} resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\"";
+                        return;
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+                TokenEndpointAuthMethod = "none",
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("none", TestOAuthServer.LastTokenEndpointAuthMethod);
+        Assert.Contains("/.well-known/oauth-authorization-server/tenant", TestOAuthServer.MetadataRequests);
     }
 
     [Fact]

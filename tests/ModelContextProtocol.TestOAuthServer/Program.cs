@@ -145,6 +145,12 @@ public sealed class Program
     /// </remarks>
     public List<string> SupportedTokenEndpointAuthMethods { get; set; } = ["client_secret_post"];
 
+    /// <summary>
+    /// Gets or sets the token endpoint authentication method returned by dynamic client registration.
+    /// Set to <see langword="null"/> to omit the method from the response.
+    /// </summary>
+    public string? DynamicRegistrationTokenEndpointAuthMethod { get; set; } = "client_secret_post";
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
@@ -156,6 +162,12 @@ public sealed class Program
 
     /// <summary>Gets the <c>application_type</c> field from the most recent Dynamic Client Registration request.</summary>
     public string? LastApplicationType { get; private set; }
+
+    /// <summary>Gets the <c>token_endpoint_auth_method</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastRegistrationTokenEndpointAuthMethod { get; private set; }
+
+    /// <summary>Gets the authentication method used by the most recent successful token request.</summary>
+    public string? LastTokenEndpointAuthMethod { get; private set; }
 
     /// <summary>
     /// Entry point for the application.
@@ -231,6 +243,7 @@ public sealed class Program
             ClientId = _clientMetadataDocumentUrl,
 
             RequiresClientSecret = false,
+            TokenEndpointAuthMethod = "none",
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
@@ -725,6 +738,7 @@ public sealed class Program
 
             LastRegistrationScope = registrationRequest.Scope;
             LastApplicationType = registrationRequest.ApplicationType;
+            LastRegistrationTokenEndpointAuthMethod = registrationRequest.TokenEndpointAuthMethod;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)
@@ -752,15 +766,21 @@ public sealed class Program
 
             // Generate client credentials
             var clientId = $"dyn-{Guid.NewGuid():N}";
-            var clientSecret = GenerateRandomToken();
+            var registeredTokenEndpointAuthMethod =
+                DynamicRegistrationTokenEndpointAuthMethod ??
+                registrationRequest.TokenEndpointAuthMethod ??
+                "client_secret_post";
+            var requiresClientSecret = registeredTokenEndpointAuthMethod != "none";
+            var clientSecret = requiresClientSecret ? GenerateRandomToken() : null;
             var issuedAt = DateTimeOffset.UtcNow;
 
             // Store the registered client
             _clients[clientId] = new ClientInfo
             {
                 ClientId = clientId,
-                RequiresClientSecret = true,
+                RequiresClientSecret = requiresClientSecret,
                 ClientSecret = clientSecret,
+                TokenEndpointAuthMethod = registeredTokenEndpointAuthMethod,
                 RedirectUris = registrationRequest.RedirectUris,
             };
 
@@ -772,7 +792,7 @@ public sealed class Program
                 RedirectUris = registrationRequest.RedirectUris,
                 GrantTypes = ["authorization_code", "refresh_token"],
                 ResponseTypes = ["code"],
-                TokenEndpointAuthMethod = "client_secret_post",
+                TokenEndpointAuthMethod = DynamicRegistrationTokenEndpointAuthMethod,
             };
 
             return Results.Ok(registrationResponse);
@@ -812,6 +832,31 @@ public sealed class Program
     {
         var clientId = form["client_id"].ToString();
         var clientSecret = form["client_secret"].ToString();
+        var tokenEndpointAuthMethod = string.IsNullOrEmpty(clientSecret) ? "none" : "client_secret_post";
+
+        var authorization = context.Request.Headers.Authorization.ToString();
+        if (authorization.StartsWith("Basic ", StringComparison.Ordinal))
+        {
+            string decodedCredentials;
+            try
+            {
+                decodedCredentials = Encoding.UTF8.GetString(Convert.FromBase64String(authorization["Basic ".Length..]));
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+
+            var separatorIndex = decodedCredentials.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return null;
+            }
+
+            clientId = Uri.UnescapeDataString(decodedCredentials[..separatorIndex]);
+            clientSecret = Uri.UnescapeDataString(decodedCredentials[(separatorIndex + 1)..]);
+            tokenEndpointAuthMethod = "client_secret_basic";
+        }
 
         if (string.IsNullOrEmpty(clientId) || !_clients.TryGetValue(clientId, out var client))
         {
@@ -823,6 +868,13 @@ public sealed class Program
             return null;
         }
 
+        if (client.TokenEndpointAuthMethod is not null &&
+            !string.Equals(client.TokenEndpointAuthMethod, tokenEndpointAuthMethod, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        LastTokenEndpointAuthMethod = tokenEndpointAuthMethod;
         return client;
     }
 
