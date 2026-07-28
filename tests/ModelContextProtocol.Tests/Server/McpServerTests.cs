@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -975,6 +976,84 @@ public class McpServerTests : LoggedTest
                 Assert.NotEmpty(result.Content);
                 Assert.Equal("test", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
             });
+    }
+
+    [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_Embedded_Pdf_Resource_On_Wire()
+    {
+        byte[] pdfBytes = Encoding.ASCII.GetBytes("%PDF-1.7\n");
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = async (request, ct) =>
+        {
+            return new CallToolResult
+            {
+                Content =
+                [
+                    new EmbeddedResourceBlock
+                    {
+                        Resource = BlobResourceContents.FromBytes(
+                            pdfBytes,
+                            "file:///mypdf.pdf",
+                            "application/pdf")
+                    }
+                ]
+            };
+        };
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
+
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse response && response.Id.ToString() == "55")
+            {
+                receivedMessage.SetResult(response);
+            }
+        };
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(55)
+            },
+            TestContext.Current.CancellationToken);
+
+        var response = await receivedMessage.Task.WaitAsync(
+            TestConstants.DefaultTimeout,
+            TestContext.Current.CancellationToken);
+        string wireJson = JsonSerializer.Serialize<JsonRpcMessage>(
+            response,
+            McpJsonUtilities.DefaultOptions);
+
+        using JsonDocument document = JsonDocument.Parse(wireJson);
+        JsonElement root = document.RootElement;
+        Assert.Equal("2.0", root.GetProperty("jsonrpc").GetString());
+        Assert.Equal(55, root.GetProperty("id").GetInt32());
+
+        JsonElement resourceBlock = root.GetProperty("result").GetProperty("content")[0];
+        Assert.Equal("resource", resourceBlock.GetProperty("type").GetString());
+        JsonElement resource = resourceBlock.GetProperty("resource");
+        Assert.Equal("file:///mypdf.pdf", resource.GetProperty("uri").GetString());
+        Assert.Equal("application/pdf", resource.GetProperty("mimeType").GetString());
+        Assert.Equal(Convert.ToBase64String(pdfBytes), resource.GetProperty("blob").GetString());
+
+        var roundTrippedMessage = JsonSerializer.Deserialize<JsonRpcMessage>(
+            wireJson,
+            McpJsonUtilities.DefaultOptions);
+        var roundTrippedResponse = Assert.IsType<JsonRpcResponse>(roundTrippedMessage);
+        var result = roundTrippedResponse.Result.Deserialize<CallToolResult>(
+            McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result);
+        var embeddedResource = Assert.IsType<EmbeddedResourceBlock>(Assert.Single(result.Content));
+        var pdfResource = Assert.IsType<BlobResourceContents>(embeddedResource.Resource);
+        Assert.Equal(pdfBytes, pdfResource.DecodedData.ToArray());
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]

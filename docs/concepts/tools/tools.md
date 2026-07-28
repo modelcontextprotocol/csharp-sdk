@@ -121,6 +121,8 @@ public static EmbeddedResourceBlock GetBinaryData(string id)
 }
 ```
 
+The SDK sends binary embedded resources using the MCP resource shape: a URI, MIME type, and base64-encoded `blob`. It does not convert formats such as `application/pdf` into images. How an embedded resource is rendered or made available to a model depends on the client. When targeting clients that do not support a binary format, consider also returning a text representation or another client-supported content block.
+
 #### Mixed content
 
 Tools can return multiple content blocks by returning `IEnumerable<ContentBlock>`:
