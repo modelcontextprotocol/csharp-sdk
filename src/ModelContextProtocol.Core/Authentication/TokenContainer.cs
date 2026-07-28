@@ -76,5 +76,15 @@ public sealed class TokenContainer
     /// </remarks>
     public string? TokenEndpointAuthMethod { get; set; }
 
+    /// <summary>
+    /// Gets or sets the authorization server issuer that issued the client credentials and tokens.
+    /// </summary>
+    /// <remarks>
+    /// OAuth client credentials are bound to an authorization server and must not be reused with a
+    /// different issuer. Durable cache implementations should persist this value alongside the token
+    /// and client registration so restored credentials can be validated before use.
+    /// </remarks>
+    public string? AuthorizationServer { get; set; }
+
     internal bool IsExpired => ExpiresIn is not null && DateTimeOffset.UtcNow >= ObtainedAt.AddSeconds(ExpiresIn.Value);
 }

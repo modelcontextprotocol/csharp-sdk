@@ -40,10 +40,10 @@ McpClientOptions options = new()
 // The default client now prefers the 2026-07-28 protocol (probing with server/discover and
 // falling back to an initialize handshake). The "initialize" and "sse-retry" scenarios
 // specifically exercise the initialize handshake and SSE resumability (removed in the
-// 2026-07-28 protocol) and strictly expect initialize as the first message, so pin them to the
-// latest stable version. Other scenarios run on the 2026-07-28 default and exercise the
-// server/discover probe plus the transparent initialize-handshake fallback.
-if (scenario is "initialize" or "sse-retry")
+// 2026-07-28 protocol) and strictly expect initialize as the first message. The alpha.9
+// json-schema-ref-no-deref server also uses a bundled Node transport that rejects the draft
+// protocol header before tools/list. Pin these scenarios to the latest stable version.
+if (scenario is "initialize" or "sse-retry" or "json-schema-ref-no-deref")
 {
     options.ProtocolVersion = "2025-11-25";
 }
@@ -72,21 +72,10 @@ if (callbackPort == 0)
 var clientRedirectUri = new Uri($"http://localhost:{callbackPort}/callback");
 
 // Read conformance context for scenarios that provide additional data (e.g., pre-registered credentials).
-string? preRegisteredClientId = null;
-string? preRegisteredClientSecret = null;
 var conformanceContext = Environment.GetEnvironmentVariable("MCP_CONFORMANCE_CONTEXT");
-if (!string.IsNullOrEmpty(conformanceContext))
-{
-    using var doc = JsonDocument.Parse(conformanceContext);
-    if (doc.RootElement.TryGetProperty("client_id", out var clientIdEl))
-    {
-        preRegisteredClientId = clientIdEl.GetString();
-    }
-    if (doc.RootElement.TryGetProperty("client_secret", out var clientSecretEl))
-    {
-        preRegisteredClientSecret = clientSecretEl.GetString();
-    }
-}
+var parsedConformanceContext = ConformanceContext.Parse(conformanceContext);
+var preRegisteredClientId = parsedConformanceContext?.GetString("client_id");
+var preRegisteredClientSecret = parsedConformanceContext?.GetString("client_secret");
 
 var oauthOptions = new ModelContextProtocol.Authentication.ClientOAuthOptions
 {
@@ -110,12 +99,55 @@ else
     };
 }
 
-var clientTransport = new HttpClientTransport(new()
+var endpointUri = new Uri(endpoint);
+HttpClientTransport clientTransport;
+if (scenario is "auth/client-credentials-basic" or "auth/client-credentials-jwt")
 {
-    Endpoint = new Uri(endpoint),
-    TransportMode = HttpTransportMode.StreamableHttp,
-    OAuth = oauthOptions,
-}, loggerFactory: consoleLoggerFactory);
+    var context = parsedConformanceContext
+        ?? throw new InvalidOperationException($"Scenario '{scenario}' requires MCP_CONFORMANCE_CONTEXT.");
+    var accessToken = await ConformanceOAuthHelpers.AcquireClientCredentialsTokenAsync(
+        endpointUri,
+        context,
+        usePrivateKeyJwt: scenario == "auth/client-credentials-jwt",
+        CancellationToken.None);
+    clientTransport = new HttpClientTransport(
+        new()
+        {
+            Endpoint = endpointUri,
+            TransportMode = HttpTransportMode.StreamableHttp,
+        },
+        ConformanceOAuthHelpers.CreateBearerHttpClient(accessToken),
+        consoleLoggerFactory,
+        ownsHttpClient: true);
+}
+else if (scenario == "auth/enterprise-managed-authorization")
+{
+    var context = parsedConformanceContext
+        ?? throw new InvalidOperationException($"Scenario '{scenario}' requires MCP_CONFORMANCE_CONTEXT.");
+    var accessToken = await ConformanceOAuthHelpers.AcquireEnterpriseTokenAsync(
+        endpointUri,
+        context,
+        consoleLoggerFactory,
+        CancellationToken.None);
+    clientTransport = new HttpClientTransport(
+        new()
+        {
+            Endpoint = endpointUri,
+            TransportMode = HttpTransportMode.StreamableHttp,
+        },
+        ConformanceOAuthHelpers.CreateBearerHttpClient(accessToken),
+        consoleLoggerFactory,
+        ownsHttpClient: true);
+}
+else
+{
+    clientTransport = new HttpClientTransport(new()
+    {
+        Endpoint = endpointUri,
+        TransportMode = HttpTransportMode.StreamableHttp,
+        OAuth = oauthOptions,
+    }, loggerFactory: consoleLoggerFactory);
+}
 
 try
 {
@@ -189,6 +221,19 @@ try
             {
                 Console.WriteLine($"Expected auth failure: {ex.Message}");
             }
+            break;
+        }
+        case "auth/authorization-server-migration":
+        {
+            await mcpClient.ListToolsAsync();
+            await mcpClient.ListToolsAsync();
+            break;
+        }
+        case "auth/client-credentials-basic":
+        case "auth/client-credentials-jwt":
+        case "auth/enterprise-managed-authorization":
+        {
+            await mcpClient.ListToolsAsync();
             break;
         }
         case "http-standard-headers":

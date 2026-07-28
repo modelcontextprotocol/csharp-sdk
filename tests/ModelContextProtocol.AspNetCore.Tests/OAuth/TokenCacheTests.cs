@@ -1,5 +1,6 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
@@ -188,6 +189,182 @@ public class TokenCacheTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task GetTokenAsync_ExplicitClientDoesNotRefreshTokenFromDifferentAuthorizationServer()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        await using var setupTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using (var setupClient = await McpClient.CreateAsync(
+            setupTransport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        tokenCache.LastStoredToken.AccessToken = "invalid-token";
+        tokenCache.LastStoredToken.AuthorizationServer = "https://different-authorization-server.example.com";
+        var authorizationCallbackCalled = false;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("explicitly configured client credentials", exception.Message);
+        Assert.False(authorizationCallbackCalled);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal("https://different-authorization-server.example.com", tokenCache.LastStoredToken.AuthorizationServer);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ExplicitClientDoesNotRefreshTokenIssuedToDifferentClient()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        await using var setupTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using (var setupClient = await McpClient.CreateAsync(
+            setupTransport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        tokenCache.LastStoredToken.AccessToken = "invalid-token";
+        tokenCache.LastStoredToken.ClientId = "different-client";
+        var authorizationCallbackCalled = false;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(authorizationCallbackCalled);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal("demo-client", tokenCache.LastStoredToken.ClientId);
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ExplicitClientWithLegacyUnboundCache_Reauthorizes()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        await using var setupTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using (var setupClient = await McpClient.CreateAsync(
+            setupTransport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        tokenCache.LastStoredToken.AccessToken = "invalid-token";
+        tokenCache.LastStoredToken.AuthorizationServer = null;
+        var authorizationCallbackCalled = false;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(authorizationCallbackCalled);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
+    }
+
+    [Fact]
     public async Task GetTokenAsync_ColdStartWithDynamicRegistration_RefreshesUsingPersistedCredentials()
     {
         await using var app = await StartMcpServerAsync();
@@ -227,6 +404,7 @@ public class TokenCacheTests : OAuthTestBase
         Assert.False(
             string.IsNullOrEmpty(tokenCache.LastStoredToken.ClientId),
             "The dynamically registered client ID should be persisted alongside the tokens");
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
 
         // Simulate a cold start: the access token is no longer valid, but the refresh token persists.
         // The new provider has no client ID configured and must restore it from the cache to refresh
@@ -259,6 +437,119 @@ public class TokenCacheTests : OAuthTestBase
         Assert.False(authDelegateCalledAgain, "Authorization callback should not be called when the persisted refresh token can be used");
         Assert.True(TestOAuthServer.HasRefreshedToken, "Token should have been refreshed using the persisted client credentials");
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ColdStartWithCredentialsFromDifferentAuthorizationServer_Reregisters()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        await using var setupTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using (var setupClient = await McpClient.CreateAsync(
+            setupTransport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        tokenCache.LastStoredToken.AccessToken = "invalid-token";
+        tokenCache.LastStoredToken.AuthorizationServer = "https://different-authorization-server.example.com";
+        var authorizationCallbackCalled = false;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(authorizationCallbackCalled);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ColdStartWithLegacyUnboundCredentials_Reregisters()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        await using var setupTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using (var setupClient = await McpClient.CreateAsync(
+            setupTransport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.False(string.IsNullOrEmpty(tokenCache.LastStoredToken.ClientId));
+        tokenCache.LastStoredToken.AccessToken = "invalid-token";
+        tokenCache.LastStoredToken.AuthorizationServer = null;
+        var authorizationCallbackCalled = false;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(authorizationCallbackCalled);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
     }
 
     [Fact]
