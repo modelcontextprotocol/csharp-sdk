@@ -14,25 +14,6 @@ Tasks are provided by the `ModelContextProtocol.Extensions.Tasks` package and re
 version `2026-07-28` or later. The implementation follows
 [SEP-2663 (Tasks Extension)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md).
 
-### Compatibility with v1 experimental Tasks
-
-The Tasks extension in v2.0.0 replaces the experimental Tasks implementation shipped in v1.3.0 and
-v1.4.x. The implementations are not compatible at either the API or protocol level. A v2 Tasks
-client or server must use a connection negotiated to `2026-07-28` or later; it cannot fall back to
-the down-level implementation.
-
-On a connection negotiated to the down-level `2025-11-25` protocol:
-
-- A v2 client calling a v1 server receives an ordinary tool result. The v2 client does not opt in
-  to the down-level Tasks protocol, and `GetTaskAsync` rejects use before a `2026-07-28`
-  connection is negotiated.
-- A v1 client calling a v2 server likewise receives an ordinary tool result. The v2 server does
-  not create Tasks on a down-level connection, and its `tasks/get` endpoint rejects the legacy
-  request with a method-not-found error.
-
-Upgrade both peers to the v2 Tasks extension before using Tasks. The extension provides no
-compatibility bridge for the previous experimental API.
-
 ### Overview
 
 A client opts into tasks on a per-request basis by including the `io.modelcontextprotocol/tasks`
@@ -345,6 +326,25 @@ scope, the SDK intentionally skips the normal client-capability negotiation chec
 (`ThrowIfElicitationUnsupported`, etc.). The tasks extension itself is the negotiated capability:
 the client opted in by including the extension marker in the originating request, so it's
 responsible for handling — or rejecting — the input requests surfaced through `tasks/get`.
+
+#### Compatibility with v1 experimental Tasks
+
+The Tasks extension in v2.0.0 replaces the experimental Tasks implementation shipped in v1.3.0 and
+v1.4.x. The implementations are not compatible at either the API or protocol level. A v2 Tasks
+client or server must use a connection negotiated to `2026-07-28` or later; it cannot fall back to
+the down-level implementation.
+
+On a connection negotiated to the down-level `2025-11-25` protocol:
+
+- A v2 client calling a v1 server receives an ordinary tool result. The v2 client does not opt in
+  to the down-level Tasks protocol, and `GetTaskAsync` rejects use before a `2026-07-28`
+  connection is negotiated.
+- A v1 client calling a v2 server likewise receives an ordinary tool result. The v2 server does
+  not create Tasks on a down-level connection, and its `tasks/get` endpoint rejects the legacy
+  request with a method-not-found error.
+
+Upgrade both peers to the v2 Tasks extension before using Tasks. The extension provides no
+compatibility bridge for the previous experimental API.
 
 ### Known limitations
 

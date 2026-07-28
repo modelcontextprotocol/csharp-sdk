@@ -71,3 +71,8 @@ If APIs within the SDK become obsolete due to changes in the MCP spec or other e
 3. Within a MAJOR version update, obsolete APIs might be removed. API removals are expected to be rare and avoided wherever possible, and `[Obsolete]` attributes will be applied ahead of the API removal.
 
 Beginning with the 1.0.0 release, all obsoletions will use diagnostic codes specific to the MCP SDK APIs, using an `MCP` prefix.
+
+## See also
+
+- [Experimental APIs](experimental.md)
+- [List of diagnostics](list-of-diagnostics.md)

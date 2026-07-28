@@ -83,11 +83,11 @@ if (client.ServerCapabilities.Resources is { Subscribe: true })
 // Check if the server supports prompts with list-changed notifications
 if (client.ServerCapabilities.Prompts is { ListChanged: true })
 {
-    mcpClient.RegisterNotificationHandler(
+    client.RegisterNotificationHandler(
         NotificationMethods.PromptListChangedNotification,
         async (notification, ct) =>
         {
-            var prompts = await mcpClient.ListPromptsAsync(cancellationToken: ct);
+            var prompts = await client.ListPromptsAsync(cancellationToken: ct);
         });
 }
 

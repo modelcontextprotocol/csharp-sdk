@@ -57,3 +57,7 @@ items:
     uid: tasks
   - name: Identity and Roles
     uid: identity
+- name: API Reference
+  uid: ModelContextProtocol
+- name: Experimental APIs
+  uid: experimental

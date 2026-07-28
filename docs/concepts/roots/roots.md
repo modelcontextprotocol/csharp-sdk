@@ -11,6 +11,9 @@ MCP [roots] allow clients to inform servers about the relevant locations in the 
 
 [roots]: https://modelcontextprotocol.io/specification/2025-11-25/client/roots
 
+> [!IMPORTANT]
+> Roots are **deprecated** as of MCP specification revision `2026-07-28` ([SEP-2577](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577), [MCP9005](xref:list-of-diagnostics#obsolete-apis)) and may be removed in a future version.
+
 ### Overview
 
 Roots provide a mechanism for the client to tell the server which directories, projects, or repositories are relevant to the current session. A server might use roots to:
@@ -57,7 +60,7 @@ await using var client = await McpClient.CreateAsync(transport, options);
 
 ### Requesting roots from the server
 
-Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended).
+Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended). For a stateless-compatible alternative, throw `InputRequiredException` from your handler through MRTR — see [Multi round-trip requests (MRTR)](#multi-round-trip-requests-mrtr).
 
 ```csharp
 [McpServerTool, Description("Lists the user's project roots")]
