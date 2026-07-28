@@ -1368,6 +1368,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <param name="parameters">The parameter string from the WWW-Authenticate header.</param>
     /// <param name="parameterName">The name of the parameter to extract.</param>
     /// <returns>The value of the parameter, or null if not found.</returns>
+    /// <remarks>
+    /// Follows the auth-param and quoted-string grammar from RFC 9110 section 11.6.1 / section 5.6.4,
+    /// so commas and escaped quotes (\") inside a quoted value don't get mistaken for parameter boundaries.
+    /// </remarks>
     private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
         if (parameters.IndexOf(parameterName, StringComparison.OrdinalIgnoreCase) == -1)
@@ -1375,32 +1379,102 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return null;
         }
 
-        foreach (var part in parameters.Split(','))
-        {
-            var trimmedPart = part.AsSpan().Trim();
-            int equalsIndex = trimmedPart.IndexOf('=');
+        int i = 0;
+        int length = parameters.Length;
 
-            if (equalsIndex <= 0)
+        while (i < length)
+        {
+            while (i < length && (parameters[i] == ',' || IsOptionalWhitespace(parameters[i])))
             {
+                i++;
+            }
+
+            if (i >= length)
+            {
+                break;
+            }
+
+            int nameStart = i;
+            while (i < length && parameters[i] != '=' && parameters[i] != ',' && !IsOptionalWhitespace(parameters[i]))
+            {
+                i++;
+            }
+
+            var name = parameters.AsSpan(nameStart, i - nameStart);
+
+            while (i < length && IsOptionalWhitespace(parameters[i]))
+            {
+                i++;
+            }
+
+            if (i >= length || parameters[i] != '=')
+            {
+                // Not a well-formed "token = value" auth-param; skip past it to the next one.
+                while (i < length && parameters[i] != ',')
+                {
+                    i++;
+                }
                 continue;
             }
 
-            var key = trimmedPart[..equalsIndex].Trim();
+            i++; // Consume '='.
 
-            if (key.Equals(parameterName, StringComparison.OrdinalIgnoreCase))
+            while (i < length && IsOptionalWhitespace(parameters[i]))
             {
-                var value = trimmedPart[(equalsIndex + 1)..].Trim();
-                if (value.Length > 0 && value[0] == '"' && value[^1] == '"')
+                i++;
+            }
+
+            string value;
+            if (i < length && parameters[i] == '"')
+            {
+                i++; // Consume the opening quote.
+                var sb = new StringBuilder();
+
+                while (i < length && parameters[i] != '"')
                 {
-                    value = value[1..^1];
+                    if (parameters[i] == '\\' && i + 1 < length)
+                    {
+                        // quoted-pair: the backslash is dropped and the following octet is literal.
+                        i++;
+                    }
+
+                    sb.Append(parameters[i]);
+                    i++;
                 }
 
-                return value.ToString();
+                if (i < length)
+                {
+                    i++; // Consume the closing quote.
+                }
+
+                value = sb.ToString();
+            }
+            else
+            {
+                int valueStart = i;
+                while (i < length && parameters[i] != ',')
+                {
+                    i++;
+                }
+
+                value = parameters.AsSpan(valueStart, i - valueStart).TrimEnd().ToString();
+            }
+
+            if (name.Equals(parameterName, StringComparison.OrdinalIgnoreCase))
+            {
+                return value;
+            }
+
+            while (i < length && parameters[i] != ',')
+            {
+                i++;
             }
         }
 
         return null;
     }
+
+    private static bool IsOptionalWhitespace(char c) => c is ' ' or '\t';
 
     private static IEnumerable<(Uri WellKnownUri, Uri ExpectedResourceUri)> GetWellKnownResourceMetadataUris(Uri resourceUri)
     {
