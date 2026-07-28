@@ -37,6 +37,7 @@ public sealed class IdentityAssertionGrantTests : IDisposable
                     ["issuer"] = "https://auth.mcp-server.example.com",
                     ["authorization_endpoint"] = "https://auth.mcp-server.example.com/authorize",
                     ["token_endpoint"] = "https://auth.mcp-server.example.com/token",
+                    ["token_endpoint_auth_methods_supported"] = new JsonArray("client_secret_basic"),
                 });
             }
 
@@ -52,6 +53,10 @@ public sealed class IdentityAssertionGrantTests : IDisposable
 
             if (url.Contains("auth.mcp-server.example.com/token"))
             {
+                Assert.Equal("Basic", request.Headers.Authorization?.Scheme);
+                Assert.Equal(
+                    Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("mcp-client-id:mcp-client-secret")),
+                    request.Headers.Authorization?.Parameter);
                 return JsonResponse(HttpStatusCode.OK, new JsonObject
                 {
                     ["access_token"] = "final-access-token",
@@ -67,6 +72,8 @@ public sealed class IdentityAssertionGrantTests : IDisposable
             new IdentityAssertionGrantProviderOptions
             {
                 ClientId = "mcp-client-id",
+                ClientSecret = "mcp-client-secret",
+                TokenEndpointAuthMethod = "client_secret_basic",
                 IdpTokenEndpoint = "https://idp.example.com/token",
                 IdpClientId = "idp-client-id",
                 IdTokenCallback = (context, ct) =>
@@ -87,6 +94,30 @@ public sealed class IdentityAssertionGrantTests : IDisposable
         Assert.Equal("Bearer", tokens.TokenType);
         Assert.Equal(3600, tokens.ExpiresIn);
     }
+
+    [Fact]
+    public Task IdentityAssertionGrantProvider_DefaultsToPostRegardlessOfMetadataOrder() =>
+        AssertMcpTokenEndpointAuthenticationAsync(
+            new JsonArray("client_secret_basic", "client_secret_post"),
+            configuredMethod: null,
+            expectedAuthorizationScheme: null,
+            expectSecretInBody: true);
+
+    [Fact]
+    public Task IdentityAssertionGrantProvider_FallsBackToBasicWhenPostIsUnavailable() =>
+        AssertMcpTokenEndpointAuthenticationAsync(
+            new JsonArray("client_secret_basic"),
+            configuredMethod: null,
+            expectedAuthorizationScheme: "Basic",
+            expectSecretInBody: false);
+
+    [Fact]
+    public Task IdentityAssertionGrantProvider_NoneDoesNotSendClientSecret() =>
+        AssertMcpTokenEndpointAuthenticationAsync(
+            new JsonArray("none"),
+            configuredMethod: "none",
+            expectedAuthorizationScheme: null,
+            expectSecretInBody: false);
 
     [Fact]
     public async Task IdentityAssertionGrantProvider_CachesTokens()
@@ -433,6 +464,67 @@ public sealed class IdentityAssertionGrantTests : IDisposable
     #endregion
 
     #region Helpers
+
+    private async Task AssertMcpTokenEndpointAuthenticationAsync(
+        JsonArray supportedMethods,
+        string? configuredMethod,
+        string? expectedAuthorizationScheme,
+        bool expectSecretInBody)
+    {
+        _mockHandler.AsyncHandler = async request =>
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.Contains(".well-known"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["issuer"] = "https://auth.example.com",
+                    ["authorization_endpoint"] = "https://auth.example.com/authorize",
+                    ["token_endpoint"] = "https://auth.example.com/token",
+                    ["token_endpoint_auth_methods_supported"] = supportedMethods,
+                });
+            }
+
+            if (url.Contains("idp.example.com"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag",
+                    ["issued_token_type"] = "urn:ietf:params:oauth:token-type:id-jag",
+                    ["token_type"] = "N_A",
+                });
+            }
+
+            Assert.Equal(expectedAuthorizationScheme, request.Headers.Authorization?.Scheme);
+            var body = await request.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(expectSecretInBody, body.Contains("client_secret=mcp-client-secret", StringComparison.Ordinal));
+
+            return JsonResponse(HttpStatusCode.OK, new JsonObject
+            {
+                ["access_token"] = "final-access-token",
+                ["token_type"] = "Bearer",
+            });
+        };
+
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "mcp-client-id",
+                ClientSecret = "mcp-client-secret",
+                TokenEndpointAuthMethod = configuredMethod,
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("mock-id-token"),
+            },
+            _httpClient);
+
+        var tokens = await provider.GetAccessTokenAsync(
+            new Uri("https://resource.example.com"),
+            new Uri("https://auth.example.com"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("final-access-token", tokens.AccessToken);
+    }
 
     private static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, JsonObject payload)
     {

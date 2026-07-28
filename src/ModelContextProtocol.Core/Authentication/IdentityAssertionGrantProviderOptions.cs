@@ -17,6 +17,17 @@ public sealed class IdentityAssertionGrantProviderOptions
     public string? ClientSecret { get; set; }
 
     /// <summary>
+    /// Gets or sets the authentication method used at the MCP authorization server's token endpoint.
+    /// </summary>
+    /// <remarks>
+    /// Supported values are <c>client_secret_basic</c>, <c>client_secret_post</c>, and <c>none</c>.
+    /// Set this to the method assigned to the pre-registered MCP client. When omitted, the provider
+    /// preserves its existing <c>client_secret_post</c> behavior when supported, then falls back to
+    /// another compatible method advertised by the authorization server.
+    /// </remarks>
+    public string? TokenEndpointAuthMethod { get; set; }
+
+    /// <summary>
     /// Gets or sets the scopes to request from the MCP authorization server (space-separated). Optional.
     /// </summary>
     public string? Scope { get; set; }

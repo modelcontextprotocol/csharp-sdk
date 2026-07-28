@@ -164,7 +164,18 @@ internal static class IdentityAssertionGrant
             ["client_id"] = options.ClientId,
         };
 
-        if (!string.IsNullOrEmpty(options.ClientSecret))
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.TokenEndpoint);
+
+        if (string.Equals(options.TokenEndpointAuthMethod, "client_secret_basic", StringComparison.Ordinal))
+        {
+            formData.Remove("client_id");
+            var credentials = $"{Uri.EscapeDataString(options.ClientId)}:{Uri.EscapeDataString(options.ClientSecret ?? string.Empty)}";
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(credentials)));
+        }
+        else if (string.Equals(options.TokenEndpointAuthMethod, "client_secret_post", StringComparison.Ordinal) &&
+            !string.IsNullOrEmpty(options.ClientSecret))
         {
             formData["client_secret"] = options.ClientSecret!;
         }
@@ -174,12 +185,7 @@ internal static class IdentityAssertionGrant
             formData["scope"] = options.Scope!;
         }
 
-        using var requestContent = new FormUrlEncodedContent(formData);
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, options.TokenEndpoint)
-        {
-            Content = requestContent
-        };
-
+        httpRequest.Content = new FormUrlEncodedContent(formData);
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);

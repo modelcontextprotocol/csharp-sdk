@@ -35,6 +35,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly bool _validateAuthorizationResponseState;
     private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
+    private readonly string? _configuredClientId;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrConfiguredApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
@@ -49,6 +50,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientId;
     private string? _clientSecret;
     private string? _tokenEndpointAuthMethod;
+    private string? _clientCredentialsAuthorizationServer;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -96,6 +98,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         _clientId = options.ClientId;
+        _configuredClientId = options.ClientId;
         _clientSecret = options.ClientSecret;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
@@ -244,7 +247,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return (current.AccessToken, true);
         }
 
-        if (_authServerMetadata is not null && current?.RefreshToken is { Length: > 0 } refreshToken)
+        if (_authServerMetadata is not null &&
+            current?.RefreshToken is { Length: > 0 } refreshToken &&
+            CachedTokensMatchClientCredentials(current, _clientCredentialsAuthorizationServer))
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
@@ -427,7 +432,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // provider has not assigned a client ID yet. Restoring it here makes the refresh below possible
         // and avoids a redundant dynamic client registration in the assignment block.
         var cachedTokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
-        RestoreCachedClientCredentials(cachedTokens);
+        RestoreCachedClientCredentials(cachedTokens, selectedAuthServer);
+        BindClientCredentialsToAuthorizationServer(selectedAuthServer);
+        var cachedTokensMatchClientCredentials =
+            CachedTokensMatchClientCredentials(cachedTokens, selectedAuthServer.OriginalString);
 
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
@@ -439,6 +447,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (!attemptedRefresh &&
             response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
             !string.IsNullOrEmpty(_clientId) &&
+            cachedTokensMatchClientCredentials &&
             cachedTokens is { RefreshToken: { Length: > 0 } refreshToken })
         {
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -462,6 +471,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 await PerformDynamicClientRegistrationAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
             }
         }
+
+        _clientCredentialsAuthorizationServer = selectedAuthServer.OriginalString;
 
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
         _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
@@ -875,6 +886,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ClientId = _clientId,
             ClientSecret = _clientSecret,
             TokenEndpointAuthMethod = _tokenEndpointAuthMethod,
+            AuthorizationServer = _clientCredentialsAuthorizationServer,
         };
 
         await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
@@ -1458,33 +1470,93 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <summary>
     /// Restores the client registration persisted alongside cached tokens when this provider has not been
     /// assigned a client ID yet. This allows a durable <see cref="ITokenCache"/> to use a refresh token that
-    /// survived a process restart without re-running dynamic client registration. An explicitly configured
+    /// survived a process restart without re-running dynamic client registration. Credentials are restored
+    /// only when the cache binds them to the currently selected authorization server. An explicitly configured
     /// client ID always takes precedence, so nothing is restored when one is already available.
     /// </summary>
     /// <remarks>
     /// Callers must hold <c>_tokenAcquisitionLock</c>: this writes the shared <c>_clientId</c>,
     /// <c>_clientSecret</c>, and <c>_tokenEndpointAuthMethod</c> fields, which the lock serializes.
-    /// Like the persisted refresh token, the restored client ID assumes the durable cache belongs to the
-    /// current authorization server; a single cache shared across authorization servers is not supported
-    /// (an inherent property of the single-container <see cref="ITokenCache"/> design).
+    /// A single cache still stores only one registration, but the persisted authorization-server issuer
+    /// prevents that registration from being reused with a different server.
     /// </remarks>
-    private void RestoreCachedClientCredentials(TokenContainer? tokens)
+    private void RestoreCachedClientCredentials(TokenContainer? tokens, Uri selectedAuthServer)
     {
-        if (!string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(tokens?.ClientId))
+        if (tokens is null)
         {
             return;
         }
 
-        // The guard above guarantees a non-null container, but the older nullable flow analysis on
-        // netstandard2.0/net472 doesn't infer that from the null-conditional check, so capture a
-        // non-null local and use it for every assignment.
+        // The guard above guarantees a non-null container, but older nullable flow analysis on
+        // netstandard2.0/net472 may not preserve that narrowing, so capture a non-null local.
         var cached = tokens!;
+
+        if (_configuredClientId is not null)
+        {
+            if (!string.Equals(cached.ClientId, _configuredClientId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // Restore the issuer binding independently from the secret. A rotated configured secret
+            // must not make credentials previously bound to another issuer appear portable.
+            _clientCredentialsAuthorizationServer = cached.AuthorizationServer;
+
+            if (string.Equals(cached.AuthorizationServer, selectedAuthServer.OriginalString, StringComparison.Ordinal) &&
+                string.Equals(cached.ClientSecret, _clientSecret, StringComparison.Ordinal))
+            {
+                _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
+            }
+
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(_clientId))
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(cached.ClientId) ||
+            !string.Equals(cached.AuthorizationServer, selectedAuthServer.OriginalString, StringComparison.Ordinal))
+        {
+            return;
+        }
 
         // Assign _clientId last. Callers treat a non-empty _clientId as "registration complete", so the
         // secret and auth method must already be in place before _clientId becomes observable.
         _clientSecret ??= cached.ClientSecret;
         _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
         _clientId = cached.ClientId;
+        _clientCredentialsAuthorizationServer = cached.AuthorizationServer;
+    }
+
+    private bool CachedTokensMatchClientCredentials(TokenContainer? tokens, string? authorizationServer) =>
+        tokens is not null &&
+        string.Equals(tokens.AuthorizationServer, authorizationServer, StringComparison.Ordinal) &&
+        string.Equals(tokens.ClientId, _clientId, StringComparison.Ordinal) &&
+        string.Equals(tokens.ClientSecret, _clientSecret, StringComparison.Ordinal) &&
+        string.Equals(tokens.TokenEndpointAuthMethod, _tokenEndpointAuthMethod, StringComparison.Ordinal);
+
+    private void BindClientCredentialsToAuthorizationServer(Uri selectedAuthServer)
+    {
+        if (_clientCredentialsAuthorizationServer is null ||
+            string.Equals(_clientCredentialsAuthorizationServer, selectedAuthServer.OriginalString, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_configuredClientId is not null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                $"The authorization server changed from '{_clientCredentialsAuthorizationServer}' to '{selectedAuthServer.OriginalString}', " +
+                "but explicitly configured client credentials cannot be assumed to be valid for the new authorization server.");
+        }
+
+        _clientId = null;
+        _clientSecret = null;
+        _tokenEndpointAuthMethod = null;
+        _authServerMetadata = null;
+        _clientCredentialsAuthorizationServer = null;
     }
 
     [DoesNotReturn]
