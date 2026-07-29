@@ -65,6 +65,21 @@ public class McpAppElicitationTests
     }
 
     [Fact]
+    public void SetAppUi_RoundTripsThroughMrtrInputRequest()
+    {
+        var request = McpAppElicitation.SetAppUi(
+            CreateRequest(),
+            "ui://example/choose-option.html");
+
+        var embedded = InputRequest.ForElicitation(request).ElicitationParams;
+
+        Assert.NotNull(embedded);
+        Assert.Equal(
+            "ui://example/choose-option.html",
+            McpAppElicitation.GetAppUi(embedded)?.ResourceUri);
+    }
+
+    [Fact]
     public void SetAppUiIfSupported_FallsBackToUnmodifiedNativeRequest()
     {
         var request = CreateRequest();
