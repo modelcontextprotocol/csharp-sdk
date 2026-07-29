@@ -20,7 +20,6 @@ namespace ModelContextProtocol.Tests.Server;
 public class SubscriptionsListenHandlerTests : ClientServerTestBase
 {
     private const string CustomResourceUri = "custom://event/1";
-    private const string SentinelResourceUri = "custom://event/sentinel";
 
     // Signalled after the custom handler has sent its acknowledgement and first notification and is waiting
     // for cancellation. Lets cancellation tests wait until the handler is actually holding the stream open.
@@ -28,11 +27,6 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
 
     // Signalled from the custom handler's finally block, proving it observed cancellation and cleaned up.
     private readonly TaskCompletionSource<bool> _handlerCleanedUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    // Set by the fan-out suppression test to ask the still-open handler to emit one more notification. Because
-    // that notification is delivered on the same stream, it is a happens-after marker: once the client sees it,
-    // any notification the SDK would have fanned out earlier on the same stream must already have been delivered.
-    private readonly TaskCompletionSource<bool> _emitSentinelRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public SubscriptionsListenHandlerTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -80,21 +74,7 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
                 var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var registration = cancellationToken.Register(
                     static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), cancelled);
-
-                // If a test asks for an ordered marker (fan-out suppression test), emit one more notification on
-                // the same stream and then keep holding; otherwise just wait for cancellation.
-                if (await Task.WhenAny(_emitSentinelRequested.Task, cancelled.Task).ConfigureAwait(false) == _emitSentinelRequested.Task)
-                {
-                    var sentinel = new JsonRpcNotification
-                    {
-                        Method = NotificationMethods.ResourceUpdatedNotification,
-                        Params = new JsonObject { ["uri"] = SentinelResourceUri },
-                    };
-                    TagWithSubscriptionId(sentinel, subscriptionId);
-                    await request.Server.SendMessageAsync(sentinel, cancellationToken);
-
-                    await cancelled.Task.ConfigureAwait(false);
-                }
+                await cancelled.Task;
             }
             finally
             {
@@ -113,29 +93,29 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
             ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
         });
 
-        // Capture the acknowledgement and the streamed notification on a single ordered channel so the test
-        // proves the acknowledgement is delivered FIRST, per SEP-2575, not merely that both arrive. Separate
-        // channels would let a reversed stream (notification before ack) still pass.
-        var streamChannel = Channel.CreateUnbounded<JsonRpcNotification>();
+        // Capture the acknowledgement and the streamed notification on separate channels. Both must arrive
+        // tagged with the subscription id. The test does not assert cross-notification arrival order because
+        // the client dispatches incoming messages concurrently (see McpSessionHandler.ProcessMessagesCoreAsync),
+        // so handler invocation order is not observable; acknowledgement-first is a server-side/wire guarantee.
+        var ackChannel = Channel.CreateUnbounded<JsonRpcNotification>();
+        var updatedChannel = Channel.CreateUnbounded<JsonRpcNotification>();
 
         await using var ackReg = client.RegisterNotificationHandler(NotificationMethods.SubscriptionsAcknowledgedNotification,
-            (notification, _) => { streamChannel.Writer.TryWrite(notification); return default; });
+            (notification, _) => { ackChannel.Writer.TryWrite(notification); return default; });
         await using var updatedReg = client.RegisterNotificationHandler(NotificationMethods.ResourceUpdatedNotification,
-            (notification, _) => { streamChannel.Writer.TryWrite(notification); return default; });
+            (notification, _) => { updatedChannel.Writer.TryWrite(notification); return default; });
 
         using var listenCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var listenTask = SendSubscriptionsListenAsync(
             client, new SubscriptionsListenNotifications { ResourcesListChanged = true }, listenCts.Token);
 
-        // The acknowledgement is always first and carries the subscription id.
-        var ack = await streamChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(NotificationMethods.SubscriptionsAcknowledgedNotification, ack.Method);
+        // The acknowledgement carries the subscription id.
+        var ack = await ackChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
         var subscriptionId = GetSubscriptionId(ack);
         Assert.NotNull(subscriptionId);
 
-        // The custom application notification arrives next, tagged with the same subscription id.
-        var updated = await streamChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(NotificationMethods.ResourceUpdatedNotification, updated.Method);
+        // The custom application notification is tagged with the same subscription id.
+        var updated = await updatedChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.Equal(subscriptionId, GetSubscriptionId(updated));
         Assert.Equal(CustomResourceUri, (updated.Params as JsonObject)?["uri"]?.GetValue<string>());
 
@@ -152,14 +132,11 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
 
         var ackChannel = Channel.CreateUnbounded<JsonRpcNotification>();
         var toolsChannel = Channel.CreateUnbounded<JsonRpcNotification>();
-        var updatedChannel = Channel.CreateUnbounded<JsonRpcNotification>();
 
         await using var ackReg = client.RegisterNotificationHandler(NotificationMethods.SubscriptionsAcknowledgedNotification,
             (notification, _) => { ackChannel.Writer.TryWrite(notification); return default; });
         await using var toolsReg = client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification,
             (notification, _) => { toolsChannel.Writer.TryWrite(notification); return default; });
-        await using var updatedReg = client.RegisterNotificationHandler(NotificationMethods.ResourceUpdatedNotification,
-            (notification, _) => { updatedChannel.Writer.TryWrite(notification); return default; });
 
         using var listenCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         // Request tools/list_changed. The built-in handler would fan these out; the custom handler replaces it
@@ -173,25 +150,17 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
 
         // Mutate the tool collection. With the built-in handler this would deliver a tagged tools/list_changed;
         // under the custom replacement handler it must not, because _activeSubscriptions is never populated.
+        // The list-changed fan-out iterates that (empty) set and completes synchronously during Add, so it
+        // buffers nothing to send. The ListToolsAsync round-trip then flushes the client read pipeline.
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         serverOptions.ToolCollection!.Add(McpServerTool.Create([McpServerTool(Name = "AddedTool")] () => "42"));
 
-        // Ask the still-open handler to emit an ordered marker AFTER the mutation and wait for it to arrive.
-        // Notifications are delivered in order on the subscription stream, so once the marker is observed any
-        // tools/list_changed the SDK would have (erroneously) fanned out for the mutation must already have
-        // been delivered too. Observing the marker with an empty tools channel therefore proves suppression
-        // without depending on timing or on fire-and-forget fan-out completing synchronously.
-        _emitSentinelRequested.TrySetResult(true);
-        JsonRpcNotification marker;
-        do
-        {
-            marker = await updatedChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
-        }
-        while ((marker.Params as JsonObject)?["uri"]?.GetValue<string>() != SentinelResourceUri);
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         await CancelSubscriptionAsync(listenCts, listenTask);
 
-        // Completed-and-empty proves nothing was ever delivered, not merely "nothing buffered right now".
+        // Completed-and-empty proves nothing was ever delivered, not merely "nothing buffered right now":
+        // WaitToReadAsync returns false only when the channel is both empty and completed.
         toolsChannel.Writer.Complete();
         Assert.False(await toolsChannel.Reader.WaitToReadAsync(TestContext.Current.CancellationToken));
     }
