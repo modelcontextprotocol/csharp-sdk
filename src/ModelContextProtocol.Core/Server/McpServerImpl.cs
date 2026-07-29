@@ -722,9 +722,53 @@ internal sealed partial class McpServerImpl : McpServer
     /// Subscription-bound notifications carry the listen request's id in their
     /// <c>_meta/io.modelcontextprotocol/subscriptionId</c> field per SEP-2575 so clients can demultiplex.
     /// </para>
+    /// <para>
+    /// A server author may supply a custom <see cref="McpServerHandlers.SubscriptionsListenHandler"/> to take
+    /// over the stream entirely; see the design notes at the top of this method for the behavior.
+    /// </para>
     /// </remarks>
     private void ConfigureSubscriptions(McpServerOptions options)
     {
+        // Design decision 1 of issue #1662 (replacement vs. additive handler): a custom
+        // SubscriptionsListenHandler is a FULL REPLACEMENT for the built-in subscriptions/listen handler, not
+        // an additive/composed one. When one is set, that handler exclusively owns the stream: the SDK does
+        // not track the subscription in _activeSubscriptions, does not send the acknowledgement, and performs
+        // no automatic */list_changed fan-out for the request. This keeps the SEP-2575 contract trivial to
+        // honor (exactly one acknowledgement, no duplicate delivery) and mirrors the existing low-level
+        // replacement handlers such as CallToolWithAlternateHandler. An additive design was rejected because
+        // two writers on one stream create ambiguity over who sends the single acknowledgement, force the two
+        // lifetimes to be coordinated, and risk double-tagging the subscription id.
+        if (options.Handlers.SubscriptionsListenHandler is { } subscriptionsListenHandler)
+        {
+            // Route the custom handler through SetHandler so it receives the same DestinationBoundMcpServer as
+            // every other typed handler. That server sends notifications over this request's own response
+            // stream (its RelatedTransport), which is what lets the handler stream even under stateless
+            // Streamable HTTP, where the held-open POST response is the only solicited server-to-client
+            // channel (the core scenario of issue #1662). Going through SetHandler also applies the standard
+            // 2026-07-28 resultType stamping and provides the request-scoped service provider via
+            // request.Services.
+            SetHandler(RequestMethods.SubscriptionsListen,
+                (request, cancellationToken) =>
+                {
+                    // Protocol-version gating stays in the SDK rather than the custom handler, so a custom
+                    // handler can never be reached on a revision that predates SEP-2575. subscriptions/listen
+                    // is a 2026-07-28 feature; on older negotiated revisions it is rejected as an unknown
+                    // method, exactly as the built-in handler below does.
+                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
+                    {
+                        throw new McpProtocolException(
+                            $"The method '{RequestMethods.SubscriptionsListen}' requires a newer protocol revision that supports per-request subscriptions; " +
+                            $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
+                            McpErrorCode.MethodNotFound);
+                    }
+
+                    return subscriptionsListenHandler(request, cancellationToken);
+                },
+                McpJsonUtilities.JsonContext.Default.SubscriptionsListenRequestParams,
+                McpJsonUtilities.JsonContext.Default.EmptyResult);
+            return;
+        }
+
         _requestHandlers.Set(RequestMethods.SubscriptionsListen,
             async (request, jsonRpcRequest, cancellationToken) =>
             {
