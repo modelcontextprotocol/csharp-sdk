@@ -23,7 +23,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     private Task? _receiveTask;
     private readonly ILogger _logger;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
-    private bool _sseAdopted;
+    private volatile bool _sseAdopted;
 
     /// <summary>
     /// SSE transport for a single session. Unlike stdio it does not launch a process, but connects to an existing server.
