@@ -114,7 +114,6 @@ internal static class HttpRequestExceptionExtensions
         return exception.Data[StatusCodeDataKey] switch
         {
             HttpStatusCode storedStatusCode => storedStatusCode,
-            int storedStatusCodeValue => (HttpStatusCode)storedStatusCodeValue,
             _ => null,
         };
     }
