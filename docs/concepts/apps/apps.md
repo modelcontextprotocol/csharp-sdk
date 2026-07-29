@@ -158,6 +158,58 @@ public static string GetWeather(McpServer server, string location)
 }
 ```
 
+## App-rendered elicitations
+
+MCP Apps can render standard form-mode `elicitation/create` requests. This uses
+the existing `io.modelcontextprotocol/ui` extension; it does not define another
+extension or a separate result type.
+
+Call `WithMcpApps()` to advertise
+`extensions["io.modelcontextprotocol/ui"].elicitation` from the server. A host
+advertises the matching setting, the MCP Apps HTML MIME type, and the core form
+elicitation capability:
+
+```csharp
+var clientCapabilities = new ClientCapabilities();
+McpAppElicitation.AddClientCapabilities(clientCapabilities);
+```
+
+On the server, associate a form elicitation with an absolute `ui://` resource
+only when the requesting client advertised all three client-side settings:
+
+```csharp
+var elicitation = new ElicitRequestParams
+{
+    Message = "Choose a delivery window",
+    RequestedSchema = new ElicitRequestParams.RequestSchema
+    {
+        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+        {
+            ["window"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+            {
+                OneOf =
+                [
+                    new() { Const = "morning", Title = "Morning" },
+                    new() { Const = "afternoon", Title = "Afternoon" },
+                ],
+            },
+        },
+        Required = ["window"],
+    },
+};
+
+McpAppElicitation.SetAppUiIfSupported(
+    elicitation,
+    requestContext,
+    "ui://delivery/choose-window.html");
+```
+
+This adds `_meta.ui.resourceUri` without changing the core elicitation request.
+Unsupported clients receive the same request without UI metadata and can render
+their native form. The host forwards the request to the selected app and
+returns the app's standard `ElicitResult`; validation and MRTR retries remain
+part of the core elicitation flow.
+
 ## Display modes
 
 The MCP Apps spec defines display modes (`inline`, `fullscreen`, `pip`) that control how the host renders the UI. Display mode is negotiated between the client and server during capability exchange and is not set per-tool — it depends on the host implementation.
