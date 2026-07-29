@@ -111,6 +111,38 @@ public static class McpApps
             return JsonSerializer.Deserialize(element, McpAppsJsonContext.Default.McpUiClientCapabilities);
         }
 
+        if (value is JsonObject jsonObject)
+        {
+            return jsonObject.Deserialize(McpAppsJsonContext.Default.McpUiClientCapabilities);
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the MCP Apps capability advertised by a server.</summary>
+    public static McpUiServerCapabilities? GetUiServerCapability(ServerCapabilities? capabilities)
+    {
+        if (capabilities?.Extensions is not { } extensions ||
+            !extensions.TryGetValue(ExtensionId, out var value))
+        {
+            return null;
+        }
+
+        if (value is McpUiServerCapabilities uiCapabilities)
+        {
+            return uiCapabilities;
+        }
+
+        if (value is JsonObject jsonObject)
+        {
+            return jsonObject.Deserialize(McpAppsJsonContext.Default.McpUiServerCapabilities);
+        }
+
+        if (value is JsonElement { ValueKind: JsonValueKind.Object } element)
+        {
+            return JsonSerializer.Deserialize(element, McpAppsJsonContext.Default.McpUiServerCapabilities);
+        }
+
         return null;
     }
 

@@ -466,6 +466,9 @@ public class McpAppsTests
         Assert.NotNull(options.Capabilities);
         Assert.NotNull(options.Capabilities.Extensions);
         Assert.True(options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId));
+        var uiCapabilities = Assert.IsType<JsonObject>(
+            options.Capabilities.Extensions[McpApps.ExtensionId]);
+        Assert.NotNull(uiCapabilities["elicitation"]);
     }
 
     #endregion
