@@ -146,14 +146,10 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             // keep HttpRequestException as the surfaced type so existing callers can still catch it and read StatusCode.
             await sseTransport.DisposeAsync().ConfigureAwait(false);
             LogSseFallbackFailedAfterStreamableHttp(_name, sseError);
-#if NET
-            throw new HttpRequestException(streamableHttpError.Message, sseError, streamableHttpError.StatusCode);
-#else
-            // net472 has no HttpRequestException overload that carries a status code, so this target
-            // preserves the status text in the message but not a programmatic StatusCode. Preserving the
-            // status code is intentionally net5+ only rather than an oversight.
-            throw new HttpRequestException(streamableHttpError.Message, sseError);
-#endif
+            throw HttpRequestExceptionExtensions.Create(
+                streamableHttpError.Message,
+                sseError,
+                streamableHttpError.GetStatusCode());
         }
         catch
         {
