@@ -163,6 +163,60 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         Assert.NotNull(session);
     }
 
+    [Fact]
+    public async Task AutoDetectMode_WhenProvisionalSseFails_LeavesSharedMessageChannelOpen()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect shared channel test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        var streamableHttpPostCount = 0;
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.MethodNotAllowed));
+            }
+
+            if (request.Method == HttpMethod.Post && ++streamableHttpPostCount == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("Invalid session ID"),
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(
+                new JsonRpcRequest { Method = RequestMethods.ServerDiscover, Id = new RequestId(1) },
+                TestContext.Current.CancellationToken));
+
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(2) },
+            TestContext.Current.CancellationToken);
+
+        var response = await session.MessageReader.ReadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(new RequestId(2), Assert.IsType<JsonRpcResponse>(response).Id);
+    }
+
     // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1526
     // When Streamable HTTP returns 415 (e.g. wrong Content-Type) and the SSE fallback also fails
     // (e.g. a Streamable-HTTP-only server returns 405 to the GET), the surfaced exception must
