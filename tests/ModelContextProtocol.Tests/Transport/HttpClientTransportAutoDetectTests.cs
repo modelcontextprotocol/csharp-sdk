@@ -101,6 +101,10 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         Assert.Contains("403", ex.Message);
         Assert.IsType<HttpRequestException>(ex.InnerException);
         Assert.Contains("405", ex.InnerException.Message);
+        Assert.Equal(HttpStatusCode.Forbidden, ex.Data["ModelContextProtocol.HttpStatusCode"]);
+#if NET
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+#endif
     }
 
     [Fact]
@@ -300,6 +304,7 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         var httpEx = Assert.IsType<HttpRequestException>(ex);
         Assert.Contains("415", httpEx.Message);
         Assert.Contains(streamableHttpBody, httpEx.Message);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, httpEx.Data["ModelContextProtocol.HttpStatusCode"]);
 #if NET
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, httpEx.StatusCode);
 #endif
