@@ -69,7 +69,12 @@ public static class McpApps
     /// <summary>
     /// Gets the MCP Apps client capability, if advertised by the connected client.
     /// </summary>
-    /// <param name="capabilities">The client capabilities received during the MCP initialize handshake.</param>
+    /// <param name="capabilities">
+    /// The effective client capabilities for the request. In protocol revision
+    /// <c>2026-07-28</c>, use the request-scoped capabilities from
+    /// <see cref="JsonRpcMessageContext.ClientCapabilities"/>; on older revisions,
+    /// use the capabilities negotiated during initialization.
+    /// </param>
     /// <returns>
     /// A <see cref="McpUiClientCapabilities"/> instance if the client advertises support for the MCP Apps extension;
     /// otherwise, <see langword="null"/>.

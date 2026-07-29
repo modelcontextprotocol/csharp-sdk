@@ -138,7 +138,9 @@ public static class McpAppElicitation
 
     /// <summary>
     /// Associates a form elicitation with an MCP App using the requesting
-    /// client's request-scoped capabilities when available.
+    /// client's request-scoped capabilities when available. Protocol revision
+    /// <c>2026-07-28</c> supplies these capabilities on every request; older
+    /// revisions fall back to the initialized session capabilities.
     /// </summary>
     public static ElicitRequestParams SetAppUiIfSupported<TParams>(
         ElicitRequestParams request,

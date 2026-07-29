@@ -160,7 +160,11 @@ public static string GetWeather(McpServer server, string location)
 
 ## App-rendered elicitations
 
-MCP Apps can render standard form-mode `elicitation/create` requests. This uses
+MCP Apps can render standard form-mode `elicitation/create` requests. In
+protocol revision `2026-07-28`, these requests are delivered through the
+multi-round-trip request (MRTR) flow: the server returns an
+`InputRequiredResult`, the client resolves its `inputRequests`, and then retries
+the original operation with `inputResponses` and any `requestState`. This uses
 the existing `io.modelcontextprotocol/ui` extension; it does not define another
 extension or a separate result type.
 
@@ -175,7 +179,10 @@ McpAppElicitation.AddClientCapabilities(clientCapabilities);
 ```
 
 On the server, associate a form elicitation with an absolute `ui://` resource
-only when the requesting client advertised all three client-side settings:
+only when the requesting client advertised all three client-side settings. The
+`RequestContext` overload uses the request-scoped capabilities required by
+`2026-07-28` and falls back to initialized session capabilities on older
+protocol revisions:
 
 ```csharp
 var elicitation = new ElicitRequestParams
@@ -202,13 +209,21 @@ McpAppElicitation.SetAppUiIfSupported(
     elicitation,
     requestContext,
     "ui://delivery/choose-window.html");
+
+throw new InputRequiredException(
+    inputRequests: new Dictionary<string, InputRequest>
+    {
+        ["delivery-window"] = InputRequest.ForElicitation(elicitation),
+    },
+    requestState: "schedule-delivery:v1");
 ```
 
 This adds `_meta.ui.resourceUri` without changing the core elicitation request.
 Unsupported clients receive the same request without UI metadata and can render
-their native form. The host forwards the request to the selected app and
-returns the app's standard `ElicitResult`; validation and MRTR retries remain
-part of the core elicitation flow.
+their native form. The host forwards the embedded request to the selected app,
+validates the app's standard `ElicitResult`, places it under `delivery-window`
+in `inputResponses`, and retries the original operation with
+`schedule-delivery:v1` as `requestState`.
 
 ## Display modes
 
