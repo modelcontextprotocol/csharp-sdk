@@ -1,4 +1,6 @@
 <Project>
+  <Import Project="..\Directory.Build.targets" />
+
   <Target Name="PinMcpProjectReferencePackageVersions"
           AfterTargets="_GetProjectReferenceVersions"
           Condition="'$(MSBuildProjectName)' == 'ModelContextProtocol'
