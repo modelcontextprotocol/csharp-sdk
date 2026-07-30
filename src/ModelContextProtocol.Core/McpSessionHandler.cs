@@ -104,6 +104,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     private CancellationTokenSource? _messageProcessingCts;
     private Task? _messageProcessingTask;
 
+    internal sealed class McpResponseTimeoutException(string message, Exception innerException) : TimeoutException(message, innerException)
+    {
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSessionHandler"/> class.
     /// </summary>
@@ -700,7 +704,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the server's response.</returns>
-    public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken) =>
+        SendRequestAsync(request, cancellationToken, Timeout.InfiniteTimeSpan);
+
+    internal async Task<JsonRpcResponse> SendRequestAsync(
+        JsonRpcRequest request,
+        CancellationToken cancellationToken,
+        TimeSpan responseTimeout)
     {
         Throw.IfNull(request);
 
@@ -752,15 +762,32 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
             await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
 
+            // Start the response timeout after sending completes so transport setup and authentication remain
+            // governed by the caller's cancellation token rather than consuming the response budget.
+            using var responseTimeoutCts = responseTimeout == Timeout.InfiniteTimeSpan
+                ? null
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            responseTimeoutCts?.CancelAfter(responseTimeout);
+            var responseCancellationToken = responseTimeoutCts?.Token ?? cancellationToken;
+
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
             // Per spec, "The initialize request MUST NOT be cancelled by clients", so skip registration for initialize.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             JsonRpcMessage? response;
-            using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(cancellationToken, request) : default)
+            using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(responseCancellationToken, request) : default)
             {
-                response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    response = await tcs.Task.WaitAsync(responseCancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (
+                    responseTimeoutCts?.IsCancellationRequested is true &&
+                    !cancellationToken.IsCancellationRequested)
+                {
+                    throw new McpResponseTimeoutException($"Timed out waiting for a response to method '{request.Method}'.", ex);
+                }
             }
 
             if (response is JsonRpcError error)
