@@ -42,7 +42,7 @@ var options = new McpClientOptions
 await using var client = await McpClient.CreateAsync(transport, options);
 ```
 
-Handlers for each capability (roots, sampling, elicitation) are covered in their respective documentation pages.
+Handlers for each capability (roots, sampling, and elicitation) are covered in their respective documentation pages.
 
 ### Server capabilities
 
@@ -63,7 +63,7 @@ Server capabilities are automatically inferred from the configured features. For
 
 Before using an optional feature, check whether the other side declared the corresponding capability.
 
-#### Checking server capabilities from the client
+#### Check server capabilities from the client
 
 ```csharp
 await using var client = await McpClient.CreateAsync(transport);
@@ -83,11 +83,11 @@ if (client.ServerCapabilities.Resources is { Subscribe: true })
 // Check if the server supports prompts with list-changed notifications
 if (client.ServerCapabilities.Prompts is { ListChanged: true })
 {
-    mcpClient.RegisterNotificationHandler(
+    client.RegisterNotificationHandler(
         NotificationMethods.PromptListChangedNotification,
         async (notification, ct) =>
         {
-            var prompts = await mcpClient.ListPromptsAsync(cancellationToken: ct);
+            var prompts = await client.ListPromptsAsync(cancellationToken: ct);
         });
 }
 

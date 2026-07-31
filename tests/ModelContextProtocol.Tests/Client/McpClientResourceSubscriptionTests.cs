@@ -19,6 +19,12 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
         mcpServerBuilder.WithResources<SubscribableResources>();
     }
 
+    private Task<McpClient> CreateLegacyMcpClientForServer() =>
+        CreateMcpClientForServer(new()
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
     [McpServerResourceType]
     private sealed class SubscribableResources
     {
@@ -30,7 +36,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithHandler_ReceivesNotifications()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string resourceUri = "test://resource/1";
         var notificationReceived = new TaskCompletionSource<ResourceUpdatedNotificationParams>();
 
@@ -61,7 +67,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithHandler_FiltersNotificationsByUri()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string subscribedUri = "test://resource/1";
         const string otherUri = "test://resource/2";
         var notificationCount = 0;
@@ -107,7 +113,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithHandler_DisposalUnsubscribes()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string resourceUri = "test://resource/1";
         var notificationCount = 0;
 
@@ -148,7 +154,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithHandler_UriOverload_ReceivesNotifications()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         var resourceUri = new Uri("test://resource/1");
         var notificationReceived = new TaskCompletionSource<ResourceUpdatedNotificationParams>();
 
@@ -179,7 +185,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithNullHandler_ThrowsArgumentNullException()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
@@ -193,7 +199,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithNullUri_ThrowsArgumentNullException()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
@@ -207,7 +213,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_WithEmptyUri_ThrowsArgumentException()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -221,7 +227,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_MultipleSubscriptions_BothReceiveNotifications()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string uri1 = "test://resource/1";
         const string uri2 = "test://resource/2";
         var notification1Received = new TaskCompletionSource<bool>();
@@ -278,7 +284,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_DisposalIsIdempotent()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string resourceUri = "test://resource/1";
 
         var subscription = await client.SubscribeToResourceAsync(
@@ -299,7 +305,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
     public async Task SubscribeToResourceAsync_MultipleHandlersSameUri_BothReceiveNotifications()
     {
         // Arrange
-        await using McpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateLegacyMcpClientForServer();
         const string resourceUri = "test://resource/1";
         var handler1Called = new TaskCompletionSource<bool>();
         var handler2Called = new TaskCompletionSource<bool>();

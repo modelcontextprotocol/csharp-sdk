@@ -152,8 +152,12 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         {
             Assert.Skip("mono runtime does not handle arguments ending with backslash correctly.");
         }
-        
+
+        const string OutputPrefix = "CLI_ARG:";
+        var capturedArgument = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         string cliArgument = $"--cli-arg={cliArgumentValue}";
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
 
         StdioClientTransportOptions options = new()
         {
@@ -161,30 +165,39 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
                 (true, _) => "mono",
-                (_, true) => "TestServer.exe",
+                (_, true) => testServerExecutable,
                 _ => "dotnet",
             },
             Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
-                (true, _) => ["TestServer.exe", cliArgument],
-                (_, true) => [cliArgument],
-                _ => ["TestServer.dll", cliArgument],
+                (true, _) => [testServerExecutable, "--echo-cli-arg-and-exit", cliArgument],
+                (_, true) => ["--echo-cli-arg-and-exit", cliArgument],
+                _ => [testServerDll, "--echo-cli-arg-and-exit", cliArgument],
+            },
+            StandardErrorLines = line =>
+            {
+                if (line.StartsWith(OutputPrefix, StringComparison.Ordinal))
+                {
+                    capturedArgument.TrySetResult(line[OutputPrefix.Length..]);
+                }
             },
         };
 
         var transport = new StdioClientTransport(options, LoggerFactory);
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
-        // Act: Create client (handshake) and list tools to ensure full round trip works with the argument present.
-        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        string serializedArgument = await capturedArgument.Task.WaitAsync(
+            TestConstants.DefaultTimeout,
+            TestContext.Current.CancellationToken);
+        JsonElement parsedArgument = JsonElement.Parse(serializedArgument);
+        Assert.Equal(cliArgumentValue ?? "", parsedArgument.GetString());
 
-        // Assert
-        Assert.NotNull(tools);
-        Assert.NotEmpty(tools);
-
-        var result = await client.CallToolAsync("echoCliArg", cancellationToken: TestContext.Current.CancellationToken);
-        var content = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
-        Assert.Equal(cliArgumentValue ?? "", content.Text);
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion.WaitAsync(
+                TestConstants.DefaultTimeout,
+                TestContext.Current.CancellationToken));
+        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        Assert.Equal(0, completionDetails.ExitCode);
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]

@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -179,10 +180,13 @@ public class McpClientCreationTests(ITestOutputHelper testOutputHelper) : Logged
                         {
                             Capabilities = new ServerCapabilities(),
                             SupportedVersions = [McpProtocolVersions.July2026ProtocolVersion],
-                            ServerInfo = new Implementation
+                            Meta = new JsonObject
                             {
-                                Name = "NopTransport",
-                                Version = "1.0.0"
+                                [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation
+                                {
+                                    Name = "NopTransport",
+                                    Version = "1.0.0"
+                                }, McpJsonUtilities.DefaultOptions),
                             },
                         }, McpJsonUtilities.DefaultOptions),
                     });

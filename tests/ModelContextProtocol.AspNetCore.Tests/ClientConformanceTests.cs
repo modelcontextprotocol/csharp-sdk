@@ -46,13 +46,29 @@ public class ClientConformanceTests
     [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
 
+    // Offline access scope negotiation.
+    [InlineData("auth/offline-access-scope")]
+    [InlineData("auth/offline-access-not-supported")]
+
+    // RFC 9207 authorization server issuer validation.
+    [InlineData("auth/iss-supported")]
+    [InlineData("auth/iss-not-advertised")]
+    [InlineData("auth/iss-supported-missing")]
+    [InlineData("auth/iss-wrong-issuer")]
+    [InlineData("auth/iss-unexpected")]
+    [InlineData("auth/iss-normalized")]
+    [InlineData("auth/metadata-issuer-mismatch")]
+
     // Backcompat: 2025-03-26 OAuth flows (no per-request metadata, root-location metadata).
     [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
     [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
 
-    // Extensions: Require ES256 JWT signing (private_key_jwt) and client_credentials grant support.
-    // [InlineData("auth/client-credentials-jwt")]
-    // [InlineData("auth/client-credentials-basic")]
+    [InlineData("auth/authorization-server-migration")]
+    [InlineData("auth/client-credentials-jwt")]
+    [InlineData("auth/client-credentials-basic")]
+    [InlineData("auth/enterprise-managed-authorization")]
+    [InlineData("sep-2322-client-request-state")]
+    [InlineData("json-schema-ref-no-deref")]
 
     public async Task RunConformanceTest(string scenario)
     {

@@ -11,8 +11,11 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 [sampling]: https://modelcontextprotocol.io/specification/2025-11-25/client/sampling
 
+> [!IMPORTANT]
+> Sampling is **deprecated** as of MCP specification revision `2026-07-28` ([SEP-2577](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577), [MCP9005](xref:list-of-diagnostics#obsolete-apis)) and may be removed in a future version.
+
 > [!NOTE]
-> Sampling is a **server-to-client request** — the server sends a request back to the client over an open connection. This requires [stateful mode or stdio](xref:stateless). Sampling is not available in [stateless mode](xref:stateless#stateless-mode-recommended) because stateless servers cannot send requests to clients.
+> Sampling is a **server-to-client request** — the server sends a request back to the client over an open connection. This requires [stateful mode or stdio](xref:stateless). Sampling is not available in [stateless mode](xref:stateless#stateless-mode-recommended) because stateless servers cannot send requests to clients. For a stateless-compatible alternative, throw `InputRequiredException` from your handler through MRTR — see [Multi round-trip requests (MRTR)](#multi-round-trip-requests-mrtr).
 
 ### How sampling works
 
@@ -23,7 +26,7 @@ MCP [sampling] allows servers to request LLM completions from the client. This e
 
 ### Server: requesting a completion
 
-Inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method to get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client:
+To get an <xref:Microsoft.Extensions.AI.IChatClient> that sends requests through the connected client, inject <xref:ModelContextProtocol.Server.McpServer> into a tool method and use the <xref:ModelContextProtocol.Server.McpServer.AsSamplingChatClient*> extension method:
 
 ```csharp
 [McpServerTool(Name = "SummarizeContent"), Description("Summarizes the given text")]
@@ -121,7 +124,7 @@ McpClientOptions options = new()
 
 Sampling requires the client to advertise the `sampling` capability. This is handled automatically — when a <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> is set, the client includes the sampling capability during initialization. The server can check whether the client supports sampling before calling <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>; if sampling is not supported, the method throws <xref:System.InvalidOperationException>.
 
-### Multi Round-Trip Requests (MRTR)
+### Multi round-trip requests (MRTR)
 
 [MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `sampling/createMessage` request method is removed; the recommended way to ask the client to sample from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
@@ -146,7 +149,7 @@ public static string SampleWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+        return "This tool requires MRTR support (2026-07-28, or a stateful session using protocol revision 2025-11-25).";
     }
 
     // First call — request LLM completion from the client
@@ -171,4 +174,4 @@ public static string SampleWithMrtr(
 ```
 
 > [!TIP]
-> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.
+> For the full protocol details, including load shedding, multiple round trips, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).

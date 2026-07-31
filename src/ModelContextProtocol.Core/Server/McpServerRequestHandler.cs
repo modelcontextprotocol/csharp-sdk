@@ -16,13 +16,24 @@ namespace ModelContextProtocol.Server;
 /// <see cref="JsonNode"/> response, giving extensions full control over request/response serialization.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+[Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
 public sealed class McpServerRequestHandler
 {
     /// <summary>
     /// Gets the JSON-RPC method name this handler responds to.
     /// </summary>
     public required string Method { get; init; }
+
+    /// <summary>
+    /// Gets the name of the top-level request parameter whose value is mirrored in the
+    /// <c>Mcp-Name</c> HTTP routing header.
+    /// </summary>
+    /// <remarks>
+    /// When set, Streamable HTTP servers require the request to include an <c>Mcp-Name</c>
+    /// header whose decoded value matches the string value of this parameter.
+    /// </remarks>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public string? RoutingNameParameter { get; init; }
 
     /// <summary>
     /// Gets the handler function that processes incoming requests for the specified method.

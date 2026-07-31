@@ -45,7 +45,7 @@ builder.Services.AddMcpServer()
 
 ### Content types
 
-Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return `DataContent` from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
+Tools can return various content types. The simplest is a `string`, which is automatically wrapped in a <xref:ModelContextProtocol.Protocol.TextContentBlock>. For richer content, tools can return one or more <xref:ModelContextProtocol.Protocol.ContentBlock> instances. Tools can also return [`DataContent`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.ai.datacontent) from Microsoft.Extensions.AI, which is automatically mapped to the appropriate MCP content block: image MIME types become <xref:ModelContextProtocol.Protocol.ImageContentBlock>, audio MIME types become <xref:ModelContextProtocol.Protocol.AudioContentBlock>, and all other MIME types become <xref:ModelContextProtocol.Protocol.EmbeddedResourceBlock> with binary resource contents.
 
 #### Text content
 
@@ -139,6 +139,16 @@ public static IEnumerable<ContentBlock> DescribeImage()
 }
 ```
 
+#### Structured content
+
+Set `UseStructuredContent = true` on <xref:ModelContextProtocol.Server.McpServerToolAttribute> or
+<xref:ModelContextProtocol.Server.McpServerToolCreateOptions> to advertise an output schema and
+serialize the return value into <xref:ModelContextProtocol.Protocol.CallToolResult.StructuredContent>.
+The output schema may be any JSON Schema 2020-12 document. Non-object return values are represented
+directly, so a tool returning `72` produces `structuredContent: 72`, not
+`structuredContent: { "result": 72 }`. Clients should read the value according to the advertised
+output schema rather than assuming a `result` wrapper.
+
 #### Content annotations
 
 Any content block can include <xref:ModelContextProtocol.Protocol.Annotations> to provide hints about the intended audience and priority:
@@ -225,7 +235,7 @@ public static double Divide(double a, double b)
 
 #### Protocol errors
 
-Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (e.g., invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
+Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (for example, invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
 
 ```csharp
 [McpServerTool, Description("Processes the input")]
@@ -296,13 +306,13 @@ Tool parameters are described using [JSON Schema 2020-12]. JSON schemas are auto
 
 [JSON Schema 2020-12]: https://json-schema.org/specification
 
-| .NET Type | JSON Schema Type |
-|-----------|-----------------|
-| `string` | `string` |
-| `int`, `long` | `integer` |
-| `float`, `double` | `number` |
-| `bool` | `boolean` |
-| Complex types | `object` with `properties` |
+| .NET type         | JSON schema type           |
+|-------------------|----------------------------|
+| `string`          | `string`                   |
+| `int`, `long`     | `integer`                  |
+| `float`, `double` | `number`                   |
+| `bool`            | `boolean`                  |
+| Complex types     | `object` with `properties` |
 
 Use `[Description]` attributes on parameters to populate the `description` field in the generated schema. This helps LLMs understand what each parameter expects.
 
@@ -339,7 +349,7 @@ Rules and constraints:
 - The header name must contain only visible ASCII characters (0x21–0x7E) excluding colon (`:`).
 - Values containing non-ASCII characters, control characters, or leading/trailing whitespace are Base64-encoded using the `=?base64?{value}?=` wrapper.
 - Header names must be case-insensitively unique within the tool's input schema.
-- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (currently `2026-07-28` and later).
+- Header validation is enforced only for protocol versions that support the HTTP Standardization feature (`2026-07-28` and later).
 
 ### Pre-loading tool definitions on the client
 

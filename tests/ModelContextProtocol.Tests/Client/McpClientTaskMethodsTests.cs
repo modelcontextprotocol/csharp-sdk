@@ -154,9 +154,10 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         {
             await client.CancelTaskAsync(taskId, ct);
 
-            // If cancel succeeded, verify the task is cancelled
+            // Cancellation is eventually consistent. The task may complete before the cancellation
+            // request wins the race, but the terminal-task cancellation acknowledgement is idempotent.
             var taskResult = await client.GetTaskAsync(taskId, ct);
-            Assert.IsType<CancelledTaskResult>(taskResult);
+            Assert.True(taskResult is CancelledTaskResult or CompletedTaskResult);
         }
         catch (McpProtocolException)
         {

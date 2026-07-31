@@ -7,10 +7,6 @@ uid: mrtr
 
 # Multi Round-Trip Requests (MRTR)
 
-<!-- mlc-disable-next-line -->
-> [!WARNING]
-> MRTR is part of the **`2026-07-28`** revision of the MCP specification ([SEP-2322](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2322)). The wire format and API surface may change before the revision is ratified. See the [Experimental APIs](../../experimental.md) documentation for details on working with experimental APIs.
-
 Multi Round-Trip Requests (MRTR) let a server tool request input from the client — such as [elicitation](xref:elicitation), [sampling](xref:sampling), or [roots](xref:roots) — as part of a single tool call, without requiring a separate server-to-client JSON-RPC request for each interaction. Instead of returning a final result, the server returns an **incomplete result** containing one or more input requests. The client fulfills those requests and retries the original tool call with the responses attached.
 
 ## Overview
@@ -27,7 +23,7 @@ MRTR is useful when:
 
 1. The client calls a tool on the server via `tools/call`.
 2. The server tool determines it needs client input and returns an `InputRequiredResult` containing `inputRequests` and/or `requestState`.
-3. The client resolves each input request (for example by prompting the user for elicitation, calling an LLM for sampling, or listing its roots).
+3. The client resolves each input request (for example, by prompting the user for elicitation, calling an LLM for sampling, or listing its roots).
 4. The client retries the original `tools/call` with `inputResponses` (keyed to the input requests) and `requestState` echoed back.
 5. The server processes the responses and either returns a final result or another `InputRequiredResult` for additional rounds.
 
@@ -47,9 +43,9 @@ var clientOptions = new McpClientOptions
 };
 ```
 
-Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (where Streamable HTTP no longer supports sessions) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — that's how stdio servers keep working on `2026-07-28` today — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on any stateless session, current or `2026-07-28`.
+Under `2026-07-28`, MRTR is the recommended way to obtain client input from a server handler. The spec removes the legacy server-to-client `elicitation/create`, `sampling/createMessage`, and `roots/list` request methods, so any code that needs to work on a `2026-07-28` Streamable HTTP server (where Streamable HTTP no longer supports sessions) must use `InputRequiredException` rather than <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*>, <xref:ModelContextProtocol.Server.McpServer.SampleAsync*>, or <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. The legacy methods still work on stateful sessions — including `2026-07-28` stdio sessions — but they throw `InvalidOperationException("X is not supported in stateless mode.")` on every stateless session.
 
-Under the current protocol revision (`2025-06-18` and earlier), `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see [Compatibility](#compatibility) below.
+Under `2025-11-25` and earlier, `InputRequiredException` is still supported in stateful sessions via a backward-compatibility resolver — see the [Compatibility](#compatibility) section.
 
 ## Authoring an MRTR tool
 
@@ -57,10 +53,10 @@ A tool participates in MRTR by throwing <xref:ModelContextProtocol.Protocol.Inpu
 
 ### Checking MRTR support
 
-Tools should check <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> before throwing `InputRequiredException`. It returns `true` when either:
+Tools should check <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> before throwing `InputRequiredException`. The property returns `true` when either:
 
 - The negotiated protocol revision is `2026-07-28` (MRTR is native), or
-- The session is stateful under the current protocol (the SDK can resolve input requests via legacy JSON-RPC and retry the handler).
+- The session is stateful under protocol revision `2025-11-25` (the SDK can resolve input requests via legacy JSON-RPC and retry the handler).
 
 ```csharp
 [McpServerTool, Description("A tool that uses MRTR")]
@@ -71,7 +67,7 @@ public static string MyTool(
     if (!server.IsMrtrSupported)
     {
         return "This tool requires a client that negotiates 2026-07-28, "
-             + "or a stateful current-protocol session.";
+             + "or a stateful session using protocol revision 2025-11-25.";
     }
 
     // ... MRTR logic
@@ -136,9 +132,11 @@ When the client retries a tool call, the retry data is available on the request 
 
 Use <xref:ModelContextProtocol.Protocol.InputResponse.Deserialize*> with the `JsonTypeInfo<T>` matching the response type. The expected type follows from the matching <xref:ModelContextProtocol.Protocol.InputRequest.Method> in the original `inputRequests` map — there is no on-the-wire discriminator.
 
-- Elicitation — `response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)`
-- Sampling — `response.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)`
-- Roots list — `response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)`
+| Input       | Deserialize call                                                      |
+|-------------|-----------------------------------------------------------------------|
+| Elicitation | `response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)`        |
+| Sampling    | `response.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)` |
+| Roots list  | `response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)`     |
 
 ### Load shedding with requestState-only responses
 
@@ -249,30 +247,140 @@ public static string WizardTool(
 }
 ```
 
-### Providing custom error messages
+### Supporting down-level clients
 
-When MRTR is not supported, you can provide domain-specific guidance:
+When <xref:ModelContextProtocol.Server.McpServer.IsMrtrSupported> is `false`, the tool
+can't obtain client input through an input request — but that doesn't have to be a dead
+end. Handle down-level and stateless callers along a spectrum, from a helpful message to a
+fully functional non-interactive path.
+
+#### Return actionable guidance
+
+At minimum, tell the caller how to proceed instead of failing opaquely. Explain what kind
+of session would enable the interactive path, and — when the tool exposes one — how to
+invoke the non-interactive path described below:
 
 ```csharp
 if (!server.IsMrtrSupported)
 {
-    return "This tool requires interactive input. To use it:\n"
-         + "1. Connect with a client that negotiates MCP protocol revision 2026-07-28, or\n"
-         + "2. Use a stateful current-protocol session so the server can resolve the input requests for you.\n"
-         + "\nStateless current-protocol sessions cannot resolve MRTR input requests.";
+    return "This tool needs interactive input. Connect with a client that negotiates MCP "
+         + "protocol revision 2026-07-28, or use a stateful session using revision 2025-11-25 "
+         + "so the server can resolve the input requests for you.";
 }
 ```
+
+#### Offer a non-interactive fallback
+
+When a tool *can* complete without a prompt, expose an explicit argument that lets a
+down-level or stateless caller opt in directly. The tool stays usable everywhere: it
+elicits input when MRTR is available, and otherwise returns guidance the caller
+(or its model) can act on by resending with the argument set.
+
+The tool below is just an example that has a sensible non-interactive fallback. It also
+shows how to branch on the elicitation **action** rather than assuming acceptance: the
+deserialized <xref:ModelContextProtocol.Protocol.ElicitResult> carries an
+<xref:ModelContextProtocol.Protocol.ElicitResult.Action> of `"accept"`, `"decline"`, or
+`"cancel"`, surfaced through the
+<xref:ModelContextProtocol.Protocol.ElicitResult.IsAccepted> shorthand.
+
+```csharp
+[McpServerTool, Description("Closes a support ticket, recording why it was closed.")]
+public static string CloseSupportTicket(
+    McpServer server,
+    RequestContext<CallToolRequestParams> context,
+    [Description("The ID of the ticket to close")] long ticketId,
+    [Description("Why the ticket is being closed")] string? closeReason = null)
+{
+    // Handles four client scenarios:
+    //  1. Provided up-front: client sends `closeReason` in the initial call
+    //  2. MRTR round-trip request: client confirms via `InputResponses["closeReason"]`
+    //  3. MRTR initial request: server proposes a default reason and asks for confirmation
+    //     (with automatic SDK down-level bridge)
+    //  4. Session-less down-level: server returns a guidance message requesting the reason up-front
+
+    // The default reason proposed to the caller and used if none is provided.
+    string defaultCloseReason = "completed";
+
+    // (1) Provided up-front. Works on any client, including down-level session-less.
+    //     These requests are typically sent after (4) returns a guidance message.
+    var confirmedReason = closeReason;
+
+    // (2) MRTR round-trip request. Works with native MRTR support or the automatic down-level
+    //     SDK bridge after (3) throws an `InputRequiredException` to request a `closeReason`.
+    if (string.IsNullOrWhiteSpace(confirmedReason) &&
+        context.Params?.InputResponses?.TryGetValue("closeReason", out var reasonResponse) is true)
+    {
+        var reasonResult = reasonResponse.Deserialize(InputResponse.ElicitResultJsonTypeInfo);
+
+        // Branch on the elicitation action: `decline` or `cancel` leaves the ticket open.
+        if (reasonResult?.IsAccepted is not true) return "Ticket close cancelled";
+
+        // Accepted: use the reason the caller confirmed, falling back to the proposed default.
+        confirmedReason = reasonResult.Content?.TryGetValue("closeReason", out var reasonValue) is true
+            ? reasonValue.GetString()
+            : null;
+        confirmedReason = string.IsNullOrWhiteSpace(confirmedReason) ? defaultCloseReason : confirmedReason;
+    }
+
+    // (1) or (2) A reason is in hand; proceed with closing the ticket.
+    if (!string.IsNullOrWhiteSpace(confirmedReason))
+        return $"Closed ticket {ticketId}: {confirmedReason}";
+
+    // (3) MRTR initial request: propose "completed" as the default reason and ask the caller
+    //     to confirm (or adjust) it. This uses the 2026-07-28 MRTR input request, but the SDK
+    //     provides an automatic bridge to a legacy elicitation on a down-level, stateful
+    //     session. When the bridge can be provided, `server.IsMrtrSupported` is `true` and the
+    //     exception leads to a legacy elicitation response automatically.
+    if (server.IsMrtrSupported)
+    {
+        throw new InputRequiredException(
+            inputRequests: new Dictionary<string, InputRequest>
+            {
+                ["closeReason"] = InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = $"Close ticket '{ticketId}'? Accept the default reason or provide your own.",
+                    RequestedSchema = new()
+                    {
+                        Properties =
+                        {
+                            ["closeReason"] = new ElicitRequestParams.StringSchema
+                            {
+                                Title = "Close reason",
+                                Description = "The reason for closing the ticket",
+                                Default = defaultCloseReason,
+                            },
+                        },
+                    },
+                })
+            },
+            requestState: ticketId.ToString());   // opaque; echoed back to us on the retry
+    }
+
+    // (4) Down-level and stateless: we can't prompt an elicitation through an MRTR
+    //     round-trip request or an elicitation. Return a natural language response
+    //     with guidance for providing the reason up-front.
+    return "Closing a ticket requires a reason. Resend with `closeReason`.";
+}
+```
+
+> [!IMPORTANT]
+> Form-mode elicitations must set `RequestedSchema`. This tool proposes a default, so its
+> schema declares an optional `closeReason` string with a `Default` the caller can accept or
+> override. A confirmation prompt that collects no fields still needs a schema — set
+> `RequestedSchema = new()` (an empty object schema): it's accepted by native `2026-07-28` MRTR
+> and **required** by the down-level stateful elicitation bridge under `2025-11-25`, which
+> otherwise throws `ArgumentException: "Form mode elicitation requests require a requested schema."`.
 
 ## Compatibility
 
 The SDK supports `InputRequiredException` across two protocol revisions and two session modes:
 
-| Negotiated protocol | Session mode | Behavior |
-|---|---|---|
-| `2026-07-28` | Stateful | Native MRTR — `InputRequiredResult` is serialized directly to the wire. |
-| `2026-07-28` | Stateless | Native MRTR — `InputRequiredResult` is serialized directly to the wire. No server-side handler state needed. |
-| Current (`2025-06-18` and earlier) | Stateful | Backward-compatibility resolver — the SDK sends standard `elicitation/create` / `sampling/createMessage` / `roots/list` JSON-RPC requests to the client, collects the responses, and retries the handler with `inputResponses` populated. Up to 10 retry rounds. |
-| Current (`2025-06-18` and earlier) | Stateless | **Not supported** — `InputRequiredException` raises an `McpException`. The client doesn't speak MRTR, and the server can't resolve input requests via JSON-RPC without a persistent session. |
+| Negotiated protocol              | Session mode | Behavior                                                                                                                                            |
+|----------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `2026-07-28`                     | Stateful     | Native MRTR — `InputRequiredResult` is serialized directly to the wire.                                                                             |
+| `2026-07-28`                     | Stateless    | Native MRTR — `InputRequiredResult` is serialized directly to the wire. No server-side handler state needed.                                       |
+| `2025-11-25` and earlier         | Stateful     | Backward-compatibility resolver — the SDK sends standard `elicitation/create` / `sampling/createMessage` / `roots/list` JSON-RPC requests to the client, collects the responses, and retries the handler with `inputResponses` populated. Up to 10 retry rounds. |
+| `2025-11-25` and earlier         | Stateless    | **Not supported** — `InputRequiredException` raises an `McpException`. The client doesn't speak MRTR, and the server can't resolve input requests via JSON-RPC without a persistent session. |
 
 > [!NOTE]
 > The backcompat resolver is intentionally limited to 10 retry rounds. Tools that need more rounds should require `2026-07-28` (check `IsMrtrSupported`).
@@ -281,6 +389,6 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 
 `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Stateless servers don't have a persistent session to wait on, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")` (the check is `McpServer.ClientCapabilities is null`, which is the SDK's proxy for stateless).
 
-Under the current protocol revision (`2025-06-18` and earlier), stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
+Under `2025-11-25` and earlier, stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
 Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP can serve that revision only through the stateless path. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies to stdio and other non-HTTP stateful sessions; an HTTP server explicitly set to `Stateless = false` refuses `2026-07-28` with `UnsupportedProtocolVersion` and creates a session only when an older client falls back to `initialize`.

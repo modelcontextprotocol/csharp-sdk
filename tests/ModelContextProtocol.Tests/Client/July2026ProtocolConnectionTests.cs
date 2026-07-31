@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -53,6 +54,39 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task Client_AllowsDiscoverResultWithoutServerInfo()
+    {
+        ConfigureDiscoverServerInfo(meta => meta.Remove(MetaKeys.ServerInfo));
+        StartServer();
+
+        var options = new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion };
+        await using var client = await CreateMcpClientForServer(options);
+
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Throws<InvalidOperationException>(() => _ = client.ServerInfo);
+    }
+
+    [Fact]
+    public async Task Client_RejectsMalformedDiscoverServerInfo()
+    {
+        ConfigureDiscoverServerInfo(meta => meta[MetaKeys.ServerInfo] = "invalid");
+        StartServer();
+
+        var options = new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion };
+        await Assert.ThrowsAsync<JsonException>(() => CreateMcpClientForServer(options));
+    }
+
+    [Fact]
+    public async Task Client_RejectsNullDiscoverServerInfo()
+    {
+        ConfigureDiscoverServerInfo(meta => meta[MetaKeys.ServerInfo] = null);
+        StartServer();
+
+        var options = new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion };
+        await Assert.ThrowsAsync<JsonException>(() => CreateMcpClientForServer(options));
+    }
+
+    [Fact]
     public async Task InitializeHandshakeClient_CannotCallServerDiscover()
     {
         // server/discover is registered unconditionally so the protocol boundary filter can return a structured
@@ -85,5 +119,20 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         Assert.NotNull(discoverResult);
         Assert.Equal("complete", discoverResult.ResultType);
         Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], discoverResult.SupportedVersions);
+    }
+
+    private void ConfigureDiscoverServerInfo(Action<JsonObject> configure)
+    {
+        McpServerBuilder.WithMessageFilters(filters => filters.AddOutgoingFilter(next => async (context, cancellationToken) =>
+        {
+            if (context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                result["supportedVersions"] is not null &&
+                result["_meta"] is JsonObject meta)
+            {
+                configure(meta);
+            }
+
+            await next(context, cancellationToken);
+        }));
     }
 }

@@ -33,7 +33,6 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
-
     private static readonly string[] s_perRequestMetadataKeys =
     [
         MetaKeys.ProtocolVersion,
@@ -147,10 +146,12 @@ internal sealed partial class McpServerImpl : McpServer
                 ServerCapabilities.Resources.ListChanged = null;
         }
 
-        // And initialize the session. The built-in meta-reading filter runs ahead of any
-        // user-supplied incoming filters; see PrependMetaReadingFilter for what it records and why.
+        // And initialize the session. The built-in protocol metadata filters run ahead of any
+        // user-supplied message filters.
         var incomingMessageFilter = PrependMetaReadingFilter(BuildMessageFilterPipeline(options.Filters.Message.IncomingFilters));
-        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters);
+        var outgoingMessageFilter = PrependServerInfoFilter(
+            BuildMessageFilterPipeline(options.Filters.Message.OutgoingFilters),
+            options.ServerInfo ?? DefaultImplementation);
 
         _sessionHandler = new McpSessionHandler(
             isServer: true,
@@ -170,12 +171,13 @@ internal sealed partial class McpServerImpl : McpServer
     /// validates the per-request protocol version, before delegating to the user-supplied incoming filters.
     /// </summary>
     /// <remarks>
-    /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so these values
-    /// MUST be populated per-request. Per-request client capabilities and client info are consumed request-scoped
-    /// by <see cref="DestinationBoundMcpServer"/> and are not read from server-wide state by request handlers. The
-    /// shared <see cref="_clientInfo"/> write below is best-effort and used only to derive the session endpoint
-    /// name for logging/telemetry. For initialize-handshake clients the per-request values are absent and the built-in
-    /// filter is a no-op (the values were captured during the initialize handler).
+    /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so the protocol
+    /// version and client capabilities MUST be populated per-request. Client info is optional. Per-request client
+    /// capabilities and client info are consumed request-scoped by <see cref="DestinationBoundMcpServer"/> and are
+    /// not read from server-wide state by request handlers. The shared <see cref="_clientInfo"/> write below is
+    /// best-effort and used only to derive the session endpoint name for logging/telemetry. For initialize-handshake
+    /// clients the per-request values are absent and the built-in filter is a no-op (the values were captured during
+    /// the initialize handler).
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
@@ -205,9 +207,14 @@ internal sealed partial class McpServerImpl : McpServer
                     // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
                     if (!_supportedProtocolVersions.Contains(protocolVersion))
                     {
+                        var supportedVersions =
+                            hasProtocolVersionMeta && _perRequestMetadataProtocolVersions.Length > 0 ?
+                                _perRequestMetadataProtocolVersions :
+                                _supportedProtocolVersions;
+
                         throw new UnsupportedProtocolVersionException(
                             requested: protocolVersion,
-                            supported: _supportedProtocolVersions);
+                            supported: supportedVersions);
                     }
 
                     if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
@@ -215,7 +222,6 @@ internal sealed partial class McpServerImpl : McpServer
                         ValidateRequiredPerRequestMetadata(
                             protocolVersion,
                             hasProtocolVersionMeta,
-                            context.ClientInfo is not null,
                             context.ClientCapabilities is not null);
                     }
                     else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
@@ -294,7 +300,6 @@ internal sealed partial class McpServerImpl : McpServer
     private static void ValidateRequiredPerRequestMetadata(
         string protocolVersion,
         bool hasProtocolVersionMeta,
-        bool hasClientInfoMeta,
         bool hasClientCapabilitiesMeta)
     {
         if (!hasProtocolVersionMeta)
@@ -302,10 +307,7 @@ internal sealed partial class McpServerImpl : McpServer
             ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
         }
 
-        if (!hasClientInfoMeta)
-        {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientInfo);
-        }
+        // clientInfo is optional: requests whose _meta omits it are served, not rejected.
 
         if (!hasClientCapabilitiesMeta)
         {
@@ -345,8 +347,46 @@ internal sealed partial class McpServerImpl : McpServer
         paramsObj["_meta"] is JsonObject metaObj &&
         metaObj.ContainsKey(key);
 
+    /// <summary>
+    /// Adds the server identity to every successful result on per-request-metadata protocol revisions.
+    /// The filter runs before application filters so they can inspect or intentionally remove the metadata.
+    /// </summary>
+    private JsonRpcMessageFilter PrependServerInfoFilter(JsonRpcMessageFilter inner, Implementation serverInfo)
+    {
+        JsonRpcMessageFilter serverInfoFilter = next => async (message, cancellationToken) =>
+        {
+            if (message is JsonRpcResponse { Result: JsonObject result } &&
+                McpProtocolVersions.RequiresPerRequestMetadata(
+                    message.Context?.ProtocolVersion ?? _negotiatedProtocolVersion))
+            {
+                if (result["_meta"] is not JsonObject meta)
+                {
+                    meta = new JsonObject();
+                    result["_meta"] = meta;
+                }
+
+                meta[MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(
+                    serverInfo,
+                    McpJsonUtilities.JsonContext.Default.Implementation);
+            }
+
+            await next(message, cancellationToken).ConfigureAwait(false);
+        };
+
+        return next => serverInfoFilter(inner(next));
+    }
+
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
+        // Per-request-metadata revisions (SEP-2575) removed the initialize handshake entirely:
+        // the request is for a method the server does not implement on that revision.
+        if (McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion))
+        {
+            throw new McpProtocolException(
+                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{request.Context?.ProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
+                McpErrorCode.MethodNotFound);
+        }
+
         if (request.Context?.ProtocolVersion is { } protocolVersion &&
             !McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
         {
@@ -416,13 +456,31 @@ internal sealed partial class McpServerImpl : McpServer
                 McpErrorCode.MethodNotFound);
         }
 
-        if (usesPerRequestMetadata && request.Method == RequestMethods.LoggingSetLevel)
+        if (usesPerRequestMetadata &&
+            request.Method is RequestMethods.Ping or RequestMethods.LoggingSetLevel
+                or RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe)
         {
+            var replacement = GetRemovedMethodReplacementHint(request.Method);
             throw new McpProtocolException(
-                $"The method '{RequestMethods.LoggingSetLevel}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'. Use per-request _meta/{MetaKeys.LogLevel} instead.",
+                $"The method '{request.Method}' is not available on protocol version '{request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion}'." +
+                    (replacement is null ? "" : $" {replacement}"),
                 McpErrorCode.MethodNotFound);
         }
     }
+
+    /// <summary>
+    /// Returns guidance on the per-request-metadata replacement for a method that SEP-2575 removed,
+    /// or <see langword="null"/> when the method has no direct replacement. Surfaced in the
+    /// <see cref="McpErrorCode.MethodNotFound"/> error so a client that still calls the legacy RPC
+    /// (for example <c>resources/subscribe</c>) learns how to migrate.
+    /// </summary>
+    private static string? GetRemovedMethodReplacementHint(string method) => method switch
+    {
+        RequestMethods.LoggingSetLevel => $"Use the per-request '_meta/{MetaKeys.LogLevel}' field instead.",
+        RequestMethods.ResourcesSubscribe or RequestMethods.ResourcesUnsubscribe =>
+            $"Use '{RequestMethods.SubscriptionsListen}' with 'resourceSubscriptions' instead.",
+        _ => null,
+    };
 
     /// <inheritdoc/>
     public override string? SessionId => _sessionTransport.SessionId;
@@ -610,7 +668,10 @@ internal sealed partial class McpServerImpl : McpServer
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
-                    ResultType = "complete",
+
+                    // resultType is a 2026-07-28 result field. The initialize handshake is only available on
+                    // 2025-11-25 and earlier revisions (2026-07-28+ negotiate via server/discover and throw
+                    // above), so InitializeResult must never carry resultType (issue #1721).
                 };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
@@ -634,7 +695,6 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     SupportedVersions = [.. _perRequestMetadataProtocolVersions],
                     Capabilities = ServerCapabilities ?? new(),
-                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Instructions = options.ServerInstructions,
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep
@@ -1012,6 +1072,12 @@ internal sealed partial class McpServerImpl : McpServer
                     $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
             }
 
+            if (entry.RoutingNameParameter is not null && string.IsNullOrWhiteSpace(entry.RoutingNameParameter))
+            {
+                throw new InvalidOperationException(
+                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
+            }
+
             // Custom handlers are registered after all built-in handlers, so a method already present
             // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
             // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
@@ -1321,20 +1387,13 @@ internal sealed partial class McpServerImpl : McpServer
         var callToolFilters = options.Filters.Request.CallToolFilters;
         var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
 
-        // Validate: cannot mix non-alternate filters/handler with alternate filters/handler.
-        bool hasNonAlternatePath = callToolHandler is not null || callToolFilters.Count > 0;
-        bool hasAlternatePath = callToolWithAlternateHandler is not null || callToolWithAlternateFilters.Count > 0;
-
-        if (hasNonAlternatePath && hasAlternatePath)
+        if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Cannot mix non-alternate ({nameof(McpServerHandlers.CallToolHandler)}/{nameof(McpRequestFilters.CallToolFilters)}) " +
-                $"with alternate-based ({nameof(McpServerHandlers.CallToolWithAlternateHandler)}/{nameof(McpRequestFilters.CallToolWithAlternateFilters)}) tool-call filters or handlers. " +
-                $"These two styles cannot currently be composed on the same server. " +
-                $"This most commonly happens when combining features that register different tool-call filter styles, " +
-                $"for example AddAuthorizationFilters() (which registers a {nameof(McpRequestFilters.CallToolFilters)} filter) together with " +
-                $"WithTasks() (which registers a {nameof(McpRequestFilters.CallToolWithAlternateFilters)} filter). " +
-                $"Configure only one style, or avoid combining features that require different styles.");
+                $"Cannot apply {nameof(McpRequestFilters.CallToolFilters)} when an explicit " +
+                $"{nameof(McpServerHandlers.CallToolWithAlternateHandler)} is configured. The alternate handler " +
+                $"replaces the ordinary tool-call pipeline. Move the behavior to " +
+                $"{nameof(McpRequestFilters.CallToolWithAlternateFilters)} or remove the explicit alternate handler.");
         }
 
         // Handle tools provided via DI by augmenting the list handler.
@@ -1376,18 +1435,16 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.Request.ListToolsFilters);
 
-        // Build the unified alternate-result handler from one of the two paths.
-        if (hasAlternatePath)
+        // An explicit alternate handler replaces the ordinary tool-call pipeline.
+        if (callToolWithAlternateHandler is not null)
         {
-            // Case 2: alternate filter + alternate handler
-            callToolWithAlternateHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-
             // Augment with DI tools.
             if (tools is not null)
             {
                 var originalHandler = callToolWithAlternateHandler;
                 callToolWithAlternateHandler = (request, cancellationToken) =>
                 {
+                    MatchTool(request, tools);
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
                         return InvokeToolWithAlternate(tool, request, cancellationToken);
@@ -1397,11 +1454,13 @@ internal sealed partial class McpServerImpl : McpServer
                 };
             }
 
-            callToolWithAlternateHandler = BuildFilterPipeline(callToolWithAlternateHandler, callToolWithAlternateFilters, BuildInitialAlternateToolFilter(tools));
+            callToolWithAlternateHandler = BuildInvocationFilterPipeline(
+                callToolWithAlternateHandler,
+                callToolWithAlternateFilters,
+                BuildInitialAlternateToolFilter(tools));
         }
         else
         {
-            // Case 1: non-alternate filter + non-alternate handler -> apply filters, then convert to alternate-based
             callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
 
             // Augment with DI tools.
@@ -1419,12 +1478,12 @@ internal sealed partial class McpServerImpl : McpServer
                 };
             }
 
-            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters, BuildInitialCallToolFilter(tools));
+            callToolHandler = BuildFilterPipeline(callToolHandler, callToolFilters);
 
-            // Convert to alternate-based.
-            var finalCallToolHandler = callToolHandler;
-            callToolWithAlternateHandler = async (request, cancellationToken) =>
-                await finalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
+            callToolWithAlternateHandler = BuildComposedCallToolHandler(
+                callToolHandler,
+                callToolWithAlternateFilters,
+                tools);
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 
@@ -1448,58 +1507,79 @@ internal sealed partial class McpServerImpl : McpServer
         return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private McpRequestFilter<CallToolRequestParams, CallToolResult> BuildInitialCallToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
+        McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
+        IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> callToolWithAlternateFilters,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        return async (request, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
+
+            var invocation = new ComposedCallToolInvocationState();
+            var composedHandler = BuildInvocationFilterPipeline(
+                InvokeOrdinaryPipelineAsync,
+                callToolWithAlternateFilters);
 
             try
             {
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                ToolCallCompleted(request.Params?.Name ?? string.Empty, result.IsError is true);
+                var result = await composedHandler(request, cancellationToken).ConfigureAwait(false);
+                LogToolCallLifecycles(request, invocation.CompleteOuter(result));
                 return result;
             }
             catch (Exception e)
             {
-                // Skip logging for InputRequiredException - it's normal MRTR control flow,
-                // not an error (tools throw it to signal an InputRequiredResult).
-                if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
-                {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
-                }
+                LogToolCallLifecycles(
+                    request,
+                    invocation.CompleteOuterException(
+                        e,
+                        cancellationToken.IsCancellationRequested));
 
                 if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
                 {
                     throw;
                 }
 
-                return new()
+                return CreateToolCallErrorResult(request, e);
+            }
+
+            async ValueTask<ResultOrAlternate<CallToolResult>> InvokeOrdinaryPipelineAsync(
+                RequestContext<CallToolRequestParams> ordinaryRequest,
+                CancellationToken ordinaryCancellationToken)
+            {
+                try
                 {
-                    IsError = true,
-                    Content = [new TextContentBlock
+                    MatchTool(ordinaryRequest, tools);
+                    var result = await callToolHandler(ordinaryRequest, ordinaryCancellationToken).ConfigureAwait(false);
+                    LogToolCallLifecycles(ordinaryRequest, invocation.RecordOrdinaryResult(result));
+                    return result;
+                }
+                catch (Exception exception)
+                {
+                    LogToolCallLifecycles(
+                        ordinaryRequest,
+                        invocation.RecordOrdinaryException(
+                            exception,
+                            ordinaryCancellationToken.IsCancellationRequested));
+
+                    if ((exception is OperationCanceledException && ordinaryCancellationToken.IsCancellationRequested) ||
+                        exception is McpProtocolException ||
+                        exception is InputRequiredException)
                     {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                        throw;
+                    }
+
+                    return CreateToolCallErrorResult(ordinaryRequest, exception);
+                }
             }
         };
+    }
 
-    private McpRequestFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
-        McpServerPrimitiveCollection<McpServerTool>? tools) => handler =>
-        async (request, cancellationToken) =>
+    private McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildInitialAlternateToolFilter(
+        McpServerPrimitiveCollection<McpServerTool>? tools) =>
+        async (request, handler, cancellationToken) =>
         {
-            if (request.Params?.Name is { } toolName && tools is not null &&
-                tools.TryGetPrimitive(toolName, out var tool))
-            {
-                request.MatchedPrimitive = tool;
-            }
+            MatchTool(request, tools);
 
             try
             {
@@ -1525,18 +1605,54 @@ internal sealed partial class McpServerImpl : McpServer
                     throw;
                 }
 
-                return new CallToolResult
-                {
-                    IsError = true,
-                    Content = [new TextContentBlock
-                    {
-                        Text = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.",
-                    }],
-                };
+                return CreateToolCallErrorResult(request, e);
             }
         };
+
+    private static void MatchTool(
+        RequestContext<CallToolRequestParams> request,
+        McpServerPrimitiveCollection<McpServerTool>? tools)
+    {
+        if (request.Params?.Name is { } toolName && tools is not null &&
+            tools.TryGetPrimitive(toolName, out var tool))
+        {
+            request.MatchedPrimitive = tool;
+        }
+    }
+
+    private static CallToolResult CreateToolCallErrorResult(
+        RequestContext<CallToolRequestParams> request,
+        Exception exception) =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = exception is McpException ?
+                    $"An error occurred invoking '{request.Params?.Name}': {exception.Message}" :
+                    $"An error occurred invoking '{request.Params?.Name}'.",
+            }],
+        };
+
+    private void LogToolCallLifecycles(
+        RequestContext<CallToolRequestParams> request,
+        IReadOnlyList<ToolCallLifecycle> lifecycles)
+    {
+        string toolName = request.Params?.Name ?? string.Empty;
+        foreach (var lifecycle in lifecycles)
+        {
+            if (lifecycle.Result is { } result)
+            {
+                ToolCallCompleted(toolName, result.IsError is true);
+            }
+            else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
+                lifecycle.Exception is not InputRequiredException)
+            {
+                ToolCallError(toolName, lifecycle.Exception!);
+            }
+        }
+    }
+
 #pragma warning restore MCPEXP002
 
     private void ConfigureLogging(McpServerOptions options)
@@ -1580,8 +1696,12 @@ internal sealed partial class McpServerImpl : McpServer
                     return InvokeHandlerAsync(setLoggingLevelHandler, request!, jsonRpcRequest, cancellationToken);
                 }
 
-                // Otherwise, consider it handled.
-                return new ValueTask<EmptyResult>(EmptyResult.Instance);
+                // Otherwise, consider it handled. logging/setLevel is a legacy (<= 2025-11-25) method
+                // (2026-07-28+ is rejected above), so the response must not carry the 2026-07-28 resultType
+                // field. Return a fresh EmptyResult rather than the shared EmptyResult.Instance, which is
+                // pre-stamped with resultType="complete" for the 2026-07-28-only subscriptions/listen path
+                // (issue #1721).
+                return new ValueTask<EmptyResult>(new EmptyResult());
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
@@ -1652,7 +1772,11 @@ internal sealed partial class McpServerImpl : McpServer
             handler = async (request, cancellationToken) =>
             {
                 var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is ICacheableResult cacheable)
+
+                // ttlMs and cacheScope are 2026-07-28 result fields; only stamp them when the request
+                // was negotiated under that revision or later. Earlier revisions (e.g. 2025-11-25) reject
+                // these as unrecognized keys (issue #1721).
+                if (result is ICacheableResult cacheable && IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
                 {
                     cacheable.TimeToLive ??= TimeSpan.Zero;
                     cacheable.CacheScope ??= CacheScope.Private;
@@ -1668,7 +1792,12 @@ internal sealed partial class McpServerImpl : McpServer
             handler = async (request, cancellationToken) =>
             {
                 var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-                if (result is Result protocolResult && protocolResult.ResultType is null)
+
+                // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
+                // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
+                // unrecognized key (issue #1721).
+                if (result is Result protocolResult && protocolResult.ResultType is null &&
+                    IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
                 {
                     protocolResult.ResultType = "complete";
                 }
@@ -1695,7 +1824,12 @@ internal sealed partial class McpServerImpl : McpServer
         handler = async (request, cancellationToken) =>
         {
             var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult)
+
+            // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
+            // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
+            // unrecognized key (issue #1721).
+            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult &&
+                IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
             {
                 immediateResult.ResultType = "complete";
             }
@@ -1729,6 +1863,31 @@ internal sealed partial class McpServerImpl : McpServer
 
         return current;
     }
+
+#pragma warning disable MCPEXP002
+    private static McpRequestHandler<TParams, TResult> BuildInvocationFilterPipeline<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> baseHandler,
+        IList<McpRequestInvocationFilter<TParams, TResult>> filters,
+        McpRequestInvocationFilter<TParams, TResult>? initialHandler = null)
+    {
+        var current = baseHandler;
+
+        for (int i = filters.Count - 1; i >= 0; i--)
+        {
+            var next = current;
+            var filter = filters[i];
+            current = (request, cancellationToken) => filter(request, next, cancellationToken);
+        }
+
+        if (initialHandler is not null)
+        {
+            var next = current;
+            current = (request, cancellationToken) => initialHandler(request, next, cancellationToken);
+        }
+
+        return current;
+    }
+#pragma warning restore MCPEXP002
 
     private JsonRpcMessageFilter BuildMessageFilterPipeline(IList<McpMessageFilter> filters)
     {

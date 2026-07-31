@@ -26,6 +26,11 @@ internal sealed class ExchangeJwtBearerGrantOptions
     public string? ClientSecret { get; set; }
 
     /// <summary>
+    /// Gets or sets the token endpoint authentication method.
+    /// </summary>
+    public string? TokenEndpointAuthMethod { get; set; }
+
+    /// <summary>
     /// Gets or sets the scopes to request (space-separated). Optional.
     /// </summary>
     public string? Scope { get; set; }

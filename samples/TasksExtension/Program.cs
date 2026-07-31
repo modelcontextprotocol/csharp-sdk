@@ -24,9 +24,9 @@ var store = new InMemoryMcpTaskStore { DefaultPollIntervalMs = 250 };
 
 var services = new ServiceCollection();
 services.AddMcpServer()
+    .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools([McpServerTool.Create(SlowTools.RunReport, new() { Name = "run-report" })])
     .WithTasks(store);
-services.AddSingleton<ITransport>(new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()));
 
 await using var serviceProvider = services.BuildServiceProvider();
 var server = serviceProvider.GetRequiredService<McpServer>();

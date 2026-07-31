@@ -14,7 +14,8 @@ public sealed class McpServerOptions
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
     /// <remarks>
-    /// This information is sent to the client during initialization or discovery to identify the server.
+    /// This information is sent in the initialization result on handshake-based protocol revisions and in
+    /// every successful result's metadata on per-request-metadata revisions.
     /// It's displayed in client logs and can be used for debugging and compatibility checks.
     /// </remarks>
     public Implementation? ServerInfo { get; set; }
@@ -217,6 +218,6 @@ public sealed class McpServerOptions
     /// Handlers registered here take precedence over built-in handlers for the same method.
     /// </para>
     /// </remarks>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }

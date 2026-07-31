@@ -2,6 +2,19 @@
 
 This repository contains the official C# SDK for the Model Context Protocol (MCP), enabling .NET applications to implement and interact with MCP clients and servers.
 
+## GitHub Interactions
+
+### Commits and Pushes
+- Never push to an active pull request without being explicitly asked. Always wait for explicit instructions to push.
+- Never chain commit and push in the same command. Commit first, report what was committed, then wait for explicit push instructions. This creates a mandatory decision point.
+
+### AI-Generated Content Disclosure
+When posting any content to GitHub under a user's credentials — opening pull requests, creating issues, commenting on pull requests or issues, posting review comments, or taking any other public-facing action — include a concise, visible note at the bottom indicating that the content was AI/Copilot-generated.
+
+This disclosure is not required when:
+- The account is a recognized bot or Copilot app account (for example, `github-actions[bot]` or `copilot`), where the AI origin is already apparent from the account identity.
+- The user explicitly asks to omit the disclosure.
+
 ## Critical: Always Build and Test
 
 **ALWAYS build and run tests before declaring any task complete or making a pull request.**

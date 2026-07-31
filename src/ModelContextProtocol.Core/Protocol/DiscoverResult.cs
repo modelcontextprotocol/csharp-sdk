@@ -32,12 +32,6 @@ public sealed class DiscoverResult : Result, ICacheableResult
     public required ServerCapabilities Capabilities { get; set; }
 
     /// <summary>
-    /// Gets or sets information about the server implementation.
-    /// </summary>
-    [JsonPropertyName("serverInfo")]
-    public required Implementation ServerInfo { get; set; }
-
-    /// <summary>
     /// Gets or sets optional instructions describing how to use the server and its features.
     /// </summary>
     /// <remarks>

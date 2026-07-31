@@ -11,6 +11,9 @@ MCP [roots] allow clients to inform servers about the relevant locations in the 
 
 [roots]: https://modelcontextprotocol.io/specification/2025-11-25/client/roots
 
+> [!IMPORTANT]
+> Roots are **deprecated** as of MCP specification revision `2026-07-28` ([SEP-2577](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2577), [MCP9005](xref:list-of-diagnostics#obsolete-apis)) and may be removed in a future version.
+
 ### Overview
 
 Roots provide a mechanism for the client to tell the server which directories, projects, or repositories are relevant to the current session. A server might use roots to:
@@ -57,7 +60,7 @@ await using var client = await McpClient.CreateAsync(transport, options);
 
 ### Requesting roots from the server
 
-Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended).
+Servers can request the client's root list using <xref:ModelContextProtocol.Server.McpServer.RequestRootsAsync*>. This is a server-to-client request, so it requires [stateful mode or stdio](xref:stateless) — it is not available in [stateless mode](xref:stateless#stateless-mode-recommended). For a stateless-compatible alternative, throw `InputRequiredException` from your handler through MRTR — see [Multi round-trip requests (MRTR)](#multi-round-trip-requests-mrtr).
 
 ```csharp
 [McpServerTool, Description("Lists the user's project roots")]
@@ -104,7 +107,7 @@ server.RegisterNotificationHandler(
     });
 ```
 
-### Multi Round-Trip Requests (MRTR)
+### Multi round-trip requests (MRTR)
 
 [MRTR](xref:mrtr) is the SEP-2322 mechanism for server-driven input requests, finalized in protocol revision `2026-07-28`. In that revision, the server-to-client `roots/list` request method is removed; the recommended way to ask the client for its roots from a server handler is to throw <xref:ModelContextProtocol.Protocol.InputRequiredException> and let the SDK emit an <xref:ModelContextProtocol.Protocol.InputRequiredResult> on the wire.
 
@@ -128,7 +131,7 @@ public static string ListRootsWithMrtr(
 
     if (!server.IsMrtrSupported)
     {
-        return "This tool requires MRTR support (2026-07-28, or a stateful current-protocol session).";
+        return "This tool requires MRTR support (2026-07-28, or a stateful session using protocol revision 2025-11-25).";
     }
 
     // First call — request the client's root list
@@ -142,4 +145,4 @@ public static string ListRootsWithMrtr(
 ```
 
 > [!TIP]
-> See [Multi Round-Trip Requests (MRTR)](xref:mrtr) for the full protocol details, including load shedding, multiple round trips, and the compatibility matrix.
+> For the full protocol details, including load shedding, multiple round trips, and the compatibility matrix, see [Multi Round-Trip Requests (MRTR)](xref:mrtr).

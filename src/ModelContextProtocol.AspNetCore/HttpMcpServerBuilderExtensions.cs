@@ -34,6 +34,7 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationCallToolFilterGuardSetup>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
 
         if (configureOptions is not null)
@@ -55,14 +56,20 @@ public static class HttpMcpServerBuilderExtensions
     /// <remarks>
     /// This method automatically configures authorization filters for all MCP server handlers. These filters respect
     /// authorization attributes such as <see cref="AuthorizeAttribute"/>
-    /// and <see cref="AllowAnonymousAttribute"/>.
+    /// and <see cref="AllowAnonymousAttribute"/>. Tool authorization runs in the alternate-result pipeline before
+    /// the Tasks extension dispatches background execution, so an unauthorized tool call does not create a task.
+    /// Each call to this method also adds an ordinary call-tool authorization checkpoint at that point in the filter
+    /// pipeline. Call this method again after any call-tool filter that changes the matched tool or user to authorize
+    /// the replacement using the updated context.
     /// </remarks>
     public static IMcpServerBuilder AddAuthorizationFilters(this IMcpServerBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
+        builder.Services.TryAddSingleton<AuthorizationFiltersMarker>();
         builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
 
         return builder;
     }

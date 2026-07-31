@@ -135,7 +135,7 @@ public sealed class McpClientTool : AIFunction
         // would lose that information. So, we only do the translation if there is no additional information to preserve.
         if (result.IsError is not true &&
             result.StructuredContent is null &&
-            result.Meta is not { Count: > 0 })
+            !HasApplicationResultMetadata(result.Meta))
         {
             switch (result.Content.Count)
             {
@@ -148,6 +148,26 @@ public sealed class McpClientTool : AIFunction
         }
 
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
+    }
+
+    private static bool HasApplicationResultMetadata(JsonObject? meta)
+    {
+        if (meta is null)
+        {
+            return false;
+        }
+
+        foreach (var property in meta)
+        {
+            // Server identity is protocol metadata already exposed through McpClient.ServerInfo.
+            // It should not force an otherwise simple tool result into its JSON envelope.
+            if (!string.Equals(property.Key, MetaKeys.ServerInfo, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

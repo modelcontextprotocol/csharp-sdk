@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// <see cref="Result"/> for the immediate result or <see cref="Alternate"/> for the alternate.
 /// </para>
 /// </remarks>
-[Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+[Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
 public class ResultOrAlternate<TResult> where TResult : Result
 {
     private readonly TResult? _result;

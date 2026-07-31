@@ -12,7 +12,7 @@ public abstract partial class McpClient : McpSession
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClient"/> class.
     /// </summary>
-    [Experimental(Experimentals.Subclassing_DiagnosticId, UrlFormat = Experimentals.Subclassing_Url)]
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     protected McpClient()
     {
     }
@@ -29,14 +29,16 @@ public abstract partial class McpClient : McpSession
     /// <remarks>
     /// <para>
     /// This property provides identification details about the connected server, including its name and version.
-    /// It is populated during the initialization handshake and is available after a successful connection.
+    /// It is populated during the initialization handshake or from <c>server/discover</c> result metadata.
     /// </para>
     /// <para>
     /// This information can be useful for logging, debugging, compatibility checks, and displaying server
     /// information to users.
     /// </para>
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The client is not connected, or the server omitted the optional server identity metadata.
+    /// </exception>
     public abstract Implementation ServerInfo { get; }
 
     /// <summary>

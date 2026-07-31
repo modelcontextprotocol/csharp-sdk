@@ -28,6 +28,7 @@ public sealed class Program
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationCodeTokenRequestCount;
 
     private readonly RSA _rsa;
     private readonly string _keyId;
@@ -101,6 +102,26 @@ public sealed class Program
     public bool IncludeOfflineAccessInMetadata { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether authorization server metadata includes an issuer.
+    /// </summary>
+    public bool IncludeIssuerInMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets an issuer value that overrides the authorization server's metadata issuer.
+    /// </summary>
+    public string? MetadataIssuerOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server advertises RFC 9207 support.
+    /// </summary>
+    public bool AuthorizationResponseIssParameterSupported { get; set; }
+
+    /// <summary>
+    /// Gets or sets the issuer included in authorization responses, or <see langword="null"/> to omit it.
+    /// </summary>
+    public string? AuthorizationResponseIssuer { get; set; }
+
+    /// <summary>
     /// Gets or sets the code challenge methods advertised by metadata endpoints.
     /// </summary>
     /// <remarks>
@@ -117,8 +138,14 @@ public sealed class Program
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
 
+    /// <summary>Gets the number of authorization-code token exchange requests received.</summary>
+    public int AuthorizationCodeTokenRequestCount => Volatile.Read(ref _authorizationCodeTokenRequestCount);
+
     /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
     public string? LastRegistrationScope { get; private set; }
+
+    /// <summary>Gets the <c>application_type</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastApplicationType { get; private set; }
 
     /// <summary>
     /// Entry point for the application.
@@ -239,7 +266,7 @@ public sealed class Program
 
             var metadata = new OAuthServerMetadata
             {
-                Issuer = $"{_url}{issuerPath}",
+                Issuer = IncludeIssuerInMetadata ? MetadataIssuerOverride ?? $"{_url}{issuerPath}" : null,
                 AuthorizationEndpoint = $"{_url}/authorize",
                 TokenEndpoint = $"{_url}/token",
                 JwksUri = $"{_url}/.well-known/jwks.json",
@@ -258,6 +285,7 @@ public sealed class Program
                 IntrospectionEndpoint = $"{_url}/introspect",
                 RegistrationEndpoint = $"{_url}/register",
                 ClientIdMetadataDocumentSupported = ClientIdMetadataDocumentSupported,
+                AuthorizationResponseIssParameterSupported = AuthorizationResponseIssParameterSupported ? true : null,
             };
 
             return Results.Ok(metadata);
@@ -389,6 +417,10 @@ public sealed class Program
             {
                 redirectUrl += $"&state={Uri.EscapeDataString(state)}";
             }
+            if (!string.IsNullOrEmpty(AuthorizationResponseIssuer))
+            {
+                redirectUrl += $"&iss={Uri.EscapeDataString(AuthorizationResponseIssuer)}";
+            }
 
             return Results.Redirect(redirectUrl);
         });
@@ -432,6 +464,7 @@ public sealed class Program
 
             if (grant_type == "authorization_code")
             {
+                Interlocked.Increment(ref _authorizationCodeTokenRequestCount);
                 var code = form["code"].ToString();
                 var code_verifier = form["code_verifier"].ToString();
                 var redirect_uri = form["redirect_uri"].ToString();
@@ -681,6 +714,7 @@ public sealed class Program
             }
 
             LastRegistrationScope = registrationRequest.Scope;
+            LastApplicationType = registrationRequest.ApplicationType;
 
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)

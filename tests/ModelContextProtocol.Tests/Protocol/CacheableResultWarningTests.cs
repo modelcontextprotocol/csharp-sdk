@@ -292,7 +292,10 @@ public class CacheableResultWarningTests : LoggedTest
                 {
                     SupportedVersions = [serverProtocolVersion],
                     Capabilities = new ServerCapabilities(),
-                    ServerInfo = new Implementation { Name = "MockServer", Version = "1.0" },
+                    Meta = new JsonObject
+                    {
+                        [MetaKeys.ServerInfo] = JsonSerializer.SerializeToNode(new Implementation { Name = "MockServer", Version = "1.0" }, McpJsonUtilities.DefaultOptions),
+                    },
                 }, McpJsonUtilities.DefaultOptions),
             }, cancellationToken);
         }

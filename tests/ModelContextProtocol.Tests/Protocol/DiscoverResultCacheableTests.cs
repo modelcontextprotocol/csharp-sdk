@@ -8,8 +8,8 @@ namespace ModelContextProtocol.Tests.Protocol;
 /// Targeted tests for the SEP-2549 caching hints (<c>ttlMs</c> and <c>cacheScope</c>) on
 /// <see cref="DiscoverResult"/>. Spec PR #2855 promotes both fields to required on the discover
 /// response. <see cref="DiscoverResult"/> has <c>required</c> CLR properties for
-/// <see cref="DiscoverResult.SupportedVersions"/>, <see cref="DiscoverResult.Capabilities"/>, and
-/// <see cref="DiscoverResult.ServerInfo"/>, which prevents reuse of the parameterized
+/// <see cref="DiscoverResult.SupportedVersions"/> and <see cref="DiscoverResult.Capabilities"/>,
+/// which prevents reuse of the parameterized
 /// <see cref="CacheableResultTests"/> helper (it instantiates via reflection). This file covers the
 /// same property-shape assertions for <see cref="DiscoverResult"/>.
 /// </summary>
@@ -19,7 +19,6 @@ public static class DiscoverResultCacheableTests
     {
         SupportedVersions = [McpProtocolVersions.November2025ProtocolVersion, McpProtocolVersions.July2026ProtocolVersion],
         Capabilities = new ServerCapabilities(),
-        ServerInfo = new Implementation { Name = "test-server", Version = "1.0" },
     };
 
     [Fact]

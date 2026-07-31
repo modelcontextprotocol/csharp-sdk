@@ -11,6 +11,7 @@ using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -41,12 +42,209 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task AuthorizationCallbackHandler_ReceivesConfiguredRedirectUri()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var redirectUri = new Uri("http://localhost:1179/callback");
+        AuthorizationCallbackContext? callbackContext = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = redirectUri,
+                AuthorizationCallbackHandler = (context, cancellationToken) =>
+                {
+                    callbackContext = context;
+                    return HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(callbackContext);
+        Assert.Equal(redirectUri, callbackContext.RedirectUri);
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "https://localhost:7029")]
+    [InlineData(true, "https://attacker.example")]
+    public async Task AuthorizationRedirectDelegate_ReceivesConfiguredUrisAndSkipsResponseIssuerValidation(
+        bool authorizationResponseIssParameterSupported,
+        string? authorizationResponseIssuer)
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = authorizationResponseIssParameterSupported;
+        TestOAuthServer.AuthorizationResponseIssuer = authorizationResponseIssuer;
+        await using var app = await StartMcpServerAsync();
+
+        var redirectUri = new Uri("http://localhost:1179/callback");
+        Uri? receivedAuthorizationUri = null;
+        Uri? receivedRedirectUri = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = redirectUri,
+#pragma warning disable MCP9007 // Verify the obsolete callback remains functional during its compatibility window.
+                AuthorizationRedirectDelegate = (authorizationUri, callbackRedirectUri, cancellationToken) =>
+                {
+                    receivedAuthorizationUri = authorizationUri;
+                    receivedRedirectUri = callbackRedirectUri;
+                    return HandleAuthorizationUrlAsync(authorizationUri, callbackRedirectUri, cancellationToken);
+                },
+#pragma warning restore MCP9007
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(receivedAuthorizationUri);
+        Assert.Equal(redirectUri, receivedRedirectUri);
+    }
+
+    [Fact]
+    public async Task AuthorizationRedirectDelegate_DoesNotSkipMetadataIssuerValidation()
+    {
+        TestOAuthServer.MetadataIssuerOverride = "https://attacker.example";
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+#pragma warning disable MCP9007 // Verify the obsolete callback retains metadata issuer validation.
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+#pragma warning restore MCP9007
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+    }
+
+    [Fact]
+    public void HttpClientTransport_RejectsBothAuthorizationCallbacks()
+    {
+#pragma warning disable MCP9007 // Verify ambiguous legacy and current callback configuration is rejected.
+        var options = new ClientOAuthOptions
+        {
+            RedirectUri = new Uri("http://localhost:1179/callback"),
+            AuthorizationCallbackHandler = (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(new()),
+            AuthorizationRedirectDelegate = (_, _, _) => Task.FromResult<string?>("code"),
+        };
+#pragma warning restore MCP9007
+
+        var ex = Assert.Throws<ArgumentException>(() => new HttpClientTransport(
+            new()
+            {
+                Endpoint = new(McpServerUrl),
+                OAuth = options,
+            },
+            HttpClient,
+            LoggerFactory));
+
+        Assert.Contains(nameof(ClientOAuthOptions.AuthorizationCallbackHandler), ex.Message);
+#pragma warning disable MCP9007 // The obsolete property name should be included in the diagnostic.
+        Assert.Contains(nameof(ClientOAuthOptions.AuthorizationRedirectDelegate), ex.Message);
+#pragma warning restore MCP9007
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WhenAuthorizationResponseStateMatches()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedState = null;
+        await using var transport = CreateOAuthTransport((context, cancellationToken) =>
+        {
+            requestedState = QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["state"];
+            return HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(requestedState);
+        Assert.True(requestedState.Length >= 43);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseStateIsMissing()
+    {
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport(
+            (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(new() { Code = "unused-code" }));
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not include the required state parameter", ex.Message);
+        Assert.Equal(0, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseStateMismatches()
+    {
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport(
+            (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(
+                new() { Code = "unused-code", State = "unexpected-state" }));
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("state did not match", ex.Message);
+        Assert.Equal(0, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task AuthorizationRequests_UseUniqueStateValues()
+    {
+        await using var app = await StartMcpServerAsync();
+        List<string> requestedStates = [];
+
+        for (var i = 0; i < 2; i++)
+        {
+            await using var transport = CreateOAuthTransport((context, cancellationToken) =>
+            {
+                requestedStates.Add(QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["state"].ToString());
+                return HandleAuthorizationUrlAsync(context, cancellationToken);
+            });
+
+            await using var client = await McpClient.CreateAsync(
+                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(2, requestedStates.Count);
+        Assert.Equal(2, requestedStates.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -78,7 +276,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "unregistered-demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -98,7 +296,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -109,6 +307,33 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("native", TestOAuthServer.LastApplicationType);
+    }
+
+    [Fact]
+    public async Task DynamicClientRegistration_UsesExplicitApplicationType()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("web", TestOAuthServer.LastApplicationType);
     }
 
     [Fact]
@@ -122,8 +347,12 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
-                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl)
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
             },
         }, HttpClient, LoggerFactory);
 
@@ -145,7 +374,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -173,7 +402,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -202,7 +431,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -226,7 +455,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
                 DynamicClientRegistration = new()
                 {
@@ -255,8 +484,12 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
             },
         }, HttpClient, LoggerFactory);
 
@@ -277,7 +510,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri(uri),
             },
         }, HttpClient, LoggerFactory);
@@ -342,7 +575,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -369,10 +602,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    lastAuthorizationUri = uri;
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    lastAuthorizationUri = context.AuthorizationUri;
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
@@ -388,8 +621,10 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("custom_param=custom_value", lastAuthorizationUri?.Query);
     }
 
-    [Fact]
-    public async Task CannotOverrideExistingParameters_WithExtraParams()
+    [Theory]
+    [InlineData("redirect_uri")]
+    [InlineData("state")]
+    public async Task CannotOverrideExistingParameters_WithExtraParams(string parameterName)
     {
         await using var app = await StartMcpServerAsync();
 
@@ -401,10 +636,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
-                    ["redirect_uri"] = "custom_value",
+                    [parameterName] = "custom_value",
                 }
             },
         }, HttpClient, LoggerFactory);
@@ -426,7 +661,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -448,7 +683,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -476,11 +711,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -529,11 +764,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -624,11 +859,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -729,11 +964,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScopes.Add(query["scope"].ToString());
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -761,6 +996,122 @@ public class AuthTests : OAuthTestBase
         Assert.Contains("mcp:tools", thirdScopeSet);
         Assert.Contains("files:read", thirdScopeSet);
         Assert.Contains("files:write", thirdScopeSet);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_ConcurrentStepUps_ReuseSteppedUpToken_WhenChallengeAddsNoNewScope()
+    {
+        // Two concurrent calls to the same tool both receive the same insufficient_scope challenge
+        // before either has stepped up. They serialize on the provider's token acquisition lock: the
+        // first runs the step-up and caches the broader token, and the second must reuse that token
+        // instead of failing as a "repeated" challenge. Only one interactive step-up should run.
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
+        TestOAuthServer.AuthorizationResponseIssuer = OAuthServerUrl;
+
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "read-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Read tool executed.";
+                }),
+            ]);
+
+        List<string?> requestedScopes = [];
+        var scopeLock = new object();
+
+        // Release both initial challenges only after both concurrent calls have reached the server, so
+        // the second caller is guaranteed to be waiting on the token lock while the first steps up.
+        var bothChallengesReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int challengesReached = 0;
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        var user = context.User;
+                        var scopeClaim = user.FindFirst("scope")?.Value ?? "";
+                        var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+
+                        if (toolCallParams?.Name == "read-tool" && !scopeSet.Contains("files:read"))
+                        {
+                            if (Interlocked.Increment(ref challengesReached) == 2)
+                            {
+                                bothChallengesReached.TrySetResult();
+                            }
+
+                            await bothChallengesReached.Task.WaitAsync(TestConstants.DefaultTimeout, context.RequestAborted);
+
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:read\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, cancellationToken) =>
+                {
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
+                    lock (scopeLock)
+                    {
+                        requestedScopes.Add(query["scope"].ToString());
+                    }
+                    return HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Initial connect requests "mcp:tools" from protected resource metadata.
+        Assert.Single(requestedScopes);
+        Assert.Equal("mcp:tools", requestedScopes[0]);
+
+        var firstCall = client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+        var secondCall = client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+
+        var results = await Task.WhenAll(firstCall, secondCall);
+
+        Assert.Equal("Read tool executed.", results[0].Content[0].ToString());
+        Assert.Equal("Read tool executed.", results[1].Content[0].ToString());
+
+        // Only one interactive step-up should have run; the second caller reused the token from the first.
+        Assert.Equal(2, requestedScopes.Count);
+        var stepUpScopes = new HashSet<string>(requestedScopes[1]!.Split(' '));
+        Assert.Contains("mcp:tools", stepUpScopes);
+        Assert.Contains("files:read", stepUpScopes);
     }
 
     [Fact]
@@ -827,11 +1178,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScopes.Add(query["scope"].ToString());
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -922,11 +1273,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScopes.Add(query["scope"].ToString());
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -970,7 +1321,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1009,7 +1360,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1037,7 +1388,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1070,7 +1421,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1085,6 +1436,69 @@ public class AuthTests : OAuthTestBase
                 "/.well-known/openid-configuration",
             ],
             TestOAuthServer.MetadataRequests);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataIssuerMismatches()
+    {
+        TestOAuthServer.MetadataIssuerOverride = "https://attacker.example";
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataOmitsIssuer()
+    {
+        TestOAuthServer.IncludeIssuerInMetadata = false;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not provide the required issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WhenAuthorizationResponseIssuerMatches()
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = true;
+        TestOAuthServer.AuthorizationResponseIssuer = OAuthServerUrl;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(true, "https://attacker.example", "does not match expected issuer")]
+    [InlineData(true, null, "advertises RFC 9207 iss parameter support but none was received")]
+    [InlineData(false, "https://attacker.example", "does not match expected issuer")]
+    public async Task CannotAuthenticate_WhenAuthorizationResponseIssuerIsInvalid(
+        bool authorizationResponseIssParameterSupported,
+        string? authorizationResponseIssuer,
+        string expectedMessage)
+    {
+        TestOAuthServer.AuthorizationResponseIssParameterSupported = authorizationResponseIssParameterSupported;
+        TestOAuthServer.AuthorizationResponseIssuer = authorizationResponseIssuer;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = CreateOAuthTransport();
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(expectedMessage, ex.Message);
     }
 
     [Fact]
@@ -1134,7 +1548,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1189,7 +1603,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1236,7 +1650,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1278,7 +1692,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1324,7 +1738,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1371,7 +1785,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1523,7 +1937,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1640,7 +2054,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1742,7 +2156,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1813,7 +2227,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
@@ -1841,11 +2255,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1873,11 +2287,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1912,11 +2326,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
             },
         }, HttpClient, LoggerFactory);
@@ -1949,11 +2363,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
             },
@@ -1980,11 +2394,11 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
                     requestedScope = query["scope"].ToString();
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = scopes => scopes?.Append("custom:scope") ?? ["custom:scope"],
             },
@@ -2018,7 +2432,7 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 ScopeSelector = scopes =>
                 {
                     capturedInput = scopes;
@@ -2048,10 +2462,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    scopePresent = QueryHelpers.ParseQuery(context.AuthorizationUri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = _ => null,
             },
@@ -2078,10 +2492,10 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                AuthorizationCallbackHandler = (context, ct) =>
                 {
-                    scopePresent = QueryHelpers.ParseQuery(uri.Query).ContainsKey("scope");
-                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                    scopePresent = QueryHelpers.ParseQuery(context.AuthorizationUri.Query).ContainsKey("scope");
+                    return HandleAuthorizationUrlAsync(context, ct);
                 },
                 ScopeSelector = _ => [],
             },
@@ -2092,6 +2506,21 @@ public class AuthTests : OAuthTestBase
 
         Assert.False(scopePresent);
     }
+
+    private HttpClientTransport CreateOAuthTransport(
+        Func<AuthorizationCallbackContext, CancellationToken, Task<ModelContextProtocol.Authentication.AuthorizationResult?>>?
+            authorizationCallbackHandler = null) =>
+        new(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = authorizationCallbackHandler ?? HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
 
     [Fact]
     public async Task DynamicClientRegistration_ScopeSelector_AppliesToDcrScope()
@@ -2109,7 +2538,7 @@ public class AuthTests : OAuthTestBase
             OAuth = new ClientOAuthOptions()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
                 ScopeSelector = scopes => scopes?.Where(s => s == "mcp:tools"),
             },
