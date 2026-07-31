@@ -2,6 +2,8 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.Diagnostics;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
@@ -206,6 +208,117 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         options.DiscoverProbeTimeout = Timeout.InfiniteTimeSpan;
         Assert.Equal(Timeout.InfiniteTimeSpan, options.DiscoverProbeTimeout);
     }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
+        HttpStatusCode status, HttpTransportMode transportMode)
+    {
+        // A server predating SEP-2575 can reject the session-less server/discover probe at the HTTP layer
+        // rather than with a JSON-RPC error: 404 when it requires Mcp-Session-Id on every non-initialize
+        // POST, or a plain/empty 400 when it cannot parse the request. Both are initialize-handshake
+        // servers, so the connect must fall back instead of failing.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
+            status, "Invalid session ID", () => initializeReceived = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.True(initializeReceived);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnOtherHttpErrorFromProbe_Surfaces_NoFallback(
+        HttpStatusCode status, HttpTransportMode transportMode)
+    {
+        // Only 400 and 404 are read as "this server needs the initialize handshake". Any other HTTP failure
+        // is a genuine transport error and must surface, so callers are not handed a misleading downstream
+        // error. Guards the deliberate narrowing of the status filter.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
+            status, "nope", () => initializeReceived = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.False(initializeReceived);
+    }
+
+    private HttpClientTransport CreateTransport(HttpClient httpClient, HttpTransportMode transportMode)
+        => new(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = transportMode,
+            Name = "HTTP discover probe test client",
+        }, httpClient, LoggerFactory);
+
+    /// <summary>
+    /// Mock Streamable HTTP server that rejects <c>server/discover</c> with <paramref name="probeStatus"/>
+    /// and, if the client falls back, completes an <c>initialize</c> handshake at 2025-11-25.
+    /// </summary>
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateProbeRejectingServer(
+        HttpStatusCode probeStatus, string probeBody, Action onInitialize)
+        => async request =>
+        {
+            // The server offers no standalone SSE stream, which the spec permits.
+            // net472 does not populate a default Content, so every response sets one explicitly.
+            if (request.Method == HttpMethod.Get)
+                return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+
+            var body = await request.Content!.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("method", out var methodElement))
+                return EmptyResponse(HttpStatusCode.Accepted);
+
+            switch (methodElement.GetString())
+            {
+                case RequestMethods.ServerDiscover:
+                    return new HttpResponseMessage(probeStatus) { Content = new StringContent(probeBody) };
+
+                case RequestMethods.Initialize:
+                    onInitialize();
+                    var id = doc.RootElement.GetProperty("id").GetRawText();
+                    var result = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                        + ",\"result\":{\"protocolVersion\":\"" + McpProtocolVersions.November2025ProtocolVersion
+                        + "\",\"capabilities\":{},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}";
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(result, Encoding.UTF8, "application/json"),
+                    };
+                    response.Headers.Add("mcp-session-id", "test-session");
+                    return response;
+
+                default:
+                    return EmptyResponse(HttpStatusCode.Accepted);
+            }
+        };
+
+    private static HttpResponseMessage EmptyResponse(HttpStatusCode status)
+        => new(status) { Content = new StringContent(string.Empty) };
 
     /// <summary>
     /// Minimal in-memory transport that simulates an initialize-handshake server: rejects
