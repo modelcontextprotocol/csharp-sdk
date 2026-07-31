@@ -270,7 +270,6 @@ public class SubscriptionsListenHandlerTests : ClientServerTestBase
         notification.Params = paramsObject;
     }
 
-    [McpServerToolType]
     private sealed class ListenTools
     {
         [McpServerTool, System.ComponentModel.Description("Echoes the input back to the caller.")]

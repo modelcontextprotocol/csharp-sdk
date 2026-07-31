@@ -117,8 +117,11 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // A stateful session can push unsolicited list-changed notifications, so subscribe to the
-        // collection change events. A stateless HTTP server cannot send unsolicited notifications, so
-        // instead suppress the listChanged capability it would otherwise advertise.
+        // collection change events. A stateless HTTP server cannot push unsolicited notifications; whether it
+        // may still advertise the listChanged capability (over a custom subscriptions/listen stream to a
+        // 2026-07-28+ client) is decided per response in GetAdvertisedCapabilities rather than cleared here,
+        // because the same ServerCapabilities feeds both the legacy initialize handshake (which can never
+        // deliver it) and server/discover (which can, given a custom handler).
         if (HasStatefulTransport())
         {
             Register(ServerOptions.ToolCollection, NotificationMethods.ToolListChangedNotification);
@@ -135,15 +138,6 @@ internal sealed partial class McpServerImpl : McpServer
                     _disposables.Add(() => collection.Changed -= changed);
                 }
             }
-        }
-        else
-        {
-            if (ServerCapabilities.Tools is not null)
-                ServerCapabilities.Tools.ListChanged = null;
-            if (ServerCapabilities.Prompts is not null)
-                ServerCapabilities.Prompts.ListChanged = null;
-            if (ServerCapabilities.Resources is not null)
-                ServerCapabilities.Resources.ListChanged = null;
         }
 
         // And initialize the session. The built-in protocol metadata filters run ahead of any
@@ -516,6 +510,46 @@ internal sealed partial class McpServerImpl : McpServer
     /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; }
 
+    /// <summary>
+    /// Returns the <see cref="ServerCapabilities"/> to advertise in a specific response, suppressing the
+    /// <c>listChanged</c> flags the server has no way to honor.
+    /// </summary>
+    /// <param name="listenStreamCanDeliverListChanged">
+    /// <see langword="true"/> when the client this response targets can receive <c>*/list_changed</c>
+    /// notifications over a <c>subscriptions/listen</c> stream.
+    /// </param>
+    /// <remarks>
+    /// A stateless HTTP server has no session-wide channel to push unsolicited <c>*/list_changed</c>
+    /// notifications. It can only deliver them over a <c>subscriptions/listen</c> stream, which requires both
+    /// a 2026-07-28+ client (so the request is reachable at all) and a custom
+    /// <see cref="McpServerHandlers.SubscriptionsListenHandler"/> to own that stream (the built-in stateless
+    /// handler grants no notifications). When neither the transport is stateful nor that stream can carry
+    /// them, the <c>listChanged</c> flags are dropped so the server never advertises a capability it cannot
+    /// deliver. Everything else (for example <c>resources.subscribe</c>) is preserved.
+    /// </remarks>
+    private ServerCapabilities GetAdvertisedCapabilities(bool listenStreamCanDeliverListChanged)
+    {
+        if (HasStatefulTransport() || listenStreamCanDeliverListChanged)
+        {
+            return ServerCapabilities;
+        }
+
+        // Copy onto a fresh instance so the shared ServerCapabilities keeps the authored listChanged flags;
+        // server/discover with a custom listen handler may still advertise them.
+        return new ServerCapabilities
+        {
+            Experimental = ServerCapabilities.Experimental,
+            Logging = ServerCapabilities.Logging,
+            Completions = ServerCapabilities.Completions,
+            Extensions = ServerCapabilities.Extensions,
+            Prompts = ServerCapabilities.Prompts is null ? null : new PromptsCapability { ListChanged = null },
+            Resources = ServerCapabilities.Resources is { } resources
+                ? new ResourcesCapability { Subscribe = resources.Subscribe, ListChanged = null }
+                : null,
+            Tools = ServerCapabilities.Tools is null ? null : new ToolsCapability { ListChanged = null },
+        };
+    }
+
     /// <inheritdoc />
     public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
 
@@ -667,7 +701,11 @@ internal sealed partial class McpServerImpl : McpServer
                     ProtocolVersion = negotiatedProtocolVersion,
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
-                    Capabilities = ServerCapabilities ?? new(),
+
+                    // The initialize handshake only serves pre-2026-07-28 clients, which cannot open a
+                    // subscriptions/listen stream, so a stateless server has no way to deliver list-changed
+                    // notifications to them regardless of any custom handler.
+                    Capabilities = GetAdvertisedCapabilities(listenStreamCanDeliverListChanged: false),
 
                     // resultType is a 2026-07-28 result field. The initialize handshake is only available on
                     // 2025-11-25 and earlier revisions (2026-07-28+ negotiate via server/discover and throw
@@ -694,7 +732,13 @@ internal sealed partial class McpServerImpl : McpServer
                 return new ValueTask<DiscoverResult>(new DiscoverResult
                 {
                     SupportedVersions = [.. _perRequestMetadataProtocolVersions],
-                    Capabilities = ServerCapabilities ?? new(),
+
+                    // server/discover only serves 2026-07-28+ clients, which can open a subscriptions/listen
+                    // stream. A stateless server can therefore still deliver list-changed notifications if the
+                    // author supplied a custom handler to own that stream (the built-in stateless handler
+                    // grants nothing, so it cannot).
+                    Capabilities = GetAdvertisedCapabilities(
+                        listenStreamCanDeliverListChanged: options.Handlers.SubscriptionsListenHandler is not null),
                     Instructions = options.ServerInstructions,
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep
@@ -761,6 +805,14 @@ internal sealed partial class McpServerImpl : McpServer
                             $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
                             McpErrorCode.MethodNotFound);
                     }
+
+                    // Notifications is 'required', but that only enforces presence during deserialization,
+                    // not non-nullness: a '{"notifications": null}' payload produces a non-null params object
+                    // with a null Notifications (DefaultOptions does not set RespectNullableAnnotations).
+                    // Normalize null to empty so a custom handler can dereference request.Params.Notifications
+                    // without an NRE, matching the built-in handler's request?.Notifications guard below.
+                    request.Params ??= new SubscriptionsListenRequestParams { Notifications = new() };
+                    request.Params.Notifications ??= new SubscriptionsListenNotifications();
 
                     return subscriptionsListenHandler(request, cancellationToken);
                 },

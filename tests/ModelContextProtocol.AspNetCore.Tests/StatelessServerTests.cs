@@ -465,6 +465,89 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Assert.Equal(subscribedUri, Assert.IsType<JsonObject>(updated.Params)["uri"]?.GetValue<string>());
     }
 
+    [Fact]
+    public async Task SubscriptionsListen_WithCustomHandler_InStatelessMode_AdvertisesAndStreamsListChanged()
+    {
+        // resources/updated rides on resources.subscribe, which is never suppressed, so it cannot prove the
+        // listChanged capability is advertised. A custom SubscriptionsListenHandler gives a stateless server a
+        // way to deliver */list_changed over the held-open POST, so server/discover (the only path a
+        // 2026-07-28+ client uses) must advertise tools.listChanged rather than dropping it (issue #1662).
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+            })
+            .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
+            .WithSubscriptionsListenHandler(async (request, cancellationToken) =>
+            {
+                var subscriptionId = request.JsonRpcRequest.Id;
+
+                var ack = new JsonRpcNotification
+                {
+                    Method = NotificationMethods.SubscriptionsAcknowledgedNotification,
+                    Params = JsonSerializer.SerializeToNode(
+                        new SubscriptionsAcknowledgedNotificationParams
+                        {
+                            Notifications = new SubscriptionsListenNotifications
+                            {
+                                ToolsListChanged = request.Params.Notifications.ToolsListChanged,
+                            },
+                        },
+                        McpJsonUtilities.DefaultOptions),
+                };
+                TagWithSubscriptionId(ack, subscriptionId);
+                await request.Server.SendMessageAsync(ack, cancellationToken);
+
+                var listChanged = new JsonRpcNotification { Method = NotificationMethods.ToolListChangedNotification };
+                TagWithSubscriptionId(listChanged, subscriptionId);
+                await request.Server.SendMessageAsync(listChanged, cancellationToken);
+
+                return new EmptyResult();
+            });
+
+        // Advertise tools.listChanged so the per-response capability decision has something to preserve.
+        Builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Capabilities ??= new();
+            options.Capabilities.Tools ??= new();
+            options.Capabilities.Tools.ListChanged = true;
+        });
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        await using var client = await ConnectMcpClientAsync();
+
+        // The stateless server can now deliver tools/list_changed over the custom listen stream, so the
+        // capability must survive on the server/discover response instead of being cleared.
+        Assert.True(client.ServerCapabilities.Tools?.ListChanged);
+
+        var listChangedChannel = Channel.CreateUnbounded<JsonRpcNotification>();
+        await using var listChangedReg = client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification,
+            (notification, _) => { listChangedChannel.Writer.TryWrite(notification); return default; });
+
+        var listenRequest = new JsonRpcRequest
+        {
+            Method = RequestMethods.SubscriptionsListen,
+            Params = JsonSerializer.SerializeToNode(
+                new SubscriptionsListenRequestParams
+                {
+                    Notifications = new SubscriptionsListenNotifications { ToolsListChanged = true },
+                },
+                McpJsonUtilities.DefaultOptions),
+        };
+
+        await client.SendRequestAsync(listenRequest, TestContext.Current.CancellationToken)
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        var listChangedNotification = await listChangedChannel.Reader.ReadAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(GetSubscriptionId(listChangedNotification));
+    }
+
     private static string? GetSubscriptionId(JsonRpcNotification notification)
         => ((notification.Params as JsonObject)?["_meta"] as JsonObject)?[MetaKeys.SubscriptionId]?.ToJsonString();
 
