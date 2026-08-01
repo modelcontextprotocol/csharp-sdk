@@ -49,6 +49,9 @@ internal sealed partial class McpServerImpl : McpServer
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
 
+    /// <summary>Methods whose alternate-result filters were actually wired into a dispatched handler.</summary>
+    private readonly HashSet<string> _alternateResultMethodsApplied = new(StringComparer.Ordinal);
+
     private readonly string _serverOnlyEndpointName;
     private string? _negotiatedProtocolVersion;
     private string _endpointName;
@@ -109,6 +112,7 @@ internal sealed partial class McpServerImpl : McpServer
         ConfigureExperimentalAndExtensions(options);
         ConfigureMrtr();
         ConfigureCustomRequestHandlers(options);
+        ValidateAlternateResultRegistrations(options);
 
         // Register any notification handlers that were provided.
         if (options.Handlers.NotificationHandlers is { } notificationHandlers)
@@ -973,7 +977,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         ServerCapabilities.Completions = new();
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.CompletionComplete,
             completeHandler,
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
@@ -1240,31 +1244,31 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Resources.ListChanged = listChanged;
         ServerCapabilities.Resources.Subscribe = subscribe;
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ResourcesList,
             listResourcesHandler,
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ResourcesTemplatesList,
             listResourceTemplatesHandler,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult);
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ResourcesRead,
             readResourceHandler,
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ResourcesSubscribe,
             subscribeHandler,
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ResourcesUnsubscribe,
             unsubscribeHandler,
             McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
@@ -1351,13 +1355,13 @@ internal sealed partial class McpServerImpl : McpServer
 
         ServerCapabilities.Prompts.ListChanged = listChanged;
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.PromptsList,
             listPromptsHandler,
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult);
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.PromptsGet,
             getPromptHandler,
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
@@ -1487,12 +1491,13 @@ internal sealed partial class McpServerImpl : McpServer
         }
         ServerCapabilities.Tools.ListChanged = listChanged;
 
-        SetHandler(
+        SetHandlerWithAlternateSupport(
             RequestMethods.ToolsList,
             listToolsHandler,
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
+        _alternateResultMethodsApplied.Add(RequestMethods.ToolsCall);
         SetWithAlternateHandler(
             RequestMethods.ToolsCall,
             callToolWithAlternateHandler,
@@ -1761,30 +1766,7 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
-        // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
-        // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
-        // When a handler leaves them unset, fill in conservative defaults (immediately stale and not
-        // shareable) so the wire form always carries the fields while preserving today's "don't cache"
-        // behavior. Any value supplied by the handler or a filter is left untouched.
-        if (typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
-        {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
-            {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-
-                // ttlMs and cacheScope are 2026-07-28 result fields; only stamp them when the request
-                // was negotiated under that revision or later. Earlier revisions (e.g. 2025-11-25) reject
-                // these as unrecognized keys (issue #1721).
-                if (result is ICacheableResult cacheable && IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
-                {
-                    cacheable.TimeToLive ??= TimeSpan.Zero;
-                    cacheable.CacheScope ??= CacheScope.Private;
-                }
-
-                return result;
-            };
-        }
+        handler = WrapWithCacheableDefaults(handler);
 
         if (typeof(Result).IsAssignableFrom(typeof(TResult)))
         {
@@ -1810,6 +1792,94 @@ internal sealed partial class McpServerImpl : McpServer
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
             requestTypeInfo, responseTypeInfo);
+    }
+
+    /// <summary>
+    /// Registers a built-in typed handler, routing it through the method-keyed alternate-result pipeline
+    /// when <see cref="McpServerOptions.AddAlternateResultFilter{TParams, TResult}"/> registered filters for
+    /// <paramref name="method"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only adaptation and filter composition are generalized here. Per-method policy such as primitive
+    /// matching and lifecycle logging stays with the method that needs it; <c>tools/call</c> keeps its own
+    /// composition in <see cref="BuildComposedCallToolHandler"/>.
+    /// </remarks>
+#pragma warning disable MCPEXP002 // consumes the experimental alternate-result seam
+    private void SetHandlerWithAlternateSupport<TParams, TResult>(
+        string method,
+        McpRequestHandler<TParams, TResult> handler,
+        JsonTypeInfo<TParams> requestTypeInfo,
+        JsonTypeInfo<TResult> responseTypeInfo)
+        where TResult : Result
+    {
+        if (!ServerOptions.Filters.Request.AlternateResultFilters.TryGetNonEmpty<TParams, TResult>(method, out var filters))
+        {
+            SetHandler(method, handler, requestTypeInfo, responseTypeInfo);
+            return;
+        }
+
+        _alternateResultMethodsApplied.Add(method);
+
+        var ordinaryHandler = WrapWithCacheableDefaults(handler);
+        McpRequestHandler<TParams, ResultOrAlternate<TResult>> adapted = async (request, cancellationToken) =>
+            await ordinaryHandler(request, cancellationToken).ConfigureAwait(false);
+
+        SetWithAlternateHandler(
+            method,
+            BuildInvocationFilterPipeline(adapted, filters),
+            requestTypeInfo,
+            responseTypeInfo);
+    }
+
+    /// <summary>
+    /// Throws when alternate-result filters were registered for a method the server never dispatches, so a
+    /// typo or a missing capability surfaces at construction instead of silently dropping the filters.
+    /// </summary>
+    private void ValidateAlternateResultRegistrations(McpServerOptions options)
+    {
+        foreach (var method in options.Filters.Request.AlternateResultFilters.NonEmptyMethods)
+        {
+            if (!_alternateResultMethodsApplied.Contains(method))
+            {
+                throw new InvalidOperationException(
+                    $"Alternate-result filters were registered for method '{method}', but this server does not " +
+                    $"dispatch that method. Register them for a method the server handles, or configure the " +
+                    $"capability that provides it.");
+            }
+        }
+    }
+#pragma warning restore MCPEXP002
+
+    /// <summary>
+    /// SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
+    /// resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
+    /// When a handler leaves them unset, fill in conservative defaults (immediately stale and not
+    /// shareable) so the wire form always carries the fields while preserving today's "don't cache"
+    /// behavior. Any value supplied by the handler or a filter is left untouched.
+    /// </summary>
+    private McpRequestHandler<TParams, TResult> WrapWithCacheableDefaults<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> handler)
+    {
+        if (!typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
+        {
+            return handler;
+        }
+
+        return async (request, cancellationToken) =>
+        {
+            var result = await handler(request, cancellationToken).ConfigureAwait(false);
+
+            // ttlMs and cacheScope are 2026-07-28 result fields; only stamp them when the request
+            // was negotiated under that revision or later. Earlier revisions (e.g. 2025-11-25) reject
+            // these as unrecognized keys (issue #1721).
+            if (result is ICacheableResult cacheable && IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
+            {
+                cacheable.TimeToLive ??= TimeSpan.Zero;
+                cacheable.CacheScope ??= CacheScope.Private;
+            }
+
+            return result;
+        };
     }
 
 #pragma warning disable MCPEXP002 // SetWithAlternateHandler wraps the experimental ResultOrAlternate seam
