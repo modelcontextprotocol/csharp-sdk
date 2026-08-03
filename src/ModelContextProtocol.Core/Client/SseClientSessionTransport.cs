@@ -23,6 +23,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     private Task? _receiveTask;
     private readonly ILogger _logger;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
+    private volatile bool _sseAdopted;
 
     /// <summary>
     /// SSE transport for a single session. Unlike stdio it does not launch a process, but connects to an existing server.
@@ -107,6 +108,8 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             throw HttpResponseMessageExtensions.CreateHttpRequestException(response, responseBody);
         }
+
+        _sseAdopted = true;
     }
 
     private async Task CloseAsync()
@@ -129,7 +132,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
+            SetSseDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
         }
     }
 
@@ -190,7 +193,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             else
             {
-                SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails
+                SetSseDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails
                 {
                     HttpStatusCode = failureStatusCode,
                     Exception = ex,
@@ -202,7 +205,18 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
+            SetSseDisconnected(new ClientTransportClosedException(new HttpClientCompletionDetails()));
+        }
+    }
+
+    private void SetSseDisconnected(Exception error)
+    {
+        // If AutoDetect is still probing SSE, leave its shared message channel open so it can
+        // retry with another transport. A successful POST means SSE was selected and owns the
+        // channel from that point on, matching Streamable HTTP's adoption behavior.
+        if (_options.TransportMode is not HttpTransportMode.AutoDetect || _sseAdopted)
+        {
+            SetDisconnected(error);
         }
     }
 

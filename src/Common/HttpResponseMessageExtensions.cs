@@ -69,10 +69,52 @@ internal static class HttpResponseMessageExtensions
             ? $"Response status code does not indicate success: {statusCodeInt} ({response.ReasonPhrase})."
             : $"Response status code does not indicate success: {statusCodeInt} ({response.ReasonPhrase}). Response body: {responseBody}";
 
+        return HttpRequestExceptionExtensions.Create(message, innerException: null, response.StatusCode);
+    }
+}
+
+/// <summary>
+/// Helpers for preserving HTTP status codes on <see cref="HttpRequestException"/> across all target frameworks.
+/// </summary>
+internal static class HttpRequestExceptionExtensions
+{
+    internal const string StatusCodeDataKey = "ModelContextProtocol.HttpStatusCode";
+
+    /// <summary>
+    /// Creates an <see cref="HttpRequestException"/> and preserves its HTTP status code.
+    /// </summary>
+    public static HttpRequestException Create(string message, Exception? innerException, HttpStatusCode? statusCode)
+    {
 #if NET
-        return new HttpRequestException(message, inner: null, response.StatusCode);
+        var exception = new HttpRequestException(message, innerException, statusCode);
 #else
-        return new HttpRequestException(message);
+        var exception = new HttpRequestException(message, innerException);
 #endif
+
+        if (statusCode is not null)
+        {
+            exception.Data[StatusCodeDataKey] = statusCode.Value;
+        }
+
+        return exception;
+    }
+
+    /// <summary>
+    /// Gets the preserved HTTP status code from an <see cref="HttpRequestException"/>.
+    /// </summary>
+    public static HttpStatusCode? GetStatusCode(this HttpRequestException exception)
+    {
+#if NET
+        if (exception.StatusCode is { } statusCode)
+        {
+            return statusCode;
+        }
+#endif
+
+        return exception.Data[StatusCodeDataKey] switch
+        {
+            HttpStatusCode storedStatusCode => storedStatusCode,
+            _ => null,
+        };
     }
 }

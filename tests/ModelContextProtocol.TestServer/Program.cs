@@ -34,6 +34,13 @@ internal static class Program
 
     private static async Task Main(string[] args)
     {
+        if (args.Contains("--echo-cli-arg-and-exit"))
+        {
+            Console.Error.WriteLine($"CLI_ARG:{JsonSerializer.Serialize(ParseCliArgument(args))}");
+            Console.Error.Flush();
+            return;
+        }
+
         Log.Logger.Information("Starting server...");
 
         string? cliArg = ParseCliArgument(args);
