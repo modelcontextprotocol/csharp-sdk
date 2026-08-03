@@ -1,8 +1,8 @@
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Extensions.Apps;
 
@@ -16,7 +16,8 @@ public static partial class McpAppElicitation
 #if NET
         ArgumentNullException.ThrowIfNull(capabilities);
 #else
-        if (capabilities is null) throw new ArgumentNullException(nameof(capabilities));
+        if (capabilities is null)
+            throw new ArgumentNullException(nameof(capabilities));
 #endif
 
         capabilities.Elicitation ??= new ElicitationCapability();
@@ -28,12 +29,13 @@ public static partial class McpAppElicitation
         {
             uiCapabilities = existing switch
             {
-                McpUiClientCapabilities typed => JsonSerializer.SerializeToNode(
-                    typed,
-                    McpAppsJsonContext.Default.McpUiClientCapabilities)!.AsObject(),
+                McpUiClientCapabilities typed => JsonSerializer
+                    .SerializeToNode(typed, McpAppsJsonContext.Default.McpUiClientCapabilities)!
+                    .AsObject(),
                 JsonObject jsonObject => jsonObject,
-                JsonElement { ValueKind: JsonValueKind.Object } element =>
-                    JsonNode.Parse(element.GetRawText())!.AsObject(),
+                JsonElement { ValueKind: JsonValueKind.Object } element => JsonNode
+                    .Parse(element.GetRawText())!
+                    .AsObject(),
                 _ => [],
             };
         }
@@ -48,10 +50,13 @@ public static partial class McpAppElicitation
             uiCapabilities["mimeTypes"] = mimeTypes;
         }
 
-        if (!mimeTypes.Any(node =>
-            node is JsonValue value &&
-            value.TryGetValue<string>(out var mimeType) &&
-            string.Equals(mimeType, McpApps.HtmlMimeType, StringComparison.OrdinalIgnoreCase)))
+        if (
+            !mimeTypes.Any(node =>
+                node is JsonValue value
+                && value.TryGetValue<string>(out var mimeType)
+                && string.Equals(mimeType, McpApps.HtmlMimeType, StringComparison.OrdinalIgnoreCase)
+            )
+        )
         {
             mimeTypes.Add((JsonNode?)JsonValue.Create(McpApps.HtmlMimeType));
         }
@@ -67,12 +72,12 @@ public static partial class McpAppElicitation
     /// </summary>
     public static bool IsSupported(
         ClientCapabilities? clientCapabilities,
-        ServerCapabilities? serverCapabilities)
+        ServerCapabilities? serverCapabilities
+    )
     {
         var serverUi = McpApps.GetUiServerCapability(serverCapabilities);
 
-        return IsClientSupported(clientCapabilities) &&
-            serverUi?.Elicitation is not null;
+        return IsClientSupported(clientCapabilities) && serverUi?.Elicitation is not null;
     }
 
     /// <summary>
@@ -87,9 +92,10 @@ public static partial class McpAppElicitation
     public static bool IsClientSupported(ClientCapabilities? clientCapabilities)
     {
         var clientUi = McpApps.GetUiCapability(clientCapabilities);
-        return clientCapabilities?.Elicitation?.Form is not null &&
-            clientUi?.Elicitation is not null &&
-            clientUi.MimeTypes?.Contains(McpApps.HtmlMimeType, StringComparer.OrdinalIgnoreCase) == true;
+        return clientCapabilities?.Elicitation?.Form is not null
+            && clientUi?.Elicitation is not null
+            && clientUi.MimeTypes?.Contains(McpApps.HtmlMimeType, StringComparer.OrdinalIgnoreCase)
+                == true;
     }
 
     /// <summary>Associates a form elicitation request with an MCP App UI resource.</summary>
@@ -100,7 +106,8 @@ public static partial class McpAppElicitation
         request.Meta ??= [];
         request.Meta["ui"] = JsonSerializer.SerializeToNode(
             new McpAppElicitationMeta { ResourceUri = resourceUri },
-            McpAppsJsonContext.Default.McpAppElicitationMeta);
+            McpAppsJsonContext.Default.McpAppElicitationMeta
+        );
         return request;
     }
 
@@ -112,7 +119,8 @@ public static partial class McpAppElicitation
         ElicitRequestParams request,
         ClientCapabilities? clientCapabilities,
         ServerCapabilities? serverCapabilities,
-        string resourceUri)
+        string resourceUri
+    )
     {
         ValidateArguments(request, resourceUri);
         return IsSupported(clientCapabilities, serverCapabilities)
@@ -128,12 +136,11 @@ public static partial class McpAppElicitation
     public static ElicitRequestParams SetAppUiIfSupported(
         ElicitRequestParams request,
         ClientCapabilities? clientCapabilities,
-        string resourceUri)
+        string resourceUri
+    )
     {
         ValidateArguments(request, resourceUri);
-        return IsClientSupported(clientCapabilities)
-            ? SetAppUi(request, resourceUri)
-            : request;
+        return IsClientSupported(clientCapabilities) ? SetAppUi(request, resourceUri) : request;
     }
 
     /// <summary>
@@ -145,17 +152,18 @@ public static partial class McpAppElicitation
     public static ElicitRequestParams SetAppUiIfSupported<TParams>(
         ElicitRequestParams request,
         RequestContext<TParams> context,
-        string resourceUri)
+        string resourceUri
+    )
     {
 #if NET
         ArgumentNullException.ThrowIfNull(context);
 #else
-        if (context is null) throw new ArgumentNullException(nameof(context));
+        if (context is null)
+            throw new ArgumentNullException(nameof(context));
 #endif
 
         var clientCapabilities =
-            context.JsonRpcRequest.Context?.ClientCapabilities ??
-            context.Server.ClientCapabilities;
+            context.JsonRpcRequest.Context?.ClientCapabilities ?? context.Server.ClientCapabilities;
         return SetAppUiIfSupported(request, clientCapabilities, resourceUri);
     }
 
@@ -165,7 +173,8 @@ public static partial class McpAppElicitation
 #if NET
         ArgumentNullException.ThrowIfNull(request);
 #else
-        if (request is null) throw new ArgumentNullException(nameof(request));
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
 #endif
 
         if (request.Meta?["ui"] is not JsonNode node)
@@ -190,24 +199,31 @@ public static partial class McpAppElicitation
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceUri);
 #else
-        if (request is null) throw new ArgumentNullException(nameof(request));
-        if (string.IsNullOrWhiteSpace(resourceUri)) throw new ArgumentException("The resource URI is required.", nameof(resourceUri));
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(resourceUri))
+            throw new ArgumentException("The resource URI is required.", nameof(resourceUri));
 #endif
 
         if (!string.Equals(request.Mode, "form", StringComparison.Ordinal))
         {
-            throw new ArgumentException("MCP Apps only support form-mode elicitations.", nameof(request));
+            throw new ArgumentException(
+                "MCP Apps only support form-mode elicitations.",
+                nameof(request)
+            );
         }
 
         if (!IsAbsoluteUiUri(resourceUri))
         {
             throw new ArgumentException(
                 "MCP App elicitation resources must be absolute ui:// URIs.",
-                nameof(resourceUri));
+                nameof(resourceUri)
+            );
         }
     }
 
     private static bool IsAbsoluteUiUri(string resourceUri) =>
-        Uri.TryCreate(resourceUri, UriKind.Absolute, out var uri) &&
-        string.Equals(uri.Scheme, "ui", StringComparison.OrdinalIgnoreCase);
+        Uri.TryCreate(resourceUri, UriKind.Absolute, out var uri)
+        && string.Equals(uri.Scheme, "ui", StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrEmpty(uri.Host);
 }
