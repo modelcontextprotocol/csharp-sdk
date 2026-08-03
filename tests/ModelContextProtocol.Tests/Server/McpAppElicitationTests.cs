@@ -2,6 +2,7 @@
 
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -166,6 +167,370 @@ public class McpAppElicitationTests
         Assert.Null(McpAppElicitation.GetAppUi(nonUi));
     }
 
+    [Fact]
+    public void ValidateResult_AcceptedValidContent_ReturnsNormalizedResult()
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Enter delivery details",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["email"] = new ElicitRequestParams.StringSchema
+                    {
+                        Format = "email",
+                        MinLength = 6,
+                        MaxLength = 100,
+                    },
+                    ["quantity"] = new ElicitRequestParams.NumberSchema
+                    {
+                        Type = "integer",
+                        Minimum = 1,
+                        Maximum = 10,
+                    },
+                    ["expedited"] = new ElicitRequestParams.BooleanSchema(),
+                    ["window"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+                    {
+                        OneOf =
+                        [
+                            new() { Const = "morning", Title = "Morning" },
+                            new() { Const = "afternoon", Title = "Afternoon" },
+                        ],
+                    },
+                    ["days"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
+                    {
+                        MinItems = 1,
+                        MaxItems = 2,
+                        Items = new()
+                        {
+                            Enum = ["monday", "tuesday", "wednesday"],
+                        },
+                    },
+                },
+                Required = ["email", "quantity", "expedited", "window", "days"],
+            },
+        };
+        var result = new ElicitResult
+        {
+            Action = "accept",
+            Content = new Dictionary<string, JsonElement>
+            {
+                ["email"] = Json("\"person@example.com\""),
+                ["quantity"] = Json("2"),
+                ["expedited"] = Json("true"),
+                ["window"] = Json("\"morning\""),
+                ["days"] = Json("""["monday", "tuesday"]"""),
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(request, result);
+
+        Assert.True(validation.IsValid);
+        Assert.Empty(validation.Errors);
+        Assert.NotNull(validation.ValidatedResult);
+        Assert.Equal(2, validation.ValidatedResult.Content!["quantity"].GetInt32());
+    }
+
+    [Fact]
+    public void ValidateResult_MissingRequiredProperty_ReturnsError()
+    {
+        var validation = McpAppElicitation.ValidateResult(
+            CreateRequest(),
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>(),
+            });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.False(validation.IsValid);
+        Assert.Null(validation.ValidatedResult);
+        Assert.Equal("/content/choice", error.Path);
+        Assert.Equal("Required property is missing.", error.Message);
+    }
+
+    [Fact]
+    public void ValidateResult_UnexpectedProperty_ReturnsError()
+    {
+        var validation = McpAppElicitation.ValidateResult(
+            CreateRequest(),
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["choice"] = Json("\"morning\""),
+                    ["untrusted"] = Json("\"sensitive-value\""),
+                },
+            });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.Equal("/content/untrusted", error.Path);
+        Assert.DoesNotContain("sensitive-value", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\"two\"")]
+    [InlineData("2.5")]
+    [InlineData("null")]
+    public void ValidateResult_InvalidIntegerValue_ReturnsError(string json)
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Enter a quantity",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["quantity"] = new ElicitRequestParams.NumberSchema { Type = "integer" },
+                },
+                Required = ["quantity"],
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["quantity"] = Json(json),
+                },
+            });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.Equal("/content/quantity", error.Path);
+        Assert.Equal("Expected an integer.", error.Message);
+    }
+
+    [Fact]
+    public void ValidateResult_InvalidEnumChoices_ReturnErrorsWithoutValues()
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Choose options",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["window"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+                    {
+                        OneOf = [new() { Const = "morning", Title = "Morning" }],
+                    },
+                    ["days"] = new ElicitRequestParams.TitledMultiSelectEnumSchema
+                    {
+                        Items = new()
+                        {
+                            AnyOf = [new() { Const = "monday", Title = "Monday" }],
+                        },
+                    },
+                },
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["window"] = Json("\"secret-window\""),
+                    ["days"] = Json("""["secret-day"]"""),
+                },
+            });
+
+        Assert.False(validation.IsValid);
+        Assert.Collection(
+            validation.Errors,
+            error =>
+            {
+                Assert.Equal("/content/window", error.Path);
+                Assert.DoesNotContain("secret-window", error.Message, StringComparison.Ordinal);
+            },
+            error =>
+            {
+                Assert.Equal("/content/days/0", error.Path);
+                Assert.DoesNotContain("secret-day", error.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void ValidateResult_LengthNumericAndSelectionBounds_ReturnErrors()
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Enter bounded values",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["name"] = new ElicitRequestParams.StringSchema { MinLength = 2, MaxLength = 4 },
+                    ["score"] = new ElicitRequestParams.NumberSchema { Minimum = 1, Maximum = 5 },
+                    ["choices"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
+                    {
+                        MinItems = 2,
+                        MaxItems = 3,
+                        Items = new() { Enum = ["a", "b", "c"] },
+                    },
+                },
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["name"] = Json("\"x\""),
+                    ["score"] = Json("6"),
+                    ["choices"] = Json("""["a"]"""),
+                },
+            });
+
+        Assert.False(validation.IsValid);
+        Assert.Equal(
+            ["/content/name", "/content/score", "/content/choices"],
+            validation.Errors.Select(error => error.Path));
+    }
+
+    [Theory]
+    [InlineData("", "email")]
+    [InlineData("not-an-email", "email")]
+    [InlineData("relative/path", "uri")]
+    [InlineData("2026-02-30", "date")]
+    [InlineData("2026-08-03 11:22:30Z", "date-time")]
+    public void ValidateResult_InvalidStringFormat_ReturnsError(string value, string format)
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Enter a formatted value",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["value"] = new ElicitRequestParams.StringSchema { Format = format },
+                },
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["value"] = JsonSerializer.SerializeToElement(value, McpApps.SerializerOptions),
+                },
+            });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.Equal("/content/value", error.Path);
+        if (value.Length > 0)
+        {
+            Assert.DoesNotContain(value, error.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("person@example.com", "email")]
+    [InlineData("https://example.com/path", "uri")]
+    [InlineData("2026-08-03", "date")]
+    [InlineData("2026-08-03T11:22:30Z", "date-time")]
+    [InlineData("2026-08-03T11:22:30.462-07:00", "date-time")]
+    public void ValidateResult_ValidStringFormat_IsAccepted(string value, string format)
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Enter a formatted value",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["value"] = new ElicitRequestParams.StringSchema { Format = format },
+                },
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["value"] = JsonSerializer.SerializeToElement(value, McpApps.SerializerOptions),
+                },
+            });
+
+        Assert.True(validation.IsValid);
+    }
+
+    [Theory]
+    [InlineData("decline")]
+    [InlineData("cancel")]
+    public void ValidateResult_DeclineAndCancelWithoutContent_AreValid(string action)
+    {
+        var result = new ElicitResult { Action = action };
+
+        var validation = McpAppElicitation.ValidateResult(CreateRequest(), result);
+
+        Assert.True(validation.IsValid);
+        Assert.Same(result, validation.ValidatedResult);
+        Assert.Empty(validation.Errors);
+    }
+
+    [Fact]
+    public void ValidateResult_AcceptedResult_AppliesDefaultsBeforeRequiredValidation()
+    {
+        var request = new ElicitRequestParams
+        {
+            Message = "Confirm defaults",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
+            {
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["window"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema
+                    {
+                        Enum = ["morning", "afternoon"],
+                        Default = "morning",
+                    },
+                    ["expedited"] = new ElicitRequestParams.BooleanSchema { Default = false },
+                },
+                Required = ["window"],
+            },
+        };
+
+        var validation = McpAppElicitation.ValidateResult(
+            request,
+            new ElicitResult { Action = "accept" });
+
+        Assert.True(validation.IsValid);
+        Assert.Equal("morning", validation.ValidatedResult!.Content!["window"].GetString());
+        Assert.False(validation.ValidatedResult.Content["expedited"].GetBoolean());
+    }
+
+    [Fact]
+    public void ValidateResult_AcceptedResultWithoutContentOrDefaults_ReturnsError()
+    {
+        var validation = McpAppElicitation.ValidateResult(
+            new ElicitRequestParams
+            {
+                Message = "Optional form",
+                RequestedSchema = new ElicitRequestParams.RequestSchema(),
+            },
+            new ElicitResult { Action = "accept" });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.Equal("/content", error.Path);
+        Assert.Equal("Accepted elicitation results must include content.", error.Message);
+    }
+
     private static ClientCapabilities CreateClientCapabilities()
     {
         var capabilities = new ClientCapabilities();
@@ -195,4 +560,7 @@ public class McpAppElicitationTests
             Required = ["choice"],
         },
     };
+
+    private static JsonElement Json(string json) =>
+        JsonDocument.Parse(json).RootElement.Clone();
 }
