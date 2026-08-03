@@ -1,9 +1,9 @@
 #pragma warning disable MCPEXP003
 
-using ModelContextProtocol.Extensions.Apps;
-using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Extensions.Apps;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -16,10 +16,7 @@ public class McpAppElicitationTests
         {
             Extensions = new Dictionary<string, object>
             {
-                [McpApps.ExtensionId] = new JsonObject
-                {
-                    ["custom"] = true,
-                },
+                [McpApps.ExtensionId] = new JsonObject { ["custom"] = true },
             },
         };
 
@@ -32,7 +29,8 @@ public class McpAppElicitationTests
         Assert.Contains(
             McpApps.HtmlMimeType,
             ui["mimeTypes"]!.AsArray().Select(value => value!.GetValue<string>()),
-            StringComparer.OrdinalIgnoreCase);
+            StringComparer.OrdinalIgnoreCase
+        );
     }
 
     [Fact]
@@ -54,15 +52,14 @@ public class McpAppElicitationTests
     {
         var request = CreateRequest();
 
-        var result = McpAppElicitation.SetAppUi(
-            request,
-            "ui://example/choose-option.html");
+        var result = McpAppElicitation.SetAppUi(request, "ui://example/choose-option.html");
 
         Assert.Same(request, result);
         Assert.Equal("Choose an option", result.Message);
         Assert.Equal(
             "ui://example/choose-option.html",
-            McpAppElicitation.GetAppUi(result)?.ResourceUri);
+            McpAppElicitation.GetAppUi(result)?.ResourceUri
+        );
     }
 
     [Fact]
@@ -70,14 +67,16 @@ public class McpAppElicitationTests
     {
         var request = McpAppElicitation.SetAppUi(
             CreateRequest(),
-            "ui://example/choose-option.html");
+            "ui://example/choose-option.html"
+        );
 
         var embedded = InputRequest.ForElicitation(request).ElicitationParams;
 
         Assert.NotNull(embedded);
         Assert.Equal(
             "ui://example/choose-option.html",
-            McpAppElicitation.GetAppUi(embedded)?.ResourceUri);
+            McpAppElicitation.GetAppUi(embedded)?.ResourceUri
+        );
     }
 
     [Fact]
@@ -89,7 +88,8 @@ public class McpAppElicitationTests
             request,
             new ClientCapabilities(),
             CreateServerCapabilities(),
-            "ui://example/choose-option.html");
+            "ui://example/choose-option.html"
+        );
 
         Assert.Same(request, result);
         Assert.Null(result.Meta);
@@ -104,11 +104,13 @@ public class McpAppElicitationTests
             request,
             CreateClientCapabilities(),
             CreateServerCapabilities(),
-            "ui://example/choose-option.html");
+            "ui://example/choose-option.html"
+        );
 
         Assert.Equal(
             "ui://example/choose-option.html",
-            McpAppElicitation.GetAppUi(request)?.ResourceUri);
+            McpAppElicitation.GetAppUi(request)?.ResourceUri
+        );
     }
 
     [Fact]
@@ -119,7 +121,8 @@ public class McpAppElicitationTests
         McpAppElicitation.SetAppUiIfSupported(
             request,
             CreateClientCapabilities(),
-            "ui://example/choose-option.html");
+            "ui://example/choose-option.html"
+        );
 
         Assert.NotNull(McpAppElicitation.GetAppUi(request));
     }
@@ -127,11 +130,14 @@ public class McpAppElicitationTests
     [Theory]
     [InlineData("https://example.com/view.html")]
     [InlineData("relative/view.html")]
+    [InlineData("ui:example/view.html")]
+    [InlineData("ui:///view.html")]
     [InlineData("")]
     public void SetAppUi_RejectsInvalidResourceUri(string resourceUri)
     {
         Assert.ThrowsAny<ArgumentException>(() =>
-            McpAppElicitation.SetAppUi(CreateRequest(), resourceUri));
+            McpAppElicitation.SetAppUi(CreateRequest(), resourceUri)
+        );
     }
 
     [Fact]
@@ -146,7 +152,8 @@ public class McpAppElicitationTests
         };
 
         Assert.Throws<ArgumentException>(() =>
-            McpAppElicitation.SetAppUi(request, "ui://example/view.html"));
+            McpAppElicitation.SetAppUi(request, "ui://example/view.html")
+        );
     }
 
     [Fact]
@@ -159,12 +166,16 @@ public class McpAppElicitationTests
         var nonUi = CreateRequest();
         nonUi.Meta = new JsonObject
         {
-            ["ui"] = new JsonObject
-            {
-                ["resourceUri"] = "https://example.com",
-            },
+            ["ui"] = new JsonObject { ["resourceUri"] = "https://example.com" },
         };
         Assert.Null(McpAppElicitation.GetAppUi(nonUi));
+
+        var opaqueUi = CreateRequest();
+        opaqueUi.Meta = new JsonObject
+        {
+            ["ui"] = new JsonObject { ["resourceUri"] = "ui:example/view.html" },
+        };
+        Assert.Null(McpAppElicitation.GetAppUi(opaqueUi));
     }
 
     [Fact]
@@ -202,10 +213,7 @@ public class McpAppElicitationTests
                     {
                         MinItems = 1,
                         MaxItems = 2,
-                        Items = new()
-                        {
-                            Enum = ["monday", "tuesday", "wednesday"],
-                        },
+                        Items = new() { Enum = ["monday", "tuesday", "wednesday"] },
                     },
                 },
                 Required = ["email", "quantity", "expedited", "window", "days"],
@@ -237,11 +245,8 @@ public class McpAppElicitationTests
     {
         var validation = McpAppElicitation.ValidateResult(
             CreateRequest(),
-            new ElicitResult
-            {
-                Action = "accept",
-                Content = new Dictionary<string, JsonElement>(),
-            });
+            new ElicitResult { Action = "accept", Content = new Dictionary<string, JsonElement>() }
+        );
 
         var error = Assert.Single(validation.Errors);
         Assert.False(validation.IsValid);
@@ -263,7 +268,8 @@ public class McpAppElicitationTests
                     ["choice"] = Json("\"morning\""),
                     ["untrusted"] = Json("\"sensitive-value\""),
                 },
-            });
+            }
+        );
 
         var error = Assert.Single(validation.Errors);
         Assert.Equal("/content/untrusted", error.Path);
@@ -294,11 +300,9 @@ public class McpAppElicitationTests
             new ElicitResult
             {
                 Action = "accept",
-                Content = new Dictionary<string, JsonElement>
-                {
-                    ["quantity"] = Json(json),
-                },
-            });
+                Content = new Dictionary<string, JsonElement> { ["quantity"] = Json(json) },
+            }
+        );
 
         var error = Assert.Single(validation.Errors);
         Assert.Equal("/content/quantity", error.Path);
@@ -321,10 +325,7 @@ public class McpAppElicitationTests
                     },
                     ["days"] = new ElicitRequestParams.TitledMultiSelectEnumSchema
                     {
-                        Items = new()
-                        {
-                            AnyOf = [new() { Const = "monday", Title = "Monday" }],
-                        },
+                        Items = new() { AnyOf = [new() { Const = "monday", Title = "Monday" }] },
                     },
                 },
             },
@@ -340,7 +341,8 @@ public class McpAppElicitationTests
                     ["window"] = Json("\"secret-window\""),
                     ["days"] = Json("""["secret-day"]"""),
                 },
-            });
+            }
+        );
 
         Assert.False(validation.IsValid);
         Assert.Collection(
@@ -354,7 +356,8 @@ public class McpAppElicitationTests
             {
                 Assert.Equal("/content/days/0", error.Path);
                 Assert.DoesNotContain("secret-day", error.Message, StringComparison.Ordinal);
-            });
+            }
+        );
     }
 
     [Fact]
@@ -367,7 +370,11 @@ public class McpAppElicitationTests
             {
                 Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
                 {
-                    ["name"] = new ElicitRequestParams.StringSchema { MinLength = 2, MaxLength = 4 },
+                    ["name"] = new ElicitRequestParams.StringSchema
+                    {
+                        MinLength = 2,
+                        MaxLength = 4,
+                    },
                     ["score"] = new ElicitRequestParams.NumberSchema { Minimum = 1, Maximum = 5 },
                     ["choices"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema
                     {
@@ -390,12 +397,14 @@ public class McpAppElicitationTests
                     ["score"] = Json("6"),
                     ["choices"] = Json("""["a"]"""),
                 },
-            });
+            }
+        );
 
         Assert.False(validation.IsValid);
         Assert.Equal(
             ["/content/name", "/content/score", "/content/choices"],
-            validation.Errors.Select(error => error.Path));
+            validation.Errors.Select(error => error.Path)
+        );
     }
 
     [Theory]
@@ -427,7 +436,8 @@ public class McpAppElicitationTests
                 {
                     ["value"] = JsonSerializer.SerializeToElement(value, McpApps.SerializerOptions),
                 },
-            });
+            }
+        );
 
         var error = Assert.Single(validation.Errors);
         Assert.Equal("/content/value", error.Path);
@@ -466,7 +476,8 @@ public class McpAppElicitationTests
                 {
                     ["value"] = JsonSerializer.SerializeToElement(value, McpApps.SerializerOptions),
                 },
-            });
+            }
+        );
 
         Assert.True(validation.IsValid);
     }
@@ -508,7 +519,8 @@ public class McpAppElicitationTests
 
         var validation = McpAppElicitation.ValidateResult(
             request,
-            new ElicitResult { Action = "accept" });
+            new ElicitResult { Action = "accept" }
+        );
 
         Assert.True(validation.IsValid);
         Assert.Equal("morning", validation.ValidatedResult!.Content!["window"].GetString());
@@ -524,7 +536,8 @@ public class McpAppElicitationTests
                 Message = "Optional form",
                 RequestedSchema = new ElicitRequestParams.RequestSchema(),
             },
-            new ElicitResult { Action = "accept" });
+            new ElicitResult { Action = "accept" }
+        );
 
         var error = Assert.Single(validation.Errors);
         Assert.Equal("/content", error.Path);
@@ -537,30 +550,31 @@ public class McpAppElicitationTests
         return McpAppElicitation.AddClientCapabilities(capabilities);
     }
 
-    private static ServerCapabilities CreateServerCapabilities() => new()
-    {
-        Extensions = new Dictionary<string, object>
+    private static ServerCapabilities CreateServerCapabilities() =>
+        new()
         {
-            [McpApps.ExtensionId] = new McpUiServerCapabilities
+            Extensions = new Dictionary<string, object>
             {
-                Elicitation = new McpUiElicitationCapability(),
+                [McpApps.ExtensionId] = new McpUiServerCapabilities
+                {
+                    Elicitation = new McpUiElicitationCapability(),
+                },
             },
-        },
-    };
+        };
 
-    private static ElicitRequestParams CreateRequest() => new()
-    {
-        Message = "Choose an option",
-        RequestedSchema = new ElicitRequestParams.RequestSchema
+    private static ElicitRequestParams CreateRequest() =>
+        new()
         {
-            Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+            Message = "Choose an option",
+            RequestedSchema = new ElicitRequestParams.RequestSchema
             {
-                ["choice"] = new ElicitRequestParams.StringSchema(),
+                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+                {
+                    ["choice"] = new ElicitRequestParams.StringSchema(),
+                },
+                Required = ["choice"],
             },
-            Required = ["choice"],
-        },
-    };
+        };
 
-    private static JsonElement Json(string json) =>
-        JsonDocument.Parse(json).RootElement.Clone();
+    private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
 }

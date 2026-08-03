@@ -1,13 +1,13 @@
 #pragma warning disable MCPEXP003
 
+using System.ComponentModel;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.ComponentModel;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -121,7 +121,10 @@ public class McpAppsTests
         };
 
         var json = JsonSerializer.Serialize(meta, McpApps.SerializerOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(
+            json,
+            McpApps.SerializerOptions
+        );
 
         Assert.NotNull(deserialized);
         Assert.Equal("ui://weather/view.html", deserialized.ResourceUri);
@@ -153,14 +156,14 @@ public class McpAppsTests
                 FrameDomains = ["https://embed.example.com"],
                 BaseUris = ["https://app.example.com"],
             },
-            Permissions = new McpUiResourcePermissions
-            {
-                Allow = ["camera", "microphone"],
-            },
+            Permissions = new McpUiResourcePermissions { Allow = ["camera", "microphone"] },
         };
 
         var json = JsonSerializer.Serialize(meta, McpApps.SerializerOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiResourceMeta>(json, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiResourceMeta>(
+            json,
+            McpApps.SerializerOptions
+        );
 
         Assert.NotNull(deserialized);
         Assert.Equal("https://app.example.com", deserialized.Domain);
@@ -177,13 +180,13 @@ public class McpAppsTests
     [Fact]
     public void McpUiClientCapabilities_CanBeRoundtrippedAsJson()
     {
-        var caps = new McpUiClientCapabilities
-        {
-            MimeTypes = [McpApps.HtmlMimeType],
-        };
+        var caps = new McpUiClientCapabilities { MimeTypes = [McpApps.HtmlMimeType] };
 
         var json = JsonSerializer.Serialize(caps, McpApps.SerializerOptions);
-        var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(json, McpApps.SerializerOptions);
+        var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(
+            json,
+            McpApps.SerializerOptions
+        );
 
         Assert.NotNull(deserialized);
         Assert.Equal([McpApps.HtmlMimeType], deserialized.MimeTypes);
@@ -212,10 +215,7 @@ public class McpAppsTests
 #pragma warning disable MCPEXP001
         var caps = new ClientCapabilities
         {
-            Extensions = new Dictionary<string, object>
-            {
-                ["other.extension"] = new { },
-            }
+            Extensions = new Dictionary<string, object> { ["other.extension"] = new { } },
         };
 #pragma warning restore MCPEXP001
         Assert.Null(McpApps.GetUiCapability(caps));
@@ -236,7 +236,10 @@ public class McpAppsTests
             }
             """;
 
-        var caps = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+        var caps = JsonSerializer.Deserialize<ClientCapabilities>(
+            json,
+            McpJsonUtilities.DefaultOptions
+        );
         Assert.NotNull(caps);
 
         var uiCaps = McpApps.GetUiCapability(caps);
@@ -256,7 +259,10 @@ public class McpAppsTests
             }
             """;
 
-        var caps = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+        var caps = JsonSerializer.Deserialize<ClientCapabilities>(
+            json,
+            McpJsonUtilities.DefaultOptions
+        );
         Assert.NotNull(caps);
 
         Assert.Null(McpApps.GetUiCapability(caps));
@@ -277,7 +283,10 @@ public class McpAppsTests
             }
             """;
 
-        var caps = JsonSerializer.Deserialize<ClientCapabilities>(json, McpJsonUtilities.DefaultOptions);
+        var caps = JsonSerializer.Deserialize<ClientCapabilities>(
+            json,
+            McpJsonUtilities.DefaultOptions
+        );
         Assert.NotNull(caps);
 
         // Should return null gracefully, not throw
@@ -296,7 +305,7 @@ public class McpAppsTests
                 {
                     MimeTypes = [McpApps.HtmlMimeType],
                 },
-            }
+            },
         };
 #pragma warning restore MCPEXP001
 
@@ -329,7 +338,9 @@ public class McpAppsTests
     [Fact]
     public void ApplyAppUiAttributes_WithVisibility_IncludesVisibilityInUiObject()
     {
-        var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ModelOnlyTool))!;
+        var method = typeof(TestToolsWithAppUi).GetMethod(
+            nameof(TestToolsWithAppUi.ModelOnlyTool)
+        )!;
         var tool = McpServerTool.Create(method, target: null);
 
         McpApps.ApplyAppUiAttributes(tool);
@@ -354,7 +365,11 @@ public class McpAppsTests
             ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/override.html" },
         };
 
-        var tool = McpServerTool.Create(method, target: null, new McpServerToolCreateOptions { Meta = explicitMeta });
+        var tool = McpServerTool.Create(
+            method,
+            target: null,
+            new McpServerToolCreateOptions { Meta = explicitMeta }
+        );
 
         McpApps.ApplyAppUiAttributes(tool);
 
@@ -368,8 +383,14 @@ public class McpAppsTests
     {
         var tools = new[]
         {
-            McpServerTool.Create(typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!, target: null),
-            McpServerTool.Create(typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ModelOnlyTool))!, target: null),
+            McpServerTool.Create(
+                typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!,
+                target: null
+            ),
+            McpServerTool.Create(
+                typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.ModelOnlyTool))!,
+                target: null
+            ),
         };
 
         McpApps.ApplyAppUiAttributes(tools);
@@ -383,7 +404,8 @@ public class McpAppsTests
     {
         var tool = McpServerTool.Create(
             (string input) => input,
-            new McpServerToolCreateOptions { Name = "plain_tool" });
+            new McpServerToolCreateOptions { Name = "plain_tool" }
+        );
 
         McpApps.ApplyAppUiAttributes(tool);
 
@@ -399,7 +421,8 @@ public class McpAppsTests
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions { Name = "get_weather" });
+            new McpServerToolCreateOptions { Name = "get_weather" }
+        );
 
         McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://weather/view.html" });
 
@@ -416,13 +439,17 @@ public class McpAppsTests
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions { Name = "get_weather" });
+            new McpServerToolCreateOptions { Name = "get_weather" }
+        );
 
-        McpApps.SetAppUi(tool, new McpUiToolMeta
-        {
-            ResourceUri = "ui://weather/view.html",
-            Visibility = [McpUiToolVisibility.Model],
-        });
+        McpApps.SetAppUi(
+            tool,
+            new McpUiToolMeta
+            {
+                ResourceUri = "ui://weather/view.html",
+                Visibility = [McpUiToolVisibility.Model],
+            }
+        );
 
         var uiNode = tool.ProtocolTool.Meta?["ui"]?.AsObject();
         Assert.NotNull(uiNode);
@@ -445,7 +472,8 @@ public class McpAppsTests
                 {
                     ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/view.html" },
                 },
-            });
+            }
+        );
 
         McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://new/view.html" });
 
@@ -459,7 +487,8 @@ public class McpAppsTests
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions { Name = "get_weather" });
+            new McpServerToolCreateOptions { Name = "get_weather" }
+        );
 
         McpApps.SetAppUi(tool, new McpUiToolMeta { Visibility = [McpUiToolVisibility.App] });
 
@@ -473,9 +502,13 @@ public class McpAppsTests
     {
         var tool = McpServerTool.Create(
             (string location) => $"Weather for {location}",
-            new McpServerToolCreateOptions { Name = "get_weather" });
+            new McpServerToolCreateOptions { Name = "get_weather" }
+        );
 
-        var result = McpApps.SetAppUi(tool, new McpUiToolMeta { ResourceUri = "ui://weather/view.html" });
+        var result = McpApps.SetAppUi(
+            tool,
+            new McpUiToolMeta { ResourceUri = "ui://weather/view.html" }
+        );
         Assert.Same(tool, result);
     }
 
@@ -487,9 +520,7 @@ public class McpAppsTests
     public void WithMcpApps_AppliesAppUiAttributes_ViaOptions()
     {
         var sc = new ServiceCollection();
-        sc.AddMcpServer()
-            .WithTools([typeof(TestToolsWithAppUi)])
-            .WithMcpApps();
+        sc.AddMcpServer().WithTools([typeof(TestToolsWithAppUi)]).WithMcpApps();
 
         using var sp = sc.BuildServiceProvider();
         var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
@@ -498,10 +529,15 @@ public class McpAppsTests
         Assert.NotEmpty(options.ToolCollection);
 
         // Both tools should have their [McpAppUi] attributes applied
-        var toolsWithUi = options.ToolCollection.Where(t => t.ProtocolTool.Meta?["ui"] is not null).ToList();
+        var toolsWithUi = options
+            .ToolCollection.Where(t => t.ProtocolTool.Meta?["ui"] is not null)
+            .ToList();
         Assert.Equal(2, toolsWithUi.Count);
 
-        var weatherTool = toolsWithUi.First(t => t.ProtocolTool.Meta!["ui"]!["resourceUri"]?.GetValue<string>() == "ui://weather/view.html");
+        var weatherTool = toolsWithUi.First(t =>
+            t.ProtocolTool.Meta!["ui"]!["resourceUri"]?.GetValue<string>()
+            == "ui://weather/view.html"
+        );
         Assert.NotNull(weatherTool);
     }
 
@@ -509,8 +545,7 @@ public class McpAppsTests
     public void WithMcpApps_EmptyToolCollection_DoesNotThrow()
     {
         var sc = new ServiceCollection();
-        sc.AddMcpServer()
-            .WithMcpApps();
+        sc.AddMcpServer().WithMcpApps();
 
         using var sp = sc.BuildServiceProvider();
         var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
@@ -523,8 +558,7 @@ public class McpAppsTests
     public void WithMcpApps_AdvertisesServerCapability()
     {
         var sc = new ServiceCollection();
-        sc.AddMcpServer()
-            .WithMcpApps();
+        sc.AddMcpServer().WithMcpApps();
 
         using var sp = sc.BuildServiceProvider();
         var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
@@ -533,13 +567,83 @@ public class McpAppsTests
         Assert.NotNull(options.Capabilities.Extensions);
         Assert.True(options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId));
         var uiCapabilities = Assert.IsType<JsonObject>(
-            options.Capabilities.Extensions[McpApps.ExtensionId]);
+            options.Capabilities.Extensions[McpApps.ExtensionId]
+        );
         Assert.NotNull(uiCapabilities["elicitation"]);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesTypedServerCapability()
+    {
+        var existing = new McpUiServerCapabilities();
+        var options = GetMcpAppsOptions(existing);
+
+        Assert.Same(existing, options.Capabilities!.Extensions![McpApps.ExtensionId]);
+        Assert.NotNull(existing.Elicitation);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesJsonObjectServerCapabilityAndPreservesSettings()
+    {
+        var existingElicitation = new JsonObject { ["custom"] = true };
+        var existing = new JsonObject
+        {
+            ["customSetting"] = "preserved",
+            ["elicitation"] = existingElicitation,
+        };
+
+        var options = GetMcpAppsOptions(existing);
+
+        var merged = Assert.IsType<JsonObject>(
+            options.Capabilities!.Extensions![McpApps.ExtensionId]
+        );
+        Assert.Same(existing, merged);
+        Assert.Equal("preserved", merged["customSetting"]!.GetValue<string>());
+        Assert.Same(existingElicitation, merged["elicitation"]);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesJsonElementServerCapabilityAndIsIdempotent()
+    {
+        var existing = JsonDocument
+            .Parse("""{"customSetting":"preserved","nested":{"value":42}}""")
+            .RootElement.Clone();
+
+        var options = GetMcpAppsOptions(existing, callTwice: true);
+
+        var merged = Assert.IsType<JsonObject>(
+            options.Capabilities!.Extensions![McpApps.ExtensionId]
+        );
+        Assert.Equal("preserved", merged["customSetting"]!.GetValue<string>());
+        Assert.Equal(42, merged["nested"]!["value"]!.GetValue<int>());
+        Assert.IsType<JsonObject>(merged["elicitation"]);
+        Assert.Single(merged, property => property.Key == "elicitation");
     }
 
     #endregion
 
     #region Test helper types
+
+    private static McpServerOptions GetMcpAppsOptions(object existing, bool callTwice = false)
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.Capabilities = new ServerCapabilities
+            {
+                Extensions = new Dictionary<string, object> { [McpApps.ExtensionId] = existing },
+            };
+        });
+        builder.WithMcpApps();
+        if (callTwice)
+        {
+            builder.WithMcpApps();
+        }
+
+        using var serviceProvider = services.BuildServiceProvider();
+        return serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+    }
 
     [McpServerToolType]
     private static class TestToolsWithAppUi
@@ -550,7 +654,10 @@ public class McpAppsTests
         public static string WeatherTool(string location) => $"Weather for {location}";
 
         [McpServerTool]
-        [McpAppUi(ResourceUri = "ui://model-only/view.html", Visibility = [McpUiToolVisibility.Model])]
+        [McpAppUi(
+            ResourceUri = "ui://model-only/view.html",
+            Visibility = [McpUiToolVisibility.Model]
+        )]
         public static string ModelOnlyTool(string location) => $"Model only for {location}";
     }
 
