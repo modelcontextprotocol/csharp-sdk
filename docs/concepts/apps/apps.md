@@ -220,10 +220,39 @@ throw new InputRequiredException(
 
 This adds `_meta.ui.resourceUri` without changing the core elicitation request.
 Unsupported clients receive the same request without UI metadata and can render
-their native form. The host forwards the embedded request to the selected app,
-validates the app's standard `ElicitResult`, places it under `delivery-window`
-in `inputResponses`, and retries the original operation with
-`schedule-delivery:v1` as `requestState`.
+their native form.
+
+The host forwards the embedded request to the selected app, validates the
+app's standard `ElicitResult` against the original request, and only then
+places the normalized result in the MRTR response:
+
+```csharp
+ElicitResult appResult =
+    await appBridge.ElicitAsync(elicitation, cancellationToken);
+
+var validation =
+    McpAppElicitation.ValidateResult(elicitation, appResult);
+
+if (validation.ValidatedResult is not { } validatedResult)
+{
+    // Errors contain schema paths and value-free messages suitable for diagnostics.
+    throw new InvalidOperationException(
+        string.Join("; ", validation.Errors.Select(
+            error => $"{error.Path}: {error.Message}")));
+}
+
+var inputResponses = new Dictionary<string, InputResponse>
+{
+    ["delivery-window"] = InputResponse.FromElicitResult(validatedResult),
+};
+
+// Retry the original operation with inputResponses and
+// requestState: "schedule-delivery:v1".
+```
+
+Only accepted results are schema-validated. Decline and cancel remain valid
+standard outcomes without content. Missing fields with schema defaults are
+populated in `ValidatedResult`; submitted values are never coerced.
 
 ## Display modes
 
