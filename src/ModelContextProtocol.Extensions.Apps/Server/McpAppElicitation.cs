@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Extensions.Apps;
 
 /// <summary>Provides conventions for using MCP Apps as form elicitation UI.</summary>
 [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
-public static class McpAppElicitation
+public static partial class McpAppElicitation
 {
     /// <summary>Adds the client capabilities required for app-rendered form elicitation.</summary>
     public static ClientCapabilities AddClientCapabilities(ClientCapabilities capabilities)
