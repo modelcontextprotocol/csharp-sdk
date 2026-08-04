@@ -2,6 +2,12 @@
 
 The following process is used when publishing new releases to NuGet.org.
 
+The [`release-manager`](agents/release-manager.agent.md) custom agent orchestrates this process end
+to end -- routing to the `prepare-release` and `publish-release` skills, holding a human gate at each
+stage, tracking how long each stage takes, and closing with a release summary. Start it with a
+prompt like "Where are we in the release process?" or "Prepare a release." The steps
+below remain the authoritative description of the process itself.
+
 ## 1. Ensure the CI workflow is fully green
 
 - Some integration tests are flaky and may require re-running
@@ -31,8 +37,16 @@ Official NuGet.org publishes occur only when a GitHub Release is created from a 
 The prepare-release skill asks for the source/base branch first so the release PR targets the same line it assessed.
 For the agent-facing, structured version of these rules, see [release-branches.md](skills/shared-resources/release-branches.md).
 
-## 4. Monitor the Release workflow
+## 4. Verify the release
 
-- After publishing, a workflow will produce build artifacts and publish the NuGet packages to NuGet.org
-- If the job fails, troubleshoot and re-run the workflow as needed
-- Verify the package version becomes listed at [nuget.org/packages/ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol)
+Publishing the release triggers two workflows in parallel. Invoke the `verify-release` skill to
+monitor both and confirm their published outputs:
+
+- **Release** — produces build artifacts and publishes the NuGet packages to NuGet.org. If the job
+  fails, troubleshoot and re-run the workflow as needed. Verify the package version becomes listed
+  at [nuget.org/packages/ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol).
+- **[Publish Docs](workflows/docs.yml)** — rebuilds the versioned documentation site from the
+  published release tags and deploys it to
+  [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io). Verify the new
+  version appears in the version picker and that its major-version path serves the updated content.
+  A content-only docs refresh can be run later via manual dispatch with the `docs_ref` input.

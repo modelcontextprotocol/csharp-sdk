@@ -154,7 +154,7 @@ Stage all documentation changes for inclusion in the release commit.
 Compose the release notes that will appear in the PR description and serve as the foundation for the **publish-release** skill. This is a draft — the final release notes will be refreshed when the GitHub release is created.
 
 1. **Preamble** — Draft a short paragraph summarizing the release theme. Present it to the user for review and editing. The preamble is **required**.
-2. **Breaking Changes** — sorted most → least impactful (from Step 4 results). Include the versioning docs link.
+2. **Breaking Changes** — sorted most → least impactful (from Step 4 results). Include the versioning docs link, using the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
 3. **What's Changed** — chronological; includes breaking change PRs
 4. **Documentation Updates** — chronological
 5. **Test Improvements** — chronological
@@ -233,6 +233,7 @@ Only after explicit user confirmation in Step 12:
 - **Branch already exists**: if `release-{version}` already exists locally or remotely, ask the user whether to reuse it, delete and recreate, or choose a different name
 - **PackageValidationBaselineVersion update**: for the `2.0.0-preview` series, use `1.3.0`; for subsequent stable releases, use the previous shipped version of the same MAJOR or the latest stable from the previous MAJOR
 - **CompatibilitySuppressions.xml**: when intentional breaks are found, add suppression entries and include the file in the commit; existing suppressions should be preserved
+- **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path does not exist until the release is published and the Publish Docs workflow runs. The link is forward-referencing at prepare time, like the release-notes tag link. Use the slugged form anyway; do not fall back to the unslugged URL.
 - **User declines PR creation**: if the user declines at Step 12, leave the local branch intact so they can review, modify, or push manually
 
 ## PR Description Template
@@ -248,7 +249,7 @@ The PR description combines release notes, ApiCompat, and ApiDiff into a single 
 
 ### Breaking Changes
 
-Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break
@@ -303,14 +304,14 @@ Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/vers
 
 The release notes section within the PR description uses the same format as the final GitHub release notes (used by the **publish-release** skill). This ensures consistency between the PR and the published release. Tag examples such as `v2.0.0-preview.1` are valid and should be used verbatim when the version has a prerelease suffix.
 
-Omit empty sections. The preamble is **always required** — it is not inside a section heading.
+Omit empty sections. The preamble is **always required** — it is not inside a section heading. The versioning link uses the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
 
 ```markdown
 [Preamble — REQUIRED. Summarize the release theme.]
 
 ## Breaking Changes
 
-Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break

@@ -102,7 +102,7 @@ Highlight any changes from the prepare-release draft (new entries, reordered ent
 
 ### Step 7: Preamble
 
-Every release **must** have a preamble — a short paragraph summarizing the release theme that appears before the first `##` heading. The preamble is not optional. The preamble may mention the presence of breaking changes as part of the theme summary, but the versioning documentation link belongs under the Breaking Changes heading (see template), not in the preamble.
+Every release **must** have a preamble — a short paragraph summarizing the release theme that appears before the first `##` heading. The preamble is not optional. The preamble may mention the presence of breaking changes as part of the theme summary, but the versioning documentation link belongs under the Breaking Changes heading (see template), not in the preamble. That link must use the `v{MAJOR}` slug for the version being released.
 
 Extract the draft preamble from the prepare-release PR description and present it alongside a freshly drafted alternative (accounting for any new PRs).
 
@@ -126,6 +126,21 @@ After confirmation:
 - Create with `gh release create --draft {tag} --target {merge-commit-branch}` (always `--draft`), using the prerelease tag verbatim when present
 - **Never publish.** If the user asks to publish, decline and instruct them to publish manually.
 
+Then hand off to the user with the publishing checklist:
+
+> The draft release is ready at {release URL}. Before publishing:
+>
+> 1. Review the release notes line by line — this is the last review before they are public.
+> 2. Check **Set as a pre-release** if this is a prerelease.
+> 3. Once you have signed off on the notes, **remove the AI-generated disclosure note** from the
+>    bottom of the body. It is there because the draft was AI-drafted; after your thorough review
+>    and sign-off, the published notes stand as your reviewed work.
+> 4. Click **Publish release**.
+
+The disclosure is removed by the **user**, as part of their sign-off — never remove it yourself, and
+never remove it from a pull request description, an issue, or a comment. If the user asks you to
+edit the draft body after they have removed it, do not reintroduce it.
+
 When the user requests revisions after the initial creation, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
 
 ## Edge Cases
@@ -139,18 +154,20 @@ When the user requests revisions after the initial creation, always rewrite the 
 - **PR spans categories**: categorize by primary intent
 - **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
 - **No breaking changes**: omit the Breaking Changes section entirely
+- **Versioning link carried over from the prepare-release draft**: the draft may contain an unslugged or wrong-MAJOR versioning link. Correct it to the `v{MAJOR}` slug of the version being released before the draft release is created.
+- **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path is created by the Publish Docs workflow when the release is published. It is expected to 404 until then; use the slugged form regardless.
 - **Single breaking change**: use the same numbered format as multiple
 
 ## Release Notes Template
 
-Omit empty sections. The preamble is **always required** — it is not inside a section heading. Tags may include prerelease suffixes, such as `v2.0.0-preview.1`, and Full Changelog compare links should use the exact tag.
+Omit empty sections. The preamble is **always required** — it is not inside a section heading. Tags may include prerelease suffixes, such as `v2.0.0-preview.1`, and Full Changelog compare links should use the exact tag. The versioning link uses the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
 
 ```markdown
 [Preamble — REQUIRED. Summarize the release theme.]
 
 ## Breaking Changes
 
-Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break
