@@ -63,6 +63,38 @@ public class McpAppElicitationTests
     }
 
     [Fact]
+    public void SetAppUi_PreservesExistingUiFieldsAndUpdatesResourceUri()
+    {
+        var request = CreateRequest();
+        request.Meta = new JsonObject
+        {
+            ["ui"] = new JsonObject
+            {
+                ["resourceUri"] = "ui://example/old.html",
+                ["custom"] = new JsonObject { ["enabled"] = true },
+            },
+        };
+
+        McpAppElicitation.SetAppUi(request, "ui://example/new.html");
+
+        var ui = Assert.IsType<JsonObject>(request.Meta["ui"]);
+        Assert.Equal("ui://example/new.html", ui["resourceUri"]?.GetValue<string>());
+        Assert.True(ui["custom"]?["enabled"]?.GetValue<bool>());
+    }
+
+    [Fact]
+    public void SetAppUi_ReplacesMalformedUiMetadata()
+    {
+        var request = CreateRequest();
+        request.Meta = new JsonObject { ["ui"] = "not-an-object" };
+
+        McpAppElicitation.SetAppUi(request, "ui://example/view.html");
+
+        var ui = Assert.IsType<JsonObject>(request.Meta["ui"]);
+        Assert.Equal("ui://example/view.html", ui["resourceUri"]?.GetValue<string>());
+    }
+
+    [Fact]
     public void SetAppUi_RoundTripsThroughMrtrInputRequest()
     {
         var request = McpAppElicitation.SetAppUi(
@@ -413,6 +445,14 @@ public class McpAppElicitationTests
     [InlineData("relative/path", "uri")]
     [InlineData("2026-02-30", "date")]
     [InlineData("2026-08-03 11:22:30Z", "date-time")]
+    [InlineData("2026-02-30T11:22:30Z", "date-time")]
+    [InlineData("2026-08-03T24:00:00Z", "date-time")]
+    [InlineData("2026-08-03T11:22:30", "date-time")]
+    [InlineData("2026-08-03T11:22:30.Z", "date-time")]
+    [InlineData("2026-08-03T11:22:30.123456789", "date-time")]
+    [InlineData("2026-08-03T11:22:30+0700", "date-time")]
+    [InlineData("2026-08-03T11:22:30+07:60", "date-time")]
+    [InlineData("2026-08-03T11:22:30+14:01", "date-time")]
     public void ValidateResult_InvalidStringFormat_ReturnsError(string value, string format)
     {
         var request = new ElicitRequestParams
@@ -452,7 +492,11 @@ public class McpAppElicitationTests
     [InlineData("https://example.com/path", "uri")]
     [InlineData("2026-08-03", "date")]
     [InlineData("2026-08-03T11:22:30Z", "date-time")]
+    [InlineData("2026-08-03t11:22:30z", "date-time")]
+    [InlineData("2026-08-03T11:22:30+05:30", "date-time")]
     [InlineData("2026-08-03T11:22:30.462-07:00", "date-time")]
+    [InlineData("2026-08-03T11:22:30.123456789Z", "date-time")]
+    [InlineData("2026-08-03T11:22:30.123456789+14:00", "date-time")]
     public void ValidateResult_ValidStringFormat_IsAccepted(string value, string format)
     {
         var request = new ElicitRequestParams

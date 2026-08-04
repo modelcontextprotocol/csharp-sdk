@@ -380,31 +380,77 @@ public static partial class McpAppElicitation
 
     private static bool IsValidDateTime(string value)
     {
-        if (value.Length < 20 || value[10] is not ('T' or 't'))
+        if (value.Length < 20 ||
+            value[4] != '-' ||
+            value[7] != '-' ||
+            value[10] is not ('T' or 't') ||
+            value[13] != ':' ||
+            value[16] != ':')
         {
             return false;
         }
 
-        bool hasUtcDesignator = value[value.Length - 1] is 'Z' or 'z';
-        bool hasOffset =
-            value.Length >= 25 &&
-            value[value.Length - 6] is '+' or '-' &&
-            value[value.Length - 3] == ':';
-        if (!hasUtcDesignator && !hasOffset)
+        for (int i = 0; i < 19; i++)
         {
-            return false;
+            if (i is not (4 or 7 or 10 or 13 or 16) && !IsAsciiDigit(value[i]))
+            {
+                return false;
+            }
         }
 
-        string normalized = value
-            .Replace('t', 'T')
-            .Replace('z', 'Z');
-        return DateTimeOffset.TryParseExact(
-            normalized,
-            "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK",
+        string dateAndTime = value.Substring(0, 10) + 'T' + value.Substring(11, 8);
+        if (!DateTime.TryParseExact(
+            dateAndTime,
+            "yyyy-MM-dd'T'HH:mm:ss",
             CultureInfo.InvariantCulture,
             DateTimeStyles.None,
-            out _);
+            out _))
+        {
+            return false;
+        }
+
+        int timezoneIndex = 19;
+        if (value[timezoneIndex] == '.')
+        {
+            timezoneIndex++;
+            int fractionStart = timezoneIndex;
+            while (timezoneIndex < value.Length && IsAsciiDigit(value[timezoneIndex]))
+            {
+                timezoneIndex++;
+            }
+
+            if (timezoneIndex == fractionStart)
+            {
+                return false;
+            }
+        }
+
+        if (timezoneIndex == value.Length - 1 && value[timezoneIndex] is 'Z' or 'z')
+        {
+            return true;
+        }
+
+        if (value.Length - timezoneIndex != 6 ||
+            value[timezoneIndex] is not ('+' or '-') ||
+            value[timezoneIndex + 3] != ':' ||
+            !IsAsciiDigit(value[timezoneIndex + 1]) ||
+            !IsAsciiDigit(value[timezoneIndex + 2]) ||
+            !IsAsciiDigit(value[timezoneIndex + 4]) ||
+            !IsAsciiDigit(value[timezoneIndex + 5]))
+        {
+            return false;
+        }
+
+        int offsetHours =
+            (value[timezoneIndex + 1] - '0') * 10 + value[timezoneIndex + 2] - '0';
+        int offsetMinutes =
+            (value[timezoneIndex + 4] - '0') * 10 + value[timezoneIndex + 5] - '0';
+        return offsetHours <= 14 &&
+            offsetMinutes <= 59 &&
+            (offsetHours != 14 || offsetMinutes == 0);
     }
+
+    private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
 
     private static int GetUnicodeScalarLength(string value)
     {
