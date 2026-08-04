@@ -192,6 +192,60 @@ public sealed class McpServerHandlers
     public McpRequestHandler<UnsubscribeRequestParams, EmptyResult>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.SubscriptionsListen"/> requests (SEP-2575).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>subscriptions/listen</c> is a long-lived request introduced by the 2026-07-28 protocol revision. The
+    /// held-open response is a solicited server-to-client stream: the server first acknowledges which
+    /// subscriptions it will honor and then streams matching notifications until the request is cancelled.
+    /// Setting this handler lets a server author own that stream directly to implement custom subscription
+    /// kinds, application-driven <c>resources/updated</c> delivery, or subscriptions backed by their own event
+    /// source. It is especially useful for stateless Streamable HTTP, where unsolicited notifications are
+    /// dropped (there is no session-wide channel) but the listen request's response stream can still carry
+    /// notifications for the duration of the request.
+    /// </para>
+    /// <para>
+    /// This is a <b>full replacement</b> for the built-in <c>subscriptions/listen</c> handler. When set, the
+    /// SDK does not track the subscription, does not send the acknowledgement, and does not perform any
+    /// automatic <c>*/list_changed</c> fan-out for the request; the handler is solely responsible for the
+    /// entire lifetime of the stream. The SDK still enforces protocol-version gating: the handler is only
+    /// reached when the negotiated protocol revision is 2026-07-28 or later, and is otherwise rejected with
+    /// <see cref="McpErrorCode.MethodNotFound"/>.
+    /// </para>
+    /// <para>
+    /// An implementation of this handler is responsible for:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// Sending exactly one <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> before any
+    /// subscription events, reporting only the filters it actually honors. Advertised server capabilities must
+    /// match what the handler will actually deliver.
+    /// </description></item>
+    /// <item><description>
+    /// Tagging every streamed notification with the listen request id under
+    /// <c>_meta[<see cref="MetaKeys.SubscriptionId"/>]</c> so clients sharing a channel can demultiplex it.
+    /// </description></item>
+    /// <item><description>
+    /// Remaining active for the subscription lifetime and cleaning up when the supplied
+    /// <see cref="CancellationToken"/> is cancelled (client disconnect on HTTP, or
+    /// <c>notifications/cancelled</c> on stdio).
+    /// </description></item>
+    /// <item><description>
+    /// Returning <see cref="EmptyResult"/> when it deliberately completes the stream.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Notifications are sent through the request's server (for example <c>request.Server.SendMessageAsync</c>),
+    /// which routes them over the request's own response stream. For extension filters not represented by
+    /// <see cref="SubscriptionsListenRequestParams"/>, the handler can inspect
+    /// <c>request.JsonRpcRequest.Params</c>. Application services and event buses can be resolved from
+    /// <c>request.Services</c> or captured by the handler delegate.
+    /// </para>
+    /// </remarks>
+    public McpRequestHandler<SubscriptionsListenRequestParams, EmptyResult>? SubscriptionsListenHandler { get; set; }
+
+    /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.LoggingSetLevel"/> requests.
     /// </summary>
     /// <remarks>
