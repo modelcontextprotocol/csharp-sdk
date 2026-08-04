@@ -33,4 +33,20 @@ public class ElicitationBrokerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => requestTask);
         Assert.Null(broker.GetPending("alice"));
     }
+
+    [Fact]
+    public async Task CancelAll_ReleasesEveryPendingRequest()
+    {
+        var broker = new ElicitationBroker();
+        var alice = broker.RequestAsync("alice", new() { Message = "Choose" }, TestContext.Current.CancellationToken).AsTask();
+        var bob = broker.RequestAsync("bob", new() { Message = "Choose" }, TestContext.Current.CancellationToken).AsTask();
+
+        Assert.Equal(2, broker.CancelAll());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => alice);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => bob);
+        Assert.Null(broker.GetPending("alice"));
+        Assert.Null(broker.GetPending("bob"));
+        Assert.Equal(0, broker.CancelAll());
+    }
 }

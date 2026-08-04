@@ -48,6 +48,8 @@ When the MCP server sends an elicitation request during a tool call, `Elicitatio
 
 The broker intentionally permits one pending elicitation per application session because the registry serializes that session's MCP operations.
 
+Because the registry waits for a session's in-flight operation before disposing its client, a tool call blocked on an unanswered elicitation would otherwise stall `DELETE /session` and application shutdown. `DELETE /session` cancels the session's pending elicitation first, and the sample registers an `ApplicationStopping` callback that cancels all pending elicitations before the registry is disposed.
+
 ## Production considerations
 
 - **Never trust a caller-provided session header.** Replace `X-Demo-User` with a key derived from authenticated, server-side identity or session state. Do not use access tokens or other secrets as dictionary keys.

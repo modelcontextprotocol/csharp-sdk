@@ -2,6 +2,7 @@ using AspNetCoreMcpClient;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,18 @@ builder.Services.AddHostedService<McpClientCleanupService>();
 
 var app = builder.Build();
 
+// Disposing the registry waits for each session's in-flight operation to finish. A tool call blocked on an unanswered
+// elicitation would never finish, so release those requests before shutdown disposes the singleton registry.
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    var broker = app.Services.GetRequiredService<ElicitationBroker>();
+    var canceled = broker.CancelAll();
+    if (canceled > 0)
+    {
+        app.Logger.LogInformation("Canceled {Count} pending elicitations during shutdown.", canceled);
+    }
+});
+
 app.MapGet("/tools", async (
     HttpContext context,
     SessionClientRegistry<McpClientConnection> registry,
@@ -89,8 +102,9 @@ app.MapPost("/tools/{toolName}", async (
         ? arguments.Value.Deserialize<Dictionary<string, object?>>()
         : null;
 
-    var progressUpdates = new List<ProgressNotificationValue>();
-    var progress = new InlineProgress<ProgressNotificationValue>(value => progressUpdates.Add(value));
+    // Progress notifications arrive on the MCP session's message loop, so use a thread-safe collection.
+    var progressUpdates = new ConcurrentQueue<ProgressNotificationValue>();
+    var progress = new InlineProgress<ProgressNotificationValue>(progressUpdates.Enqueue);
     var result = await registry.ExecuteAsync(
         sessionId,
         async (connection, token) => await connection.Client.CallToolAsync(

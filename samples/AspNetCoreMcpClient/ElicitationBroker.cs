@@ -74,6 +74,26 @@ public sealed class ElicitationBroker
         }
     }
 
+    /// <summary>
+    /// Cancels every pending elicitation. Call this during application shutdown so that MCP operations blocked on an
+    /// unanswered elicitation unblock and the session registry can dispose its clients.
+    /// </summary>
+    public int CancelAll()
+    {
+        lock (_lock)
+        {
+            var pending = _pending.Values.ToArray();
+            _pending.Clear();
+
+            foreach (var request in pending)
+            {
+                request.Completion.TrySetCanceled();
+            }
+
+            return pending.Length;
+        }
+    }
+
     private sealed class PendingRequest(Guid id, ElicitRequestParams? request)
     {
         public Guid Id { get; } = id;
