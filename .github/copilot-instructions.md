@@ -9,7 +9,7 @@ This repository contains the official C# SDK for the Model Context Protocol (MCP
 - Never chain commit and push in the same command. Commit first, report what was committed, then wait for explicit push instructions. This creates a mandatory decision point.
 
 ### AI-Generated Content Disclosure
-When posting any content to GitHub under a user's credentials — opening pull requests, creating issues, commenting on pull requests or issues, posting review comments, or taking any other public-facing action — include a concise, visible note at the bottom indicating that the content was AI/Copilot-generated.
+When posting any content to GitHub under a user's credentials — opening pull requests, creating issues, commenting on pull requests or issues, posting review comments, or taking any other public-facing action — include a concise, visible note (e.g. a `> [!NOTE]` alert) at the bottom indicating that the content was AI/Copilot-generated.
 
 This disclosure is not required when:
 - The account is a recognized bot or Copilot app account (for example, `github-actions[bot]` or `copilot`), where the AI origin is already apparent from the account identity.
