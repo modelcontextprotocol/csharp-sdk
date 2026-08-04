@@ -104,10 +104,9 @@ public static partial class McpAppElicitation
         ValidateArguments(request, resourceUri);
 
         request.Meta ??= [];
-        request.Meta["ui"] = JsonSerializer.SerializeToNode(
-            new McpAppElicitationMeta { ResourceUri = resourceUri },
-            McpAppsJsonContext.Default.McpAppElicitationMeta
-        );
+        var ui = request.Meta["ui"] as JsonObject ?? [];
+        ui["resourceUri"] = resourceUri;
+        request.Meta["ui"] = ui;
         return request;
     }
 
