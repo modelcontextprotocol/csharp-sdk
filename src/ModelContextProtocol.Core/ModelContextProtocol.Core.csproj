@@ -7,6 +7,7 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <CompatibilitySuppressionFilePath>$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml</CompatibilitySuppressionFilePath>
     <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
     <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
@@ -15,10 +16,6 @@
          active for external consumers of the package. -->
     <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ApiCompatSuppressionFile Include="$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml" />
-  </ItemGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
     <IsAotCompatible>true</IsAotCompatible>
