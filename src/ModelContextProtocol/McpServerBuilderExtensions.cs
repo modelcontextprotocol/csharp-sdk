@@ -860,6 +860,51 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
+    /// Configures a handler for <c>subscriptions/listen</c> requests (SEP-2575), taking over the long-lived
+    /// subscription stream introduced by the 2026-07-28 protocol revision.
+    /// </summary>
+    /// <param name="builder">The server builder instance.</param>
+    /// <param name="handler">The handler that owns the subscription stream for the lifetime of the request.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// <c>subscriptions/listen</c> is a long-lived request whose held-open response is a solicited
+    /// server-to-client stream. Providing a handler here lets a server author own that stream to implement
+    /// custom subscription kinds, application-driven <c>resources/updated</c> delivery, or subscriptions backed
+    /// by their own event source. It is especially useful for stateless Streamable HTTP, where unsolicited
+    /// notifications are dropped but the listen request's response stream can still carry notifications for the
+    /// duration of the request.
+    /// </para>
+    /// <para>
+    /// This is a full replacement for the SDK's built-in <c>subscriptions/listen</c> handling. When set, the
+    /// handler alone is responsible for sending exactly one
+    /// <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> before any events, tagging every
+    /// streamed notification with the listen request id under <c>_meta[<see cref="MetaKeys.SubscriptionId"/>]</c>,
+    /// staying active until the supplied <see cref="CancellationToken"/> is cancelled, and returning
+    /// <see cref="EmptyResult"/> when it completes. See <see cref="McpServerHandlers.SubscriptionsListenHandler"/>
+    /// for the full contract.
+    /// </para>
+    /// <para>
+    /// Unlike <see cref="WithSubscribeToResourcesHandler"/>, this method intentionally does not advertise any
+    /// server capabilities on the author's behalf. The set of notifications a listen handler honors is decided
+    /// at runtime and can include custom kinds not represented by a capability flag, so the author must
+    /// configure only the capabilities their handler will actually deliver. Advertised capabilities must match
+    /// what the handler delivers.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithSubscriptionsListenHandler(this IMcpServerBuilder builder, McpRequestHandler<SubscriptionsListenRequestParams, EmptyResult> handler)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.Handlers.SubscriptionsListenHandler = handler;
+        });
+        return builder;
+    }
+
+    /// <summary>
     /// Configures a handler for processing logging level change requests from clients.
     /// </summary>
     /// <param name="builder">The server builder instance.</param>

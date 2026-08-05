@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -385,6 +386,17 @@ internal sealed partial class McpClientImpl : McpClient
                         // signals (-32022 UnsupportedProtocolVersion, -32021
                         // MissingRequiredClientCapability, -32020 HeaderMismatch) are caught above and
                         // never reach here.
+                        fallbackToInitialize = true;
+                    }
+                    catch (HttpRequestException ex) when (
+                        ex.GetStatusCode() is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+                    {
+                        // A server predating SEP-2575 can reject the session-less server/discover POST at the
+                        // HTTP layer instead of with a JSON-RPC error: 400 when it cannot parse the request,
+                        // 404 when it requires Mcp-Session-Id on every non-initialize POST. A 400 carrying a
+                        // structured JSON-RPC error is surfaced as McpProtocolException and handled above, so
+                        // anything reaching here is plain or empty. Either way this is an initialize-handshake
+                        // server, so fall back. Other statuses stay uncaught and surface to the caller.
                         fallbackToInitialize = true;
                     }
                     catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
