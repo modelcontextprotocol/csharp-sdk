@@ -546,6 +546,8 @@ services.AddMcpServer()
 To use authorization features, you must configure authentication and authorization in your ASP.NET Core application and call `AddAuthorizationFilters()`:
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddAuthentication("Bearer")
