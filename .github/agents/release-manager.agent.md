@@ -212,7 +212,12 @@ Stage 5  Verify                                      [verify-release skill, orch
 - **Timing.** Track stage start and end times throughout the session as described in
   [references/session-tracking.md](release-manager/references/session-tracking.md) so the closing
   summary is accurate. Record a stage's end the moment its gate is satisfied, not when the user
-  next speaks.
+  next speaks. Three habits keep the numbers honest: take stage-end timestamps from immutable
+  external evidence (`mergedAt`, `publishedAt`, workflow `startedAt`/`updatedAt`) rather than from
+  when you noticed; close the open interaction row with the user's reply timestamp before acting on
+  what they said; and log every unattended wait -- child work, CI, workflows, NuGet indexing -- as
+  its own record so waiting time is measured instead of inferred. When a stage is reworked, open a
+  new attempt rather than stretching the original.
 - **Release wrap-up.** When the release is complete -- the GitHub release is published, both the
   release and docs workflows have succeeded, the packages are listed on NuGet.org, and the docs site
   reflects the release -- present the closing summary defined in
