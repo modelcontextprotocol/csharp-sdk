@@ -3,6 +3,7 @@ using EverythingServer.Prompts;
 using EverythingServer.Resources;
 using EverythingServer.Tools;
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -58,8 +59,8 @@ builder.Services
     .WithHttpTransport(options =>
     {
         // This sample uses subscriptions, SampleLlmTool (sampling), and RunSessionHandler.
-        // Set Stateless = false explicitly for forward compatibility in case the default changes.
-        options.Stateless = false;
+        // Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility in case the default changes.
+        options.SessionMode = HttpServerSessionMode.Stateful;
 
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends
 #pragma warning disable MCPEXP002 // RunSessionHandler is experimental

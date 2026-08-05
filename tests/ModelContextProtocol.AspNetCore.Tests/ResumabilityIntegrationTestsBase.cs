@@ -490,8 +490,8 @@ public abstract class ResumabilityIntegrationTestsBase(ITestOutputHelper testOut
         var serverBuilder = Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                // Resumability is a stateful concern; pin Stateless = false now that the new default is true.
-                options.Stateless = false;
+                // Resumability is a stateful concern; pin SessionMode = HttpServerSessionMode.Stateful now that the new default is true.
+                options.SessionMode = HttpServerSessionMode.Stateful;
                 options.EventStreamStore = eventStreamStore;
                 configureTransport?.Invoke(options);
             })

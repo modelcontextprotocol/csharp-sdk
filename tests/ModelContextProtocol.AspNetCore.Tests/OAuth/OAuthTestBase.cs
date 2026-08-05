@@ -62,7 +62,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         });
 
         Builder.Services.AddAuthorization();
-        Builder.Services.AddMcpServer().WithHttpTransport(options => options.Stateless = false);
+        Builder.Services.AddMcpServer().WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful);
     }
 
     public async ValueTask DisposeAsync()
