@@ -55,15 +55,28 @@ Create the child session with the **source/base branch** selected in prepare-rel
 base -- `main` or `release/{MAJOR}.x`. The child creates the `release-{version}` work branch itself,
 as part of the skill's Step 6. Do not create that branch yourself, and do not pass it as the base.
 
+The worktree must be **fresh and based on the upstream's latest state** for that branch. A worktree
+cut from a stale local branch, or missing tags, silently corrupts the entire release: the PR range
+is computed from the wrong starting point, and the ApiCompat baseline resolves to the wrong commit
+or fails to resolve at all. Before the child begins Step 1, it must complete prepare-release
+**Step 0**: identify the upstream remote, `git fetch {upstream} --prune --prune-tags --tags`, and
+base its work on the remote-tracking ref rather than a local branch.
+
+Reuse of an existing worktree is the common way this goes wrong. Prefer creating a new one per
+release. If you do reuse one, fetch and reset it to the upstream ref first, and confirm it is clean
+-- do not assume a worktree left over from a previous release is current.
+
 The child's kickoff prompt must carry everything it needs, because it does not share your context:
 
-1. The instruction to run the **prepare-release** skill.
+1. The instruction to run the **prepare-release** skill, **starting at Step 0**.
 2. The source/base branch, already selected.
 3. The target commit or ref, if the user chose one.
 4. Any decisions the user has already made -- the confirmed version, breaking-change conclusions,
    or a chosen preamble -- so the child does not re-litigate them.
 5. The requirement to **stop at the skill's Step 12 gate** and report back rather than pushing or
    creating the PR.
+6. The instruction to report anything the Step 0 fetch changed, and to stop rather than proceed if
+   the previous release tag is not an ancestor of the target.
 
 If app-native child sessions are not available in the current environment, fall back to a git
 worktree created from the source/base branch and run the skill there, keeping the orchestrator's

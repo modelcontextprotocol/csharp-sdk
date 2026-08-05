@@ -16,6 +16,19 @@ Use the shared [release branch reference](../shared-resources/release-branches.m
 
 Work through each step sequentially. Present findings at each step and get user confirmation before proceeding.
 
+### Step 0: Sync With Upstream
+
+This skill reads the merged release PR, the commit range since the previous release, and the
+previous release tag. All three come from local refs that may be stale — most importantly, the
+merge commit for the release PR will not exist locally until you fetch.
+
+1. Identify the remote pointing at `modelcontextprotocol/csharp-sdk` (`git remote -v`) — do not
+   assume it is `origin`.
+2. `git fetch {upstream} --prune --prune-tags --tags`
+3. Confirm the merged release PR's merge commit resolves locally.
+
+Report anything the fetch changed before continuing.
+
 ### Step 1: Identify the Prepare-Release PR
 
 The user may provide:

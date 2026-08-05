@@ -18,6 +18,27 @@ Use the shared [release branch reference](../shared-resources/release-branches.m
 
 Work through each step sequentially. Present findings at each step and get user confirmation before proceeding. Skip any step that has no applicable items.
 
+### Step 0: Sync With Upstream
+
+Every later step reads branches, tags, and file contents from the local repository. Stale local refs
+produce assessments that are wrong in ways that look plausible: a missing tag makes a released
+version invisible, and a stale branch hides merged PRs. Establish a complete, current view before
+reading anything.
+
+1. Identify the remote that points at the canonical repository (`modelcontextprotocol/csharp-sdk`).
+   Do not assume it is named `origin` — in a fork-based checkout `origin` is often the fork:
+   `git remote -v`
+2. Fetch that remote's branches **and tags**, pruning deleted refs:
+   `git fetch {upstream} --prune --prune-tags --tags`
+3. Confirm the tag for the most recent published release exists locally and resolves:
+   `git rev-parse --verify v{previous}^{commit}`
+
+Report what changed as a result of the fetch — new tags, updated branch heads — so the user can see
+whether the starting state was stale.
+
+Read every subsequent step's branch state from the remote-tracking refs (`{upstream}/main`,
+`{upstream}/release/{MAJOR}.x`), not from local branches, which may lag or have diverged.
+
 ### Step 1: Select Source Branch
 
 List candidate source/base branches via:
@@ -43,6 +64,18 @@ Once the target is established:
 1. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`). Use the selected source/base branch context: on `release/{MAJOR}.x`, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, use the most recent published release globally.
 2. Get the full list of PRs merged between the previous release tag and the target commit on the selected branch.
 3. Read `src/Directory.Build.props` **at the target commit**. Extract `<VersionPrefix>` and `<VersionSuffix>`; the **candidate version** is `{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present (for example, `2.0.0-preview.1`).
+4. **Verify the previous release tag is an ancestor of the target commit:**
+   `git merge-base --is-ancestor v{previous} {target}`
+
+   If it is not an ancestor, stop and report. The two histories have diverged, which means the
+   selected source branch is not a continuation of the previous release. Every downstream
+   conclusion would be wrong: the PR range would be computed across unrelated history, and the
+   ApiCompat baseline in Step 7 would report the previous release's entire API surface as removed.
+   This is a source-selection problem, not a compatibility problem — do not attempt to suppress it.
+
+   The usual cause is that the previous release shipped from a different branch than the one
+   selected. Re-run Step 1 and choose the branch that actually contains the previous release, or
+   confirm with the user that a divergent source is intended and why.
 
 ### Step 3: Categorize and Attribute
 
@@ -110,6 +143,10 @@ Run API compatibility validation against the baseline version. Follow [reference
 1. Run `dotnet pack` to trigger package validation against `PackageValidationBaselineVersion`
 2. Capture the ApiCompat output (compatibility issues, warnings, suppressions)
 3. If there are unexpected compatibility breaks:
+   - **First, sanity-check the scale.** A large number of errors reporting *missing* API surface —
+     especially spanning whole feature areas — almost always means the baseline does not belong to
+     this branch's history, not that the branch removed those APIs. Re-verify the ancestry check
+     from Step 2 before interpreting a single error. Never suppress your way out of this.
    - Cross-reference with the breaking change audit from Step 4
    - Present any unaccounted breaks to the user
    - If breaks are intentional, add appropriate entries to `CompatibilitySuppressions.xml` in the affected project directory
@@ -227,6 +264,8 @@ Only after explicit user confirmation in Step 12:
 - **Proposed MAJOR does not match branch MAJOR**: if the proposed version's MAJOR doesn't match the branch's MAJOR (for example, proposing `2.0.0-preview.2` on `release/1.x`), flag this as a warning and ask the user to confirm. Do not hard-fail. This is informational, not a policy enforcement.
 - **Prerelease bump**: when the candidate version has a suffix like `preview.N`, the SemVer assessment may simply increment `N` rather than computing MAJOR/MINOR/PATCH. Refer to the SemVer assessment guide's Prereleases section.
 - **No previous release**: if this is the first release, there is no previous tag; gather all PRs merged to the target
+- **Previous release tag is not an ancestor of the target**: stop and re-select the source branch per Step 2. Do not compute a PR range or interpret ApiCompat results across divergent history, and do not suppress the resulting errors
+- **Previous release tag missing locally**: re-run the Step 0 fetch with `--tags` before concluding the release does not exist; a tag absent locally is far more often a stale checkout than an unpublished release
 - **ApiCompat tooling unavailable**: fall back to `dotnet pack` output; note in the PR description that full ApiCompat was run via package validation only
 - **API diff tool installation fails**: do not fall back to a manual summary; pause and present the installation error to the user, offering options to troubleshoot, skip the API diff section, or abort the release preparation
 - **No changelogs in repo**: skip changelog updates; note in the summary

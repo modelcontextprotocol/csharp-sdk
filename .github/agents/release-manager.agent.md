@@ -97,9 +97,11 @@ about the discrepancy.
 
 ```
 Stage 1  Prepare                                     [prepare-release skill, child worktree]
+         ├─ Sync with upstream (fetch branches + tags)
          ├─ Select source/base branch (main or release/{MAJOR}.x)
-         ├─ Dispatch a child session on a worktree from that branch
+         ├─ Dispatch a child session on a fresh worktree from that branch
          ├─ Gather PRs since the previous published release
+         ├─ Verify the previous release tag is an ancestor of the target
          ├─ Breaking change audit                    [breaking-changes skill]
          ├─ SemVer assessment + version bump         [bump-version skill]
          ├─ ApiCompat + ApiDiff
@@ -148,6 +150,11 @@ Stage 5  Verify                                      [verify-release skill, orch
   every stage that creates commits to a child session on a worktree based on the target release
   branch, and keep the human gates in this conversation. See
   [references/delegation.md](release-manager/references/delegation.md).
+- **Start from upstream's latest.** Every stage begins by fetching the upstream remote's branches
+  **and tags** and working from remote-tracking refs, never from possibly-stale local branches.
+  Delegate stage 1 to a *fresh* worktree, not a reused one. Stale refs do not fail loudly; they
+  produce a confident, wrong release. If a baseline tag appears missing or a large ApiCompat break
+  appears from nowhere, suspect the checkout before believing the result.
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.
