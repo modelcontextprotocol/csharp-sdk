@@ -60,6 +60,8 @@ baseline have drifted apart, which is the one thing you need to know.
 - **MAJOR version bump**: Update `<PackageValidationBaselineVersion>` to the previous release version so that ApiCompat validates against the last stable release of the prior MAJOR version. After the new MAJOR release is published, the baseline stays at the new version for future comparisons.
 - **MINOR or PATCH version bump**: Keep `<PackageValidationBaselineVersion>` at the last MAJOR release version (e.g., keep `1.0.0` when releasing `1.1.0` or `1.0.1`).
 
+**A baseline that trails `VersionPrefix` is the expected steady state, not a stale value.** Through a MAJOR series the baseline deliberately stays put while `VersionPrefix` advances, so seeing `2.0.0` alongside a published `2.1.0` means the rule is being followed. Do not "fix" the gap — bumping the baseline mid-series triggers the audit below and invites the released API surface to be re-baselined against itself, silently discarding the compatibility guarantee the property exists to enforce.
+
 **Any change to this property triggers the [baseline-transition suppression audit](#baseline-transition-suppression-audit).** Do not change it and interpret the resulting failures as breaking changes — the failures are expected until the suppressions are reconciled.
 
 ### Baseline-transition suppression audit
