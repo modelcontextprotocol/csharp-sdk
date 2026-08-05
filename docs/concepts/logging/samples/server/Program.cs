@@ -1,4 +1,5 @@
 using Logging.Tools;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,8 +9,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // Log streaming requires stateful mode because the server pushes log notifications
-        // to clients. Set Stateless = false explicitly for forward compatibility.
-        options.Stateless = false;
+        // to clients. Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility.
+        options.SessionMode = HttpServerSessionMode.Stateful;
     })
     .WithTools<LoggingTools>();
     // .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());

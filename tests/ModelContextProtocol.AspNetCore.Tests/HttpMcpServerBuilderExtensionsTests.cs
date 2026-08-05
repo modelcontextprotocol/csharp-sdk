@@ -78,6 +78,22 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     }
 
     [Fact]
+    public void WithHttpTransport_ThrowsOptionsValidationException_WhenSessionModeIsUndefined()
+    {
+        Builder.Services
+            .AddMcpServer()
+            .WithHttpTransport(options => options.SessionMode = (HttpServerSessionMode)42);
+
+        using var app = Builder.Build();
+
+        var ex = Assert.Throws<OptionsValidationException>(
+            () => app.Services.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value);
+        Assert.Contains(
+            $"'{nameof(HttpServerTransportOptions)}.{nameof(HttpServerTransportOptions.SessionMode)}' value '42' is not valid",
+            ex.Message);
+    }
+
+    [Fact]
     public void EventStreamStore_IsPopulatedFromDI_ViaPostConfigure()
     {
         Builder.Services.AddDistributedMemoryCache();
@@ -190,7 +206,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     {
         Builder.Services
             .AddMcpServer()
-            .WithHttpTransport(options => options.Stateless = true);
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless);
 
         using var app = Builder.Build();
 
@@ -211,7 +227,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     {
         Builder.Services
             .AddMcpServer()
-            .WithHttpTransport(options => options.Stateless = false);
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful);
 
         using var app = Builder.Build();
 

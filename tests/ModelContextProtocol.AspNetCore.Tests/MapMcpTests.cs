@@ -21,7 +21,7 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
 
     protected virtual void ConfigureStateless(HttpServerTransportOptions options)
     {
-        options.Stateless = Stateless;
+        options.SessionMode = Stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
     }
 
     protected async Task<McpClient> ConnectAsync(

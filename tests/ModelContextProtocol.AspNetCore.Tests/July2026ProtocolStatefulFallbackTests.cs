@@ -58,9 +58,9 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
         {
             options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolStatefulFallbackTests), Version = "1" };
         })
-            // Stateless = false is a deliberate opt-in to sessions. Starting with the 2026-07-28 protocol revision,
+            // SessionMode = HttpServerSessionMode.Stateful is a deliberate opt-in to sessions. Starting with the 2026-07-28 protocol revision,
             // Streamable HTTP can never be served statefully, so the server refuses the probe and the client downgrades.
-            .WithHttpTransport(options => options.Stateless = false)
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful)
             .WithTools([McpServerTool.Create(Greet), McpServerTool.Create(GreetViaElicit)]);
 
         _app = Builder.Build();
