@@ -41,6 +41,12 @@ public class HttpServerTransportOptions
     /// <see cref="HttpContext"/> of the initializing request with fewer known issues.
     /// </para>
     /// <para>
+    /// In <see cref="HttpServerSessionMode.Stateful"/> mode, this callback is invoked once per session. In
+    /// <see cref="HttpServerSessionMode.Stateless"/> mode, it is invoked once per HTTP request. In
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> mode, both apply: once per session for
+    /// <c>initialize</c>-handshake clients and once per request for <c>2026-07-28</c> and later clients.
+    /// </para>
+    /// <para>
     /// This API is experimental and may be removed or change signatures in a future release.
     /// </para>
     /// </remarks>

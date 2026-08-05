@@ -22,6 +22,7 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
 {
     private WebApplication? _app;
     private int _configureSessionOptionsCount;
+    private int _runSessionHandlerCount;
 
     public async ValueTask DisposeAsync()
     {
@@ -56,7 +57,7 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
     [McpServerTool(Name = "scope_state")]
     public static string ScopeState(ScopedService scopedService) => scopedService.State ?? "<not the http request scope>";
 
-    private async Task StartHybridServerAsync()
+    private async Task StartHybridServerAsync(bool trackRunSessionHandler = false)
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -70,6 +71,17 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
                     Interlocked.Increment(ref _configureSessionOptionsCount);
                     return Task.CompletedTask;
                 };
+
+                if (trackRunSessionHandler)
+                {
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental.
+                    options.RunSessionHandler = async (httpContext, server, cancellationToken) =>
+                    {
+                        Interlocked.Increment(ref _runSessionHandlerCount);
+                        await server.RunAsync(cancellationToken);
+                    };
+#pragma warning restore MCPEXP002
+                }
             })
             .WithTools<July2026ProtocolHybridSessionModeTests>();
 
@@ -197,6 +209,29 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
 
         // Each 2026-07-28 POST creates a fresh per-request server, so the callback runs again.
         Assert.Equal(1, Volatile.Read(ref _configureSessionOptionsCount) - beforeModernCall);
+    }
+
+    [Fact]
+    public async Task RunSessionHandler_RunsPerRequestForModernClients_AndOncePerSessionForLegacyClients()
+    {
+        await StartHybridServerAsync(trackRunSessionHandler: true);
+
+        var beforeLegacyConnect = Volatile.Read(ref _runSessionHandlerCount);
+        await using var legacyClient = await ConnectClientAsync(McpProtocolVersions.November2025ProtocolVersion);
+        Assert.Equal(1, Volatile.Read(ref _runSessionHandlerCount) - beforeLegacyConnect);
+
+        var beforeLegacyCalls = Volatile.Read(ref _runSessionHandlerCount);
+        await legacyClient.CallToolAsync("greet", new Dictionary<string, object?> { ["name"] = "Legacy" }, cancellationToken: TestContext.Current.CancellationToken);
+        await legacyClient.CallToolAsync("greet", new Dictionary<string, object?> { ["name"] = "Legacy" }, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(0, Volatile.Read(ref _runSessionHandlerCount) - beforeLegacyCalls);
+
+        var beforeModernConnect = Volatile.Read(ref _runSessionHandlerCount);
+        await using var modernClient = await ConnectClientAsync();
+        Assert.Equal(1, Volatile.Read(ref _runSessionHandlerCount) - beforeModernConnect);
+
+        var beforeModernCall = Volatile.Read(ref _runSessionHandlerCount);
+        await modernClient.CallToolAsync("greet", new Dictionary<string, object?> { ["name"] = "Modern" }, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, Volatile.Read(ref _runSessionHandlerCount) - beforeModernCall);
     }
 
     [Fact]

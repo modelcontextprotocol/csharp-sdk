@@ -96,6 +96,8 @@ Stateless mode is the recommended default for HTTP-based MCP servers. When enabl
 ### Enabling stateless mode
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
