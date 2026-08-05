@@ -4,7 +4,7 @@ The release-manager session is an **orchestrator**. It stays on whatever branch 
 never checks out or mutates a release branch. Work that creates commits happens in a **child session
 on its own worktree**, based on the target release branch.
 
-This mirrors how [`docs.yml`](../../workflows/docs.yml) already works: the orchestration scripts run
+This mirrors how [`docs.yml`](../../../workflows/docs.yml) already works: the orchestration scripts run
 from a single fixed checkout, while each version's content is built from its own tag in a separate
 worktree.
 

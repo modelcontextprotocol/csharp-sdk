@@ -84,7 +84,7 @@ a deterministic product failure wastes a full CI cycle to arrive at the same red
    than reading the log.
 
 3. **For ApiCompat and package validation failures specifically**, apply the interpretation rules in
-   [apicompat-apidiff.md](../../skills/prepare-release/references/apicompat-apidiff.md) before
+   [apicompat-apidiff.md](../../../skills/prepare-release/references/apicompat-apidiff.md) before
    concluding the release is breaking. `Unnecessary suppressions found` and a stale baseline
    produce large, convincing, and entirely phantom break listings.
 
