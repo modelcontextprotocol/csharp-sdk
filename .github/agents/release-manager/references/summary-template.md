@@ -45,7 +45,7 @@ Build the timing sections from the `release_stages`, `release_interactions`, `re
 | 3. Publish | ✓ | {h m} | ~{h m} |
 | 4. Release | ✓ | {h m} | ~{h m} |
 | 5. Verify | ✓ | {h m} | ~{h m} |
-| **Total session** | | **{h m}** | **~{h m}{, minimum}** |
+| **Total session** | | **{h m}** | **~{h m}** |
 
 {Include an attempt row only when a stage was reworked, and say what forced it -- "CI red, corrective
 push". Aggregating rework into one row hides where the time actually went.}
@@ -78,12 +78,14 @@ step-away gap, or a stage that ran unusually long or short.}
    with recorded decisions but no material timed interaction shows `~0m`. A stage whose timestamps
    are insufficient shows `—` -- never fabricate a value to fill the cell. Carried-over stages show
    `—` in both time columns.
-4. **The total interaction figure is a lower bound whenever any stage shows `—` or has unmeasured
-   interactions.** Say so in the cell -- `**~27m minimum**` -- and repeat the reason in the narrative.
+4. **`~` is the only qualifier the table needs.** Never append "minimum", "at least", or a similar
+   hedge to a cell -- the tilde already says the figure is estimated, and the table stays scannable.
+   When stages show `—` or interactions went unmeasured, explain that in the narrative prose below
+   rather than in the table.
 5. **Active interaction time is always an estimate.** Label it with `~` and say it is estimated from
-   prompt-to-answer intervals. Report it as a floor with the unmeasured count beside it -- interactions
-   whose reply timestamp was unavailable are counted, not silently dropped. Name any interval you
-   excluded as a step-away gap.
+   prompt-to-answer intervals. In the narrative, report it as a floor with the unmeasured count
+   beside it -- interactions whose reply timestamp was unavailable are counted, not silently dropped.
+   Name any interval you excluded as a step-away gap.
 6. **Reconcile the narrative with the table.** The `Active interaction` bullet must equal the table's
    total interaction cell. Where the two could differ -- excluded step-away gaps, `—` stages,
    zero-duration rows discarded as unmeasured -- name the discrepancy explicitly rather than letting
