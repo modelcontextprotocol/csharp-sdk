@@ -158,8 +158,9 @@ Two failure modes to avoid, both of which produce numbers that look fine and are
   the mechanism gives you no reply timestamp, log the row with NULL `answered_at` so it appears in
   the unmeasured count rather than vanishing.
 
-At wrap-up, report how many interactions were measured and how many were not. "~27m across six
-gates, four more unmeasured" is an honest floor; "~27m" alone implies a precision that is not there.
+At wrap-up, report how many interactions were measured and how many were not. That belongs in the
+narrative prose, not in the timing table: "~27m across six gates, four more unmeasured" is an honest
+floor, while the table's cells stay clean and carry only the `~` estimate marker.
 
 **Always set `stage` on the interaction row.** The closing summary reports interaction time per stage
 alongside each stage's elapsed time, which is what makes the table actionable -- a 2h 22m stage
@@ -174,8 +175,9 @@ FROM release_interactions
 GROUP BY stage;
 ```
 
-A stage with interactions but no measurable intervals reports `—` rather than `~0m`; `~0m` means
-recorded decisions that genuinely took no material time.
+A stage whose interactions all lack a usable reply timestamp reports `—`, not `~0m`. `~0m` means the
+stage had no interactions, or its measured intervals rounded to zero -- it asserts that the stage
+cost the user no material time, which is a claim you can only make from data you actually have.
 
 The interval between `prompted_at` and `answered_at` is the user's **think-and-respond time**. Sum
 those intervals to estimate **active user-interaction time**. Do not treat the rest of the session as

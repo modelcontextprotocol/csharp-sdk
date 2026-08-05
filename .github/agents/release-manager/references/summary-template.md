@@ -74,10 +74,11 @@ step-away gap, or a stage that ran unusually long or short.}
 2. **Total session** is wall-clock from `session_started_at` to now, not the sum of stage elapsed
    times -- gaps between stages belong to the session but to no stage.
 3. **The Interactions column is per-stage active user time.** Sum that stage's
-   `release_interactions` prompt-to-answer intervals and prefix with `~`: `~5m`, `~1h 3m`. A stage
-   with recorded decisions but no material timed interaction shows `~0m`. A stage whose timestamps
-   are insufficient shows `—` -- never fabricate a value to fill the cell. Carried-over stages show
-   `—` in both time columns.
+   `release_interactions` prompt-to-answer intervals and prefix with `~`: `~5m`, `~1h 3m`. Show
+   `~0m` when the stage had no interactions at all, or when its measured intervals round to zero.
+   Show `—` when the stage *did* have interactions but none of them carry a usable reply timestamp --
+   that is missing data, not zero time, and must never be rendered as `~0m` or fabricated.
+   Carried-over stages show `—` in both time columns.
 4. **`~` is the only qualifier the table needs.** Never append "minimum", "at least", or a similar
    hedge to a cell -- the tilde already says the figure is estimated, and the table stays scannable.
    When stages show `—` or interactions went unmeasured, explain that in the narrative prose below
