@@ -36,4 +36,15 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "Methods with MCP attributes should be declared as partial to allow the source generator to emit Description attributes from XML documentation comments.");
+
+    public static DiagnosticDescriptor WithHttpTransportStatelessNotSet { get; } = new(
+        id: "MCP003",
+        title: "WithHttpTransport should explicitly configure Stateless property",
+        messageFormat: "WithHttpTransport is called without explicitly setting HttpServerTransportOptions.Stateless. Set Stateless to true (recommended) or false for forward compatibility.",
+        category: "mcp",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "WithHttpTransport should explicitly set the Stateless property on HttpServerTransportOptions for forward compatibility. " +
+            "Stateless mode (recommended for most servers) avoids session state, memory overhead, and deployment constraints. " +
+            "If your server requires server-to-client requests or unsolicited notifications, set Stateless to false explicitly.");
 }
