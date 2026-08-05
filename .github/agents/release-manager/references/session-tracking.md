@@ -161,6 +161,22 @@ Two failure modes to avoid, both of which produce numbers that look fine and are
 At wrap-up, report how many interactions were measured and how many were not. "~27m across six
 gates, four more unmeasured" is an honest floor; "~27m" alone implies a precision that is not there.
 
+**Always set `stage` on the interaction row.** The closing summary reports interaction time per stage
+alongside each stage's elapsed time, which is what makes the table actionable -- a 2h 22m stage
+costing ~11m of your attention reads very differently from one costing ~2h. That roll-up is only
+possible if every interaction is attributed when it is recorded:
+
+```sql
+SELECT stage,
+       SUM(strftime('%s', answered_at) - strftime('%s', prompted_at)) AS measured_seconds,
+       SUM(answered_at IS NULL) AS unmeasured
+FROM release_interactions
+GROUP BY stage;
+```
+
+A stage with interactions but no measurable intervals reports `—` rather than `~0m`; `~0m` means
+recorded decisions that genuinely took no material time.
+
 The interval between `prompted_at` and `answered_at` is the user's **think-and-respond time**. Sum
 those intervals to estimate **active user-interaction time**. Do not treat the rest of the session as
 waiting by subtraction -- take waiting from `release_waits` and report the remainder as unaccounted.

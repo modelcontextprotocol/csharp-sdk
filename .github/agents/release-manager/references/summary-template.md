@@ -37,15 +37,15 @@ Build the timing sections from the `release_stages`, `release_interactions`, `re
 
 **Stage timing (this session)**
 
-| Stage | Status | Elapsed |
-|---|---|---|
-| 1. Prepare | ✓ | {h m} |
-| 2. Review and merge | ✓ | {h m} |
-| 2. Review and merge (attempt 2) | ✓ | {h m} |
-| 3. Publish | ✓ | {h m} |
-| 4. Release | ✓ | {h m} |
-| 5. Verify | ✓ | {h m} |
-| **Total session** | | **{h m}** |
+| Stage | Status | Elapsed | Interactions |
+|---|---|---|---|
+| 1. Prepare | ✓ | {h m} | ~{h m} |
+| 2. Review and merge | ✓ | {h m} | ~{h m} |
+| 2. Review and merge (attempt 2) | ✓ | {h m} | ~{h m} |
+| 3. Publish | ✓ | {h m} | ~{h m} |
+| 4. Release | ✓ | {h m} | ~{h m} |
+| 5. Verify | ✓ | {h m} | ~{h m} |
+| **Total session** | | **{h m}** | **~{h m}{, minimum}** |
 
 {Include an attempt row only when a stage was reworked, and say what forced it -- "CI red, corrective
 push". Aggregating rework into one row hides where the time actually went.}
@@ -73,18 +73,29 @@ step-away gap, or a stage that ran unusually long or short.}
    a footnote says the total covers this session only.
 2. **Total session** is wall-clock from `session_started_at` to now, not the sum of stage elapsed
    times -- gaps between stages belong to the session but to no stage.
-3. **Active interaction time is always an estimate.** Label it with `~` and say it is estimated from
+3. **The Interactions column is per-stage active user time.** Sum that stage's
+   `release_interactions` prompt-to-answer intervals and prefix with `~`: `~5m`, `~1h 3m`. A stage
+   with recorded decisions but no material timed interaction shows `~0m`. A stage whose timestamps
+   are insufficient shows `—` -- never fabricate a value to fill the cell. Carried-over stages show
+   `—` in both time columns.
+4. **The total interaction figure is a lower bound whenever any stage shows `—` or has unmeasured
+   interactions.** Say so in the cell -- `**~27m minimum**` -- and repeat the reason in the narrative.
+5. **Active interaction time is always an estimate.** Label it with `~` and say it is estimated from
    prompt-to-answer intervals. Report it as a floor with the unmeasured count beside it -- interactions
    whose reply timestamp was unavailable are counted, not silently dropped. Name any interval you
    excluded as a step-away gap.
-4. **Waiting time is measured, not inferred.** Sum the `release_waits` intervals. Never derive it by
+6. **Reconcile the narrative with the table.** The `Active interaction` bullet must equal the table's
+   total interaction cell. Where the two could differ -- excluded step-away gaps, `—` stages,
+   zero-duration rows discarded as unmeasured -- name the discrepancy explicitly rather than letting
+   the reader find it.
+7. **Waiting time is measured, not inferred.** Sum the `release_waits` intervals. Never derive it by
    subtracting interaction time from the session total; that counts diagnosis and rework as waiting.
    Show whatever the two do not account for as `Unaccounted` rather than folding it into either.
-5. **Longest single wait comes from `release_waits` and `release_workflow_runs`**, not from the
+8. **Longest single wait comes from `release_waits` and `release_workflow_runs`**, not from the
    longest interaction. If waits were not recorded, say the data is unavailable instead of
    substituting the longest gate.
-6. **Round to readable units.** `2h 14m`, `47m`, `3m`. Never show seconds.
-7. **Omit rows and sections that do not apply.** No blocked stage means no note about one; no
-   follow-ups means the section says `None.` rather than disappearing.
-8. **Never speculate about time.** If the session lacks the data for a section, say so plainly
-   instead of estimating.
+9. **Round to readable units.** `2h 14m`, `47m`, `3m`. Never show seconds.
+10. **Omit rows and sections that do not apply.** No blocked stage means no note about one; no
+    follow-ups means the section says `None.` rather than disappearing.
+11. **Never speculate about time.** If the session lacks the data for a section, say so plainly
+    instead of estimating.
