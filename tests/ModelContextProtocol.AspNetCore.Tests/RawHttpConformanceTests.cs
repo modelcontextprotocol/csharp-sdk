@@ -23,7 +23,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
 
     private WebApplication? _app;
 
-    private async Task StartAsync(string? protocolVersion = null)
+    private async Task StartAsync(string? protocolVersion = null, TimeSpan? deferredHeaderFlushGrace = null)
     {
         Builder.Services
             .AddMcpServer(options =>
@@ -31,7 +31,13 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
                 options.ServerInfo = new Implementation { Name = nameof(RawHttpConformanceTests), Version = "1.0" };
                 options.ProtocolVersion = protocolVersion;
             })
-            .WithHttpTransport()
+            // These tests assert the SEP-2575 status mapping, which is only well defined while the
+            // response headers are still uncommitted. The default grace window bounds that wait at
+            // 250ms, so a dispatch slower than the window commits a default 200 and the assertions
+            // become a function of machine load rather than of server behavior. Disabling the bound
+            // keeps the headers uncommitted until the first response message arrives.
+            .WithHttpTransport(options =>
+                options.DeferredHeaderFlushGrace = deferredHeaderFlushGrace ?? Timeout.InfiniteTimeSpan)
             .WithTools([McpServerTool.Create((string text) => $"echo:{text}", new() { Name = "echo" })])
             .WithTools<CapabilityTools>();
 
@@ -204,6 +210,59 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal(19, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    /// <summary>
+    /// Regression test for the load-sensitivity in the SEP-2575 status mapping. The handler runs far past
+    /// the historical 250ms grace window before it produces the JSON-RPC error. With the bound disabled the
+    /// headers stay uncommitted, so the error still selects the 400 status line instead of riding a
+    /// default 200 that the grace window had already committed.
+    /// </summary>
+    [Fact]
+    public async Task July2026Post_SlowHandler_MissingRequiredCapability_StillReturns400()
+    {
+        await StartAsync(deferredHeaderFlushGrace: Timeout.InfiniteTimeSpan);
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":42,""method"":""tools/call"",""params"":{""name"":""slow_requires_sampling"",""arguments"":{}," +
+            July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "slow_requires_sampling");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(42, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    /// <summary>
+    /// The complementary half of the contract. A zero grace window commits the headers before the handler
+    /// can produce its error, so the JSON-RPC error rides an already-committed 200. This pins the tradeoff
+    /// the grace window exists to make, so the knob cannot be quietly turned into a no-op.
+    /// </summary>
+    [Fact]
+    public async Task July2026Post_ZeroGrace_CommitsDefaultStatusBeforeSlowHandlerError()
+    {
+        await StartAsync(deferredHeaderFlushGrace: TimeSpan.Zero);
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":43,""method"":""tools/call"",""params"":{""name"":""slow_requires_sampling"",""arguments"":{}," +
+            July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "slow_requires_sampling");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(43, json["id"]!.GetValue<long>());
         Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
     }
 
@@ -500,10 +559,25 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     [McpServerToolType]
     private sealed class CapabilityTools
     {
+        /// <summary>
+        /// The historical deferred-header-flush grace window. The slow tool below runs well past it so
+        /// the test cannot pass by accident on a fast machine.
+        /// </summary>
+        public static readonly TimeSpan PastDefaultGrace = TimeSpan.FromMilliseconds(1000);
+
         [McpServerTool(Name = "requires_sampling")]
         public static string RequiresSampling() =>
             throw new MissingRequiredClientCapabilityException(
                 new ClientCapabilities { Sampling = new() },
                 "sampling capability required but not declared by client");
+
+        [McpServerTool(Name = "slow_requires_sampling")]
+        public static async Task<string> SlowRequiresSampling(CancellationToken cancellationToken)
+        {
+            await Task.Delay(PastDefaultGrace, cancellationToken);
+            throw new MissingRequiredClientCapabilityException(
+                new ClientCapabilities { Sampling = new() },
+                "sampling capability required but not declared by client");
+        }
     }
 }

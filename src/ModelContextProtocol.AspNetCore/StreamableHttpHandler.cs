@@ -505,6 +505,7 @@ internal sealed class StreamableHttpHandler(
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
                 EventStreamStore = HttpServerTransportOptions.EventStreamStore,
+                DeferredHeaderFlushGrace = HttpServerTransportOptions.DeferredHeaderFlushGrace,
                 OnSessionInitialized = HttpServerTransportOptions.SessionMigrationHandler is { } handler
                     ? (initParams, ct) => handler.OnSessionInitializedAsync(context, sessionId, initParams, ct)
                     : null,
@@ -522,6 +523,7 @@ internal sealed class StreamableHttpHandler(
             transport = new(loggerFactory)
             {
                 Stateless = true,
+                DeferredHeaderFlushGrace = HttpServerTransportOptions.DeferredHeaderFlushGrace,
             };
         }
 
@@ -582,6 +584,7 @@ internal sealed class StreamableHttpHandler(
             FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
             EventStreamStore = HttpServerTransportOptions.EventStreamStore,
 #pragma warning restore MCP9006
+            DeferredHeaderFlushGrace = HttpServerTransportOptions.DeferredHeaderFlushGrace,
         };
 
         // Initialize the transport with the migrated session's init params.

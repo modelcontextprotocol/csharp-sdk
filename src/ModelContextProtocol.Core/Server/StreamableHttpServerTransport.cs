@@ -79,6 +79,24 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     public bool FlowExecutionContextFromRequests { get; init; }
 
     /// <summary>
+    /// Gets or initializes how long the HTTP response headers may stay uncommitted while waiting for the
+    /// first response message, so that an immediate JSON-RPC error can still choose the HTTP status line
+    /// (SEP-2575).
+    /// </summary>
+    /// <value>
+    /// The default is 250 milliseconds. Use <see cref="Timeout.InfiniteTimeSpan"/> to never force the
+    /// flush, which makes the SEP-2575 status mapping independent of how long dispatch takes.
+    /// </value>
+    /// <remarks>
+    /// Once the headers are committed the status line is fixed, so a JSON-RPC error produced after this
+    /// window elapses is returned over an already-committed <c>200 OK</c>. Under load a handler can
+    /// exceed the window, which makes the status a function of machine scheduling rather than of server
+    /// behavior. Raising the window (or disabling it with <see cref="Timeout.InfiniteTimeSpan"/>) trades
+    /// how quickly clients see response headers for a deterministic status mapping.
+    /// </remarks>
+    public TimeSpan DeferredHeaderFlushGrace { get; init; } = StreamableHttpPostTransport.DefaultDeferredHeaderFlushGrace;
+
+    /// <summary>
     /// Gets or sets the event store for resumability support.
     /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>
@@ -239,7 +257,7 @@ public sealed partial class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token, _logger, onResponseStarting);
+        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token, _logger, DeferredHeaderFlushGrace, onResponseStarting);
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
         await using (postTransport.ConfigureAwait(false))
         {

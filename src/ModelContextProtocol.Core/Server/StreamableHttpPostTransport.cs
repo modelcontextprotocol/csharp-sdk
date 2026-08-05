@@ -16,6 +16,7 @@ internal sealed partial class StreamableHttpPostTransport(
     Stream responseStream,
     CancellationToken sessionCancellationToken,
     ILogger logger,
+    TimeSpan deferredHeaderFlushGrace,
     Func<JsonRpcMessage?, ValueTask>? onResponseStarting = null) : ITransport
 {
     private readonly SemaphoreSlim _messageLock = new(1, 1);
@@ -137,12 +138,17 @@ internal sealed partial class StreamableHttpPostTransport(
     /// window, so the response-starting callback can still map their JSON-RPC error codes onto the
     /// HTTP status line; a handler that runs longer commits the headers here so clients see them
     /// promptly (long-running tool calls must not trip HttpClient's response timeout).
+    /// <para>
+    /// When the grace window is <see cref="Timeout.InfiniteTimeSpan"/> the flush is never forced:
+    /// the headers stay uncommitted until the first response message arrives, so the JSON-RPC error
+    /// code always reaches the status line no matter how long dispatch took.
+    /// </para>
     /// </summary>
     private async Task DeferredHeaderFlushAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await Task.Delay(DeferredHeaderFlushGrace, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(deferredHeaderFlushGrace, cancellationToken).ConfigureAwait(false);
             using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
             if (!_httpResponseStarted && !_httpResponseCompleted)
             {
@@ -166,8 +172,11 @@ internal sealed partial class StreamableHttpPostTransport(
         }
     }
 
-    /// <summary>How long the response-header flush may be deferred waiting for the first response message.</summary>
-    internal static readonly TimeSpan DeferredHeaderFlushGrace = TimeSpan.FromMilliseconds(250);
+    /// <summary>
+    /// The default grace window applied when the owning transport does not specify one. Kept as the
+    /// historical 250 ms so the out-of-the-box behavior is unchanged.
+    /// </summary>
+    internal static readonly TimeSpan DefaultDeferredHeaderFlushGrace = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// Invokes the response-starting callback exactly once, immediately before the first write to

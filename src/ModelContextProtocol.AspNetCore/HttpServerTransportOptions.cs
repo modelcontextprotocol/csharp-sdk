@@ -180,6 +180,23 @@ public class HttpServerTransportOptions
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
     /// <summary>
+    /// Gets or sets how long the HTTP response headers may stay uncommitted while waiting for the first
+    /// response message, so that an immediate JSON-RPC error can still choose the HTTP status line (SEP-2575).
+    /// </summary>
+    /// <value>
+    /// The default is 250 milliseconds. Use <see cref="Timeout.InfiniteTimeSpan"/> to never force the flush,
+    /// which makes the SEP-2575 status mapping independent of how long dispatch takes.
+    /// </value>
+    /// <remarks>
+    /// Once the headers are committed the status line is fixed, so a JSON-RPC error produced after this window
+    /// elapses is returned over an already-committed <c>200 OK</c>. Under load a handler can exceed the window,
+    /// which makes the status a function of machine scheduling rather than of server behavior. Raising the window
+    /// (or disabling it with <see cref="Timeout.InfiniteTimeSpan"/>) trades how quickly clients see response
+    /// headers for a deterministic status mapping.
+    /// </remarks>
+    public TimeSpan DeferredHeaderFlushGrace { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
     /// Gets or sets the maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
     /// </summary>
     /// <value>
