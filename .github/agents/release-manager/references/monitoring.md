@@ -10,9 +10,14 @@ Watching does not require permission; acting on what you see always does.
 
 ## Monitoring the release PR
 
-Opening the release PR is not the end of stage 1; it starts a watch that runs until the checks
-reach a terminal state. Reporting the PR URL and stopping leaves the user to discover failures
-themselves, which is exactly backwards.
+Opening the release PR ends stage 1 and immediately begins stage 2, which owns the watch: it runs
+until every check reaches a terminal state. Reporting the PR URL and stopping leaves the user to
+discover failures themselves, which is exactly backwards.
+
+Record the time accordingly. Stage 1 ends when the PR is created, and the CI watch that follows --
+including any red checks, corrective pushes, and re-runs -- belongs to stage 2. Attributing that
+time to stage 1 makes preparation look expensive and review look cheap, which is the opposite of
+what the summary should reveal.
 
 ### When to start a watch
 

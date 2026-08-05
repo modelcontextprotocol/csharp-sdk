@@ -131,7 +131,7 @@ After the version is confirmed:
 2. Update `src/Directory.Build.props`:
    - Set `<VersionPrefix>` to the confirmed stable component
    - Set `<VersionSuffix>` for prerelease versions, or clear it for stable versions; add the element if it is missing
-   - Update `<PackageValidationBaselineVersion>` when appropriate. For the `2.0.0-preview` series, baseline is `1.3.0` (latest shipped 1.x). For subsequent stable releases, baseline is the previous shipped version of the same MAJOR or the latest stable from the previous MAJOR.
+   - Update `<PackageValidationBaselineVersion>` when appropriate, per the rule in [references/apicompat-apidiff.md](references/apicompat-apidiff.md#updating-the-baseline-version). Read the current value from `src/Directory.Build.props` and derive the correct one from the versions actually published; never copy a version from an example. Show the derivation — current value, published versions considered, resulting value, and whether it changes — and get confirmation before editing. **If the value changes, the [baseline-transition suppression audit](references/apicompat-apidiff.md#baseline-transition-suppression-audit) is mandatory.**
 3. Build the solution to verify the version change compiles: `dotnet build`
 
 This step creates local changes only — nothing is committed or pushed yet.
@@ -338,8 +338,8 @@ Only after explicit user confirmation in Step 12:
 - **API diff tool installation fails**: do not fall back to a manual summary; pause and present the installation error to the user, offering options to troubleshoot, skip the API diff section, or abort the release preparation
 - **No changelogs in repo**: skip changelog updates; note in the summary
 - **Branch already exists**: if `release-{version}` already exists locally or remotely, ask the user whether to reuse it, delete and recreate, or choose a different name
-- **PackageValidationBaselineVersion update**: for the `2.0.0-preview` series, use `1.3.0`; for subsequent stable releases, use the previous shipped version of the same MAJOR or the latest stable from the previous MAJOR
-- **CompatibilitySuppressions.xml**: when intentional breaks are found, add suppression entries and include the file in the commit; existing suppressions should be preserved
+- **PackageValidationBaselineVersion update**: derive it per [references/apicompat-apidiff.md](references/apicompat-apidiff.md#updating-the-baseline-version) from the versions actually published, and show the derivation for confirmation. A change to this property makes the baseline-transition suppression audit mandatory
+- **CompatibilitySuppressions.xml**: when intentional breaks are found, add suppression entries and include the file in the commit. Preserve existing suppressions **unless the baseline moved** — the audit may prove tracked entries stale, in which case removing them is the fix, not a regression
 - **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path does not exist until the release is published and the Publish Docs workflow runs. The link is forward-referencing at prepare time, like the release-notes tag link. Use the slugged form anyway; do not fall back to the unslugged URL.
 - **User declines PR creation**: if the user declines at Step 12, leave the local branch intact so they can review, modify, or push manually
 

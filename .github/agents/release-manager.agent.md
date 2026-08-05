@@ -196,6 +196,9 @@ Stage 5  Verify                                      [verify-release skill, orch
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.
+  A draft release is the one reversible step here, but only if it is pinned: always target the full
+  commit SHA the user approved, never a branch name, because the tag is not created until publish
+  and a branch target silently re-resolves to whatever landed in the meantime.
 - **Never publish a release yourself.** The **publish-release** skill creates draft releases only.
   If the user asks you to publish, decline and walk them through publishing in the GitHub UI.
   Likewise, never run `dotnet nuget push` and never handle NuGet API keys.

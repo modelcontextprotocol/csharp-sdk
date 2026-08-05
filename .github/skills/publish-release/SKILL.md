@@ -138,8 +138,24 @@ Display release metadata for user review:
 - **Target**: merge commit SHA, its message, the merge commit's branch (the prepare-release PR base), and the prepare-release PR link
 
 After confirmation:
-- Create with `gh release create --draft {tag} --target {merge-commit-branch}` (always `--draft`), using the prerelease tag verbatim when present
+- Create with `gh release create --draft {tag} --target {merge-commit-sha}` (always `--draft`), using the prerelease tag verbatim when present
+- **Target the full commit SHA, never a branch name.** A draft sits unpublished until a human
+  reviews and publishes it, which can be hours. `--target` is resolved when the tag is created --
+  at publish time, not now -- so a branch name silently re-resolves to whatever landed on that
+  branch in the meantime. The tag would then be cut at a commit nobody reviewed, and the release
+  notes would describe a different commit than the one shipped. The SHA you displayed above is the
+  commit the user approved; pass that exact SHA.
 - **Never publish.** If the user asks to publish, decline and instruct them to publish manually.
+
+Pinning the SHA costs nothing, because a draft release does not create the git tag. GitHub stores
+the target and creates the tag only when the release is published, so the tag remains uncreated and
+the draft fully editable while it waits.
+
+That is also what makes a late-arriving commit easy to absorb. If the user decides to include work
+that merged after the draft was created, do not delete and recreate the release: repoint it with
+`gh release edit {tag} --target {new-commit-sha}`, then regenerate the release notes for the new
+range and present them for approval again. Never move the target without revising the notes to
+match -- a target change silently alters what shipped.
 
 Then hand off to the user with the publishing checklist:
 
