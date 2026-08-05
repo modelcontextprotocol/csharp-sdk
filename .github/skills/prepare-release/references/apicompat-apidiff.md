@@ -8,7 +8,7 @@ The SDK uses NuGet's [Package Validation](https://learn.microsoft.com/dotnet/fun
 
 ```xml
 <EnablePackageValidation>true</EnablePackageValidation>
-<PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion>
+<PackageValidationBaselineVersion>1.4.1</PackageValidationBaselineVersion>
 ```
 
 ### Running ApiCompat
@@ -28,13 +28,86 @@ The SDK uses NuGet's [Package Validation](https://learn.microsoft.com/dotnet/fun
 
 3. **Interpret results:**
    - **No issues**: The API is backward-compatible with the baseline. This is the expected result for PATCH and MINOR releases.
+   - **`Unnecessary suppressions found`**: **Read this before concluding anything else.** See [Reading a failing run](#reading-a-failing-run) below — the CP lines that follow it are usually *not* live breaks.
    - **Compatibility errors**: The API has breaking changes relative to the baseline. These should align with the breaking change audit from Step 3 of the prepare-release skill.
-   - **Suppressions needed**: If intentional breaking changes are confirmed, add entries to `CompatibilitySuppressions.xml` in the affected project directory.
+   - **Suppressions needed**: If intentional breaking changes are confirmed, add entries to `CompatibilitySuppressions.xml` in the affected project directory — but only after completing the [baseline-transition suppression audit](#baseline-transition-suppression-audit).
+
+### Reading a failing run
+
+`Unnecessary suppressions found` is itself a **hard failure**, not a warning attached to some other
+problem. When it appears, the `CP0001` / `CP0002` / `CP0005` lines printed after it are the tool's
+**detailed listing of the suppression entries it considers unused**. They are not a list of live API
+breaks, even though they are formatted identically and appear under the same error banner.
+
+Misreading that listing is how a routine release turns into a phantom emergency. In this repo it
+produced 312 apparent breaking changes across the Core Tasks API on a release whose only real
+change was one additive method — and it did so convincingly, because 312 lines of CP0001 for
+missing types reads exactly like a catastrophic regression.
+
+Before classifying a release as breaking, confirm which of the two you are looking at:
+
+1. **Regenerate the suppression file** (see the audit below). If the generated output is *empty*,
+   there are no live breaks and every tracked entry is stale.
+2. **Cross-check the direct API diff.** If ApiDiff shows only the additions you expect, the CP lines
+   are not describing reality.
+
+Never work around this with `ApiCompatPermitUnnecessarySuppressions`, `NoWarn` for CP diagnostics,
+or by disabling baseline validation. Those hide the signal that tells you the suppressions and the
+baseline have drifted apart, which is the one thing you need to know.
 
 ### Updating the Baseline Version
 
 - **MAJOR version bump**: Update `<PackageValidationBaselineVersion>` to the previous release version so that ApiCompat validates against the last stable release of the prior MAJOR version. After the new MAJOR release is published, the baseline stays at the new version for future comparisons.
 - **MINOR or PATCH version bump**: Keep `<PackageValidationBaselineVersion>` at the last MAJOR release version (e.g., keep `1.0.0` when releasing `1.1.0` or `1.0.1`).
+
+**Any change to this property triggers the [baseline-transition suppression audit](#baseline-transition-suppression-audit).** Do not change it and interpret the resulting failures as breaking changes — the failures are expected until the suppressions are reconciled.
+
+### Baseline-transition suppression audit
+
+**Whenever `PackageValidationBaselineVersion` changes, run this audit before interpreting any
+ApiCompat failure and before adding a single suppression entry.**
+
+Suppression entries are scoped to the baseline they were generated against. They record "this
+difference from *that* baseline is intentional." Move the baseline and the differences change, so
+entries written for the old baseline may describe nothing at all — the API they excused is now
+present on both sides. The tool reports those orphans as unnecessary, and the build fails.
+
+For **every shipping project**:
+
+1. Inventory the tracked suppressions:
+   ```sh
+   ls src/*/CompatibilitySuppressions.xml
+   ```
+2. Regenerate what the *current* baseline actually requires, into a throwaway file so the tracked
+   one is not overwritten while you are still deciding:
+   ```sh
+   dotnet clean src/{Project}/{Project}.csproj -c Release
+   dotnet pack  src/{Project}/{Project}.csproj -c Release \
+     /p:ApiCompatGenerateSuppressionFile=true \
+     /p:ApiCompatSuppressionOutputFile={unique-temp-path}
+   ```
+   Use the **final candidate version and the final baseline** — regenerating against a version you
+   are about to change invalidates the result.
+3. Compare the generated entries against the tracked file, by count and by content.
+
+| Generated | Tracked | Meaning | Action |
+|---|---|---|---|
+| Empty | Non-empty | Every tracked entry is stale for this baseline | Clear or delete the tracked file |
+| Non-empty | Matches | Suppressions are current | Leave them alone |
+| Non-empty | Differs | Some entries stale, some breaks genuinely need suppressing | Reconcile entry by entry, and confirm each remaining break with the user |
+
+4. After clearing stale entries, rerun the plain CI-equivalent pack with no generation flags, and
+   require it to pass on its own:
+   ```sh
+   dotnet clean -c Release
+   dotnet pack  -c Release
+   ```
+
+Reverting the baseline is the other valid resolution, and sometimes the better one — it keeps the
+release diff minimal. Choose deliberately between "advance the baseline and clear the stale
+suppressions" and "keep the existing baseline", rather than letting the choice be made by whichever
+one silences the error first. Either way, the baseline is determined by what shipped, never selected
+to make validation pass.
 
 ### Compatibility Suppressions
 
@@ -53,7 +126,28 @@ When intentional breaking changes are confirmed, create or update `Compatibility
 </Suppressions>
 ```
 
-The exact suppression entries are generated by the pack command when it reports errors — copy the suggested suppression XML from the build output. Remember that suppressions are needed **per target framework** (net10.0, net9.0, net8.0, netstandard2.0).
+The exact suppression entries are generated by the pack command when it reports errors — copy the suggested suppression XML from the build output, or generate the file directly with `/p:ApiCompatGenerateSuppressionFile=true`. Remember that suppressions are needed **per target framework** (net10.0, net9.0, net8.0, netstandard2.0).
+
+#### Wiring the suppression file
+
+A `CompatibilitySuppressions.xml` sitting in the project directory is **auto-discovered**. That is
+the convention this repo uses, and it needs no wiring at all. Do not add MSBuild properties or items
+to point at a file that is already found by convention — duplicate or incorrect wiring is easy to
+add while chasing a failure and hard to spot afterward, and it ships in the release commit.
+
+If you do need an explicit path:
+
+| Name | Kind | Use |
+|---|---|---|
+| `CompatibilitySuppressionFilePath` | **Property** | The supported way to point at a suppression file explicitly |
+| `ApiCompatSuppressionFile` | **Item** | Not a property. Setting it via `/p:` does nothing |
+| `ApiCompatSuppressionOutputFile` | **Property** | Where `ApiCompatGenerateSuppressionFile=true` writes its output |
+
+Retaining an empty suppressions file is fine when you want to keep the file in place after clearing
+stale entries. It must still be **valid XML** — an empty `<Suppressions>` root, not a zero-byte
+file — and it must preserve the repository's byte conventions for these files, including the
+UTF-8 BOM and the final newline. A file that differs only in BOM or trailing newline produces a
+confusing diff and can trip tooling that round-trips it.
 
 ### Common Diagnostic IDs
 
@@ -191,14 +285,33 @@ _or_
 [Diff or table of changes]
 ```
 
-### In the User Summary (Step 11)
+### In the User Summary (Step 12)
 
-Present a condensed version for the user review:
+Present a condensed version for the user review. **Report per shipping package, and do not state
+that ApiCompat passed without these four facts** — "passed" is not meaningful without knowing what
+it was validated against and whether stale suppressions were masking or manufacturing the result:
 
-- **ApiCompat**: pass/fail with count of issues and suppressions per package
-- **ApiDiff**: count of additions, removals, and changes per package
+| Package | Baseline | Generated entries | Retained / removed | Plain pack |
+|---|---|---|---|---|
+| ModelContextProtocol.Core | 1.4.1 | 0 | 0 retained / 312 removed | ✅ |
+| ModelContextProtocol | 1.4.1 | 0 | 0 / 0 | ✅ |
+| ModelContextProtocol.AspNetCore | 1.4.1 | 0 | 0 / 0 | ✅ |
+
+- **Baseline** — the `PackageValidationBaselineVersion` actually used, and whether it changed during
+  this release
+- **Generated entries** — count from `ApiCompatGenerateSuppressionFile=true` at the final version
+  and baseline
+- **Retained / removed** — tracked suppressions kept versus cleared as stale
+- **Plain pack** — result of the CI-equivalent `dotnet clean -c Release; dotnet pack -c Release`
+  with no generation flags, which is the run CI will reproduce
+
+Then the summary lines:
 
 ```
-API Compatibility: ✅ All 3 packages pass (2 existing suppressions in Core)
+API Compatibility: ✅ All 3 packages pass against v1.4.1 (312 stale Core suppressions removed)
 API Diff: +12 additions, -2 removals, ~3 changes across all packages
 ```
+
+If the baseline changed, or any suppression file was modified, say so explicitly and explain why.
+A silent baseline or suppression edit is the kind of change that passes local validation and then
+fails CI.

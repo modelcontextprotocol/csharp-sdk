@@ -142,15 +142,19 @@ Run API compatibility validation against the baseline version. Follow [reference
 
 1. Run `dotnet pack` to trigger package validation against `PackageValidationBaselineVersion`
 2. Capture the ApiCompat output (compatibility issues, warnings, suppressions)
-3. If there are unexpected compatibility breaks:
-   - **First, sanity-check the scale.** A large number of errors reporting *missing* API surface —
+3. **If `PackageValidationBaselineVersion` changed in this release, run the baseline-transition suppression audit before interpreting anything else.** Moving the baseline makes suppressions written for the old baseline stale, and the resulting failure looks exactly like a mass breaking change.
+4. If there are unexpected compatibility breaks:
+   - **First, check whether the output says `Unnecessary suppressions found`.** That is a hard failure in its own right, and the CP0001/CP0002/CP0005 lines beneath it are the listing of *unused suppression entries*, not live API breaks. Regenerate the suppression file and cross-check the API diff before believing them.
+   - **Then sanity-check the scale.** A large number of errors reporting *missing* API surface —
      especially spanning whole feature areas — almost always means the baseline does not belong to
-     this branch's history, not that the branch removed those APIs. Re-verify the ancestry check
+     this branch's history, or that stale suppressions are being listed. Re-verify the ancestry check
      from Step 2 before interpreting a single error. Never suppress your way out of this.
    - Cross-reference with the breaking change audit from Step 4
    - Present any unaccounted breaks to the user
-   - If breaks are intentional, add appropriate entries to `CompatibilitySuppressions.xml` in the affected project directory
-4. Record the ApiCompat results for inclusion in the PR description
+   - If breaks are intentional, add appropriate entries to `CompatibilitySuppressions.xml` in the affected project directory — only after the suppression audit is complete
+5. **Never adjust the thing being validated against in order to pass.** Do not change `PackageValidationBaselineVersion` to silence errors, do not set `ApiCompatPermitUnnecessarySuppressions`, do not `NoWarn` CP diagnostics, and do not disable package validation. The baseline is determined by what shipped; suppressions record user-confirmed intentional breaks. If validation fails unexpectedly, stop and report.
+6. Confirm the plain CI-equivalent run passes with no generation flags: `dotnet clean -c Release; dotnet pack -c Release`
+7. Record the per-package ApiCompat results — baseline, generated entry count, retained/removed suppressions, plain pack result — for Step 12 and the PR description
 
 ### Step 8: Generate API Diff Report
 
@@ -271,7 +275,7 @@ Present **all** of the following details to the user for review. The user must c
    docs/experimental.md — Added new experimental API reference
    ```
 6. **Draft release notes** — the complete release notes from Step 10
-7. **API Compatibility results** — the ApiCompat output from Step 7
+7. **API Compatibility results** — the per-package table from Step 7: baseline version, generated suppression count, retained/removed stale suppressions, and plain-pack result. Do not state that ApiCompat passed without these. Call out any change to `PackageValidationBaselineVersion` or to any suppression file explicitly.
 8. **API Diff report** — the API diff from Step 8
 9. **Proposed PR title** (e.g., `Release v2.0.0-preview.1`, `Release v1.3.1`)
 10. **Proposed PR description** — the assembled content combining release notes, ApiCompat, and ApiDiff
@@ -318,6 +322,9 @@ Only after explicit user confirmation in Step 12:
 - **Previous release tag is not an ancestor of the target**: stop and re-select the source branch per Step 2. Do not compute a PR range or interpret ApiCompat results across divergent history, and do not suppress the resulting errors
 - **Previous release tag missing locally**: re-run the Step 0 fetch with `--tags` before concluding the release does not exist; a tag absent locally is far more often a stale checkout than an unpublished release
 - **ApiCompat tooling unavailable**: fall back to `dotnet pack` output; note in the PR description that full ApiCompat was run via package validation only
+- **`Unnecessary suppressions found` in ApiCompat output**: the CP lines that follow are unused suppression entries, not live breaks. Run the baseline-transition suppression audit and cross-check the API diff before treating the release as breaking
+- **Baseline version changed during preparation**: run the suppression audit for every shipping package, and decide deliberately between advancing the baseline (clearing stale suppressions) and keeping the existing one. Report the choice and its rationale at Step 12
+- **ApiCompat passes locally but CI fails**: check whether local runs used generation flags. Only `dotnet clean -c Release; dotnet pack -c Release` reproduces CI
 - **API diff tool installation fails**: do not fall back to a manual summary; pause and present the installation error to the user, offering options to troubleshoot, skip the API diff section, or abort the release preparation
 - **No changelogs in repo**: skip changelog updates; note in the summary
 - **Branch already exists**: if `release-{version}` already exists locally or remotely, ask the user whether to reuse it, delete and recreate, or choose a different name

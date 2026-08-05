@@ -104,7 +104,7 @@ Stage 1  Prepare                                     [prepare-release skill, chi
          ├─ Verify the previous release tag is an ancestor of the target
          ├─ Breaking change audit                    [breaking-changes skill]
          ├─ SemVer assessment + version bump         [bump-version skill]
-         ├─ ApiCompat + ApiDiff
+         ├─ ApiCompat + ApiDiff (+ suppression audit if baseline moved)
          ├─ Documentation and README review
          ├─ Draft release notes
          ├─ GATE: review categorization + acknowledgements with the user
@@ -166,6 +166,15 @@ Stage 5  Verify                                      [verify-release skill, orch
   -- there are no others; consult the categorization guide rather than inventing one. Do not treat
   "here are the finished notes" as a review; complete, well-formatted notes read as correct and get
   approved unexamined, and the corrections then arrive after the PR is open.
+- **Never tune the validation to pass.** `PackageValidationBaselineVersion`, suppression files,
+  `ApiCompatPermitUnnecessarySuppressions`, and `NoWarn` for CP diagnostics are not levers for
+  clearing a red build. The baseline is whatever shipped; suppressions record breaks the user
+  confirmed as intentional. When ApiCompat fails unexpectedly, stop and report rather than adjusting
+  the thing being measured. Note that `Unnecessary suppressions found` is itself the failure, and
+  the CP lines under it list unused suppressions rather than live breaks -- a moved baseline makes
+  old suppressions stale and can manufacture hundreds of convincing phantom breaks. Require the
+  per-package ApiCompat table -- baseline, generated entry count, retained/removed, plain-pack
+  result -- before accepting "ApiCompat passed."
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.
