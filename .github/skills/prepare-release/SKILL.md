@@ -198,11 +198,54 @@ Compose the release notes that will appear in the PR description and serve as th
 6. **Repository Infrastructure Updates** — chronological
 7. **Acknowledgements**:
    - New contributors (first contribution in this release)
-   - Issue reporters (cite resolving PRs)
+   - Issue reporters (cite resolving PRs) — **excluding maintainers**. Acknowledgements exist to
+     thank the community; a maintainer filing an issue in their own repository is ordinary
+     project work, not a contribution to credit. Determine maintainer status via
+     `gh api repos/{owner}/{repo}/collaborators/{user}/permission --jq .permission` and omit
+     anyone with `admin` or `write`. Maintainers still appear in the reviewers bullet.
    - PR reviewers (single bullet, sorted by review count, no count shown)
 8. **Full Changelog** link using the exact tag, including any suffix (for example, `v1.3.1` or `v2.0.0-preview.1`)
 
 Omit empty sections. Present each section for user review before proceeding. Tag references in templates use `v{version}` exactly, including prerelease suffixes; the Full Changelog link compares the previous tag to the suffixed tag when applicable.
+
+### Step 10b: Review Categorization and Acknowledgements With the User
+
+**Do this before committing, and never defer it to the Step 12 summary.** Showing the finished
+notes is not a substitute for this step. A complete, well-formatted set of release notes reads as
+correct and does not invite scrutiny; users routinely approve it and then find miscategorized
+entries afterward, once the PR is already open. Ask targeted questions while the answers are still
+cheap to apply.
+
+Present two compact review artifacts and stop for a response after each.
+
+**1. Categorization table.** Every PR, its assigned section, and the reason — not just the
+borderline ones, since the user cannot correct a call they were not shown:
+
+| PR | Title | Section | Why |
+|---|---|---|---|
+| #1778 | Add Application Insights telemetry example | Documentation Updates | Adds a sample; nothing under `src/` changed |
+
+Then explicitly surface the judgment calls:
+
+> These were the close calls: #1778 and #1762 touch code but not shipped packages, so I placed
+> them under Documentation Updates. Any of these belong in a different section?
+
+Flag as a close call any PR that touches `samples/` or `tests/` but not `src/`, any PR placed in
+"What's Changed" whose changes are confined to non-shipping paths, and any PR whose title suggests
+a different section than the one you assigned.
+
+**2. Acknowledgements roster.** Each person, why they are listed, and their maintainer status:
+
+| Person | Reason | Maintainer? |
+|---|---|---|
+| @halter73 | Submitted issue #1662 (resolved by #1775) | Yes — omit per Step 10 item 7 |
+
+Show entries you excluded and why, so the user can overrule the omission. Ask directly whether the
+remaining list is right, since acknowledgement errors are about people and are the least
+comfortable thing to correct after publication.
+
+Apply any corrections before Step 11. Record what changed so the same misclassification is not
+reintroduced when publish-release refreshes the notes for late-arriving PRs.
 
 ### Step 11: Commit Changes
 
@@ -236,6 +279,11 @@ Present **all** of the following details to the user for review. The user must c
 After presenting all details, explicitly ask the user:
 > Would you like to push the branch and create the pull request?
 
+Confirm the Step 10b review actually happened before asking. If categorization and acknowledgements
+were never reviewed as their own decisions, go back and do that first — this gate is about
+publishing mechanics, and burying content questions in it is how miscategorized entries reach an
+open PR.
+
 **Do not proceed without explicit "yes" confirmation.**
 
 ### Step 13: Push Branch and Create Pull Request
@@ -255,7 +303,10 @@ Only after explicit user confirmation in Step 12:
 
 ## Edge Cases
 
-- **PR spans categories**: categorize by primary intent
+- **PR spans categories**: categorize by primary intent, and surface it as a close call at Step 10b
+- **PR adds sample code or tests but no `src/` changes**: Documentation Updates or Test Improvements, not "What's Changed" — the shipped packages did not change
+- **Issue reporter is a maintainer**: omit the acknowledgement; show it as an exclusion at Step 10b so the user can overrule
+- **User recategorizes after the PR is open**: update the PR body, and record the correction so publish-release does not re-derive the original category
 - **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
 - **No breaking changes**: omit the Breaking Changes section from release notes entirely
 - **Single breaking change**: use the same numbered format as multiple

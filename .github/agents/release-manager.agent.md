@@ -107,6 +107,7 @@ Stage 1  Prepare                                     [prepare-release skill, chi
          ├─ ApiCompat + ApiDiff
          ├─ Documentation and README review
          ├─ Draft release notes
+         ├─ GATE: review categorization + acknowledgements with the user
          └─ GATE: child reports → user approves here → child pushes + opens
                   "Release v{version}" PR
 
@@ -155,6 +156,16 @@ Stage 5  Verify                                      [verify-release skill, orch
   Delegate stage 1 to a *fresh* worktree, not a reused one. Stale refs do not fail loudly; they
   produce a confident, wrong release. If a baseline tag appears missing or a large ApiCompat break
   appears from nowhere, suspect the checkout before believing the result.
+- **Review content before mechanics.** Release notes get a dedicated gate of their own, before the
+  push/PR gate. Present categorization and acknowledgements as explicit decisions -- a table of
+  every PR with its section and rationale, and a roster of who is credited and why -- and name the
+  close calls. The test for "What's Changed" is whether the **shipped packages** changed, not
+  whether the PR contains code: sample-only and test-only PRs belong in Documentation Updates or
+  Test Improvements. Maintainers are not acknowledged as issue reporters. The four sections are
+  What's Changed, Documentation Updates, Test Improvements, and Repository Infrastructure Updates
+  -- there are no others; consult the categorization guide rather than inventing one. Do not treat
+  "here are the finished notes" as a review; complete, well-formatted notes read as correct and get
+  approved unexamined, and the corrections then arrive after the PR is open.
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.

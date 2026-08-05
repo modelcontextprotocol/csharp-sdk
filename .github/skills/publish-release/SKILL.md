@@ -80,7 +80,9 @@ Re-categorize all PRs in the commit range (including any new ones from Step 3). 
 1. **Re-run the breaking change audit** using the **breaking-changes** skill if new PRs were found that may introduce breaks. Otherwise, carry forward the results from the prepare-release PR.
 2. **Re-categorize** all PRs into sections (What's Changed, Documentation, Tests, Infrastructure).
 3. **Re-attribute** co-authors for any new PRs by harvesting `Co-authored-by` trailers from all commits in each PR.
-4. **Update acknowledgements** to include contributors from new PRs.
+4. **Update acknowledgements** to include contributors from new PRs, excluding maintainers as issue reporters (see prepare-release Step 10 item 7).
+5. **Carry forward the prepare-release categorization decisions.** If the user recategorized a PR or removed an acknowledgement during preparation, honor that. Re-deriving categories from scratch will silently reintroduce the exact corrections they already made.
+6. **Review with the user** using the categorization table and acknowledgements roster from prepare-release Step 10b — at minimum for PRs new since preparation, and for any entry whose section you changed. Do not fold this into the Step 9 draft-creation gate.
 
 ### Step 5: Review README and Validate Code Samples
 

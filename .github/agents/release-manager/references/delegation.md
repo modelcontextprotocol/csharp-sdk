@@ -77,6 +77,8 @@ The child's kickoff prompt must carry everything it needs, because it does not s
    creating the PR.
 6. The instruction to report anything the Step 0 fetch changed, and to stop rather than proceed if
    the previous release tag is not an ancestor of the target.
+7. The requirement to **stop at the skill's Step 10b gate** and bring the categorization table and
+   acknowledgements roster back to you, so the user reviews notes content before a PR exists.
 
 If app-native child sessions are not available in the current environment, fall back to a git
 worktree created from the source/base branch and run the skill there, keeping the orchestrator's
