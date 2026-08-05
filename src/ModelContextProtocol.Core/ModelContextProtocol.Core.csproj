@@ -16,6 +16,10 @@
     <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ApiCompatSuppressionFile Include="$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
