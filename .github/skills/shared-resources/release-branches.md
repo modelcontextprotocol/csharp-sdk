@@ -25,8 +25,25 @@ Official NuGet.org publishes happen only when a GitHub Release is created from a
 
 ## Previous-release tag lookup
 
-- On `main`: most recent published release globally (use `gh release list --exclude-drafts --limit 50` and pick the highest semver). No MAJOR filter.
-- On `release/{MAJOR}.x`: most recent published release whose tag matches `v{MAJOR}.*`. Drafts are excluded.
+Select the **highest semver** among published releases that are **ancestors of the target commit**,
+excluding drafts:
+
+```sh
+gh release list --exclude-drafts --limit 50
+```
+
+- On `main`: no MAJOR filter — the highest semver ancestor wins.
+- On `release/{MAJOR}.x`: restrict candidates to tags matching `v{MAJOR}.*`.
+
+**"Highest semver" and "most recent by date" are not the same rule, and the difference is not
+hypothetical.** Ship `v2.1.0` from `main`, then a `v2.0.1` servicing patch from `release/2.0.x`, and
+the most recently *published* release is `v2.0.1` while the highest semver is `v2.1.0`. Ordering by
+date picks a tag that is not on `main` at all, which produces a bogus PR range and makes ApiCompat
+report the entire API surface as removed. Order by version, not by publication time.
+
+The ancestry constraint is what makes this safe across branches, so verify it rather than assuming
+the version ordering implied it — a tag can be both the highest semver and unreachable from the
+target. `prepare-release` Step 2 performs this check explicitly.
 
 This is purely a baseline-selection rule. It does **not** change the breaking-change policy. See [the versioning docs](https://csharp.sdk.modelcontextprotocol.io/versioning.html) for the policy.
 

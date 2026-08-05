@@ -32,9 +32,19 @@ worktree.
 | 4. Release | No -- human action in the GitHub UI | Orchestrator, in place |
 | 5. Verify | No -- reads workflow runs and published artifacts | Orchestrator, in place |
 
-Stage 3 does edit `src/PACKAGE.md` and `README.md` when the README checklist finds issues. Those
-fixes land on the release branch, so delegate them the same way as stage 1: a child session on a
-worktree based on the branch the draft release targets.
+Stage 3 does edit `src/PACKAGE.md` and `README.md` when the README checklist finds issues. **The
+release branch is already merged by this point, so those fixes cannot land on it.** They go to the
+base branch the release ships from — `main` or `release/{MAJOR}.x` — which is protected, so they
+need their own small PR, reviewed and merged like any other change.
+
+Delegate that PR the same way as stage 1: a child session on a fresh worktree based on the base
+branch. Do not push directly to the base branch, and do not commit into the orchestrator's worktree.
+
+A corrective commit merged at this point **is not in the draft release's tag**, because the draft is
+pinned to the merge commit the user approved. After the fix merges, re-target the draft to the new
+head and regenerate the notes per
+[publish-release Step 9](../../../skills/publish-release/SKILL.md). Skipping the re-target ships a
+tag that predates the fix while the notes describe the fixed state.
 
 ## Confirm the orchestrator's location
 

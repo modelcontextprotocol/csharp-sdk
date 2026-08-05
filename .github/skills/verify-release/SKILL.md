@@ -47,13 +47,26 @@ Record the tag, the published timestamp, and the target commitish for the follow
 
 ### Step 2: Locate Both Workflow Runs
 
-Find the runs triggered by publishing this release. Match on the `release` event and a `created`
-timestamp at or after the release's `publishedAt`.
+Find the runs triggered by publishing this release. A release-event run carries the **tag name in
+`headBranch`**, which is an exact identifier — use it rather than correlating on timestamps:
 
 ```
-gh run list --workflow release.yml --event release --limit 10 --json databaseId,status,conclusion,createdAt,url
-gh run list --workflow docs.yml --event release --limit 10 --json databaseId,status,conclusion,createdAt,url
+gh run list --workflow release.yml --event release --branch v{version} --limit 5 --json databaseId,status,conclusion,headBranch,headSha,createdAt,url
+gh run list --workflow docs.yml --event release --branch v{version} --limit 5 --json databaseId,status,conclusion,headBranch,headSha,createdAt,url
 ```
+
+**Do not identify runs by "the most recent run" or "created at or after `publishedAt`."** Those
+match any release published in the same window, so a concurrent or closely-following release —
+including a servicing patch published from another branch minutes later — can be reported as this
+release's result, showing a green run for the wrong tag. Confirm `headBranch` equals `v{version}`
+on every run before evaluating it.
+
+Cross-check `headSha` against the release's target commitish recorded in Step 1. A mismatch means
+the tag moved between drafting and publishing, and the run validated something other than what was
+reviewed — stop and report it rather than evaluating the run.
+
+If more than one run matches the tag, the workflow was re-run; evaluate the **latest attempt** and
+say that earlier attempts existed rather than silently reporting only the newest.
 
 Present both runs with their status, conclusion, and URL. Watch them **together** — they run
 concurrently and either can fail independently. Do not report success for the release until both

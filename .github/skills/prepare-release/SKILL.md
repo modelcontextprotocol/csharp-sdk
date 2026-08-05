@@ -61,7 +61,7 @@ The user may provide:
 - **No context** — show the last 5 commits on the selected source/base branch (noting HEAD) and offer the option to enter a branch or tag name instead
 
 Once the target is established:
-1. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`). Use the selected source/base branch context: on `release/{MAJOR}.x`, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, use the most recent published release globally.
+1. Determine the previous release tag from `gh release list` — the **highest semver** among published releases that are ancestors of the target commit (exclude drafts with `--exclude-drafts`). Do not order by publication date; see [release-branches.md](../shared-resources/release-branches.md#previous-release-tag-lookup) for why the two differ and what breaks. On `release/{MAJOR}.x`, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, there is no MAJOR filter.
 2. Get the full list of PRs merged between the previous release tag and the target commit on the selected branch.
 3. Read `src/Directory.Build.props` **at the target commit**. Extract `<VersionPrefix>` and `<VersionSuffix>`; the **candidate version** is `{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present (for example, `2.0.0-preview.1`).
 4. **Verify the previous release tag is an ancestor of the target commit:**

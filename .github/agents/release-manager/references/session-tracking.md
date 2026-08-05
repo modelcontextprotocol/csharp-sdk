@@ -118,20 +118,38 @@ it when the wait ends. Cover child-session work, CI watches, workflow watches, a
 
 This is what makes the closing summary's split honest. Without it, wait time can only be inferred by
 subtracting interaction time from stage wall-clock, which quietly counts discussion, diagnosis, and
-rework as waiting. With it, both halves are measured:
+rework as waiting.
+
+**A wait records unattended time only, so it must not overlap an interaction.** These two clocks run
+in the same wall-clock window — a two-hour CI watch during which the user answers an eleven-minute
+gate is not two hours of waiting plus eleven minutes of interaction. Counting both in full makes the
+parts exceed the whole and drives the remainder negative:
+
+```
+total 120m − active 11m − waiting 120m = −11m
+```
+
+Keep them disjoint as you record, rather than reconciling later. When a wait is running and you turn
+to the user, **close the wait, handle the interaction, then open a new wait row** for the remainder.
+The same watch then yields two wait rows around the gate instead of one row swallowing it:
 
 ```
 active interaction = sum of interaction intervals
-waiting            = sum of wait intervals
-unaccounted        = total - (active + waiting)
+waiting            = sum of wait intervals, none overlapping an interaction
+unaccounted        = total − (active + waiting)
 ```
+
+Before reporting, check that `unaccounted` is not negative. If it is, the rows overlap and the split
+is wrong — say so and report the measured totals plainly instead of publishing a negative remainder
+or clamping it to zero. A clamped number looks correct and hides the defect.
 
 Report the unaccounted remainder rather than distributing it. A visible gap is information; a
 silently absorbed one is a wrong number.
 
 Record every CI and release workflow run in `release_workflow_runs` as you watch it, using the run's
 own `startedAt` and `updatedAt`. This makes the longest-wait figure in the summary a lookup instead
-of a recollection.
+of a recollection. These rows are evidence about the run itself, so they are exempt from the
+non-overlap rule — never sum them into `waiting`.
 
 ## Recording interactions
 

@@ -44,7 +44,7 @@ Verify the PR is merged. Extract:
 ### Step 2: Determine Version and Commit Range
 
 1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>` and `<VersionSuffix>`. The tag is `v{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present; for example, `<VersionPrefix>2.0.0</VersionPrefix>` + `<VersionSuffix>preview.1</VersionSuffix>` → `v2.0.0-preview.1`.
-2. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`). The lookup is branch-aware: when the merge commit is on a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, use the most recent published release globally. See [release-branches.md](../shared-resources/release-branches.md).
+2. Determine the previous release tag from `gh release list` — the **highest semver** among published releases that are ancestors of the merge commit (exclude drafts with `--exclude-drafts`). Do not order by publication date. When the merge commit is on a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, there is no MAJOR filter. See [release-branches.md](../shared-resources/release-branches.md#previous-release-tag-lookup).
 3. Identify the full commit range: previous release tag → merge commit.
 
 ### Step 3: Check for Additional PRs
@@ -96,7 +96,24 @@ Re-run the README content checklist from [../prepare-release/references/readme-c
 2. **Snippet validation** -- Extract `csharp`-fenced code blocks from `src/PACKAGE.md` and `README.md`, build the temporary test project, and report results. Follow [../prepare-release/references/readme-snippets.md](../prepare-release/references/readme-snippets.md) for the full procedure.
 3. **Delete** the temporary project after validation.
 
-If issues are found, present them to the user with proposed fixes. Any fixes must be applied as a separate commit before the draft release is created.
+If issues are found, present them to the user with proposed fixes.
+
+**Applying them is not a local commit.** The release PR is already merged, so its branch is gone;
+fixes belong on the base branch this release ships from (`main` or `release/{MAJOR}.x`), which is
+protected. Open a small PR for them, let CI run, and merge it — do not push to the base branch
+directly, and do not amend or re-tag anything already reviewed.
+
+Then **re-target the draft release**, which is pinned to the previously approved merge commit and
+therefore does not contain the fix:
+
+```sh
+gh release edit v{version} --target {new-merge-commit-sha}
+```
+
+Regenerate the release notes afterward so the commit range covers the new PR, and re-run the Step 6
+section review for anything that changed. If the user prefers not to take the fix in this release,
+that is a valid choice — leave the draft pinned where it is and note the deferred item, rather than
+carrying a fix that the tag will not include.
 
 **Edge Cases:**
 - **Stale package closure** -- A package introduced between prepare-release and now may not be listed. Add it to `src/PACKAGE.md` and `README.md`.

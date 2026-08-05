@@ -94,6 +94,10 @@ step-away gap, or a stage that ran unusually long or short.}
 7. **Waiting time is measured, not inferred.** Sum the `release_waits` intervals. Never derive it by
    subtracting interaction time from the session total; that counts diagnosis and rework as waiting.
    Show whatever the two do not account for as `Unaccounted` rather than folding it into either.
+   **If `Unaccounted` computes negative, wait and interaction rows overlapped** — the split is
+   unsound, so omit the `Unaccounted` line, report the two measured totals, and state plainly that
+   they overlap. Never publish a negative figure and never clamp it to zero, which would present a
+   broken split as a clean one.
 8. **Longest single wait comes from `release_waits` and `release_workflow_runs`**, not from the
    longest interaction. If waits were not recorded, say the data is unavailable instead of
    substituting the longest gate.
