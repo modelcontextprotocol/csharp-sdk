@@ -36,7 +36,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
                 Name = nameof(StreamableHttpServerConformanceTests),
                 Version = "73",
             };
-        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = stateless);
+        }).WithTools(Tools).WithHttpTransport(options => options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful);
 
         _app = Builder.Build();
 

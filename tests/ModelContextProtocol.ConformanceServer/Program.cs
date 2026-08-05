@@ -1,6 +1,7 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Extensions.Tasks;
@@ -51,7 +52,7 @@ public class Program
         services.AddDistributedMemoryCache();
         var mcpServerBuilder = services
             .AddMcpServer()
-            .WithHttpTransport(options => options.Stateless = stateless)
+            .WithHttpTransport(options => options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful)
             .WithDistributedCacheEventStreamStore()
             .WithTasks(
                 new InMemoryMcpTaskStore

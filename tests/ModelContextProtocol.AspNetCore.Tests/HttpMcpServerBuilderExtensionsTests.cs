@@ -190,7 +190,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     {
         Builder.Services
             .AddMcpServer()
-            .WithHttpTransport(options => options.Stateless = true);
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless);
 
         using var app = Builder.Build();
 
@@ -211,7 +211,7 @@ public class HttpMcpServerBuilderExtensionsTests(ITestOutputHelper testOutputHel
     {
         Builder.Services
             .AddMcpServer()
-            .WithHttpTransport(options => options.Stateless = false);
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful);
 
         using var app = Builder.Build();
 

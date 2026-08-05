@@ -37,7 +37,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
         })
         .WithHttpTransport(options =>
         {
-            options.Stateless = stateless;
+            options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
         })
         .WithTools([McpServerTool.Create(
             async (CancellationToken cancellationToken) =>
@@ -86,7 +86,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
     public async Task July2026Request_AbortFlowsCancellationToToolHandler()
     {
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is
-        // served natively only on a stateless server; a Stateless=false server refuses these requests so dual-era
+        // served natively only on a stateless server; a SessionMode = HttpServerSessionMode.Stateful server refuses these requests so dual-era
         // clients fall back to initialize.
         await StartAsync(stateless: true);
 

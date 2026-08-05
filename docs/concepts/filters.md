@@ -411,7 +411,7 @@ To enable authorization support, call `AddAuthorizationFilters()` when configuri
 
 ```csharp
 services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .AddAuthorizationFilters() // Enable authorization filter support
     .WithTools<WeatherTools>();
 ```
@@ -511,7 +511,7 @@ This allows you to implement logging, metrics, or other cross-cutting concerns t
 
 ```csharp
 services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithRequestFilters(requestFilters =>
     {
         requestFilters.AddListToolsFilter(next => async (context, cancellationToken) =>
@@ -556,7 +556,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        options.Stateless = true;
+        options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .AddAuthorizationFilters() // Required for authorization support
     .WithTools<WeatherTools>()

@@ -18,9 +18,11 @@ public class HttpServerTransportOptions
     /// with access to the <see cref="HttpContext"/> of the request that initiated the session.
     /// </summary>
     /// <remarks>
-    /// In stateful mode (the default), this callback is invoked once per session when the client sends the
-    /// <c>initialize</c> request. In <see cref="Stateless"/> mode, it is invoked on <b>every HTTP request</b>
-    /// because each request creates a fresh server context.
+    /// In stateful mode, this callback is invoked once per session when the client sends the
+    /// <c>initialize</c> request. In <see cref="HttpServerSessionMode.Stateless"/> mode, it is invoked on
+    /// <b>every HTTP request</b> because each request creates a fresh server context. In
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> mode, both apply: once per session for
+    /// <c>initialize</c>-handshake clients and once per request for <c>2026-07-28</c> and later clients.
     /// </remarks>
     public Func<HttpContext, McpServerOptions, CancellationToken, Task>? ConfigureSessionOptions { get; set; }
 
@@ -46,6 +48,44 @@ public class HttpServerTransportOptions
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
+    /// Gets or sets a value that indicates how the server tracks state between requests.
+    /// </summary>
+    /// <value>
+    /// One of the <see cref="HttpServerSessionMode"/> values. The default is
+    /// <see cref="HttpServerSessionMode.Stateless"/> as of the <c>2026-07-28</c> protocol revision (SEP-2567).
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// <see cref="HttpServerSessionMode.Stateless"/> doesn't track state between requests, allowing for load
+    /// balancing without session affinity. <see cref="McpSession.SessionId"/> will be null, the
+    /// "MCP-Session-Id" header will not be used, the <see cref="RunSessionHandler"/> will be called once for
+    /// each request, and the GET, DELETE, and "/sse" endpoints will be disabled. Unsolicited server-to-client
+    /// messages and all server-to-client requests are also unsupported, because any responses might arrive at
+    /// another ASP.NET Core application process. Client sampling, elicitation, and roots capabilities are also
+    /// disabled, because the server cannot make requests.
+    /// </para>
+    /// <para>
+    /// <see cref="HttpServerSessionMode.Stateful"/> tracks a session for every client, which requires session
+    /// affinity. Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports
+    /// sessions: the revision removed <c>Mcp-Session-Id</c> (SEP-2567), so such a request is refused with a
+    /// <c>-32022 UnsupportedProtocolVersion</c> error, and a dual-path client downgrades to the
+    /// <c>initialize</c> handshake and obtains the session the server was configured to provide.
+    /// </para>
+    /// <para>
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> avoids that downgrade by serving
+    /// <c>2026-07-28</c> and later requests statelessly on the same endpoint while <c>initialize</c>-handshake
+    /// clients still get full sessions. Session-only features remain unavailable to the stateless half of the
+    /// endpoint; use <see href="https://csharp.sdk.modelcontextprotocol.io/concepts/mrtr">MRTR</see> for
+    /// elicitation there.
+    /// </para>
+    /// <para>
+    /// A request that carries an <c>Mcp-Session-Id</c> on the <c>2026-07-28</c> and later revisions is ignored
+    /// in every mode; the server must not mint or echo session IDs for those revisions.
+    /// </para>
+    /// </remarks>
+    public HttpServerSessionMode SessionMode { get; set; } = HttpServerSessionMode.Stateless;
+
+    /// <summary>
     /// Gets or sets a value that indicates whether the server runs in a stateless mode that doesn't track state between requests,
     /// allowing for load balancing without session affinity.
     /// </summary>
@@ -55,22 +95,19 @@ public class HttpServerTransportOptions
     /// set to <see langword="false"/> only when you need to support legacy clients that rely on session affinity.
     /// </value>
     /// <remarks>
-    /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
-    /// the <see cref="RunSessionHandler"/> will be called once for each request, and the "/sse" endpoint will be disabled.
-    /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
-    /// might arrive at another ASP.NET Core application process.
-    /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
-    /// <para>
-    /// Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports sessions:
-    /// the revision removed <c>Mcp-Session-Id</c> (SEP-2567), so over HTTP its requests are only ever served
-    /// when this property is <see langword="true"/>. When it is <see langword="false"/>, such a request is
-    /// refused with a <c>-32022 UnsupportedProtocolVersion</c> error so that a dual-path client downgrades to
-    /// the <c>initialize</c> handshake and obtains the session the server was configured to provide.
-    /// A request that carries an <c>Mcp-Session-Id</c> on the <c>2026-07-28</c> and later revisions is ignored;
-    /// the server must not mint or echo session IDs for those revisions.
-    /// </para>
+    /// This property is a compatibility proxy over <see cref="SessionMode"/>. Reading it returns
+    /// <see langword="true"/> only when <see cref="SessionMode"/> is <see cref="HttpServerSessionMode.Stateless"/>,
+    /// so <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> reads as <see langword="false"/>.
+    /// Assigning <see langword="true"/> selects <see cref="HttpServerSessionMode.Stateless"/> and assigning
+    /// <see langword="false"/> selects <see cref="HttpServerSessionMode.Stateful"/>. Because both properties
+    /// update the same underlying value, the last assignment wins when both are configured.
     /// </remarks>
-    public bool Stateless { get; set; } = true;
+    [Obsolete(Obsoletions.StatelessProperty_Message, DiagnosticId = Obsoletions.StatelessProperty_DiagnosticId, UrlFormat = Obsoletions.StatelessProperty_Url)]
+    public bool Stateless
+    {
+        get => SessionMode is HttpServerSessionMode.Stateless;
+        set => SessionMode = value ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
+    }
 
     /// <summary>
     /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
@@ -94,8 +131,9 @@ public class HttpServerTransportOptions
     /// built-in backpressure.
     /// </para>
     /// <para>
-    /// Setting this to <see langword="true"/> while <see cref="Stateless"/> is also <see langword="true"/>
-    /// throws an <see cref="InvalidOperationException"/> at startup, because SSE requires in-memory session state.
+    /// Setting this to <see langword="true"/> while <see cref="SessionMode"/> is
+    /// <see cref="HttpServerSessionMode.Stateless"/> throws an <see cref="InvalidOperationException"/> at
+    /// startup, because SSE requires in-memory session state.
     /// </para>
     /// <para>
     /// This property can also be enabled via the <c>ModelContextProtocol.AspNetCore.EnableLegacySse</c>
