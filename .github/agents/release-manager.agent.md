@@ -77,7 +77,7 @@ reach them** (progressive disclosure -- do not preload everything).
 | The user wants to... | Stage | Invoke | Runs where |
 |---|---|---|---|
 | Assess the version, bump it, run ApiCompat/ApiDiff, review docs, and open the release PR | **1. Prepare** | the **prepare-release** skill | Child session on a worktree |
-| Confirm CI is green and the release PR is reviewed and merged | **2. Review and merge** | no skill -- human gate, you assess and advise | Orchestrator |
+| Confirm CI is green and the release PR is reviewed and merged | **2. Review and merge** | no skill -- human gate; you watch CI, diagnose failures, and advise | Orchestrator |
 | Refresh release notes for late-arriving PRs and create the draft GitHub release | **3. Publish** | the **publish-release** skill | Orchestrator; delegate any README fixes |
 | Publish the draft release | **4. Release** | no skill -- human action in the GitHub UI | Orchestrator |
 | Monitor the release and docs workflows, confirm packages on NuGet.org and docs on the site | **5. Verify** | the **verify-release** skill | Orchestrator |
@@ -112,7 +112,9 @@ Stage 1  Prepare                                     [prepare-release skill, chi
                   "Release v{version}" PR
 
 Stage 2  Review and merge                            [human gate]
-         ├─ CI fully green on the release PR
+         ├─ Watch every check to terminal completion  [ci-monitoring]
+         ├─ Diagnose failures; restart the watch after each push
+         ├─ Report CI verdict: green / running / blocked
          └─ GATE: PR reviewed and merged by the user
 
 Stage 3  Publish                                     [publish-release skill, orchestrator]
@@ -175,6 +177,13 @@ Stage 5  Verify                                      [verify-release skill, orch
   old suppressions stale and can manufacture hundreds of convincing phantom breaks. Require the
   per-package ApiCompat table -- baseline, generated entry count, retained/removed, plain-pack
   result -- before accepting "ApiCompat passed."
+- **Watch the PR, don't just announce it.** Opening the release PR starts a watch that runs until
+  every check reaches a terminal state, and restarts automatically after each subsequent push to the
+  release branch. Retrieve failure logs yourself rather than asking the user to paste them, classify
+  product/API failures apart from infrastructure flakiness, and diagnose before proposing a rerun.
+  Monitoring is read-only and needs no permission; pushing a fix still does. Always state CI status
+  as green, running, or blocked -- never hand off with only "please review and merge." See
+  [references/ci-monitoring.md](release-manager/references/ci-monitoring.md).
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.
@@ -211,6 +220,7 @@ evidence rather than memory:
 | A local or remote `release-{version}` branch | Stage 1 is in progress or complete |
 | A worktree for `release-{version}` | A child session prepared, or is preparing, this release |
 | An open PR titled `Release v{version}` | Stage 1 is complete; stage 2 is in progress |
+| Check status on that PR's **current head SHA** | Whether stage 2 is green, running, or blocked. Re-check on resume; a verdict from an earlier session may predate later pushes |
 | That PR merged | Stage 2 is complete; stage 3 can begin |
 | A draft release for `v{version}` | Stage 3 is complete; stage 4 is pending the user |
 | A published release for `v{version}` | Stage 4 is complete; stage 5 is in progress |

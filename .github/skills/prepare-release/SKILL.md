@@ -302,6 +302,13 @@ Only after explicit user confirmation in Step 12:
    - **Description**: The assembled PR description (see PR Description Template below)
    - **Labels**: Apply appropriate labels (e.g., `release`)
 3. Present the PR URL to the user
+4. **Monitor CI to completion.** Creating the PR does not end this step. Watch every check on the new head SHA until it reaches a terminal state:
+   ```sh
+   gh pr checks {pr-number} --watch
+   ```
+   Then report a per-check table and an overall verdict of **green**, **running**, or **blocked**. Do not hand off with only the PR URL and an invitation to review — the user should not be the one to discover a red build.
+5. **On failure**, retrieve the logs yourself (`gh run view {run-id} --log-failed`), distinguish product/API validation failures from infrastructure or tooling flakiness, and diagnose before proposing a rerun. For ApiCompat failures, apply the interpretation rules in [references/apicompat-apidiff.md](references/apicompat-apidiff.md) before concluding the release is breaking. Present the diagnosis and a proposed fix, then stop — pushing a fix needs the same explicit approval as the original push.
+6. **Restart monitoring after every subsequent push** to the release branch, against the new head SHA. Checks from a previous SHA are stale and must not be reported as current.
 
 **Important**: No draft GitHub release is created at this point. The **publish-release** skill handles release creation after this PR is merged.
 
@@ -325,6 +332,9 @@ Only after explicit user confirmation in Step 12:
 - **`Unnecessary suppressions found` in ApiCompat output**: the CP lines that follow are unused suppression entries, not live breaks. Run the baseline-transition suppression audit and cross-check the API diff before treating the release as breaking
 - **Baseline version changed during preparation**: run the suppression audit for every shipping package, and decide deliberately between advancing the baseline (clearing stale suppressions) and keeping the existing one. Report the choice and its rationale at Step 12
 - **ApiCompat passes locally but CI fails**: check whether local runs used generation flags. Only `dotnet clean -c Release; dotnet pack -c Release` reproduces CI
+- **A check never starts**: a workflow skipped by a path filter or stuck in a queue is not a pass. Compare against the check set on previous release PRs before declaring green
+- **Checks green on an earlier SHA**: stale. Re-watch against the current head after every push
+- **CI fails for infrastructure reasons**: a single rerun is reasonable if the cause is clearly runner, network, or feed related. State the reason. Never rerun a product or API validation failure to make it disappear
 - **API diff tool installation fails**: do not fall back to a manual summary; pause and present the installation error to the user, offering options to troubleshoot, skip the API diff section, or abort the release preparation
 - **No changelogs in repo**: skip changelog updates; note in the summary
 - **Branch already exists**: if `release-{version}` already exists locally or remotely, ask the user whether to reuse it, delete and recreate, or choose a different name
