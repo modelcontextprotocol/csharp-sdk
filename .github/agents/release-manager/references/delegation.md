@@ -84,6 +84,51 @@ If app-native child sessions are not available in the current environment, fall 
 worktree created from the source/base branch and run the skill there, keeping the orchestrator's
 own checkout untouched. The invariant is the worktree, not the mechanism.
 
+## Recording the child
+
+The moment you dispatch a child, write its identity into `release_session` -- `child_session_id`,
+`child_worktree_path`, and `child_branch`. A release routinely outlives the session that started
+it, and a worktree with no recorded owner is very hard to tell apart from the dozens of unrelated
+worktrees a busy repository accumulates.
+
+## Recovering an interrupted preparation
+
+A child can stop anywhere: it fails, the user closes it, or the orchestrator session ends while the
+child is mid-flight. Recovery starts from what the worktree actually contains, never from the fact
+that it exists.
+
+**Existence is not progress.** A `release-{version}` worktree proves only that a preparation was
+started. Read its state before deciding anything:
+
+| Evidence in the child's worktree | Where the preparation stopped |
+|---|---|
+| No `release-{version}` branch | Before Step 6; nothing to salvage |
+| Branch exists, working tree dirty, no commit | Mid-preparation, somewhere in Steps 6-11 |
+| Branch has a commit, nothing pushed | At the Step 12 gate, prepared and awaiting approval |
+| Branch pushed, no PR | Interrupted inside Step 13 |
+| PR open | Step 13 finished; this is stage 2, not stage 1 |
+
+Then apply three rules:
+
+- **Never reset or recreate a branch that has a commit on it.** It may hold work the user already
+  reviewed and corrected -- release-note categorization, acknowledgement edits, a chosen preamble --
+  none of which is reproducible from the repository. Read the commit and the drafted notes and
+  continue from there.
+- **Never inherit a validation result.** Build, pack, and ApiCompat outcomes leave no trace in git.
+  A commit proves the files were written, not that anything passed. Re-run the checks rather than
+  assuming the interrupted run got that far.
+- **Prefer resuming the recorded child over launching a replacement.** It still holds the context.
+  If it is gone, dispatch a replacement pointed at the *existing* worktree and branch, and tell it
+  to audit what is already there before continuing -- not to start over.
+
+Report the stopping point and the evidence you read, and let the user confirm before continuing.
+
+Decisions the user made at a gate are the hardest thing to recover, because session tracking does
+not survive the session. Their durable form is the artifact itself: the drafted release notes carry
+the categorization, and the acknowledgements roster carries the exclusions. On resume, re-derive the
+decisions by reading the drafted notes, and present them as *previously decided* for confirmation.
+Silently re-deriving them from scratch will quietly undo corrections the user already made once.
+
 ## Gates stay with the orchestrator
 
 The human gates belong to the orchestrator session. The child prepares and reports; the user

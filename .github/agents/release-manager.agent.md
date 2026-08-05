@@ -235,7 +235,7 @@ evidence rather than memory:
 |---|---|
 | `<VersionPrefix>` / `<VersionSuffix>` in `src/Directory.Build.props` on the base branch | Whether the version bump has landed |
 | A local or remote `release-{version}` branch | Stage 1 is in progress or complete |
-| A worktree for `release-{version}` | A child session prepared, or is preparing, this release |
+| A worktree for `release-{version}` | A preparation was started here. Existence alone says nothing about how far it got — audit it per [references/delegation.md](release-manager/references/delegation.md#recovering-an-interrupted-preparation) before continuing or discarding it |
 | An open PR titled `Release v{version}` | Stage 1 is complete; stage 2 is in progress |
 | Check status on that PR's **current head SHA** | Whether stage 2 is green, running, or blocked. Re-check on resume; a verdict from an earlier session may predate later pushes |
 | That PR merged | Stage 2 is complete; stage 3 can begin |
@@ -244,7 +244,11 @@ evidence rather than memory:
 | Successful release and docs workflow runs, a listed NuGet version, and a live docs version | Stage 5 is complete |
 
 State plainly which stage you inferred and what evidence you used, and ask the user to confirm
-before acting. When resuming, restore session tracking per
+before acting. Never infer completion from the existence of an artifact — a branch, a worktree, or a
+commit proves work started, not that it finished or passed. Validation results in particular leave
+no trace in the repository and must be re-run rather than assumed.
+
+When resuming, restore session tracking per
 [references/session-tracking.md](release-manager/references/session-tracking.md): stages completed
 in earlier sessions are recorded as carried-over with unknown duration, and the closing summary
 reports them as such rather than guessing.

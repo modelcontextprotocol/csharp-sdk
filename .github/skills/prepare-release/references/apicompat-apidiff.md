@@ -8,16 +8,16 @@ The SDK uses NuGet's [Package Validation](https://learn.microsoft.com/dotnet/fun
 
 ```xml
 <EnablePackageValidation>true</EnablePackageValidation>
-<PackageValidationBaselineVersion>1.4.1</PackageValidationBaselineVersion>
+<PackageValidationBaselineVersion>{baseline}</PackageValidationBaselineVersion>
 ```
+
+Read the current values rather than assuming them, and check whether any individual project overrides them — a project that opts out of validation still ships, and needs to be reported as unvalidated rather than quietly skipped.
 
 ### Running ApiCompat
 
-1. **Pack the SDK packages** to trigger validation:
+1. **Pack the SDK packages** to trigger validation. Enumerate the packable projects under `src/` and pack each one; the set of shipping packages grows over time, so do not work from a remembered list:
    ```sh
-   dotnet pack src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj
-   dotnet pack src/ModelContextProtocol/ModelContextProtocol.csproj
-   dotnet pack src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj
+   dotnet pack src/{project}/{project}.csproj
    ```
    Or pack all at once:
    ```sh
@@ -111,7 +111,11 @@ to make validation pass.
 
 ### Compatibility Suppressions
 
-When intentional breaking changes are confirmed, create or update `CompatibilitySuppressions.xml` in the affected project directory. The repo already uses this pattern — see `src/ModelContextProtocol.Core/CompatibilitySuppressions.xml` for examples.
+When intentional breaking changes are confirmed, create or update `CompatibilitySuppressions.xml` in the affected project directory — the conventional location, which is auto-discovered.
+
+**A suppression file has three valid outcomes, not one.** Entries get *added* when a new intentional break needs suppressing, *retained* when they still describe a real break against the current baseline, and *cleared* when the baseline moved and they no longer describe anything. Treating the file as append-only is what turned 312 obsolete entries into a release-blocking failure that read as a mass breaking change. Preservation is the default only while the baseline holds still; once it moves, the [audit](#baseline-transition-suppression-audit) decides what stays, and removing entries it proves stale is the fix rather than a regression.
+
+Do not use a tracked file as a template for what entries should look like — it may legitimately be empty, and its contents describe whatever baseline it was generated against, not yours. Generate entries instead.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -287,15 +291,19 @@ _or_
 
 ### In the User Summary (Step 12)
 
-Present a condensed version for the user review. **Report per shipping package, and do not state
+Present a condensed version for the user review. **Report every shipping package, and do not state
 that ApiCompat passed without these four facts** — "passed" is not meaningful without knowing what
 it was validated against and whether stale suppressions were masking or manufacturing the result:
 
 | Package | Baseline | Generated entries | Retained / removed | Plain pack |
 |---|---|---|---|---|
-| ModelContextProtocol.Core | 1.4.1 | 0 | 0 retained / 312 removed | ✅ |
-| ModelContextProtocol | 1.4.1 | 0 | 0 / 0 | ✅ |
-| ModelContextProtocol.AspNetCore | 1.4.1 | 0 | 0 / 0 | ✅ |
+| {package} | {baseline} | 0 | 0 retained / 312 removed | ✅ |
+| {package} | {baseline} | 0 | 0 / 0 | ✅ |
+
+Enumerate the packable projects under `src/` rather than working from a remembered list; the set
+grows. A package that does not participate in validation still gets a row, reporting why — a first
+release has no baseline to compare against, and that is a fact worth stating rather than an absence
+worth hiding.
 
 - **Baseline** — the `PackageValidationBaselineVersion` actually used, and whether it changed during
   this release
@@ -308,7 +316,7 @@ it was validated against and whether stale suppressions were masking or manufact
 Then the summary lines:
 
 ```
-API Compatibility: ✅ All 3 packages pass against v1.4.1 (312 stale Core suppressions removed)
+API Compatibility: ✅ All {n} packages pass against v{baseline} ({n} stale suppressions removed from {package})
 API Diff: +12 additions, -2 removals, ~3 changes across all packages
 ```
 

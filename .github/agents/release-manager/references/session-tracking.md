@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS release_session (
     value TEXT
 );
 -- Expected keys: version, base_branch, release_branch, pr_number, draft_release_url,
--- published_release_url, session_started_at
+-- published_release_url, session_started_at,
+-- child_session_id, child_worktree_path, child_branch
 
 CREATE TABLE IF NOT EXISTS release_stages (
     stage       INTEGER NOT NULL,      -- 1..5
