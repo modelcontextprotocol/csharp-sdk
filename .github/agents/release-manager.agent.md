@@ -112,7 +112,7 @@ Stage 1  Prepare                                     [prepare-release skill, chi
                   "Release v{version}" PR
 
 Stage 2  Review and merge                            [human gate]
-         ├─ Watch every check to terminal completion  [ci-monitoring]
+         ├─ Watch every check to terminal completion  [monitoring]
          ├─ Diagnose failures; restart the watch after each push
          ├─ Report CI verdict: green / running / blocked
          └─ GATE: PR reviewed and merged by the user
@@ -125,7 +125,9 @@ Stage 3  Publish                                     [publish-release skill, orc
 Stage 4  Release                                     [human action, GitHub UI]
          ├─ User reviews the draft release notes line by line
          ├─ After sign-off, user may remove the AI disclosure from the notes
+         ├─ Watch the draft until isDraft flips to false     [monitoring]
          └─ GATE: user sets pre-release if applicable, clicks Publish
+                  → detected automatically; stage 5 starts on its own
 
 Stage 5  Verify                                      [verify-release skill, orchestrator]
          ├─ Monitor the release workflow run → packages published to NuGet.org
@@ -183,7 +185,14 @@ Stage 5  Verify                                      [verify-release skill, orch
   product/API failures apart from infrastructure flakiness, and diagnose before proposing a rerun.
   Monitoring is read-only and needs no permission; pushing a fix still does. Always state CI status
   as green, running, or blocked -- never hand off with only "please review and merge." See
-  [references/ci-monitoring.md](release-manager/references/ci-monitoring.md).
+  [references/monitoring.md](release-manager/references/monitoring.md).
+- **Watch the draft release, don't wait to be told.** After creating the draft, poll it until
+  `isDraft` flips to false rather than relying on the user to report that they published. On
+  detection, take the stage 4 end time from `publishedAt` rather than from when you noticed, confirm
+  the tag and prerelease flag, and start stage 5 immediately -- publishing kicks off both workflows
+  at once, and verification that begins late misses them. Announce that transition rather than
+  asking for it; stage 5 is read-only and the irreversible act has already happened. See
+  [references/monitoring.md](release-manager/references/monitoring.md).
 - **Irreversibility.** Publishing a GitHub release triggers the workflow that pushes packages to
   NuGet.org, and NuGet.org versions cannot be unpublished. Pushing tags and branches cannot be
   cleanly undone either. Prepare and review first, then act only on explicit user confirmation.
@@ -222,8 +231,8 @@ evidence rather than memory:
 | An open PR titled `Release v{version}` | Stage 1 is complete; stage 2 is in progress |
 | Check status on that PR's **current head SHA** | Whether stage 2 is green, running, or blocked. Re-check on resume; a verdict from an earlier session may predate later pushes |
 | That PR merged | Stage 2 is complete; stage 3 can begin |
-| A draft release for `v{version}` | Stage 3 is complete; stage 4 is pending the user |
-| A published release for `v{version}` | Stage 4 is complete; stage 5 is in progress |
+| A draft release for `v{version}` | Stage 3 is complete; stage 4 is pending the user. Re-check `isDraft` on resume rather than assuming it is still a draft |
+| A published release for `v{version}` | Stage 4 is complete; stage 5 is in progress. Take the stage 4 end time from `publishedAt` |
 | Successful release and docs workflow runs, a listed NuGet version, and a live docs version | Stage 5 is complete |
 
 State plainly which stage you inferred and what evidence you used, and ask the user to confirm

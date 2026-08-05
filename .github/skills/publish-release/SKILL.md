@@ -158,6 +158,29 @@ edit the draft body after they have removed it, do not reintroduce it.
 
 When the user requests revisions after the initial creation, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
 
+### Step 10: Watch for Publication
+
+Do not end the skill by asking the user to report back when they have published. Poll the release
+until it is no longer a draft:
+
+```sh
+gh release view v{version} --json isDraft,publishedAt,tagName,isPrerelease
+```
+
+Poll at a modest interval — this gate is human-paced and may span hours or a session boundary. Say
+that you are watching rather than going silent.
+
+When `isDraft` becomes `false`:
+
+1. Record the publication time from `publishedAt`, not from when the poll noticed.
+2. Confirm the tag that was actually created and whether the release was marked as a prerelease.
+   Both were the user's to set and cannot be inferred.
+3. **Hand off to the verify-release skill immediately.** Publishing starts the Release and Publish
+   Docs workflows in parallel at that moment; verification that begins late misses them mid-flight.
+
+If the user reports publishing but the API still shows a draft, trust the API and say so — an
+unsaved draft looks identical to a published release from the browser.
+
 ## Edge Cases
 
 - **No new PRs since preparation**: proceed normally — the prepare-release notes are used as the foundation with no warnings
@@ -172,6 +195,9 @@ When the user requests revisions after the initial creation, always rewrite the 
 - **Versioning link carried over from the prepare-release draft**: the draft may contain an unslugged or wrong-MAJOR versioning link. Correct it to the `v{MAJOR}` slug of the version being released before the draft release is created.
 - **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path is created by the Publish Docs workflow when the release is published. It is expected to 404 until then; use the slugged form regardless.
 - **Single breaking change**: use the same numbered format as multiple
+- **Draft edited but not published**: the user is still reviewing, and may be removing the AI disclosure. Take no action and do not reintroduce anything they removed
+- **Draft disappears without a published release**: it may have been deleted, or published under a different tag. Check for a published release before assuming it was abandoned, then ask
+- **Published tag differs from the prepared version**: stop and confirm with the user before verifying. Verifying the wrong version is worse than not verifying
 
 ## Release Notes Template
 
