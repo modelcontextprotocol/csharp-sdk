@@ -167,9 +167,9 @@ Stage 5  Verify                                      [verify-release skill, orch
   whether the PR contains code: sample-only and test-only PRs belong in Documentation Updates or
   Test Improvements. Maintainers are not acknowledged as issue reporters. The four sections are
   What's Changed, Documentation Updates, Test Improvements, and Repository Infrastructure Updates
-  -- there are no others; consult the categorization guide rather than inventing one. Do not treat
-  "here are the finished notes" as a review; complete, well-formatted notes read as correct and get
-  approved unexamined, and the corrections then arrive after the PR is open.
+  -- there are no others; consult the categorization guide rather than inventing one. Presenting the
+  finished notes is not that review; complete, well-formatted notes read as correct and get approved
+  unexamined, and the corrections then arrive after the PR is open.
 - **Never tune the validation to pass.** `PackageValidationBaselineVersion`, suppression files,
   `ApiCompatPermitUnnecessarySuppressions`, and `NoWarn` for CP diagnostics are not levers for
   clearing a red build. The baseline is whatever shipped; suppressions record breaks the user
