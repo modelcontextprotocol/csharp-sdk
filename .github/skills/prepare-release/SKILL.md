@@ -227,12 +227,13 @@ borderline ones, since the user cannot correct a call they were not shown:
 
 | PR | Title | Section | Why |
 |---|---|---|---|
-| #1778 | Add Application Insights telemetry example | Documentation Updates | Adds a sample; nothing under `src/` changed |
+| #{number} | {title} | {section} | {what the placement turned on} |
 
-Then explicitly surface the judgment calls:
+Then explicitly surface the judgment calls, naming the PRs and the reasoning that made each one
+close:
 
-> These were the close calls: #1778 and #1762 touch code but not shipped packages, so I placed
-> them under Documentation Updates. Any of these belong in a different section?
+> These were the close calls: {PRs} touch code but not shipped packages, so I placed them under
+> {section}. Any of these belong in a different section?
 
 Flag as a close call any PR that touches `samples/` or `tests/` but not `src/`, any PR placed in
 "What's Changed" whose changes are confined to non-shipping paths, and any PR whose title suggests
@@ -242,7 +243,7 @@ a different section than the one you assigned.
 
 | Person | Reason | Maintainer? |
 |---|---|---|
-| @halter73 | Submitted issue #1662 (resolved by #1775) | Yes — omit per Step 10 item 7 |
+| @{handle} | {contribution or issue, and the PR that resolved it} | {yes/no — if yes, omit per Step 10 item 7} |
 
 Show entries you excluded and why, so the user can overrule the omission. Ask directly whether the
 remaining list is right, since acknowledgement errors are about people and are the least

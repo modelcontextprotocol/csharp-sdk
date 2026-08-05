@@ -101,16 +101,16 @@ proceed anyway. Record that decision and who made it.
 
 When handing off, lead with CI status rather than only inviting review:
 
-> **CI: green** -- all 9 checks passed on `24c252cd`. PR #1792 is ready for your review and merge.
+> **CI: green** -- all {n} checks passed on `{sha}`. PR #{number} is ready for your review and merge.
 
 or
 
-> **CI: blocked** -- Pack / APICompat failed on `6d839c6d`. Diagnosis below. PR #1792 is not ready
+> **CI: blocked** -- {check name} failed on `{sha}`. Diagnosis below. PR #{number} is not ready
 > to merge yet.
 
 or
 
-> **CI: running** -- 4 of 9 checks complete, none failed. I am still watching and will report when
+> **CI: running** -- {done} of {n} checks complete, none failed. I am still watching and will report when
 > they finish.
 
 Never say only "the PR is up, please review and merge." Without a CI verdict the user has to go
