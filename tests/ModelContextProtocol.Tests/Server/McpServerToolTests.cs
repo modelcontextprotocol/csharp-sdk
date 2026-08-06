@@ -355,6 +355,29 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task SupportsCustomResultMarshaling()
+    {
+        Mock<McpServer> mockServer = new();
+        McpServerTool tool = McpServerTool.Create(() => 42, new()
+        {
+            MarshalResult = (result, resultType, cancellationToken) =>
+            {
+                Assert.Equal(42, result);
+                Assert.Equal(typeof(int), resultType);
+                Assert.Equal(TestContext.Current.CancellationToken, cancellationToken);
+                return new($"marshaled:{result}");
+            },
+        });
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(result.Content);
+        Assert.Equal("marshaled:42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+    }
+
+    [Fact]
     public async Task CanReturnCollectionOfStrings()
     {
         Mock<McpServer> mockServer = new();

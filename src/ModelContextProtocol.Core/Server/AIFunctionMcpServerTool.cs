@@ -74,7 +74,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
-            MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
+            MarshalResult = options?.MarshalResult ?? (static (result, _, cancellationToken) => new ValueTask<object?>(result)),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
             JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
