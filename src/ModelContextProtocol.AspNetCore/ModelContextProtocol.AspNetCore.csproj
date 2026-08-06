@@ -26,6 +26,7 @@
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
+    <Compile Include="..\Common\StreamableHttpResponseStartFeature.cs" Link="StreamableHttpResponseStartFeature.cs" />
   </ItemGroup>
 
   <ItemGroup>
