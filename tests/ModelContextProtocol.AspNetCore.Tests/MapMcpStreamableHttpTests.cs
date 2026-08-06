@@ -73,6 +73,82 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
+    public async Task GetStream_CanReconnectAfterPreviousRequestEnds()
+    {
+        Assert.SkipWhen(Stateless, "Unsolicited GET streams are not supported in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        var firstGetCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondGetCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completedGetCount = 0;
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next(context);
+            }
+            finally
+            {
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    if (Interlocked.Increment(ref completedGetCount) == 1)
+                    {
+                        firstGetCompleted.TrySetResult();
+                    }
+                    else
+                    {
+                        secondGetCompleted.TrySetResult();
+                    }
+                }
+            }
+        });
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        initRequest.Headers.Accept.ParseAdd("application/json");
+        initRequest.Headers.Accept.ParseAdd("text/event-stream");
+        using var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken);
+        Assert.True(initResponse.IsSuccessStatusCode);
+        var sessionId = Assert.Single(initResponse.Headers.GetValues("Mcp-Session-Id"));
+
+        using (var firstResponse = await HttpClient.SendAsync(
+            CreateGetRequest(sessionId),
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        }
+        await firstGetCompleted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        using (var secondResponse = await HttpClient.SendAsync(
+            CreateGetRequest(sessionId),
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        }
+        await secondGetCompleted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        static HttpRequestMessage CreateGetRequest(string sessionId)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/");
+            request.Headers.Accept.ParseAdd("text/event-stream");
+            request.Headers.Add("Mcp-Session-Id", sessionId);
+            request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+            return request;
+        }
+    }
+
+    [Fact]
     public async Task AutoDetectMode_Works_WithRootEndpoint()
     {
         Builder.Services.AddMcpServer(options =>
