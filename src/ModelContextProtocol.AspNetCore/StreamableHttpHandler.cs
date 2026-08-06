@@ -45,6 +45,7 @@ internal sealed class StreamableHttpHandler(
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
+    private static readonly JsonTypeInfo<InitializeRequestParams> s_initializeRequestParamsTypeInfo = GetRequiredJsonTypeInfo<InitializeRequestParams>();
 
     private static bool AllowNewSessionForNonInitializeRequests { get; } =
         AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", out var enabled) && enabled;
@@ -143,6 +144,28 @@ internal sealed class StreamableHttpHandler(
                 $"Method '{removedMethodRequest.Method}' is not available on protocol version '{context.Request.Headers[McpProtocolVersionHeaderName]}'.",
                 StatusCodes.Status404NotFound, (int)McpErrorCode.MethodNotFound, requestId);
             return;
+        }
+
+        if (message is JsonRpcRequest { Method: RequestMethods.Initialize } initializeRequest)
+        {
+            try
+            {
+                var initializeParams = JsonSerializer.Deserialize(initializeRequest.Params, s_initializeRequestParamsTypeInfo);
+                if (initializeParams is null)
+                {
+                    await WriteJsonRpcErrorAsync(context,
+                        "Bad Request: The initialize request parameters were invalid.",
+                        StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidParams, requestId);
+                    return;
+                }
+            }
+            catch (JsonException ex)
+            {
+                await WriteJsonRpcErrorAsync(context,
+                    $"Bad Request: The initialize request parameters were invalid. {ex.Message}",
+                    StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidParams, requestId);
+                return;
+            }
         }
 
         var session = await GetOrCreateSessionAsync(context, message, requestId);
