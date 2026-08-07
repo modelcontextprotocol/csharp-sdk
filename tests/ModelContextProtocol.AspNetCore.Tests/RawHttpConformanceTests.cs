@@ -132,6 +132,9 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
         Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
+        var capabilities = json["result"]!["capabilities"]!.AsObject();
+        Assert.False(capabilities.ContainsKey("logging"));
+        Assert.True(capabilities.ContainsKey("tools"));
 
         // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
         // safest defaults (immediately stale, not shareable) when the application hasn't customized.

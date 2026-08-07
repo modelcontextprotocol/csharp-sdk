@@ -645,12 +645,16 @@ internal sealed partial class McpServerImpl : McpServer
     public ServerCapabilities ServerCapabilities { get; }
 
     /// <summary>
-    /// Returns the <see cref="ServerCapabilities"/> to advertise in a specific response, suppressing the
-    /// <c>listChanged</c> flags the server has no way to honor.
+    /// Returns the <see cref="ServerCapabilities"/> to advertise in a specific response, suppressing
+    /// capabilities that are not available on that response's protocol path.
     /// </summary>
     /// <param name="listenStreamCanDeliverListChanged">
     /// <see langword="true"/> when the client this response targets can receive <c>*/list_changed</c>
     /// notifications over a <c>subscriptions/listen</c> stream.
+    /// </param>
+    /// <param name="includeDeprecatedLogging">
+    /// <see langword="true"/> for legacy initialize responses that support <c>logging/setLevel</c>;
+    /// <see langword="false"/> for modern discover responses, where that method is unavailable.
     /// </param>
     /// <remarks>
     /// A stateless HTTP server has no session-wide channel to push unsolicited <c>*/list_changed</c>
@@ -659,11 +663,15 @@ internal sealed partial class McpServerImpl : McpServer
     /// <see cref="McpServerHandlers.SubscriptionsListenHandler"/> to own that stream (the built-in stateless
     /// handler grants no notifications). When neither the transport is stateful nor that stream can carry
     /// them, the <c>listChanged</c> flags are dropped so the server never advertises a capability it cannot
-    /// deliver. Everything else (for example <c>resources.subscribe</c>) is preserved.
+    /// deliver. The deprecated logging capability is likewise omitted from modern discovery because this SDK
+    /// rejects the legacy <c>logging/setLevel</c> method on that path. Everything else is preserved.
     /// </remarks>
-    private ServerCapabilities GetAdvertisedCapabilities(bool listenStreamCanDeliverListChanged)
+    private ServerCapabilities GetAdvertisedCapabilities(
+        bool listenStreamCanDeliverListChanged,
+        bool includeDeprecatedLogging)
     {
-        if (HasStatefulTransport() || listenStreamCanDeliverListChanged)
+        bool includeListChanged = HasStatefulTransport() || listenStreamCanDeliverListChanged;
+        if (includeListChanged && includeDeprecatedLogging)
         {
             return ServerCapabilities;
         }
@@ -673,14 +681,24 @@ internal sealed partial class McpServerImpl : McpServer
         return new ServerCapabilities
         {
             Experimental = ServerCapabilities.Experimental,
-            Logging = ServerCapabilities.Logging,
+            Logging = includeDeprecatedLogging ? ServerCapabilities.Logging : null,
             Completions = ServerCapabilities.Completions,
             Extensions = ServerCapabilities.Extensions,
-            Prompts = ServerCapabilities.Prompts is null ? null : new PromptsCapability { ListChanged = null },
+            Prompts = ServerCapabilities.Prompts is null
+                ? null
+                : includeListChanged
+                    ? ServerCapabilities.Prompts
+                    : new PromptsCapability { ListChanged = null },
             Resources = ServerCapabilities.Resources is { } resources
-                ? new ResourcesCapability { Subscribe = resources.Subscribe, ListChanged = null }
+                ? includeListChanged
+                    ? resources
+                    : new ResourcesCapability { Subscribe = resources.Subscribe, ListChanged = null }
                 : null,
-            Tools = ServerCapabilities.Tools is null ? null : new ToolsCapability { ListChanged = null },
+            Tools = ServerCapabilities.Tools is null
+                ? null
+                : includeListChanged
+                    ? ServerCapabilities.Tools
+                    : new ToolsCapability { ListChanged = null },
         };
     }
 
@@ -839,7 +857,9 @@ internal sealed partial class McpServerImpl : McpServer
                     // The initialize handshake only serves pre-2026-07-28 clients, which cannot open a
                     // subscriptions/listen stream, so a stateless server has no way to deliver list-changed
                     // notifications to them regardless of any custom handler.
-                    Capabilities = GetAdvertisedCapabilities(listenStreamCanDeliverListChanged: false),
+                    Capabilities = GetAdvertisedCapabilities(
+                        listenStreamCanDeliverListChanged: false,
+                        includeDeprecatedLogging: true),
 
                     // resultType is a 2026-07-28 result field. The initialize handshake is only available on
                     // 2025-11-25 and earlier revisions (2026-07-28+ negotiate via server/discover and throw
@@ -872,7 +892,8 @@ internal sealed partial class McpServerImpl : McpServer
                     // author supplied a custom handler to own that stream (the built-in stateless handler
                     // grants nothing, so it cannot).
                     Capabilities = GetAdvertisedCapabilities(
-                        listenStreamCanDeliverListChanged: options.Handlers.SubscriptionsListenHandler is not null),
+                        listenStreamCanDeliverListChanged: options.Handlers.SubscriptionsListenHandler is not null,
+                        includeDeprecatedLogging: false),
                     Instructions = options.ServerInstructions,
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep

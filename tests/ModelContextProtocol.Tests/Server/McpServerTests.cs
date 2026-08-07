@@ -289,6 +289,7 @@ public class McpServerTests : LoggedTest
                 Assert.Equal(expectedAssemblyName.Version?.ToString() ?? "1.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024-11-05", result.ProtocolVersion);
                 Assert.Equal("2024-11-05", server.NegotiatedProtocolVersion);
+                Assert.True(Assert.IsType<JsonObject>(response)["capabilities"]!.AsObject().ContainsKey("logging"));
             });
     }
 
