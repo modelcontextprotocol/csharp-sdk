@@ -433,6 +433,26 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
+    public async Task Legacy2025Post_WithAuxiliaryPerRequestMetadata_Succeeds()
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":3,""method"":""tools/call"",""params"":{""name"":""legacy_meta_probe"",""arguments"":{}," +
+            @"""_meta"":{""io.modelcontextprotocol/clientInfo"":{""name"":""chatgpt"",""version"":""1.0""}," +
+            @"""io.modelcontextprotocol/clientCapabilities"":{""sampling"":{}}}}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.November2025ProtocolVersion);
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            "chatgpt|chatgpt|request-sampling|no-stateless-backchannel",
+            json["result"]!["content"]![0]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task GetEndpoint_NotMapped_UnderDefaultStatelessConfiguration_Returns405()
     {
         await StartAsync();
@@ -500,6 +520,18 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     [McpServerToolType]
     private sealed class CapabilityTools
     {
+        [McpServerTool(Name = "legacy_meta_probe")]
+        public static string LegacyMetaProbe(RequestContext<CallToolRequestParams> context)
+        {
+            var requestContext = context.JsonRpcRequest.Context;
+            return string.Join(
+                '|',
+                requestContext?.ClientInfo?.Name,
+                context.Server.ClientInfo?.Name,
+                requestContext?.ClientCapabilities?.Sampling is null ? "no-request-sampling" : "request-sampling",
+                context.Server.ClientCapabilities is null ? "no-stateless-backchannel" : "stateless-backchannel");
+        }
+
         [McpServerTool(Name = "requires_sampling")]
         public static string RequiresSampling() =>
             throw new MissingRequiredClientCapabilityException(

@@ -293,7 +293,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RejectedReservedPerRequestMetadata_DoesNotEstablishProtocolVersion()
+    public async Task LegacyTransportProtocolVersion_RemainsAuthoritativeOverMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new TestServerTransport();
@@ -303,15 +303,10 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, options, LoggerFactory);
         var runTask = server.RunAsync(ct);
 
-        var rejectedResponse = new TaskCompletionSource<JsonRpcError>(TaskCreationOptions.RunContinuationsAsynchronously);
         var acceptedResponse = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.OnMessageSent = message =>
         {
-            if (message is JsonRpcError { Id: var errorId } error && errorId.ToString() == "1")
-            {
-                rejectedResponse.TrySetResult(error);
-            }
-            else if (message is JsonRpcMessageWithId { Id: var responseId } && responseId.ToString() == "2")
+            if (message is JsonRpcMessageWithId { Id: var responseId } && responseId.ToString() == "1")
             {
                 acceptedResponse.TrySetResult(message);
             }
@@ -320,16 +315,12 @@ public class McpServerTests : LoggedTest
         await transport.SendClientMessageAsync(new JsonRpcRequest
         {
             Id = new RequestId(1),
-            Method = RequestMethods.ToolsList,
+            Method = RequestMethods.Ping,
             Params = new JsonObject
             {
                 ["_meta"] = new JsonObject
                 {
-                    [MetaKeys.ClientInfo] = new JsonObject
-                    {
-                        ["name"] = "test-client",
-                        ["version"] = "1.0.0",
-                    },
+                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.March2025ProtocolVersion,
                 },
             },
             Context = new JsonRpcMessageContext
@@ -339,35 +330,9 @@ public class McpServerTests : LoggedTest
             },
         }, ct);
 
-        var error = await rejectedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
-        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
-        Assert.Null(server.NegotiatedProtocolVersion);
-
-        var clientInfo = new Implementation { Name = "test-client", Version = "1.0.0" };
-        var clientCapabilities = new ClientCapabilities();
-        await transport.SendClientMessageAsync(new JsonRpcRequest
-        {
-            Id = new RequestId(2),
-            Method = RequestMethods.ToolsList,
-            Params = new JsonObject
-            {
-                ["_meta"] = new JsonObject
-                {
-                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
-                    [MetaKeys.ClientInfo] = JsonSerializer.SerializeToNode(clientInfo, McpJsonUtilities.DefaultOptions),
-                    [MetaKeys.ClientCapabilities] = new JsonObject(),
-                },
-            },
-            Context = new JsonRpcMessageContext
-            {
-                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-                ClientInfo = clientInfo,
-                ClientCapabilities = clientCapabilities,
-            },
-        }, ct);
-
-        await acceptedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
-        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, server.NegotiatedProtocolVersion);
+        Assert.IsType<JsonRpcResponse>(
+            await acceptedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct));
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, server.NegotiatedProtocolVersion);
 
         await transport.DisposeAsync();
         await runTask;
