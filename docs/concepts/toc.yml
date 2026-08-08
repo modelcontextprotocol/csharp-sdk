@@ -47,6 +47,8 @@ items:
     uid: pagination
   - name: HTTP Context
     uid: httpcontext
+  - name: Authorization
+    uid: authorization
   - name: Filters
     uid: filters
 - name: Extensions
