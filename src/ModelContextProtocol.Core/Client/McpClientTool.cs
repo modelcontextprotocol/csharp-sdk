@@ -30,6 +30,7 @@ public sealed class McpClientTool : AIFunction
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
     private readonly JsonObject? _meta;
+    private readonly Func<CallToolResult, CancellationToken, ValueTask<object?>>? _marshalResult;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClientTool"/> class.
@@ -68,6 +69,7 @@ public sealed class McpClientTool : AIFunction
         _description = tool.Description ?? string.Empty;
         _progress = null;
         _meta = null;
+        _marshalResult = null;
     }
 
     internal McpClientTool(
@@ -77,7 +79,8 @@ public sealed class McpClientTool : AIFunction
         string? name = null,
         string? description = null,
         IProgress<ProgressNotificationValue>? progress = null,
-        JsonObject? meta = null)
+        JsonObject? meta = null,
+        Func<CallToolResult, CancellationToken, ValueTask<object?>>? marshalResult = null)
     {
         _client = client;
         ProtocolTool = tool;
@@ -86,6 +89,7 @@ public sealed class McpClientTool : AIFunction
         _description = description ?? tool.Description ?? string.Empty;
         _progress = progress;
         _meta = meta;
+        _marshalResult = marshalResult;
     }
 
     /// <summary>
@@ -127,6 +131,13 @@ public sealed class McpClientTool : AIFunction
             JsonSerializerOptions = JsonSerializerOptions,
         };
         CallToolResult result = await CallAsync(arguments, _progress, options, cancellationToken).ConfigureAwait(false);
+
+        // If the host supplied its own result marshaler, it fully controls how the CallToolResult is
+        // surfaced to consumers; the default translation below is bypassed entirely.
+        if (_marshalResult is not null)
+        {
+            return await _marshalResult(result, cancellationToken).ConfigureAwait(false);
+        }
 
         // We want to translate the result content into AIContent, using AIContent as the exchange types, so
         // that downstream IChatClients can specialize handling based on the content (e.g. sending image content
@@ -268,7 +279,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     public McpClientTool WithName(string name) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _meta);
+        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _meta, _marshalResult);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified description from its <see cref="Description"/> property.
@@ -292,7 +303,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
     public McpClientTool WithDescription(string description) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress, _meta);
+        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress, _meta, _marshalResult);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
@@ -316,7 +327,7 @@ public sealed class McpClientTool : AIFunction
     {
         Throw.IfNull(progress);
 
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta, _marshalResult);
     }
 
     /// <summary>
@@ -346,5 +357,45 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided metadata.</returns>
     public McpClientTool WithMeta(JsonObject? meta) =>
-        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, _progress, meta);
+        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, _progress, meta, _marshalResult);
+
+    /// <summary>
+    /// Creates a new instance of the tool but modified to use the specified delegate to produce the value
+    /// returned from <see cref="AIFunction.InvokeAsync"/>, replacing the default marshaling.
+    /// </summary>
+    /// <param name="marshalResult">
+    /// The delegate invoked with the <see cref="CallToolResult"/> produced by the tool call. Whatever it
+    /// returns becomes the return value of <see cref="AIFunction.InvokeAsync"/>.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// By default, <see cref="AIFunction.InvokeAsync"/> applies a built-in marshaling policy: content blocks are
+    /// converted to <see cref="AIContent"/> when the result carries no additional information, and otherwise the
+    /// entire <see cref="CallToolResult"/> is serialized to a <see cref="JsonElement"/> — including
+    /// <see cref="CallToolResult.StructuredContent"/>, <see cref="CallToolResult.IsError"/>, and any
+    /// <c>_meta</c>. When these tools are used with clients such as <c>IChatClient</c>, the returned value is
+    /// what gets surfaced to the AI model, so hosts may need precise control over that shape: keeping
+    /// host-only metadata out of model context, choosing between <see cref="CallToolResult.Content"/> and
+    /// <see cref="CallToolResult.StructuredContent"/>, or applying their own error handling for
+    /// <see cref="CallToolResult.IsError"/> results.
+    /// </para>
+    /// <para>
+    /// The delegate assumes full responsibility for the returned value; none of the default conversion runs.
+    /// Only one delegate can be specified at a time. Calling <see cref="WithResultMarshaling"/> again
+    /// replaces any previously specified delegate.
+    /// </para>
+    /// <para>
+    /// This serves the same role for tool results that
+    /// <c>Microsoft.Extensions.AI.AIFunctionFactoryOptions.MarshalResult</c> serves for factory-created
+    /// functions.
+    /// </para>
+    /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided delegate.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="marshalResult"/> is <see langword="null"/>.</exception>
+    public McpClientTool WithResultMarshaling(Func<CallToolResult, CancellationToken, ValueTask<object?>> marshalResult)
+    {
+        Throw.IfNull(marshalResult);
+
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, _progress, _meta, marshalResult);
+    }
 }
