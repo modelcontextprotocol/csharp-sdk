@@ -9,7 +9,10 @@ using System.Security.Claims;
 var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
-var inMemoryOAuthServerUrl = "https://localhost:7029";
+// The bundled TestOAuthServer listens on loopback over plain HTTP so that MCP clients which don't
+// trust the ASP.NET Core developer certificate (VS Code, for one) can fetch its metadata. A real
+// deployment uses an HTTPS authorization server.
+var inMemoryOAuthServerUrl = "http://localhost:7029";
 var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
 
 // This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
@@ -40,6 +43,9 @@ builder.Services.AddAuthentication(options =>
 {
     // Configure to validate tokens from our in-memory OAuth server
     options.Authority = inMemoryOAuthServerUrl;
+    // Only because that authority is an HTTP loopback address. Leave this at its default of true
+    // in production so the OpenID Connect metadata and signing keys are fetched over HTTPS.
+    options.RequireHttpsMetadata = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,

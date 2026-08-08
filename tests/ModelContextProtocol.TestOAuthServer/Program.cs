@@ -12,8 +12,12 @@ namespace ModelContextProtocol.TestOAuthServer;
 public sealed class Program
 {
     private const int _port = 7029;
-    private static readonly string _url = $"https://localhost:{_port}";
-    private static readonly string _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
+
+    /// <summary>The command line switch that hosts the standalone server over HTTPS.</summary>
+    public const string HttpsSwitch = "--https";
+
+    private readonly string _url;
+    private readonly string _clientMetadataDocumentUrl;
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
     // Per MCP spec, URIs should not have trailing slashes unless semantically significant
@@ -42,13 +46,29 @@ public sealed class Program
     /// </summary>
     /// <param name="loggerProvider">Optional logger provider for logging.</param>
     /// <param name="kestrelTransport">Optional Kestrel transport for in-memory connections.</param>
-    public Program(ILoggerProvider? loggerProvider = null, IConnectionListenerFactory? kestrelTransport = null)
+    /// <param name="useHttps">
+    /// Whether to serve over HTTPS using the ASP.NET Core developer certificate. When <see langword="false"/>,
+    /// the server listens over plain HTTP on loopback and its metadata advertises <c>http</c> endpoints.
+    /// Tests keep the default of <see langword="true"/>; <see cref="Main"/> defaults to <see langword="false"/>
+    /// so the samples work with clients that don't trust the developer certificate.
+    /// </param>
+    public Program(ILoggerProvider? loggerProvider = null, IConnectionListenerFactory? kestrelTransport = null, bool useHttps = true)
     {
         _rsa = RSA.Create(2048);
         _keyId = Guid.NewGuid().ToString();
         _loggerProvider = loggerProvider;
         _kestrelTransport = kestrelTransport;
+        UseHttps = useHttps;
+        _url = $"{(useHttps ? "https" : "http")}://localhost:{_port}";
+        // Advertised over HTTP too, though clients that follow the CIMD draft require an HTTPS client id.
+        _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
     }
+
+    /// <summary>
+    /// Gets a value indicating whether the server is hosted over HTTPS using the ASP.NET Core
+    /// developer certificate, in which case its metadata advertises <c>https</c> endpoints.
+    /// </summary>
+    public bool UseHttps { get; }
 
     /// <summary>
     /// Gets a task that completes when the server has started and is ready to accept connections.
@@ -150,9 +170,28 @@ public sealed class Program
     /// <summary>
     /// Entry point for the application.
     /// </summary>
-    /// <param name="args">Command line arguments.</param>
+    /// <param name="args">Command line arguments. Pass <c>--https</c> to serve over HTTPS instead of plain HTTP.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public static Task Main(string[] args) => new Program().RunServerAsync(args);
+    /// <remarks>
+    /// The samples run this server standalone and connect to it from clients such as VS Code, whose HTTP
+    /// stack carries its own CA list and therefore rejects the ASP.NET Core developer certificate. Those
+    /// clients treat a failed metadata fetch as "no metadata" and silently fall back to guessing OAuth
+    /// endpoints on the MCP server itself, so loopback is served over plain HTTP by default.
+    /// </remarks>
+    public static Task Main(string[] args) =>
+        new Program(useHttps: ShouldUseHttps(args)).RunServerAsync(WithoutHttpsSwitch(args));
+
+    /// <summary>
+    /// Gets whether <paramref name="args"/> asks for HTTPS hosting. Standalone runs default to plain HTTP.
+    /// </summary>
+    public static bool ShouldUseHttps(string[] args) => args.Contains(HttpsSwitch, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Strips <see cref="HttpsSwitch"/>, which the host's command line configuration provider rejects
+    /// because it carries no value.
+    /// </summary>
+    public static string[] WithoutHttpsSwitch(string[] args) =>
+        args.Where(arg => !string.Equals(arg, HttpsSwitch, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     /// <summary>
     /// Runs the OAuth server with the specified parameters.
@@ -179,7 +218,10 @@ public sealed class Program
         {
             kestrelOptions.ListenLocalhost(_port, listenOptions =>
             {
-                listenOptions.UseHttps();
+                if (UseHttps)
+                {
+                    listenOptions.UseHttps();
+                }
             });
         });
 
