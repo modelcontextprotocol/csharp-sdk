@@ -95,6 +95,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// </summary>
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly ILogger _logger;
+    private readonly Func<Exception, string>? _exceptionSummarizer;
 
     // This _sessionId is solely used to identify the session in telemetry and logs.
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
@@ -115,6 +116,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <param name="incomingMessageFilter">A filter that wraps incoming message processing. Takes the next handler and returns a wrapped handler. If null, a passthrough filter is used.</param>
     /// <param name="outgoingMessageFilter">A filter that wraps outgoing message processing. Takes the next handler and returns a wrapped handler. If null, a passthrough filter is used.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="exceptionSummarizer">
+    /// An optional callback that produces a sanitized description of an exception. When non-<see langword="null"/>,
+    /// exception logging callsites log that description instead of the raw <see cref="Exception"/>.
+    /// </param>
     public McpSessionHandler(
         bool isServer,
         ITransport transport,
@@ -123,7 +128,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         NotificationHandlers notificationHandlers,
         JsonRpcMessageFilter? incomingMessageFilter,
         JsonRpcMessageFilter? outgoingMessageFilter,
-        ILogger logger)
+        ILogger logger,
+        Func<Exception, string>? exceptionSummarizer = null)
     {
         Throw.IfNull(transport);
 
@@ -144,6 +150,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         _incomingMessageFilter = incomingMessageFilter ?? (next => next);
         _outgoingMessageFilter = outgoingMessageFilter ?? (next => next);
         _logger = logger;
+        _exceptionSummarizer = exceptionSummarizer;
 
         // ping was removed in the 2026-07-28 protocol revision (SEP-2575). On the 2026-07-28 or later version,
         // return MethodNotFound; on an older version, the per-spec behavior is to always answer
@@ -323,14 +330,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         }
                         else if (ex is not OperationCanceledException)
                         {
-                            if (_logger.IsEnabled(LogLevel.Trace))
-                            {
-                                LogMessageHandlerExceptionSensitive(EndpointName, message.GetType().Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage), ex);
-                            }
-                            else
-                            {
-                                LogMessageHandlerException(EndpointName, message.GetType().Name, ex);
-                            }
+                            LogMessageHandlerFailure(message, ex);
                         }
                     }
                     finally
@@ -470,7 +470,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogRequestHandlerException(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
+                    LogRequestHandlerFailure(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
                     throw;
                 }
 
@@ -1280,8 +1280,67 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler completed in {ElapsedMilliseconds}ms.")]
     private partial void LogRequestHandlerCompleted(string endpointName, string method, double elapsedMilliseconds);
 
+    /// <summary>
+    /// Logs a failed request handler, substituting a sanitized description for the raw exception when a
+    /// summarizer is configured. The summarizer only runs when the event's level is enabled, matching the
+    /// enabled-check the generated logging methods perform internally.
+    /// </summary>
+    private void LogRequestHandlerFailure(string endpointName, string method, double elapsedMilliseconds, Exception exception)
+    {
+        if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Warning) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            LogRequestHandlerExceptionSummarized(endpointName, method, elapsedMilliseconds, exceptionSummary);
+        }
+        else
+        {
+            LogRequestHandlerException(endpointName, method, elapsedMilliseconds, exception);
+        }
+    }
+
+    /// <summary>
+    /// Logs a failed message handler. The trace-vs-warning selection is unchanged from the non-summarizing
+    /// path; only the payload differs. The summarizer runs only when the selected event's level is enabled.
+    /// </summary>
+    private void LogMessageHandlerFailure(JsonRpcMessage message, Exception exception)
+    {
+        string messageType = message.GetType().Name;
+
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            if (_exceptionSummarizer is not null &&
+                ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+            {
+                LogMessageHandlerExceptionSensitiveSummarized(EndpointName, messageType, exceptionSummary, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+            }
+            else
+            {
+                LogMessageHandlerExceptionSensitive(EndpointName, messageType, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage), exception);
+            }
+        }
+        else if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Warning) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            LogMessageHandlerExceptionSummarized(EndpointName, messageType, exceptionSummary);
+        }
+        else
+        {
+            LogMessageHandlerException(EndpointName, messageType, exception);
+        }
+    }
+
+    // Each summarized variant names its raw counterpart as its EventName so the pair emits one EventId and
+    // one event name, keeping consumers that filter on EventId working when a summarizer is configured. The
+    // generator derives the numeric id from the event name, which defaults to the method name, so only the
+    // summarized variant declares EventName: declaring it on both trips SYSLIB1025.
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed in {ElapsedMilliseconds}ms.")]
     private partial void LogRequestHandlerException(string endpointName, string method, double elapsedMilliseconds, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, EventName = nameof(LogRequestHandlerException), Message = "{EndpointName} method '{Method}' request handler failed in {ElapsedMilliseconds}ms: {ExceptionSummary}.")]
+    private partial void LogRequestHandlerExceptionSummarized(string endpointName, string method, double elapsedMilliseconds, string exceptionSummary);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
     private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);
@@ -1313,8 +1372,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} message handler {MessageType} failed.")]
     private partial void LogMessageHandlerException(string endpointName, string messageType, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Warning, EventName = nameof(LogMessageHandlerException), Message = "{EndpointName} message handler {MessageType} failed: {ExceptionSummary}.")]
+    private partial void LogMessageHandlerExceptionSummarized(string endpointName, string messageType, string exceptionSummary);
+
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} message handler {MessageType} failed. Message: '{Message}'.")]
     private partial void LogMessageHandlerExceptionSensitive(string endpointName, string messageType, string message, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Trace, EventName = nameof(LogMessageHandlerExceptionSensitive), Message = "{EndpointName} message handler {MessageType} failed: {ExceptionSummary}. Message: '{Message}'.")]
+    private partial void LogMessageHandlerExceptionSensitiveSummarized(string endpointName, string messageType, string exceptionSummary, string message);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received unexpected {MessageType} message type.")]
     private partial void LogEndpointHandlerUnexpectedMessageType(string endpointName, string messageType);

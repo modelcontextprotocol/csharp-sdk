@@ -21,6 +21,7 @@ internal sealed partial class McpServerImpl : McpServer
     };
 
     private readonly ILogger _logger;
+    private readonly Func<Exception, string>? _exceptionSummarizer;
     private readonly ITransport _sessionTransport;
     private readonly bool _servicesScopePerRequest;
     private readonly List<Action> _disposables = [];
@@ -88,6 +89,7 @@ internal sealed partial class McpServerImpl : McpServer
         _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
         _logger = loggerFactory?.CreateLogger<McpServer>() ?? NullLogger<McpServer>.Instance;
+        _exceptionSummarizer = options.ExceptionSummarizer;
 
         _clientInfo = options.KnownClientInfo;
         _clientCapabilities = options.KnownClientCapabilities;
@@ -161,7 +163,8 @@ internal sealed partial class McpServerImpl : McpServer
             _notificationHandlers,
             incomingMessageFilter,
             outgoingMessageFilter,
-            _logger);
+            _logger,
+            _exceptionSummarizer);
     }
 
     /// <summary>
@@ -1230,7 +1233,7 @@ internal sealed partial class McpServerImpl : McpServer
                 }
                 catch (Exception e)
                 {
-                    ReadResourceError(request.Params?.Uri ?? string.Empty, e);
+                    LogReadResourceError(request.Params?.Uri ?? string.Empty, e);
                     throw;
                 }
             });
@@ -1344,7 +1347,7 @@ internal sealed partial class McpServerImpl : McpServer
                 }
                 catch (Exception e)
                 {
-                    GetPromptError(request.Params?.Name ?? string.Empty, e);
+                    LogGetPromptError(request.Params?.Name ?? string.Empty, e);
                     throw;
                 }
             });
@@ -1597,7 +1600,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // not an error (tools throw it to signal an InputRequiredResult).
                 if (!(e is OperationCanceledException && cancellationToken.IsCancellationRequested) && e is not InputRequiredException)
                 {
-                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+                    LogToolCallError(request.Params?.Name ?? string.Empty, e);
                 }
 
                 if ((e is OperationCanceledException && cancellationToken.IsCancellationRequested) || e is McpProtocolException || e is InputRequiredException)
@@ -1648,7 +1651,7 @@ internal sealed partial class McpServerImpl : McpServer
             else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
                 lifecycle.Exception is not InputRequiredException)
             {
-                ToolCallError(toolName, lifecycle.Exception!);
+                LogToolCallError(toolName, lifecycle.Exception!);
             }
         }
     }
@@ -2380,7 +2383,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
         catch (Exception ex)
         {
-            MrtrHandlerError(ex);
+            LogMrtrHandlerError(ex);
         }
         finally
         {
@@ -2407,8 +2410,76 @@ internal sealed partial class McpServerImpl : McpServer
         }
     }
 
+    // Each wrapper below gates the summarizer on the level declared by the event it replaces, so a
+    // host-supplied delegate never runs for a log entry that would be filtered out anyway. The generated
+    // logging methods perform the same enabled-check internally, so the raw path is unaffected.
+
+    private void LogToolCallError(string toolName, Exception exception)
+    {
+        if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Error) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            ToolCallErrorSummarized(toolName, exceptionSummary);
+        }
+        else
+        {
+            ToolCallError(toolName, exception);
+        }
+    }
+
+    private void LogGetPromptError(string promptName, Exception exception)
+    {
+        if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Error) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            GetPromptErrorSummarized(promptName, exceptionSummary);
+        }
+        else
+        {
+            GetPromptError(promptName, exception);
+        }
+    }
+
+    private void LogReadResourceError(string resourceUri, Exception exception)
+    {
+        if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Error) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            ReadResourceErrorSummarized(resourceUri, exceptionSummary);
+        }
+        else
+        {
+            ReadResourceError(resourceUri, exception);
+        }
+    }
+
+    private void LogMrtrHandlerError(Exception exception)
+    {
+        if (_exceptionSummarizer is not null &&
+            _logger.IsEnabled(LogLevel.Debug) &&
+            ExceptionSummaryHelper.TrySummarize(_exceptionSummarizer, exception, out string? exceptionSummary))
+        {
+            MrtrHandlerErrorSummarized(exceptionSummary);
+        }
+        else
+        {
+            MrtrHandlerError(exception);
+        }
+    }
+
+    // Each summarized variant names its raw counterpart as its EventName so the pair emits one EventId and
+    // one event name, keeping consumers that filter on EventId working when a summarizer is configured. The
+    // generator derives the numeric id from the event name, which defaults to the method name, so only the
+    // summarized variant declares EventName: declaring it on both trips SYSLIB1025.
+
     [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
     private partial void ToolCallError(string toolName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, EventName = nameof(ToolCallError), Message = "\"{ToolName}\" threw an unhandled exception: {ExceptionSummary}.")]
+    private partial void ToolCallErrorSummarized(string toolName, string exceptionSummary);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed. IsError = {IsError}.")]
     private partial void ToolCallCompleted(string toolName, bool isError);
@@ -2416,11 +2487,17 @@ internal sealed partial class McpServerImpl : McpServer
     [LoggerMessage(Level = LogLevel.Error, Message = "GetPrompt \"{PromptName}\" threw an unhandled exception.")]
     private partial void GetPromptError(string promptName, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Error, EventName = nameof(GetPromptError), Message = "GetPrompt \"{PromptName}\" threw an unhandled exception: {ExceptionSummary}.")]
+    private partial void GetPromptErrorSummarized(string promptName, string exceptionSummary);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "GetPrompt \"{PromptName}\" completed.")]
     private partial void GetPromptCompleted(string promptName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "ReadResource \"{ResourceUri}\" threw an unhandled exception.")]
     private partial void ReadResourceError(string resourceUri, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, EventName = nameof(ReadResourceError), Message = "ReadResource \"{ResourceUri}\" threw an unhandled exception: {ExceptionSummary}.")]
+    private partial void ReadResourceErrorSummarized(string resourceUri, string exceptionSummary);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "ReadResource \"{ResourceUri}\" completed.")]
     private partial void ReadResourceCompleted(string resourceUri);
@@ -2430,6 +2507,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "An MRTR handler threw an unhandled exception.")]
     private partial void MrtrHandlerError(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, EventName = nameof(MrtrHandlerError), Message = "An MRTR handler threw an unhandled exception: {ExceptionSummary}.")]
+    private partial void MrtrHandlerErrorSummarized(string exceptionSummary);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to deliver \"{NotificationMethod}\" to subscription \"{SubscriptionId}\".")]
     private partial void SubscriptionNotificationFailed(string notificationMethod, string subscriptionId, Exception exception);

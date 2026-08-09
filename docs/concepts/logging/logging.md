@@ -85,3 +85,42 @@ Lastly, the client must configure a notification handler for <xref:ModelContextP
 The following example simply writes the log messages to the console.
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingHandler)]
+
+### Sanitizing exceptions in the server's own diagnostic logs
+
+Separately from the MCP Logging utility described above, the server writes its own diagnostic logs to the
+[ILogger] it was configured with. When a request handler, tool, prompt, or resource throws, those logs include the
+raw <xref:System.Exception>, which most logging providers render as the exception message plus its stack trace.
+That output can contain sensitive or overly detailed runtime data.
+
+Set <xref:ModelContextProtocol.Server.McpServerOptions.ExceptionSummarizer> to log a sanitized description instead.
+When it is set, the failure paths log only the string the delegate returns, and the raw exception is not attached to
+the log entry. The default is `null`, which preserves the existing behavior of logging the raw exception.
+
+```csharp
+builder.Services.AddMcpServer(options =>
+{
+    options.ExceptionSummarizer = ex => ex.GetType().Name;
+});
+```
+
+The summarized and raw forms of each event share one `EventId`, so filters and alerts keyed on `EventId` behave the
+same whether or not a summarizer is configured. The delegate runs only when the corresponding log level is enabled,
+so it costs nothing on a level that is filtered out.
+
+The `ModelContextProtocol` package also integrates with the standard
+[Microsoft.Extensions.Diagnostics.ExceptionSummarization](https://learn.microsoft.com/dotnet/api/microsoft.extensions.diagnostics.exceptionsummarization)
+abstractions. If an `IExceptionSummarizer` is registered in the container and `ExceptionSummarizer` has not been set
+explicitly, the SDK populates it with `"{ExceptionType}: {Description}"` taken from the `ExceptionSummary`:
+
+```csharp
+builder.Services.AddExceptionSummarizer(b => b.AddHttpProvider());
+builder.Services.AddMcpServer();
+```
+
+Both of those fields are documented as free of privacy-sensitive information. `ExceptionSummary.AdditionalDetails` is
+not, and `ExceptionSummary.ToString()` appends it, so neither is used. The exception type is included because
+`Description` on its own is `"Unknown"` for exception types that no registered provider handles.
+
+If the delegate throws or returns `null`, the SDK falls back to logging the raw exception, so a faulty summarizer
+can never fail the session.
