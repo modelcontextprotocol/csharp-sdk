@@ -2,6 +2,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using OpenTelemetry.Trace;
+using System.Diagnostics;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -9,6 +11,38 @@ public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStream
 {
     protected override bool UseStreamableHttp => true;
     protected override bool Stateless => true;
+
+    [Fact]
+    public async Task ServerActivity_IncludesPerRequestProtocolVersion()
+    {
+        var activities = new List<Activity>();
+
+        using var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+            .AddSource("Experimental.ModelContextProtocol")
+            .AddInMemoryExporter(activities)
+            .Build();
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithTools([McpServerTool.Create(() => "ok", new() { Name = "test-tool" })]);
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync(configureClient: options =>
+            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        tracerProvider.ForceFlush();
+
+        var serverListToolsActivity = Assert.Single(activities, activity =>
+            activity.DisplayName == "tools/list" && activity.Kind == ActivityKind.Server);
+
+        Assert.Contains(serverListToolsActivity.Tags, tag =>
+            tag.Key == "mcp.protocol.version" &&
+            tag.Value == McpProtocolVersions.July2026ProtocolVersion);
+    }
 
     [Fact]
     public async Task EnablePollingAsync_ThrowsInvalidOperationException_InStatelessMode()

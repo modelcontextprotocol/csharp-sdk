@@ -962,9 +962,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             tags.Add("network.protocol.name", "http");
         }
 
-        if (NegotiatedProtocolVersion is not null)
+        string? protocolVersion = (message as JsonRpcRequest)?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion;
+        if (protocolVersion is not null)
         {
-            tags.Add("mcp.protocol.version", NegotiatedProtocolVersion);
+            tags.Add("mcp.protocol.version", protocolVersion);
         }
 
         if (activity is { IsAllDataRequested: true })
