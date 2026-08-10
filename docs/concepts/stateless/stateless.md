@@ -43,7 +43,7 @@ The `SessionMode` property is the single most important setting for forward-proo
 
 <!-- mlc-disable-next-line -->
 > [!NOTE]
-> The older `bool` <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> property is obsolete ([`MCP9008`](xref:list-of-diagnostics#obsolete-apis)) because it cannot express hybrid mode. It remains a compatibility proxy over `SessionMode`: assigning `true` selects `Stateless` and assigning `false` selects `Stateful`, while reading it returns `true` only for `Stateless`. Both properties update the same underlying value, so the last assignment wins.
+> The `bool` <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> property remains a convenient shorthand for the two most common modes: assigning `true` selects `Stateless` and assigning `false` selects `Stateful`, while reading it returns `true` only for `Stateless`. Use `SessionMode` when you need `StatefulForInitializeClients`. Both properties update the same underlying value, so the last assignment wins.
 
 ### The 2026-07-28 protocol revision
 
@@ -466,7 +466,7 @@ builder.Services.AddMcpServer()
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.SessionMode> | <xref:ModelContextProtocol.AspNetCore.HttpServerSessionMode> | `Stateless` | Selects how the server tracks state between requests: `Stateless` (no sessions), `Stateful` (sessions for every client, `2026-07-28` refused), or `StatefulForInitializeClients` ([hybrid](#hybrid-mode-sessions-for-initialize-clients-only)). |
-| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> | `bool` | `true` | _Obsolete (`MCP9008`)._ Compatibility proxy over `SessionMode`: `true` maps to `Stateless`, `false` maps to `Stateful`, and hybrid mode reads as `false`. Use `SessionMode` instead. |
+| <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> | `bool` | `true` | Convenience proxy over `SessionMode`: `true` maps to `Stateless`, `false` maps to `Stateful`, and hybrid mode reads as `false`. Use `SessionMode` to select hybrid mode. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.IdleTimeout> | `TimeSpan` | 2 hours | _Stateful only (`MCP9006`)._ Duration of inactivity before a session is closed. Checked every 5 seconds. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.MaxIdleSessionCount> | `int` | 10,000 | _Stateful only (`MCP9006`)._ Maximum idle sessions before the oldest are forcibly terminated. |
 | <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.ConfigureSessionOptions> | `Func<HttpContext, McpServerOptions, CancellationToken, Task>?` | `null` | Per-session callback to customize `McpServerOptions` with access to `HttpContext`. In stateless mode (including all `2026-07-28` requests), this runs on every HTTP request. |

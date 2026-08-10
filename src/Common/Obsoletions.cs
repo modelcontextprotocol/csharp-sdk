@@ -50,8 +50,4 @@ internal static class Obsoletions
     public const string AuthorizationRedirectDelegate_DiagnosticId = "MCP9007";
     public const string AuthorizationRedirectDelegate_Message = "AuthorizationRedirectDelegate cannot provide the RFC 9207 issuer and is retained for compatibility only. Use AuthorizationCallbackHandler instead.";
     public const string AuthorizationRedirectDelegate_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
-
-    public const string StatelessProperty_DiagnosticId = "MCP9008";
-    public const string StatelessProperty_Message = "HttpServerTransportOptions.Stateless cannot express the hybrid session mode. Use HttpServerTransportOptions.SessionMode instead.";
-    public const string StatelessProperty_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#obsolete-apis";
 }

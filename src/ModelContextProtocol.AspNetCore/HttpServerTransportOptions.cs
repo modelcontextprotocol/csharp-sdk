@@ -101,14 +101,13 @@ public class HttpServerTransportOptions
     /// set to <see langword="false"/> only when you need to support legacy clients that rely on session affinity.
     /// </value>
     /// <remarks>
-    /// This property is a compatibility proxy over <see cref="SessionMode"/>. Reading it returns
+    /// This property is a convenience proxy over <see cref="SessionMode"/>. Reading it returns
     /// <see langword="true"/> only when <see cref="SessionMode"/> is <see cref="HttpServerSessionMode.Stateless"/>,
     /// so <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> reads as <see langword="false"/>.
     /// Assigning <see langword="true"/> selects <see cref="HttpServerSessionMode.Stateless"/> and assigning
     /// <see langword="false"/> selects <see cref="HttpServerSessionMode.Stateful"/>. Because both properties
     /// update the same underlying value, the last assignment wins when both are configured.
     /// </remarks>
-    [Obsolete(Obsoletions.StatelessProperty_Message, DiagnosticId = Obsoletions.StatelessProperty_DiagnosticId, UrlFormat = Obsoletions.StatelessProperty_Url)]
     public bool Stateless
     {
         get => SessionMode is HttpServerSessionMode.Stateless;

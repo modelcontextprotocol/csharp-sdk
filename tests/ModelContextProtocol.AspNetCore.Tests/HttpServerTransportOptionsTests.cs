@@ -8,7 +8,6 @@ public class HttpServerTransportOptionsTests
         Assert.Equal(HttpServerSessionMode.Stateless, new HttpServerTransportOptions().SessionMode);
     }
 
-#pragma warning disable MCP9008 // Stateless is obsolete; these tests verify the compatibility proxy.
     [Theory]
     [InlineData(true, HttpServerSessionMode.Stateless)]
     [InlineData(false, HttpServerSessionMode.Stateful)]
@@ -41,5 +40,4 @@ public class HttpServerTransportOptionsTests
         options.Stateless = true;
         Assert.Equal(HttpServerSessionMode.Stateless, options.SessionMode);
     }
-#pragma warning restore MCP9008
 }
