@@ -17,24 +17,24 @@ public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStream
     {
         var activities = new List<Activity>();
 
-        using var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+        using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
             .AddSource("Experimental.ModelContextProtocol")
             .AddInMemoryExporter(activities)
-            .Build();
+            .Build())
+        {
+            Builder.Services.AddMcpServer()
+                .WithHttpTransport(ConfigureStateless)
+                .WithTools([McpServerTool.Create(() => "ok", new() { Name = "test-tool" })]);
 
-        Builder.Services.AddMcpServer()
-            .WithHttpTransport(ConfigureStateless)
-            .WithTools([McpServerTool.Create(() => "ok", new() { Name = "test-tool" })]);
+            await using var app = Builder.Build();
+            app.MapMcp();
+            await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
+            await using var client = await ConnectAsync(configureClient: options =>
+                options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion);
 
-        await using var client = await ConnectAsync(configureClient: options =>
-            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion);
-
-        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        tracerProvider.ForceFlush();
+            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
 
         var serverListToolsActivity = Assert.Single(activities, activity =>
             activity.DisplayName == "tools/list" && activity.Kind == ActivityKind.Server);
