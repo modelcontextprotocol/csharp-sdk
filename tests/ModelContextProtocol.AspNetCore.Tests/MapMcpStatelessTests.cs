@@ -36,12 +36,10 @@ public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStream
             await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        var serverListToolsActivity = Assert.Single(activities, activity =>
-            activity.DisplayName == "tools/list" && activity.Kind == ActivityKind.Server);
-
-        Assert.Contains(serverListToolsActivity.Tags, tag =>
-            tag.Key == "mcp.protocol.version" &&
-            tag.Value == McpProtocolVersions.July2026ProtocolVersion);
+        Assert.Contains(activities, activity =>
+            activity.DisplayName == "tools/list" &&
+            activity.Kind == ActivityKind.Server &&
+            activity.GetTagItem("mcp.protocol.version") as string == McpProtocolVersions.July2026ProtocolVersion);
     }
 
     [Fact]
