@@ -36,7 +36,6 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationCallToolFilterGuardSetup>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<HttpServerTransportOptions>, HttpServerTransportOptionsSetup>());
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<HttpServerTransportOptions>, HttpServerTransportOptionsValidator>());
 
         if (configureOptions is not null)
         {
