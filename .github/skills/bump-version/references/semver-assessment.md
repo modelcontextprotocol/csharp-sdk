@@ -66,7 +66,7 @@ This is purely about how to *compute* the next version. It does **not** declare 
 
 ### Branch context
 
-The "previous release" lookup is constrained to tags matching `v{MAJOR}.*` when assessing from a `release/{MAJOR}.x` servicing branch. On `main`, the lookup is unconstrained (most recent published release globally).
+The "previous release" lookup selects the highest semver among published releases that are ancestors of the target commit, constrained to tags matching `v{MAJOR}.*` when assessing from a `release/{MAJOR}.x` servicing branch. On `main`, there is no MAJOR filter. It is not a date-ordered lookup; see [release-branches.md](../../shared-resources/release-branches.md#previous-release-tag-lookup).
 
 The MAJOR/MINOR/PATCH classification criteria above are unchanged regardless of branch.
 

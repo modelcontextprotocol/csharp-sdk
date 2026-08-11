@@ -1,3 +1,4 @@
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -34,15 +35,27 @@ builder.Services.AddMcpServer()
     .WithTools<WeatherTools>()
     .WithResources<SimpleResourceType>();
 
-builder.Services.AddOpenTelemetry()
+var telemetry = builder.Services.AddOpenTelemetry()
     .WithTracing(b => b.AddSource("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
     .WithMetrics(b => b.AddMeter("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
-    .WithLogging()
-    .UseOtlpExporter();
+    .WithLogging();
+
+string? applicationInsightsConnectionString =
+    builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+
+if (string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
+{
+    telemetry.UseOtlpExporter();
+}
+else
+{
+    telemetry.UseAzureMonitor(options =>
+        options.ConnectionString = applicationInsightsConnectionString);
+}
 
 // Configure HttpClientFactory for weather.gov API
 builder.Services.AddHttpClient("WeatherApi", client =>

@@ -231,6 +231,16 @@ builder.Services.AddMcpServer()
     });
 ```
 
+#### Customizing a subscriptions/listen stream
+
+For the `2026-07-28` protocol version and later, a server can fully own a long-lived
+`subscriptions/listen` stream by registering `WithSubscriptionsListenHandler`. This replaces the
+SDK's built-in listen handling. The handler must send one
+`notifications/subscriptions/acknowledged` notification before other events, tag every streamed
+notification with the listen request ID in `_meta.subscriptionId`, and remain active until its
+cancellation token is cancelled. It must also configure only the server capabilities that the
+handler actually supports; this extension does not advertise capabilities automatically.
+
 #### Sending resource update notifications
 
 When a resource's content changes, the server notifies subscribed clients:
