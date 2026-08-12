@@ -27,7 +27,7 @@ builder.Services.AddCors(options =>
 
 // Note: This sample uses SampleLlmTool which calls server.AsSamplingChatClient() to send
 // a server-to-client sampling request. This requires stateful (session-based) mode. Set
-// SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility in case the default changes.
+// SessionMode = HttpServerSessionMode.Stateful since sessions are required for sampling.
 // See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions/sessions.html for details.
 builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateful)

@@ -175,7 +175,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // Recommended for servers that don't need server-to-client requests.
+        // Stateless mode is the default and recommended for
+        // servers that don't need server-to-client requests.
         options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithTools<MyTools>();

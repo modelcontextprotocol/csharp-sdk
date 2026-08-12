@@ -209,7 +209,7 @@ Register subscription handlers when building the server:
 ```csharp
 builder.Services.AddMcpServer()
     // Subscriptions require stateful mode because the server pushes change notifications
-    // to clients. Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility.
+    // to clients. Set SessionMode = HttpServerSessionMode.Stateful since sessions are required.
     .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateful)
     .WithResources<MyResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>

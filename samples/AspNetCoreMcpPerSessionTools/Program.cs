@@ -15,7 +15,7 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // This sample demonstrates per-session tool filtering, which requires stateful mode.
-        // Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility in case the default changes.
+        // Set SessionMode = HttpServerSessionMode.Stateful since sessions are required.
         options.SessionMode = HttpServerSessionMode.Stateful;
 
         // Configure per-session options to filter tools based on route category

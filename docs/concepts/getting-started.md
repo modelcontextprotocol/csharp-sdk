@@ -86,9 +86,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // Stateless mode is recommended for servers that don't need
-        // server-to-client requests like sampling or elicitation.
-        // See the Stateless and Stateful documentation for details.
+       // Stateless mode is the default and recommended for servers that
+       // don't need server-to-client requests like sampling or elicitation.
+       // See the Stateless and Stateful documentation for details.
         options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithToolsFromAssembly();

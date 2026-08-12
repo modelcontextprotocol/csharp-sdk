@@ -9,7 +9,7 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // Log streaming requires stateful mode because the server pushes log notifications
-        // to clients. Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility.
+        // to clients. Set SessionMode = HttpServerSessionMode.Stateful since it's required.
         options.SessionMode = HttpServerSessionMode.Stateful;
     })
     .WithTools<LoggingTools>();

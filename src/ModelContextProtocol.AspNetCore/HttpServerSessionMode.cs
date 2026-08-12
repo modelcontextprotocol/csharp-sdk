@@ -8,14 +8,13 @@ namespace ModelContextProtocol.AspNetCore;
 /// <remarks>
 /// Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports sessions
 /// (SEP-2567 removed <c>Mcp-Session-Id</c>, and SEP-2575 removed the <c>initialize</c> handshake), so requests
-/// using that revision or later can only ever be served statelessly. This enumeration selects how the server
-/// reconciles that requirement with clients that still rely on the <c>initialize</c> handshake.
+/// using that revision or later can only ever be served statelessly. This enumeration allows specification for 
+// how the server reconciles that requirement with clients that still rely on the <c>initialize</c> handshake.
 /// </remarks>
 public enum HttpServerSessionMode
 {
     /// <summary>
     /// The server never tracks state between requests, allowing for load balancing without session affinity.
-    /// This is the default.
     /// </summary>
     /// <remarks>
     /// <see cref="McpSession.SessionId"/> is <see langword="null"/>, the
@@ -24,7 +23,7 @@ public enum HttpServerSessionMode
     /// GET, DELETE, and <c>/sse</c> endpoints are unavailable. Unsolicited server-to-client messages and all
     /// server-to-client requests are unsupported because any response might arrive at another ASP.NET Core
     /// application process. Client sampling, elicitation, and roots capabilities are disabled because the
-    /// server cannot make requests; use <see href="https://csharp.sdk.modelcontextprotocol.io/concepts/mrtr">MRTR</see>
+    /// server cannot make requests; use <see href="https://csharp.sdk.modelcontextprotocol.io/v2/concepts/mrtr/mrtr.html">Multi Round-Trip Requests (MRTR)</see>
     /// instead.
     /// </remarks>
     Stateless,

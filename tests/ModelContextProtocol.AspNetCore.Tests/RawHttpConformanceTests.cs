@@ -441,7 +441,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Accept.Add(new("text/event-stream"));
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
-        // SessionMode = HttpServerSessionMode.Stateless (the new default) doesn't map the GET endpoint - per SEP-2567 the standalone SSE
+        // SessionMode = HttpServerSessionMode.Stateless doesn't map the GET endpoint - per SEP-2567 the standalone SSE
         // stream is replaced by subscriptions/listen POST requests. Existing routing in
         // McpEndpointRouteBuilderExtensions only maps GET when Stateless == false.
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);

@@ -9,7 +9,7 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // Elicitation requires stateful mode because it sends server-to-client requests.
-        // Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility in case the default changes.
+        // Set SessionMode = HttpServerSessionMode.Stateful since it's required.
         options.SessionMode = HttpServerSessionMode.Stateful;
     })
     .WithTools<InteractiveTools>();

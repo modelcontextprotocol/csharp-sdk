@@ -52,7 +52,7 @@ public class Program
         services.AddDistributedMemoryCache();
         var mcpServerBuilder = services
             .AddMcpServer()
-            .WithHttpTransport(options => options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful)
+            .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
             .WithTasks(
                 new InMemoryMcpTaskStore

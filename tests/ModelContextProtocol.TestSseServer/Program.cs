@@ -429,7 +429,7 @@ public class Program
             .WithHttpTransport(options =>
             {
                 // The test fixture exercises legacy stateful behaviors (SSE + session-id flows).
-                // Set SessionMode = HttpServerSessionMode.Stateful explicitly now that the 2026-07-28 protocol (SEP-2567) defaults to true.
+                // Set SessionMode = HttpServerSessionMode.Stateful explicitly since sessions are required.
                 options.SessionMode = HttpServerSessionMode.Stateful;
                 options.EnableLegacySse = true;
             });

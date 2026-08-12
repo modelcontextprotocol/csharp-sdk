@@ -373,7 +373,7 @@ public static string CloseSupportTicket(
 
 ## Compatibility
 
-The SDK supports `InputRequiredException` across both protocol eras and both effective request modes:
+The SDK supports `InputRequiredException` across protocol eras and effective request modes:
 
 | Negotiated protocol              | Session mode | Behavior                                                                                                                                            |
 |----------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|

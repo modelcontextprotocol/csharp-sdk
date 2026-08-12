@@ -59,7 +59,7 @@ builder.Services
     .WithHttpTransport(options =>
     {
         // This sample uses subscriptions, SampleLlmTool (sampling), and RunSessionHandler.
-        // Set SessionMode = HttpServerSessionMode.Stateful explicitly for forward compatibility in case the default changes.
+        // Set SessionMode = HttpServerSessionMode.Stateful since sessions are required for sampling.
         options.SessionMode = HttpServerSessionMode.Stateful;
 
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends

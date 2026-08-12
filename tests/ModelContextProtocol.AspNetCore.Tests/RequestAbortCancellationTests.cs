@@ -86,9 +86,9 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
     public async Task July2026Request_AbortFlowsCancellationToToolHandler()
     {
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is
-        // served natively only on a stateless server; a SessionMode = HttpServerSessionMode.Stateful server refuses these requests so dual-era
-        // clients fall back to initialize.
-        await StartAsync(stateless: true);
+        // served natively only on a stateless server; a stateful server refuses these requests to allow
+        // a client to fall back to `initialize` if it supports it.
+await StartAsync(stateless: true);
 
         using var request = CreateBlockingToolRequest(july2026Protocol: true);
 
