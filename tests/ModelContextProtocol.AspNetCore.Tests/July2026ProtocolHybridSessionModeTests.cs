@@ -39,7 +39,7 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
     [McpServerTool(Name = "greet_via_elicit")]
     public static async Task<string> GreetViaElicit(McpServer server, CancellationToken cancellationToken)
     {
-        // Server→client requests only work over a stateful session, so this proves the initialize-handshake
+        // Server to client requests only work over a stateful session, so this proves the initialize-handshake
         // half of a hybrid endpoint keeps its session even though the endpoint also serves stateless requests.
         var elicitResult = await server.ElicitAsync(new ElicitRequestParams
         {

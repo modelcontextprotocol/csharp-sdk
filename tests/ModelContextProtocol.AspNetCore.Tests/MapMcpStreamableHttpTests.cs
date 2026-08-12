@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
@@ -236,7 +236,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
         {
             // Stateful mode, but SSE not explicitly enabled.
-            options.SessionMode = HttpServerSessionMode.Stateful;
+            options.Stateless = false;
         });
         await using var app = Builder.Build();
 
@@ -256,7 +256,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     {
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
         {
-            options.SessionMode = HttpServerSessionMode.Stateless;
+            options.Stateless = true;
             options.EnableLegacySse = true;
         });
         await using var app = Builder.Build();

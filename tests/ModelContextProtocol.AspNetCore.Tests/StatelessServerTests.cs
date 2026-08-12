@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
@@ -37,7 +37,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
             })
             .WithHttpTransport(httpServerTransportOptions =>
             {
-                httpServerTransportOptions.SessionMode = HttpServerSessionMode.Stateless;
+                httpServerTransportOptions.Stateless = true;
             })
             .WithTools<StatelessServerTests>();
 
@@ -205,7 +205,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
             })
             .WithTools([McpServerTool.Create(
                 async (IProgress<ProgressNotificationValue> progress) =>
@@ -247,7 +247,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
                 options.ConfigureSessionOptions = (httpContext, mcpServerOptions, cancellationToken) =>
                 {
                     // Dynamically add a tool based on a request header value.
@@ -302,7 +302,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
             })
             .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
             .WithPrompts([McpServerPrompt.Create(() => new GetPromptResult(), new() { Name = "myPrompt" })])
@@ -328,7 +328,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
             })
             .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
             .WithPrompts([McpServerPrompt.Create(() => new GetPromptResult(), new() { Name = "myPrompt" })])
@@ -392,7 +392,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
             })
             .WithSubscriptionsListenHandler(async (request, cancellationToken) =>
             {
@@ -475,7 +475,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.SessionMode = HttpServerSessionMode.Stateless;
+                options.Stateless = true;
             })
             .WithTools([McpServerTool.Create(() => "result", new() { Name = "myTool" })])
             .WithSubscriptionsListenHandler(async (request, cancellationToken) =>

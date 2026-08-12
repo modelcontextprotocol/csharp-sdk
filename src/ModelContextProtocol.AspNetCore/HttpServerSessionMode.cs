@@ -8,8 +8,8 @@ namespace ModelContextProtocol.AspNetCore;
 /// <remarks>
 /// Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports sessions
 /// (SEP-2567 removed <c>Mcp-Session-Id</c>, and SEP-2575 removed the <c>initialize</c> handshake), so requests
-/// using that revision or later can only ever be served statelessly. This enumeration allows specification for 
-// how the server reconciles that requirement with clients that still rely on the <c>initialize</c> handshake.
+/// using that revision or later can only ever be served statelessly. This enumeration allows specification for
+/// how the server reconciles that requirement with clients that still rely on the <c>initialize</c> handshake.
 /// </remarks>
 public enum HttpServerSessionMode
 {

@@ -5,7 +5,10 @@ public class HttpServerTransportOptionsTests
     [Fact]
     public void SessionMode_DefaultsToStateless()
     {
-        Assert.Equal(HttpServerSessionMode.Stateless, new HttpServerTransportOptions().SessionMode);
+        var options = new HttpServerTransportOptions();
+
+        Assert.Equal(HttpServerSessionMode.Stateless, options.SessionMode);
+        Assert.True(options.Stateless);
     }
 
     [Theory]
@@ -14,17 +17,31 @@ public class HttpServerTransportOptionsTests
     public void SettingStateless_SelectsEquivalentSessionMode(bool stateless, HttpServerSessionMode expected)
     {
         var options = new HttpServerTransportOptions { Stateless = stateless };
+
+        Assert.Equal(stateless, options.Stateless);
         Assert.Equal(expected, options.SessionMode);
     }
 
     [Theory]
     [InlineData(HttpServerSessionMode.Stateless, true)]
     [InlineData(HttpServerSessionMode.Stateful, false)]
-    [InlineData(HttpServerSessionMode.StatefulForInitializeClients, false)]
     public void ReadingStateless_ReflectsSessionMode(HttpServerSessionMode sessionMode, bool expected)
     {
         var options = new HttpServerTransportOptions { SessionMode = sessionMode };
+
         Assert.Equal(expected, options.Stateless);
+    }
+
+    [Fact]
+    public void ReadingStateless_ReturnsFalseForHybridMode()
+    {
+        var options = new HttpServerTransportOptions
+        {
+            SessionMode = HttpServerSessionMode.StatefulForInitializeClients,
+        };
+
+        Assert.False(options.Stateless);
+        Assert.Equal(HttpServerSessionMode.StatefulForInitializeClients, options.SessionMode);
     }
 
     [Fact]
@@ -33,11 +50,19 @@ public class HttpServerTransportOptionsTests
         var options = new HttpServerTransportOptions();
 
         options.Stateless = false;
-        options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients;
-        Assert.Equal(HttpServerSessionMode.StatefulForInitializeClients, options.SessionMode);
+        Assert.False(options.Stateless);
+        Assert.Equal(HttpServerSessionMode.Stateful, options.SessionMode);
 
         options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients;
+        Assert.False(options.Stateless);
+        Assert.Equal(HttpServerSessionMode.StatefulForInitializeClients, options.SessionMode);
+
         options.Stateless = true;
+        Assert.True(options.Stateless);
         Assert.Equal(HttpServerSessionMode.Stateless, options.SessionMode);
+
+        options.SessionMode = HttpServerSessionMode.Stateful;
+        Assert.False(options.Stateless);
+        Assert.Equal(HttpServerSessionMode.Stateful, options.SessionMode);
     }
 }

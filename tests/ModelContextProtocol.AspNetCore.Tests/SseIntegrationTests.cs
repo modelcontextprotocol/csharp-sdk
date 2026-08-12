@@ -31,7 +31,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.SessionMode = HttpServerSessionMode.Stateful; });
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -84,7 +84,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             .WithHttpTransport(httpTransportOptions =>
             {
                 httpTransportOptions.EnableLegacySse = true;
-                httpTransportOptions.SessionMode = HttpServerSessionMode.Stateful;
+                httpTransportOptions.Stateless = false;
 #pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 httpTransportOptions.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
                 {
@@ -129,7 +129,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             {
                 firstOptionsCallbackCallCount++;
             })
-            .WithHttpTransport(options => { options.EnableLegacySse = true; options.SessionMode = HttpServerSessionMode.Stateful; })
+            .WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; })
             .WithTools<EchoTool>();
 
         Builder.Services.AddMcpServer(options =>
@@ -173,7 +173,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     public async Task AdditionalHeaders_AreSent_InGetAndPostRequests()
     {
         Builder.Services.AddMcpServer()
-            .WithHttpTransport(options => { options.EnableLegacySse = true; options.SessionMode = HttpServerSessionMode.Stateful; });
+            .WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
 
         await using var app = Builder.Build();
 
@@ -220,7 +220,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     public async Task EmptyAdditionalHeadersKey_Throws_InvalidOperationException()
     {
         Builder.Services.AddMcpServer()
-            .WithHttpTransport(options => { options.EnableLegacySse = true; options.SessionMode = HttpServerSessionMode.Stateful; });
+            .WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
 
         await using var app = Builder.Build();
 
@@ -312,7 +312,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     [Fact]
     public async Task Completion_ServerShutdown_ReturnsHttpCompletionDetails()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.SessionMode = HttpServerSessionMode.Stateful; });
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);

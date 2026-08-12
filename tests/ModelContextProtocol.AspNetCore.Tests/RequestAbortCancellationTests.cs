@@ -35,10 +35,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
         {
             options.ServerInfo = new Implementation { Name = nameof(RequestAbortCancellationTests), Version = "1" };
         })
-        .WithHttpTransport(options =>
-        {
-            options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
-        })
+        .WithHttpTransport(options => options.Stateless = stateless)
         .WithTools([McpServerTool.Create(
             async (CancellationToken cancellationToken) =>
             {
@@ -88,7 +85,7 @@ public class RequestAbortCancellationTests(ITestOutputHelper outputHelper) : Kes
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567) and is
         // served natively only on a stateless server; a stateful server refuses these requests to allow
         // a client to fall back to `initialize` if it supports it.
-await StartAsync(stateless: true);
+        await StartAsync(stateless: true);
 
         using var request = CreateBlockingToolRequest(july2026Protocol: true);
 
