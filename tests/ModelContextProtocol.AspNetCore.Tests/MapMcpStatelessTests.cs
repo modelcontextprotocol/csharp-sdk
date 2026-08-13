@@ -12,10 +12,27 @@ public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStream
     protected override bool UseStreamableHttp => true;
     protected override bool Stateless => true;
 
-    [Fact]
-    public async Task ServerActivity_IncludesPerRequestProtocolVersion()
+    // In stateless mode each HTTP request is served by a fresh, un-negotiated McpServer, so the
+    // session-level NegotiatedProtocolVersion is null when the server span is tagged. The tag must
+    // therefore come from the per-request MCP-Protocol-Version header / _meta value. Exercising more
+    // than one version proves the tag tracks the per-request value rather than coincidentally matching
+    // a single hard-coded version (and would regress to an absent tag if the per-request fallback were
+    // removed, since the negotiated value is null at tagging time).
+    [Theory]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ServerActivity_TagsPerRequestProtocolVersion_InStatelessMode(string protocolVersion)
     {
         var activities = new List<Activity>();
+        string? capturedNegotiatedProtocolVersion = null;
+
+        var protocolVersionTool = McpServerTool.Create(
+            (RequestContext<CallToolRequestParams> context) =>
+            {
+                capturedNegotiatedProtocolVersion = context.Server.NegotiatedProtocolVersion;
+                return "ok";
+            },
+            new() { Name = "stateless-capture-version" });
 
         using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
             .AddSource("Experimental.ModelContextProtocol")
@@ -24,22 +41,26 @@ public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStream
         {
             Builder.Services.AddMcpServer()
                 .WithHttpTransport(ConfigureStateless)
-                .WithTools([McpServerTool.Create(() => "ok", new() { Name = "test-tool" })]);
+                .WithTools([protocolVersionTool]);
 
             await using var app = Builder.Build();
             app.MapMcp();
             await app.StartAsync(TestContext.Current.CancellationToken);
 
             await using var client = await ConnectAsync(configureClient: options =>
-                options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion);
+                options.ProtocolVersion = protocolVersion);
 
-            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            await client.CallToolAsync("stateless-capture-version", cancellationToken: TestContext.Current.CancellationToken);
         }
 
         Assert.Contains(activities, activity =>
-            activity.DisplayName == "tools/list" &&
+            activity.DisplayName == "tools/call stateless-capture-version" &&
             activity.Kind == ActivityKind.Server &&
-            activity.GetTagItem("mcp.protocol.version") as string == McpProtocolVersions.July2026ProtocolVersion);
+            activity.GetTagItem("mcp.protocol.version") as string == protocolVersion);
+
+        // Once the per-request version is applied, the request-scoped server settles on that same version,
+        // so the value tagged on the span and the version the session ends up negotiating agree.
+        Assert.Equal(protocolVersion, capturedNegotiatedProtocolVersion);
     }
 
     [Fact]
