@@ -470,6 +470,92 @@ public class McpAppsTests
 
     #endregion
 
+    #region WithAppTool
+
+    [Fact]
+    public async Task WithAppTool_RegistersLinkedToolAndHtmlResource()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(
+                (string location) => $"Weather for {location}",
+                "ui://weather/view.html",
+                () => "<html>weather</html>",
+                new McpServerToolCreateOptions
+                {
+                    Name = "weather",
+                    Description = "Gets weather",
+                    Meta = new JsonObject { ["custom"] = "value" },
+                });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var tool = Assert.Single(options.ToolCollection!);
+        var resource = Assert.Single(options.ResourceCollection!);
+
+        Assert.Equal("weather", tool.ProtocolTool.Name);
+        Assert.Equal("Gets weather", tool.ProtocolTool.Description);
+        Assert.Equal("value", tool.ProtocolTool.Meta?["custom"]?.GetValue<string>());
+        Assert.Equal("ui://weather/view.html", tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+        Assert.Equal("ui://weather/view.html", resource.ProtocolResourceTemplate.UriTemplate);
+        Assert.Equal(McpApps.HtmlMimeType, resource.ProtocolResourceTemplate.MimeType);
+        Assert.Contains(McpApps.ExtensionId, options.Capabilities!.Extensions!.Keys);
+    }
+
+    [Fact]
+    public async Task WithAppTool_PreservesExplicitToolUiMetadata()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(
+                () => "result",
+                "ui://default/view.html",
+                () => "<html />",
+                new McpServerToolCreateOptions
+                {
+                    Name = "app_tool",
+                    Meta = new JsonObject
+                    {
+                        ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/view.html" },
+                    },
+                });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var tool = Assert.Single(serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value.ToolCollection!);
+
+        Assert.Equal("ui://explicit/view.html", tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task WithAppTool_DuplicateResourceUriUsesExistingCollectionSemantics()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(() => "first", "ui://shared/view.html", () => "first", new() { Name = "first" })
+            .WithAppTool(() => "second", "ui://shared/view.html", () => "second", new() { Name = "second" });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.Equal(2, options.ToolCollection!.Count);
+        Assert.Single(options.ResourceCollection!);
+    }
+
+    [Fact]
+    public void WithAppTool_RejectsMissingConfiguration()
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+        Func<string> htmlFactory = () => "html";
+        Delegate method = () => "result";
+
+        Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(null!, "ui://test", htmlFactory));
+        Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, null!, htmlFactory));
+        Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, "ui://test", null!));
+        Assert.Throws<ArgumentException>(() => builder.WithAppTool(method, "  ", htmlFactory));
+    }
+
+    #endregion
+
     #region Test helper types
 
     [McpServerToolType]

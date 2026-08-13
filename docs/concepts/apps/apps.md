@@ -34,9 +34,23 @@ The key concepts are:
 
 ## Associating tools with UI resources
 
-### Using the builder extension (recommended)
+### Registering a tool and its UI resource together (recommended)
 
-The simplest approach is to apply `[McpAppUi]` attributes to your tool methods and call `WithMcpApps()` on the server builder:
+`WithAppTool` creates the tool, links it to a `ui://` resource, registers the HTML content with the MCP Apps MIME type, and enables MCP Apps support:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithAppTool(
+        (string location) => $"Weather for {location}",
+        "ui://weather/view.html",
+        () => File.ReadAllText("weather.html"));
+```
+
+Use the lower-level registration APIs when the tool or resource needs additional configuration.
+
+### Using attributes with registered tool types
+
+For tools declared in a type, apply `[McpAppUi]` attributes to the tool methods and call `WithMcpApps()` on the server builder:
 
 ```csharp
 [McpServerToolType]
