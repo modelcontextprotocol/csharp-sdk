@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -19,6 +20,11 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class McpTaskStoreTests : ClientServerTestBase
 {
+    private readonly TrackingTaskStore _taskStore = new()
+    {
+        DefaultPollIntervalMs = 50,
+    };
+
     public McpTaskStoreTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
 #if !NET
@@ -30,10 +36,7 @@ public class McpTaskStoreTests : ClientServerTestBase
     {
         mcpServerBuilder
             .WithTools<TaskStoreTestTools>()
-            .WithTasks(new InMemoryMcpTaskStore
-            {
-                DefaultPollIntervalMs = 50,
-            }, options => options.ExecutionModeSelector = request =>
+            .WithTasks(_taskStore, options => options.ExecutionModeSelector = request =>
                 request.Params?.Name switch
                 {
                     "sync-tool" => McpTaskExecutionMode.Synchronous,
@@ -277,40 +280,186 @@ public class McpTaskStoreTests : ClientServerTestBase
         Assert.Equal("custom-protocol-message", failed.Error.GetProperty("message").GetString());
     }
 
-    [Fact]
-    public async Task InputRequiredException_FromTool_FailsTaskWithActionableMessage()
+    [Theory]
+    [InlineData(RequestMethods.ElicitationCreate, "accept")]
+    [InlineData(RequestMethods.SamplingCreateMessage, "sampled response")]
+    [InlineData(RequestMethods.RootsList, "file:///workspace")]
+    public async Task InputRequiredException_FromTool_UsesTaskInputRequests(
+        string method,
+        string expectedResult)
     {
-        // [McpServerTool] methods that throw InputRequiredException can't compose with the task-store
-        // wrapper today: the taskId was already returned synchronously and there's no way to surface
-        // InputRequiredResult retroactively. The wrapper must fail the task with a clear, actionable
-        // message instead of leaking the raw exception through the generic catch.
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
         var augmented = await client.CallToolAsTaskAsync(
-            new CallToolRequestParams { Name = "mrtr-tool" }, ct);
+            new CallToolRequestParams
+            {
+                Name = "mrtr-tool",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["method"] = JsonSerializer.SerializeToElement(method, McpJsonUtilities.DefaultOptions.GetTypeInfo<string>()),
+                },
+            }, ct);
 
         var taskId = augmented.TaskCreated!.TaskId;
 
         GetTaskResult? taskResult = null;
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 40; i++)
         {
             await Task.Delay(50, ct);
             taskResult = await client.GetTaskAsync(taskId, ct);
-            if (taskResult is FailedTaskResult)
+            if (taskResult is InputRequiredTaskResult)
             {
                 break;
             }
         }
 
-        var failed = Assert.IsType<FailedTaskResult>(taskResult);
-        Assert.Equal(JsonValueKind.Object, failed.Error.ValueKind);
-        Assert.Equal((int)McpErrorCode.InvalidRequest, failed.Error.GetProperty("code").GetInt32());
+        var inputRequired = Assert.IsType<InputRequiredTaskResult>(taskResult);
+        Assert.NotNull(inputRequired.InputRequests);
+        var inputRequest = Assert.Single(inputRequired.InputRequests);
+        Assert.Equal(method, inputRequest.Value.Method);
 
-        var message = failed.Error.GetProperty("message").GetString();
-        Assert.NotNull(message);
-        Assert.Contains("MRTR", message);
-        Assert.Contains("tasks", message);
+        var inputResponse = method switch
+        {
+            RequestMethods.ElicitationCreate => InputResponse.FromElicitResult(new ElicitResult { Action = "accept" }),
+            RequestMethods.SamplingCreateMessage => InputResponse.FromSamplingResult(new CreateMessageResult
+            {
+                Content = [new TextContentBlock { Text = "sampled response" }],
+                Model = "test-model",
+            }),
+            RequestMethods.RootsList => InputResponse.FromRootsResult(new ListRootsResult
+            {
+                Roots = [new Root { Uri = "file:///workspace" }],
+            }),
+            _ => throw new InvalidOperationException($"Unexpected method: {method}"),
+        };
+
+        await client.UpdateTaskAsync(new UpdateTaskRequestParams
+        {
+            TaskId = taskId,
+            InputResponses = new Dictionary<string, InputResponse> { [inputRequest.Key] = inputResponse },
+        }, ct);
+
+        for (int i = 0; i < 40; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+            if (taskResult is CompletedTaskResult)
+            {
+                break;
+            }
+        }
+
+        var completed = Assert.IsType<CompletedTaskResult>(taskResult);
+        var result = JsonSerializer.Deserialize(completed.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+        Assert.Equal(expectedResult, Assert.IsType<TextContentBlock>(result!.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task InputRequiredException_FromTool_CancelledTaskDoesNotResume()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams
+            {
+                Name = "mrtr-tool",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["method"] = JsonSerializer.SerializeToElement(
+                        RequestMethods.ElicitationCreate,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo<string>()),
+                },
+            }, ct);
+
+        var taskId = augmented.TaskCreated!.TaskId;
+        GetTaskResult? taskResult = null;
+        for (int i = 0; i < 40 && taskResult is not InputRequiredTaskResult; i++)
+        {
+            await Task.Delay(50, ct);
+            taskResult = await client.GetTaskAsync(taskId, ct);
+        }
+
+        var inputRequired = Assert.IsType<InputRequiredTaskResult>(taskResult);
+        var inputRequest = Assert.Single(inputRequired.InputRequests!);
+
+        await client.CancelTaskAsync(taskId, ct);
+
+        // A late response must not wake the cancelled tool invocation or resurrect its task.
+        await client.UpdateTaskAsync(new UpdateTaskRequestParams
+        {
+            TaskId = taskId,
+            InputResponses = new Dictionary<string, InputResponse>
+            {
+                [inputRequest.Key] = InputResponse.FromElicitResult(new ElicitResult { Action = "accept" }),
+            },
+        }, ct);
+
+        await _taskStore.WaitForNoInputResponseSubscribersAsync(ct);
+        Assert.Equal(0, _taskStore.InputResponseSubscriberCount);
+        Assert.IsType<CancelledTaskResult>(await client.GetTaskAsync(taskId, ct));
+    }
+
+    [Fact]
+    public async Task InputRequiredException_FromTool_InputHandlerFailurePropagatesPromptly()
+    {
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) => throw new InvalidOperationException("handler-failed"),
+            },
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await client.CallToolWithPollingAsync(
+                new CallToolRequestParams
+                {
+                    Name = "mrtr-tool",
+                    Arguments = new Dictionary<string, JsonElement>
+                    {
+                        ["method"] = JsonSerializer.SerializeToElement(
+                            RequestMethods.ElicitationCreate,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo<string>()),
+                    },
+                },
+                cancellationToken: ct));
+        stopwatch.Stop();
+
+        Assert.Equal("handler-failed", exception.Message);
+        await _taskStore.WaitForNoInputResponseSubscribersAsync(ct);
+        Assert.Equal(0, _taskStore.InputResponseSubscriberCount);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+            $"Input handler failure should propagate promptly but took {stopwatch.Elapsed}.");
+    }
+
+    [Fact]
+    public async Task InputRequiredException_FromTool_LegacyClientUsesSynchronousBackcompat()
+    {
+        var clientOptions = new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.June2025ProtocolVersion,
+            Capabilities = new ClientCapabilities { Elicitation = new() },
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) =>
+                    new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" }),
+            },
+        };
+        await using var client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync(
+            "mrtr-tool",
+            new Dictionary<string, object?>
+            {
+                ["method"] = RequestMethods.ElicitationCreate,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("accept", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
 
     [Fact]
@@ -712,8 +861,41 @@ public class McpTaskStoreTests : ClientServerTestBase
             throw new McpProtocolException("custom-protocol-message", McpErrorCode.InvalidParams);
 
         [McpServerTool(Name = "mrtr-tool"), System.ComponentModel.Description("A tool that throws InputRequiredException (MRTR)")]
-        public static string MrtrTool() =>
-            throw new InputRequiredException(requestState: "test-state");
+        public static string MrtrTool(string method, RequestContext<CallToolRequestParams> context)
+        {
+            if (context.Params.InputResponses?.TryGetValue("input", out var response) is true)
+            {
+                Assert.Equal("test-state", context.Params.RequestState);
+                return method switch
+                {
+                    RequestMethods.ElicitationCreate => response.Deserialize(InputResponse.ElicitResultJsonTypeInfo)!.Action,
+                    RequestMethods.SamplingCreateMessage => response.Deserialize(InputResponse.CreateMessageResultJsonTypeInfo)!
+                        .Content.OfType<TextContentBlock>().Single().Text,
+                    RequestMethods.RootsList => response.Deserialize(InputResponse.ListRootsResultJsonTypeInfo)!.Roots.Single().Uri,
+                    _ => throw new InvalidOperationException($"Unexpected method: {method}"),
+                };
+            }
+
+            var inputRequest = method switch
+            {
+                RequestMethods.ElicitationCreate => InputRequest.ForElicitation(new ElicitRequestParams
+                {
+                    Message = "Confirm?",
+                    RequestedSchema = new(),
+                }),
+                RequestMethods.SamplingCreateMessage => InputRequest.ForSampling(new CreateMessageRequestParams
+                {
+                    Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "hello" }] }],
+                    MaxTokens = 100,
+                }),
+                RequestMethods.RootsList => InputRequest.ForRootsList(new ListRootsRequestParams()),
+                _ => throw new InvalidOperationException($"Unexpected method: {method}"),
+            };
+
+            throw new InputRequiredException(
+                new Dictionary<string, InputRequest> { ["input"] = inputRequest },
+                requestState: "test-state");
+        }
 
         [McpServerTool(Name = "elicit-tool"), System.ComponentModel.Description("A tool that elicits")]
         public static async Task<string> ElicitTool(McpServer server, CancellationToken cancellationToken)
@@ -817,5 +999,34 @@ public class McpTaskStoreTests : ClientServerTestBase
 
             return $"{first.Result.Action}|{second.Result.Action}";
         }
+    }
+
+    private sealed class TrackingTaskStore : InMemoryMcpTaskStore, IMcpTaskStore
+    {
+        private readonly TaskCompletionSource<bool> _noInputResponseSubscribers =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _inputResponseSubscriberCount;
+
+        public int InputResponseSubscriberCount => Volatile.Read(ref _inputResponseSubscriberCount);
+
+        event Action<InputResponseReceivedEventArgs>? IMcpTaskStore.InputResponseReceived
+        {
+            add
+            {
+                InputResponseReceived += value;
+                Interlocked.Increment(ref _inputResponseSubscriberCount);
+            }
+            remove
+            {
+                InputResponseReceived -= value;
+                if (Interlocked.Decrement(ref _inputResponseSubscriberCount) == 0)
+                {
+                    _noInputResponseSubscribers.TrySetResult(true);
+                }
+            }
+        }
+
+        public Task WaitForNoInputResponseSubscribersAsync(CancellationToken cancellationToken) =>
+            _noInputResponseSubscribers.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
     }
 }

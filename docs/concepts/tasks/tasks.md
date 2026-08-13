@@ -210,6 +210,14 @@ Supported input request methods:
 | --- | --- |
 | `elicitation/create` | <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler> |
 | `sampling/createMessage` | <xref:ModelContextProtocol.Client.McpClientHandlers.SamplingHandler> |
+| `roots/list` | <xref:ModelContextProtocol.Client.McpClientHandlers.RootsHandler> |
+
+Tools that use MRTR directly by throwing <xref:ModelContextProtocol.Protocol.InputRequiredException>
+also compose with task execution. When a task-enabled call throws with input requests, the SDK
+publishes them through the task store and reruns the tool after `tasks/update`, with
+<xref:ModelContextProtocol.Protocol.RequestParams.InputResponses> and
+<xref:ModelContextProtocol.Protocol.RequestParams.RequestState> populated for the retry. Calls that
+do not opt in to Tasks keep the normal MRTR behavior.
 
 Per SEP-2663:
 
@@ -358,10 +366,6 @@ compatibility bridge for the previous experimental API.
   synchronously and then transition its remaining work to a background task. Use a custom
   <xref:ModelContextProtocol.Server.McpServerHandlers.CallToolWithAlternateHandler?displayProperty=nameWithType>
   if you need that pattern.
-- **`roots/list` as an input request**: the server SDK routes `RequestRootsAsync` through the
-  task channel when called from inside a task scope, but the client SDK does not currently
-  dispatch a handler for that method. Avoid calling `server.RequestRootsAsync` from within a
-  task scope until client-side support is added.
 - **`ServerCapabilities.Extensions` round-trip**: the dictionary is typed as
   `IDictionary<string, object>` so its values cannot be deserialized by the source generator.
   The negotiated extension surfaces correctly at the wire level, but round-tripping arbitrary

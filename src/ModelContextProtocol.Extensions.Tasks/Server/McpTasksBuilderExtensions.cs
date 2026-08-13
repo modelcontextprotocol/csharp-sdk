@@ -250,7 +250,72 @@ public static class McpTasksBuilderExtensions
         {
             try
             {
-                var augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
+                const int MaxRetries = 10;
+                ResultOrAlternate<CallToolResult> augmented;
+
+                for (int retry = 0; ; retry++)
+                {
+                    try
+                    {
+                        augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (InputRequiredException ex)
+                    {
+                        if (retry >= MaxRetries)
+                        {
+                            throw new McpProtocolException(
+                                $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.",
+                                McpErrorCode.InvalidRequest);
+                        }
+
+                        if (ex.Result.InputRequests is { Count: > 0 } inputRequests)
+                        {
+                            request.Params.InputResponses = await ResolveInputRequestsAsync(
+                                request.Server, inputRequests, taskCancellationToken).ConfigureAwait(false);
+                        }
+                        else if (ex.Result.RequestState is not null)
+                        {
+                            request.Params.InputResponses = null;
+                        }
+                        else
+                        {
+                            throw new McpProtocolException(
+                                "A tool returned an input-required result without input requests or request state.",
+                                McpErrorCode.InvalidRequest);
+                        }
+
+                        request.Params.RequestState = ex.Result.RequestState;
+
+                        var paramsObj = request.JsonRpcRequest.Params?.DeepClone() as JsonObject ?? new JsonObject();
+                        if (request.Params.InputResponses is { } inputResponses)
+                        {
+                            paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
+                                inputResponses, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, InputResponse>>());
+                        }
+                        else
+                        {
+                            paramsObj.Remove("inputResponses");
+                        }
+
+                        if (ex.Result.RequestState is { } requestState)
+                        {
+                            paramsObj["requestState"] = requestState;
+                        }
+                        else
+                        {
+                            paramsObj.Remove("requestState");
+                        }
+
+                        request.JsonRpcRequest = new JsonRpcRequest
+                        {
+                            Id = request.JsonRpcRequest.Id,
+                            Method = request.JsonRpcRequest.Method,
+                            Params = paramsObj,
+                            Context = request.JsonRpcRequest.Context,
+                        };
+                    }
+                }
 
                 if (augmented.IsAlternate)
                 {
@@ -270,16 +335,6 @@ public static class McpTasksBuilderExtensions
             catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
             {
                 await _store.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (InputRequiredException)
-            {
-                var error = new JsonRpcErrorDetail
-                {
-                    Code = (int)McpErrorCode.InvalidRequest,
-                    Message = "MRTR and tasks cannot be composed via [McpServerTool] yet.",
-                };
-                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
-                await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
             }
             catch (McpProtocolException mcpEx)
             {
@@ -305,6 +360,43 @@ public static class McpTasksBuilderExtensions
                 var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
             }
+        }
+
+        private static async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+            McpServer server,
+            IDictionary<string, InputRequest> inputRequests,
+            CancellationToken cancellationToken)
+        {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var keyedTasks = inputRequests.Select(async pair =>
+            {
+                try
+                {
+                    var response = await server.SendRequestAsync(new JsonRpcRequest
+                    {
+                        Method = pair.Value.Method,
+                        Params = pair.Value.Params is { } paramsElement
+                            ? JsonSerializer.SerializeToNode(paramsElement, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonElement>())
+                            : null,
+                    }, linkedCts.Token).ConfigureAwait(false);
+                    var result = response.Result
+                        ?? throw new McpException($"The '{pair.Value.Method}' input request returned no result.");
+
+                    return new KeyValuePair<string, InputResponse>(pair.Key, new InputResponse
+                    {
+                        RawValue = JsonSerializer.SerializeToElement(
+                            result, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
+                    });
+                }
+                catch
+                {
+                    linkedCts.Cancel();
+                    throw;
+                }
+            }).ToArray();
+
+            return (await Task.WhenAll(keyedTasks).ConfigureAwait(false))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
         private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
