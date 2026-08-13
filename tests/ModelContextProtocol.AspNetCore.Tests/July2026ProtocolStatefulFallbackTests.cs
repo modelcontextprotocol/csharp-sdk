@@ -11,12 +11,13 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
 /// End-to-end coverage for a default (2026-07-28-first) client connecting to a real C# Streamable HTTP
-/// server that deliberately opted into sessions (<see cref="HttpServerTransportOptions.Stateless"/>
-/// is <c>false</c>). Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports
-/// sessions (SEP-2567 / SEP-2575), so the server refuses the probe with <c>-32022 UnsupportedProtocolVersion</c>.
-/// The client must then auto-downgrade to the <c>initialize</c> handshake, obtain the stateful session
-/// the server author opted into, and continue to work, including a server→client elicitation round-trip
-/// resolved over the stateful session via the initialize-handshake backcompat resolver.
+/// server that deliberately opted into sessions using either <see cref="HttpServerTransportOptions.Stateless"/>
+/// or <see cref="HttpServerTransportOptions.SessionMode"/>. Starting with the 2026-07-28 protocol revision,
+/// Streamable HTTP no longer supports sessions (SEP-2567 / SEP-2575), so the server refuses the probe with
+/// <c>-32022 UnsupportedProtocolVersion</c>. The client must then auto-downgrade to the <c>initialize</c>
+/// handshake, obtain the stateful session the server author opted into, and continue to work, including a
+/// server-to-client elicitation round-trip resolved over the stateful session via the initialize-handshake
+/// backcompat resolver.
 /// </summary>
 public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
@@ -37,7 +38,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
     [McpServerTool(Name = "greet_via_elicit")]
     private static async Task<string> GreetViaElicit(McpServer server, CancellationToken cancellationToken)
     {
-        // Server→client round-trip: only works when the session is stateful, which is exactly what
+        // Server-to-client round-trip: only works when the session is stateful, which is exactly what
         // the initialize fallback re-establishes for the 2026-07-28-first client.
         var elicitResult = await server.ElicitAsync(new ElicitRequestParams
         {
@@ -52,15 +53,19 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
         return $"Hello, {name}!";
     }
 
-    private async Task StartStatefulServerAsync()
+    private Task StartStatefulServerAsync() =>
+        StartStatefulServerAsync(options => options.Stateless = false);
+
+    private Task StartStatefulSessionModeServerAsync() =>
+        StartStatefulServerAsync(options => options.SessionMode = HttpServerSessionMode.Stateful);
+
+    private async Task StartStatefulServerAsync(Action<HttpServerTransportOptions> configureTransport)
     {
         Builder.Services.AddMcpServer(options =>
         {
             options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolStatefulFallbackTests), Version = "1" };
         })
-            // Stateless = false is a deliberate opt-in to sessions. Starting with the 2026-07-28 protocol revision,
-            // Streamable HTTP can never be served statefully, so the server refuses the probe and the client downgrades.
-            .WithHttpTransport(options => options.Stateless = false)
+            .WithHttpTransport(configureTransport)
             .WithTools([McpServerTool.Create(Greet), McpServerTool.Create(GreetViaElicit)]);
 
         _app = Builder.Build();
@@ -88,6 +93,19 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
     {
         await StartStatefulServerAsync();
 
+        await AssertDefaultClientDowngradesAndToolsWorkAsync();
+    }
+
+    [Fact]
+    public async Task DefaultClient_AgainstStatefulSessionMode_DowngradesToInitialize_AndToolsWork()
+    {
+        await StartStatefulSessionModeServerAsync();
+
+        await AssertDefaultClientDowngradesAndToolsWorkAsync();
+    }
+
+    private async Task AssertDefaultClientDowngradesAndToolsWorkAsync()
+    {
         await using var client = await ConnectDefaultClientAsync();
 
         // The 2026-07-28 probe was refused (-32022), so the client downgraded to initialize.

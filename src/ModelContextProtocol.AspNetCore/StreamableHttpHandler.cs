@@ -38,8 +38,8 @@ internal sealed class StreamableHttpHandler(
 
     /// <summary>
     /// The supported protocol versions that still allow Streamable HTTP sessions (excluding 2026-07-28 and
-    /// later). Used when refusing a 2026-07-28 request on a stateful (Stateless = false) server so a dual-path
-    /// client falls back to the initialize handshake instead of retrying the 2026-07-28 version.
+    /// later). Used when refusing a 2026-07-28 request on a fully stateful server so a dual-path client falls
+    /// back to the initialize handshake instead of retrying the 2026-07-28 version.
     /// </summary>
     private static readonly string[] s_sessionSupportingProtocolVersions = McpProtocolVersions.InitializeHandshakeProtocolVersions;
 
@@ -52,6 +52,14 @@ internal sealed class StreamableHttpHandler(
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _migrationLocks = new(StringComparer.Ordinal);
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
+
+    /// <summary>
+    /// Returns <see langword="true"/> when no request served by this endpoint can have a session. In
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> mode this is <see langword="false"/>
+    /// even though individual <c>2026-07-28</c> and later requests are still served statelessly, because the
+    /// endpoint as a whole still tracks sessions for <c>initialize</c>-handshake clients.
+    /// </summary>
+    private bool IsStatelessOnly => HttpServerTransportOptions.SessionMode is HttpServerSessionMode.Stateless;
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
@@ -100,7 +108,7 @@ internal sealed class StreamableHttpHandler(
         // Validated after the body parse (rather than first) so the rejection can echo the request's
         // JSON-RPC id: every error response for a parseable request MUST carry its id.
         var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, IsStatelessOnly, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest, requestId);
             return;
@@ -191,7 +199,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleGetRequestAsync(HttpContext context)
     {
         var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, IsStatelessOnly, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -238,7 +246,7 @@ internal sealed class StreamableHttpHandler(
 
     private async Task HandleResumedStreamAsync(HttpContext context, StreamableHttpSession session, string lastEventId)
     {
-        if (HttpServerTransportOptions.Stateless)
+        if (IsStatelessOnly)
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: The Last-Event-ID header is not supported in stateless mode.",
@@ -310,7 +318,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
         var configuredSupportedProtocolVersions = GetConfiguredSupportedProtocolVersions(mcpServerOptionsSnapshot.Value.ProtocolVersion);
-        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, HttpServerTransportOptions.Stateless, out var protocolVersionError))
+        if (!ValidateProtocolVersionHeader(context, configuredSupportedProtocolVersions, IsStatelessOnly, out var protocolVersionError))
         {
             await WriteJsonRpcErrorDetailAsync(context, protocolVersionError, StatusCodes.Status400BadRequest);
             return;
@@ -354,7 +362,7 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: Mcp-Session-Id header is required for GET and DELETE requests when the server is using sessions. " +
-                "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.Stateless = true. " +
+                "If your server doesn't need sessions, enable stateless mode by setting HttpServerTransportOptions.SessionMode = HttpServerSessionMode.Stateless. " +
                 "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
                 StatusCodes.Status400BadRequest, requestId: requestId);
             return null;
@@ -435,17 +443,18 @@ internal sealed class StreamableHttpHandler(
         // and the initialize handshake (SEP-2575), so over HTTP it never has a session, with no exceptions:
         if (RequiresPerRequestMetadataProtocol(context))
         {
-            if (!HttpServerTransportOptions.Stateless)
+            if (HttpServerTransportOptions.SessionMode is HttpServerSessionMode.Stateful)
             {
-                // The author explicitly opted into sessions (Stateless = false), which the 2026-07-28
-                // revision cannot provide. Refuse it so a dual-path client falls back to the
-                // initialize handshake and gets the session it asked for (SEP-2575 fallback semantics).
+                // The author explicitly opted into sessions for every client, which the 2026-07-28 revision
+                // cannot provide. Refuse it so a dual-path client falls back to the initialize handshake and
+                // gets the session it asked for (SEP-2575 fallback semantics). StatefulForInitializeClients
+                // opts out of that downgrade and serves these requests statelessly instead.
                 await WriteUnsupportedProtocolVersionErrorAsync(context, requestId);
                 return null;
             }
 
-            // The default (stateless) HTTP transport serves these requests natively.
-            return await StartNewSessionAsync(context);
+            // Stateless and StatefulForInitializeClients both serve these requests natively, without a session.
+            return await StartNewSessionAsync(context, serveStatelessly: true);
         }
 
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
@@ -453,20 +462,20 @@ internal sealed class StreamableHttpHandler(
         {
             // In stateful mode, only allow creating new sessions for initialize requests.
             // In stateless mode, every request is independent, so we always create a new session.
-            if (!HttpServerTransportOptions.Stateless && !AllowNewSessionForNonInitializeRequests
+            if (!IsStatelessOnly && !AllowNewSessionForNonInitializeRequests
                 && message is not JsonRpcRequest { Method: RequestMethods.Initialize })
             {
                 await WriteJsonRpcErrorAsync(context,
                     "Bad Request: A new session can only be created by an initialize request. Include a valid Mcp-Session-Id header for non-initialize requests, " +
-                    "or enable stateless mode by setting HttpServerTransportOptions.Stateless = true if your server doesn't need sessions. " +
+                    "or enable stateless mode by setting HttpServerTransportOptions.SessionMode = HttpServerSessionMode.Stateless if your server doesn't need sessions. " +
                     "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
                     StatusCodes.Status400BadRequest, requestId: requestId);
                 return null;
             }
 
-            return await StartNewSessionAsync(context);
+            return await StartNewSessionAsync(context, serveStatelessly: IsStatelessOnly);
         }
-        else if (HttpServerTransportOptions.Stateless)
+        else if (IsStatelessOnly)
         {
             // In stateless mode, we should not be getting existing sessions via sessionId
             // This path should not be reached in stateless mode
@@ -491,12 +500,12 @@ internal sealed class StreamableHttpHandler(
         return McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader);
     }
 
-    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
+    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context, bool serveStatelessly)
     {
         string sessionId;
         StreamableHttpServerTransport transport;
 
-        if (!HttpServerTransportOptions.Stateless)
+        if (!serveStatelessly)
         {
             sessionId = MakeNewSessionId();
 #pragma warning disable MCP9006 // Stateful Streamable HTTP options are obsolete but still wired up internally.
@@ -525,23 +534,24 @@ internal sealed class StreamableHttpHandler(
             };
         }
 
-        return await CreateSessionAsync(context, transport, sessionId);
+        return await CreateSessionAsync(context, transport, sessionId, serveStatelessly);
     }
 
     private async ValueTask<StreamableHttpSession> CreateSessionAsync(
         HttpContext context,
         StreamableHttpServerTransport transport,
         string sessionId,
+        bool serveStatelessly,
         Action<McpServerOptions>? configureOptions = null)
     {
         var mcpServerServices = applicationServices;
         var mcpServerOptions = mcpServerOptionsSnapshot.Value;
 
-        if (HttpServerTransportOptions.Stateless || HttpServerTransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
+        if (serveStatelessly || HttpServerTransportOptions.ConfigureSessionOptions is not null || configureOptions is not null)
         {
             mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
 
-            if (HttpServerTransportOptions.Stateless)
+            if (serveStatelessly)
             {
                 // The session does not outlive the request in stateless mode.
                 mcpServerServices = context.RequestServices;
@@ -589,7 +599,7 @@ internal sealed class StreamableHttpHandler(
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;
 
-        return await CreateSessionAsync(context, transport, sessionId, options =>
+        return await CreateSessionAsync(context, transport, sessionId, serveStatelessly: false, options =>
         {
             options.KnownClientInfo = initializeParams.ClientInfo;
             options.KnownClientCapabilities = initializeParams.Capabilities;
@@ -916,11 +926,13 @@ internal sealed class StreamableHttpHandler(
     }
 
     /// <summary>
-    /// Refuses a 2026-07-28 (or later) request on a stateful (Stateless = false) server. Starting with that
-    /// revision, Streamable HTTP no longer has sessions (SEP-2567), so it cannot honor the author's opt-in to
-    /// sessions; we return <see cref="McpErrorCode.UnsupportedProtocolVersion"/> with a supported-versions list
-    /// that excludes 2026-07-28 and later. A dual-path client then falls back to the initialize handshake
-    /// (SEP-2575).
+    /// Refuses a 2026-07-28 (or later) request on a fully stateful server
+    /// (<see cref="HttpServerSessionMode.Stateful"/>). Starting with that revision, Streamable HTTP no longer
+    /// has sessions (SEP-2567), so it cannot honor the author's opt-in to sessions; we return
+    /// <see cref="McpErrorCode.UnsupportedProtocolVersion"/> with a supported-versions list that excludes
+    /// 2026-07-28 and later. A dual-path client then falls back to the initialize handshake (SEP-2575).
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> serves the request statelessly instead
+    /// of refusing it.
     /// </summary>
     private static Task WriteUnsupportedProtocolVersionErrorAsync(HttpContext context, RequestId requestId = default)
     {
@@ -928,8 +940,8 @@ internal sealed class StreamableHttpHandler(
         var errorDetail = new JsonRpcErrorDetail
         {
             Code = (int)McpErrorCode.UnsupportedProtocolVersion,
-            Message = $"Bad Request: Starting with protocol version '{McpProtocolVersions.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.Stateless = false). " +
-                "Use the initialize handshake with a protocol version that still supports sessions instead.",
+            Message = $"Bad Request: Starting with protocol version '{McpProtocolVersions.July2026ProtocolVersion}', Streamable HTTP does not support sessions and is not supported when the server is configured with sessions enabled (HttpServerTransportOptions.SessionMode = HttpServerSessionMode.Stateful). " +
+                "Use the initialize handshake with a protocol version that still supports sessions instead, or set HttpServerTransportOptions.SessionMode = HttpServerSessionMode.StatefulForInitializeClients to serve this version statelessly.",
             Data = JsonSerializer.SerializeToNode(
                 new UnsupportedProtocolVersionErrorData
                 {

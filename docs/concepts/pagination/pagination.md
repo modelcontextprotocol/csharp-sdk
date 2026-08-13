@@ -70,7 +70,7 @@ When implementing custom list handlers on the server, pagination is supported by
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithListResourcesHandler(async (ctx, ct) =>
     {
         const int pageSize = 10;

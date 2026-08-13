@@ -1,4 +1,5 @@
 using Elicitation.Tools;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,8 +9,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // Elicitation requires stateful mode because it sends server-to-client requests.
-        // Set Stateless = false explicitly for forward compatibility in case the default changes.
-        options.Stateless = false;
+        // Set SessionMode = HttpServerSessionMode.Stateful since it's required.
+        options.SessionMode = HttpServerSessionMode.Stateful;
     })
     .WithTools<InteractiveTools>();
 
