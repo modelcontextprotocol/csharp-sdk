@@ -5,8 +5,18 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol;
 
-internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>>>
+internal readonly record struct RequestHandlerResult(JsonNode? Json, bool IsProtocolResult = false, bool IsCacheable = false);
+
+internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<RequestHandlerResult>>>
 {
+    private readonly Func<JsonRpcRequest, RequestHandlerResult, JsonNode?>? _prepareResponseForEmission;
+
+    public RequestHandlers(Func<JsonRpcRequest, RequestHandlerResult, JsonNode?>? prepareResponseForEmission = null) =>
+        _prepareResponseForEmission = prepareResponseForEmission;
+
+    public JsonNode? PrepareForEmission(JsonRpcRequest request, RequestHandlerResult result) =>
+        _prepareResponseForEmission?.Invoke(request, result) ?? result.Json;
+
     /// <summary>
     /// Registers a handler for incoming requests of a specific method in the MCP protocol.
     /// </summary>
@@ -41,8 +51,9 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
         this[method] = async (request, cancellationToken) =>
         {
             TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
-            object? result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.SerializeToNode(result, responseTypeInfo);
+            TResult result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
+            JsonNode? resultNode = JsonSerializer.SerializeToNode(result, responseTypeInfo);
+            return new(resultNode, result is Result, result is ICacheableResult);
         };
     }
 
@@ -70,10 +81,14 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
             if (augmented.IsAlternate)
             {
-                return JsonSerializer.SerializeToNode(augmented.Alternate!, augmented.AlternateTypeInfo!);
+                var result = augmented.Alternate!;
+                JsonNode? resultNode = JsonSerializer.SerializeToNode(result, augmented.AlternateTypeInfo!);
+                return new(resultNode, IsProtocolResult: true, IsCacheable: result is ICacheableResult);
             }
 
-            return JsonSerializer.SerializeToNode(augmented.Result!, responseTypeInfo);
+            var immediateResult = augmented.Result!;
+            JsonNode? immediateResultNode = JsonSerializer.SerializeToNode(immediateResult, responseTypeInfo);
+            return new(immediateResultNode, IsProtocolResult: true, IsCacheable: immediateResult is ICacheableResult);
         };
     }
 #pragma warning restore MCPEXP002

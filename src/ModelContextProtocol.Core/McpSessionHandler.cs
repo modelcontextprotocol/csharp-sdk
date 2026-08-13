@@ -532,7 +532,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             throw new McpProtocolException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
         }
 
-        JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
+        RequestHandlerResult handlerResult = await handler(request, cancellationToken).ConfigureAwait(false);
+        JsonNode? result = _requestHandlers.PrepareForEmission(request, handlerResult);
 
         await SendMessageAsync(new JsonRpcResponse
         {
