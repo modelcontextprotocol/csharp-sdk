@@ -20,7 +20,7 @@ internal sealed partial class StreamableHttpPostTransport(
 {
     private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly SseEventWriter _httpSseWriter = new(responseStream);
+    private readonly SseEventWriter? _httpSseWriter = parentTransport.EnableJsonResponse ? null : new(responseStream);
 
     private TaskCompletionSource<bool>? _storeStreamTcs;
 #pragma warning disable MCP9006 // Stateful Streamable HTTP resumability types are obsolete but still wired up internally.
@@ -81,25 +81,28 @@ internal sealed partial class StreamableHttpPostTransport(
         bool deferHeaderFlush = false;
         using (await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
-            if (primingItem.HasValue)
+            if (!parentTransport.EnableJsonResponse)
             {
-                await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
-                await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
-            }
-            else if (onResponseStarting is null)
-            {
-                // If there's no priming write, flush the stream to ensure HTTP response headers are
-                // sent to the client now that the server is ready to process the request.
-                // This prevents HttpClient timeout for long-running requests.
-                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                deferHeaderFlush = true;
+                var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
+                if (primingItem.HasValue)
+                {
+                    await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
+                    await _httpSseWriter!.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
+                }
+                else if (onResponseStarting is null)
+                {
+                    // If there's no priming write, flush the stream to ensure HTTP response headers are
+                    // sent to the client now that the server is ready to process the request.
+                    // This prevents HttpClient timeout for long-running requests.
+                    await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    deferHeaderFlush = true;
+                }
             }
 
-            // Ensure that we've sent the priming event before processing the incoming request.
+            // In SSE mode, ensure that we've sent the priming event before processing the incoming request.
             await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
@@ -200,6 +203,41 @@ internal sealed partial class StreamableHttpPostTransport(
 
         try
         {
+            if (parentTransport.EnableJsonResponse)
+            {
+                if (_finalResponseMessageSent)
+                {
+                    return;
+                }
+
+                if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
+                {
+                    try
+                    {
+                        if (!_httpResponseCompleted)
+                        {
+                            await NotifyResponseStartingAsync(message).ConfigureAwait(false);
+                            await JsonSerializer.SerializeAsync(
+                                responseStream,
+                                message,
+                                McpJsonUtilities.JsonContext.Default.JsonRpcMessage,
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        _httpResponseTcs.TrySetException(ex);
+                    }
+                    finally
+                    {
+                        _finalResponseMessageSent = true;
+                        _httpResponseTcs.TrySetResult(true);
+                    }
+                }
+
+                // JSON mode only returns the final correlated response. Intermediate messages are omitted.
+                return;
+            }
 
             if (_finalResponseMessageSent)
             {
@@ -223,7 +261,7 @@ internal sealed partial class StreamableHttpPostTransport(
                 try
                 {
                     await NotifyResponseStartingAsync(message).ConfigureAwait(false);
-                    await _httpSseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+                    await _httpSseWriter!.WriteAsync(item, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -245,6 +283,11 @@ internal sealed partial class StreamableHttpPostTransport(
 
     public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
     {
+        if (parentTransport.EnableJsonResponse)
+        {
+            throw new InvalidOperationException("Polling is not supported when JSON responses are enabled.");
+        }
+
         if (parentTransport.Stateless)
         {
             throw new InvalidOperationException("Polling is not supported in stateless mode.");
@@ -267,7 +310,7 @@ internal sealed partial class StreamableHttpPostTransport(
         if (!_httpResponseCompleted)
         {
             await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
-            await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+            await _httpSseWriter!.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
         }
 
         // Set the mode to 'Polling' so that the replay stream ends as soon as all available messages have been sent.
@@ -334,7 +377,7 @@ internal sealed partial class StreamableHttpPostTransport(
 
         _httpResponseTcs.TrySetResult(true);
 
-        _httpSseWriter.Dispose();
+        _httpSseWriter?.Dispose();
 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
         // after disposal if there are pending messages.

@@ -70,6 +70,20 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     public bool Stateless { get; init; }
 
     /// <summary>
+    /// Gets or initializes a value that indicates whether POST requests return the final JSON-RPC response as JSON
+    /// instead of streaming messages as SSE events.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to write a single JSON response; <see langword="false"/> to use SSE. The default is
+    /// <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// When enabled, request-related notifications and other intermediate messages are omitted from POST responses.
+    /// Standalone GET requests are unaffected and continue to use SSE.
+    /// </remarks>
+    public bool EnableJsonResponse { get; init; }
+
+    /// <summary>
     /// Gets or initializes a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>
     /// to the corresponding <see cref="JsonRpcMessageContext.ExecutionContext"/> property contained in the <see cref="JsonRpcMessage"/> instances returned by the <see cref="MessageReader"/>.
     /// </summary>
