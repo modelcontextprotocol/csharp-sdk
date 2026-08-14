@@ -21,8 +21,10 @@ OAuth splits the work between two parties, and the MCP authorization specificati
 The SDK's ASP.NET Core integration implements the resource server half only. `AddMcp()` contributes three things:
 
 - the [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) protected resource metadata endpoint, which tells clients which authorization servers to use,
-- the `WWW-Authenticate` challenge on `401` responses, which points clients at that metadata document, and
+- the `WWW-Authenticate` challenge on `401` responses, which carries a `resource_metadata` pointer to that metadata document, and
 - a `ForwardAuthenticate` default of `Bearer`, so that authenticating with the MCP scheme delegates to the `JwtBearer` scheme instead of returning no result — which is why pointing `DefaultScheme` at the MCP scheme also works.
+
+The `resource_metadata` value is appended by the MCP scheme's challenge handler, so the pointer is present only when the MCP scheme is the one challenging. A `401` produced by `JwtBearer` directly — because `DefaultChallengeScheme` points at `Bearer`, or an `[Authorize]` attribute names `Bearer` explicitly — omits it, and clients that rely on the header rather than the RFC 9728 default location cannot find the metadata document.
 
 Token validation itself is ordinary ASP.NET Core `JwtBearer`. There is no API in the SDK for issuing tokens, because a production MCP server should not be issuing its own.
 
@@ -31,10 +33,10 @@ Token validation itself is ordinary ASP.NET Core `JwtBearer`. There is no API in
 
 ## Choosing an authorization server
 
-Any spec-compliant OAuth 2.0 authorization server works. Before committing to one, check that it can do the following, because these are the capabilities MCP leans on:
+Any spec-compliant OAuth 2.0 authorization server that issues JWT access tokens works with the configuration below. `JwtBearer` validates the token itself, so a provider that hands out opaque tokens and expects the resource server to call an introspection endpoint needs a different validation path than the one shown here. Before committing to one, check that it can do the following, because these are the capabilities MCP leans on:
 
 - **Register your MCP server as an API with its own audience**, so issued tokens carry an `aud` claim matching your resource URI ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) resource indicators). Without this you cannot validate the audience, which means a token minted for an unrelated API would be accepted by your server.
-- **Publish discovery metadata** at `/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`. Clients follow your protected resource metadata to the authorization server and then read its metadata to find the authorization and token endpoints.
+- **Publish discovery metadata** at `/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`. Clients follow your protected resource metadata to the authorization server and then read its metadata to find the authorization and token endpoints. Your own server reads that metadata too, for signing keys. Setting `Authority` alone makes `JwtBearer` look at `<authority>/.well-known/openid-configuration`, so a provider that publishes only the [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) document needs `options.MetadataAddress` set explicitly. Note that RFC 8414 inserts `.well-known/oauth-authorization-server` between the host and the issuer path rather than appending it: for an issuer such as `https://login.example.com/tenant-id/v2.0`, the document lives at `https://login.example.com/.well-known/oauth-authorization-server/tenant-id/v2.0`.
 - **Support PKCE**, which OAuth 2.1 requires for public clients.
 - **Support [Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591), or client ID metadata documents.** This is the requirement most often overlooked. MCP clients such as desktop agents and IDE extensions are not yours to pre-register, so unless the authorization server can register them on demand, only clients you have provisioned by hand can connect.
 
@@ -64,6 +66,10 @@ builder.Services.AddAuthentication(options =>
 {
     // Signing keys are discovered from the authority's metadata document and refreshed automatically.
     options.Authority = authority;
+
+    // Keep the claim types the token actually carries; see the note below on why.
+    options.MapInboundClaims = false;
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -105,6 +111,10 @@ app.Run();
 ```
 
 `ValidAudience` is the part worth dwelling on. It is what stops a token issued for a different API in the same tenant from being replayed against your MCP server, so it needs to match the `Resource` you advertise, and your identity provider needs to be configured to mint tokens with that audience.
+
+`MapInboundClaims` is the other line that changes behavior rather than just configuration. It defaults to `true`, which renames a set of well-known JWT claims to their `ClaimTypes` and Microsoft identity-platform equivalents on the way in: `sub` becomes `ClaimTypes.NameIdentifier`, `role` and `roles` become `ClaimTypes.Role`, and `scp` becomes `http://schemas.microsoft.com/identity/claims/scope`. So with mapping left on, `RoleClaimType = "roles"` names a claim type that is no longer there, and `[Authorize(Roles = "Admin")]` denies a caller who does hold the role. Turning mapping off keeps `RoleClaimType` and the `scp` half of the scope policy below matching what the token said.
+
+Not every claim moves: `scope` and `name` are not in the map, so the `scope` branch of that policy and `NameClaimType = "name"` behave the same either way. Leaving mapping on and naming the mapped types instead works equally well — what matters is that the setting and the claim types you read agree. One caveat if you turn it off in a process that hosts more than MCP: `ClaimTypes.NameIdentifier` then goes missing, which SignalR's default user ID provider relies on to identify a user. MCP itself is unaffected, because it falls back to `sub`.
 
 ## Publishing protected resource metadata
 
@@ -206,7 +216,7 @@ Listing operations are filtered too. `tools/list`, `prompts/list`, `resources/li
 
 ### Scope-based policies
 
-Scopes are the natural unit of MCP authorization, since they are what the client requests consent for and what you advertise in `ScopesSupported`. Most providers deliver them in a single space-delimited `scope` claim, and some use `scp` instead, so a policy has to split the value rather than match it whole:
+Scopes are the natural unit of MCP authorization, since they are what the client requests consent for and what you advertise in `ScopesSupported`. Most providers deliver them in a single space-delimited `scope` claim, and some use `scp` instead, so a policy has to split the value rather than match it whole. The `scp` branch below reads the claim under its token name, which is what `MapInboundClaims = false` above preserves; with mapping on it would have to read `http://schemas.microsoft.com/identity/claims/scope` instead:
 
 ```csharp
 builder.Services.AddAuthorization(options =>
@@ -230,7 +240,9 @@ Once a request is authenticated, the `ClaimsPrincipal` flows into tool, prompt, 
 
 [Stateless mode](xref:stateless) is the default and the better fit for most authenticated deployments. Each request is validated on its own, nothing is pinned to a particular instance, and you can scale horizontally without session affinity.
 
-Claim freshness is not a reason to avoid sessions. The `ClaimsPrincipal` the authorization filters evaluate is taken from the current HTTP request each time a message is read, not captured once when the session was created, so a token presented with fewer roles or scopes is evaluated with those reduced claims on the very next request. What a stateful session does pin is *who* the caller is: the server records the `sub`, `NameIdentifier`, or `UPN` claim from the request that initiated the session and rejects any later request bearing a different one with `403 Forbidden`.
+Claim freshness is not a reason to avoid sessions. The `ClaimsPrincipal` the authorization filters evaluate is taken from the current HTTP request each time a message is read, not captured once when the session was created, so a token presented with fewer roles or scopes is evaluated with those reduced claims on the very next request. What a stateful session does pin is *who* the caller is: the server records an identifier from the request that initiated the session — the first of `ClaimTypes.NameIdentifier`, `sub`, or `ClaimTypes.Upn` that is present, in that order — and rejects any later request whose identifier differs with `403 Forbidden`.
+
+A principal carrying none of the three, including an unauthenticated one, is recorded as having no identifier, and "no identifier" is itself compared: two identifier-less callers are indistinguishable and can share a session, while a session that was initiated without an identifier rejects every later request that does present one. That second case is reachable in the ungated shape above, where an anonymous request can open the session, and the resulting `403` reports a user mismatch. Most providers issue `sub`; it is worth confirming it survives to your code, since inbound claim mapping decides whether it arrives as `sub` or as `ClaimTypes.NameIdentifier`.
 
 Two kinds of staleness do exist, and neither involves `[Authorize]`. The first is `IHttpContextAccessor` on the legacy SSE transport, where the ambient `HttpContext` refers to the long-lived SSE connection rather than the POST being handled — see [HTTP context](xref:httpcontext). Taking identity from the injected `ClaimsPrincipal` rather than from `HttpContext.User` avoids it. The second is `ConfigureSessionOptions`, which runs once per session when sessions are enabled: anything you decide there from the initiating request's claims — a filtered tool list, for instance — is fixed for the life of the session, unlike the attribute-based checks.
 
@@ -238,7 +250,7 @@ Two kinds of staleness do exist, and neither involves `[Authorize]`. The first i
 
 | Project | Role | Use in production? |
 | - | - | - |
-| [ProtectedMcpServer](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/ProtectedMcpServer) | Resource server: `JwtBearer` validation, `AddMcp()` metadata, CORS, stateless transport | Yes — this is the shape of a production server. Repoint `Authority` and the metadata at your identity provider. |
+| [ProtectedMcpServer](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/ProtectedMcpServer) | Resource server: `JwtBearer` validation, `AddMcp()` metadata, CORS, stateless transport | Yes — this is the shape of a production server. Repoint `Authority` and the metadata at your identity provider, and settle `MapInboundClaims`: the sample leaves it at its default and has no role or scope check, so the mismatch above is latent there. |
 | [ProtectedMcpClient](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/ProtectedMcpClient) | Client performing the authorization code flow with PKCE | Yes, as a reference for building an MCP client |
 | `tests/ModelContextProtocol.TestOAuthServer` | Authorization server implemented from scratch for tests | No — replace it with your identity provider |
 
@@ -251,4 +263,5 @@ Two kinds of staleness do exist, and neither involves `[Authorize]`. The first i
 - `AddAuthorizationFilters()` is called, and sensitive primitives carry `[Authorize]`.
 - Endpoint-level `RequireAuthorization()` and per-primitive `[AllowAnonymous]` are not both being relied on.
 - Scope policies split the `scope` claim instead of matching it whole.
+- Either `MapInboundClaims = false` with token claim names, or mapping left on with the mapped claim type names — consistently, in `RoleClaimType` and in every policy.
 - Stateless mode is left at its default unless something genuinely requires sessions.
