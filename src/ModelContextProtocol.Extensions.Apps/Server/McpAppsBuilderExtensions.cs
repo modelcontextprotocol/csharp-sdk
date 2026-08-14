@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Extensions.Apps;
 
@@ -17,15 +18,18 @@ public static class McpAppsBuilderExtensions
     /// </summary>
     /// <param name="builder">The server builder.</param>
     /// <param name="method">The tool method to expose.</param>
-    /// <param name="resourceUri">The <c>ui://</c> resource URI associated with the tool.</param>
-    /// <param name="htmlFactory">A callback that returns the HTML for the UI resource.</param>
+    /// <param name="resourceUri">The absolute <c>ui://</c> resource URI associated with the tool.</param>
+    /// <param name="htmlFactory">A resource handler that returns the HTML, synchronously or asynchronously.</param>
     /// <param name="toolOptions">Optional options used when creating the tool.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="builder"/>, <paramref name="method"/>, <paramref name="resourceUri"/>, or
     /// <paramref name="htmlFactory"/> is <see langword="null"/>.
     /// </exception>
-    /// <exception cref="ArgumentException"><paramref name="resourceUri"/> is empty or consists only of whitespace.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="resourceUri"/> is not an absolute, non-templated <c>ui://</c> URI, or conflicts with the
+    /// tool's existing <c>_meta.ui.resourceUri</c> value.
+    /// </exception>
     /// <remarks>
     /// <para>
     /// This is the compact equivalent of creating a tool with <see cref="McpServerTool.Create(Delegate, McpServerToolCreateOptions?)"/>,
@@ -35,8 +39,8 @@ public static class McpAppsBuilderExtensions
     /// </para>
     /// <para>
     /// Calling this method also enables <see cref="WithMcpApps(IMcpServerBuilder)"/> so the server advertises MCP Apps support.
-    /// Existing <see cref="McpServerToolCreateOptions.Meta"/> UI metadata is preserved, as it is with
-    /// <see cref="McpApps.SetAppUi(McpServerTool, McpUiToolMeta)"/>.
+    /// Existing <see cref="McpServerToolCreateOptions.Meta"/> UI metadata is preserved. If it already contains
+    /// <c>ui.resourceUri</c>, that value must exactly match <paramref name="resourceUri"/>.
     /// </para>
     /// </remarks>
     /// <example>
@@ -53,7 +57,7 @@ public static class McpAppsBuilderExtensions
         this IMcpServerBuilder builder,
         Delegate method,
         string resourceUri,
-        Func<string> htmlFactory,
+        Delegate htmlFactory,
         McpServerToolCreateOptions? toolOptions = null)
     {
 #if NET
@@ -67,14 +71,48 @@ public static class McpAppsBuilderExtensions
         if (resourceUri is null) throw new ArgumentNullException(nameof(resourceUri));
         if (htmlFactory is null) throw new ArgumentNullException(nameof(htmlFactory));
 #endif
-        if (string.IsNullOrWhiteSpace(resourceUri))
+        if (resourceUri.Contains('{') || resourceUri.Contains('}'))
         {
-            throw new ArgumentException("Value cannot be empty or composed entirely of whitespace.", nameof(resourceUri));
+            throw new ArgumentException("The resource URI must identify a concrete UI resource and cannot be a URI template.", nameof(resourceUri));
+        }
+
+        if (string.IsNullOrWhiteSpace(resourceUri) ||
+            !Uri.TryCreate(resourceUri, UriKind.Absolute, out Uri? parsedUri) ||
+            !parsedUri.IsWellFormedOriginalString() ||
+            !parsedUri.Scheme.Equals("ui", StringComparison.OrdinalIgnoreCase) ||
+            !resourceUri.StartsWith("ui://", StringComparison.OrdinalIgnoreCase) ||
+            (parsedUri.Host.Length == 0 && parsedUri.AbsolutePath.Length <= 1))
+        {
+            throw new ArgumentException("The resource URI must be a valid absolute URI using the ui:// scheme.", nameof(resourceUri));
         }
 
         var tool = McpApps.SetAppUi(
             McpServerTool.Create(method, toolOptions),
             new McpUiToolMeta { ResourceUri = resourceUri });
+
+        if (tool.ProtocolTool.Meta?["ui"] is not JsonObject uiMetadata)
+        {
+            throw new ArgumentException("The tool's _meta.ui value must be an object.", nameof(resourceUri));
+        }
+
+        if (uiMetadata["resourceUri"] is { } resourceUriNode)
+        {
+            if (resourceUriNode is not JsonValue resourceUriValue ||
+                !resourceUriValue.TryGetValue(out string? existingResourceUri))
+            {
+                throw new ArgumentException("The tool's _meta.ui.resourceUri value must be a string.", nameof(resourceUri));
+            }
+
+            if (!string.Equals(existingResourceUri, resourceUri, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"The tool's UI resource URI '{existingResourceUri}' does not match the registered resource URI '{resourceUri}'.",
+                    nameof(resourceUri));
+            }
+        }
+
+        uiMetadata["resourceUri"] = resourceUri;
+
         var resource = McpServerResource.Create(
             htmlFactory,
             new McpServerResourceCreateOptions

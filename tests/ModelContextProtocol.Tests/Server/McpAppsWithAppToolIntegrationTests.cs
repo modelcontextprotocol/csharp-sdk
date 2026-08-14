@@ -15,6 +15,9 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
 {
+    private const string AppResourceUri = "ui://weather/view.html";
+    private const string AppHtml = "<html><body>weather</body></html>";
+
     public McpAppsWithAppToolIntegrationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
@@ -22,10 +25,9 @@ public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.WithAppTool(
-            AppTools.GetWeather,
-            "ui://weather/view.html",
-            static () => "<html><body>weather</body></html>");
+        mcpServerBuilder
+            .WithAppTool(AppTools.GetWeather, AppResourceUri, AppTools.GetHtmlAsync)
+            .WithAppTool(AppTools.GetWeatherSummary, AppResourceUri, static () => "<html><body>ignored</body></html>");
     }
 
     [Fact]
@@ -34,7 +36,8 @@ public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var tool = Assert.Single(tools);
+        Assert.Equal(2, tools.Count);
+        var tool = Assert.Single(tools, t => t.Name == "weather");
 
         Assert.Equal("weather", tool.Name);
         Assert.Equal("Gets weather for a location", tool.Description);
@@ -51,14 +54,18 @@ public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task WithAppTool_UsesAppMimeTypeAndFactoryContent()
+    public async Task WithAppTool_DuplicateResourceUriUsesFirstHtmlHandler()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         var resource = Assert.Single(resources);
-        Assert.Equal("ui://weather/view.html", resource.Uri);
+        Assert.Equal(AppResourceUri, resource.Uri);
         Assert.Equal(McpApps.HtmlMimeType, resource.MimeType);
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.All(tools, tool =>
+            Assert.Equal(resource.Uri, tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>()));
 
         var result = await client.ReadResourceAsync(
             resource.Uri,
@@ -67,7 +74,7 @@ public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
         var content = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents));
         Assert.Equal(resource.Uri, content.Uri);
         Assert.Equal(McpApps.HtmlMimeType, content.MimeType);
-        Assert.Equal("<html><body>weather</body></html>", content.Text);
+        Assert.Equal(AppHtml, content.Text);
     }
 
     private static class AppTools
@@ -75,5 +82,15 @@ public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
         [McpServerTool(Name = "weather")]
         [Description("Gets weather for a location")]
         public static string GetWeather(string location) => $"Weather for {location}";
+
+        [McpServerTool(Name = "weather_summary")]
+        [Description("Gets a weather summary")]
+        public static string GetWeatherSummary() => "Weather summary";
+
+        public static Task<string> GetHtmlAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(AppHtml);
+        }
     }
 }

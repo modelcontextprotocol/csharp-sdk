@@ -503,20 +503,24 @@ public class McpAppsTests
     }
 
     [Fact]
-    public async Task WithAppTool_PreservesExplicitToolUiMetadata()
+    public async Task WithAppTool_PreservesMatchingToolUiMetadata()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
             .WithAppTool(
                 () => "result",
-                "ui://default/view.html",
+                "ui://explicit/view.html",
                 () => "<html />",
                 new McpServerToolCreateOptions
                 {
                     Name = "app_tool",
                     Meta = new JsonObject
                     {
-                        ["ui"] = new JsonObject { ["resourceUri"] = "ui://explicit/view.html" },
+                        ["ui"] = new JsonObject
+                        {
+                            ["resourceUri"] = "ui://explicit/view.html",
+                            ["visibility"] = new JsonArray(McpUiToolVisibility.App),
+                        },
                     },
                 });
 
@@ -524,10 +528,62 @@ public class McpAppsTests
         var tool = Assert.Single(serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value.ToolCollection!);
 
         Assert.Equal("ui://explicit/view.html", tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+        Assert.Equal(McpUiToolVisibility.App, tool.ProtocolTool.Meta?["ui"]?["visibility"]?[0]?.GetValue<string>());
     }
 
     [Fact]
-    public async Task WithAppTool_DuplicateResourceUriUsesExistingCollectionSemantics()
+    public async Task WithAppTool_AddsResourceUriToExistingToolUiMetadata()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(
+                () => "result",
+                "ui://weather/view.html",
+                () => "<html />",
+                new McpServerToolCreateOptions
+                {
+                    Name = "app_tool",
+                    Meta = new JsonObject
+                    {
+                        ["ui"] = new JsonObject
+                        {
+                            ["visibility"] = new JsonArray(McpUiToolVisibility.Model),
+                        },
+                    },
+                });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var tool = Assert.Single(serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value.ToolCollection!);
+
+        Assert.Equal("ui://weather/view.html", tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+        Assert.Equal(McpUiToolVisibility.Model, tool.ProtocolTool.Meta?["ui"]?["visibility"]?[0]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void WithAppTool_RejectsConflictingToolUiMetadata()
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+
+        var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(
+            () => "result",
+            "ui://weather/view.html",
+            () => "<html />",
+            new McpServerToolCreateOptions
+            {
+                Name = "app_tool",
+                Meta = new JsonObject
+                {
+                    ["ui"] = new JsonObject { ["resourceUri"] = "ui://other/view.html" },
+                },
+            }));
+
+        Assert.Equal("resourceUri", exception.ParamName);
+        Assert.Contains("ui://other/view.html", exception.Message);
+        Assert.Contains("ui://weather/view.html", exception.Message);
+    }
+
+    [Fact]
+    public async Task WithAppTool_DuplicateResourceUriKeepsSingleResource()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
@@ -551,7 +607,25 @@ public class McpAppsTests
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(null!, "ui://test", htmlFactory));
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, null!, htmlFactory));
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, "ui://test", null!));
-        Assert.Throws<ArgumentException>(() => builder.WithAppTool(method, "  ", htmlFactory));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("weather/view.html")]
+    [InlineData("https://weather.example/view.html")]
+    [InlineData("ui:/weather/view.html")]
+    [InlineData("ui://")]
+    [InlineData("ui://weather/{view}.html")]
+    public void WithAppTool_RejectsInvalidResourceUri(string resourceUri)
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+        Delegate method = () => "result";
+        Func<string> htmlFactory = () => "html";
+
+        var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(method, resourceUri, htmlFactory));
+
+        Assert.Equal("resourceUri", exception.ParamName);
     }
 
     #endregion
