@@ -20,6 +20,7 @@ namespace ModelContextProtocol.Tests.Server;
 /// </remarks>
 public class ProtocolVersionResultDecorationTests : ClientServerTestBase
 {
+    private const string ProtocolWarningMarker = "protocol-incompatible result field";
     private static readonly Implementation s_serverInfo = new() { Name = "result-gating-test", Version = "1" };
     private ListToolsResult _cacheableResult = null!;
     private ListResourcesResult _defaultedCacheableResult = null!;
@@ -81,9 +82,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         AssertExact(new JsonObject { ["tools"] = new JsonArray() }, response.Result);
-        Assert.Contains(MockLoggerProvider.LogMessages, message =>
-            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
-            message.Message.Contains("'resultType, ttlMs, cacheScope'", StringComparison.Ordinal));
+        AssertProtocolWarning("resultType, ttlMs, cacheScope");
     }
 
     [Fact]
@@ -104,6 +103,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         AssertExact(JsonNode.Parse("""{"content":[{"type":"text","text":"immediate"}]}"""), response.Result);
+        AssertProtocolWarning("resultType");
     }
 
     [Fact]
@@ -125,6 +125,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             ["ttlMs"] = 1_234,
             ["cacheScope"] = "public",
         }), response.Result);
+        AssertNoProtocolWarning();
     }
 
     [Fact]
@@ -145,6 +146,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         AssertExact(ModernResult(JsonNode.Parse("""{"resultType":"handler-immediate","content":[{"type":"text","text":"immediate"}]}""")!.AsObject()), response.Result);
+        AssertNoProtocolWarning();
     }
 
     [Fact]
@@ -167,6 +169,21 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
         Assert.Null(_defaultedCacheableResult.ResultType);
         Assert.Null(_defaultedCacheableResult.TimeToLive);
         Assert.Null(_defaultedCacheableResult.CacheScope);
+        AssertNoProtocolWarning();
+    }
+
+    [Fact]
+    public async Task ResourcesList_On2025_11_25Session_WithNoApplicationFields_DoesNotWarn()
+    {
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.ResourcesList },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(new JsonObject { ["resources"] = new JsonArray() }, response.Result);
+        AssertNoProtocolWarning();
     }
 
     [Theory]
@@ -189,6 +206,14 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             ? """{"resultType":"handler-normal","description":"normal","messages":[]}"""
             : """{"description":"normal","messages":[]}""")!.AsObject();
         AssertExact(modern ? ModernResult(expected) : expected, response.Result);
+        if (modern)
+        {
+            AssertNoProtocolWarning();
+        }
+        else
+        {
+            AssertProtocolWarning("resultType");
+        }
     }
 
     private static JsonObject ModernResult(JsonObject result)
@@ -202,4 +227,15 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
 
     private static void AssertExact(JsonNode? expected, JsonNode? actual) =>
         Assert.True(JsonNode.DeepEquals(expected, actual), $"Expected: {expected}\nActual: {actual}");
+
+    private void AssertProtocolWarning(string fields) =>
+        Assert.Contains(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal) &&
+            message.Message.Contains($"'{fields}'", StringComparison.Ordinal));
+
+    private void AssertNoProtocolWarning() =>
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal));
 }
