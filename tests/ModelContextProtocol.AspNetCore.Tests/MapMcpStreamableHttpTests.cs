@@ -6,7 +6,9 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using OpenTelemetry.Trace;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Claims;
 using System.Threading;
@@ -44,6 +46,60 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await using var mcpClient = await ConnectAsync(requestPath);
 
         Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
+    }
+
+    // 2025-11-25 is negotiated through the initialize handshake, so in the (default) stateful configuration
+    // the session-level NegotiatedProtocolVersion is populated and the client sends a matching
+    // MCP-Protocol-Version header on every follow-up request. This asserts the span carries the negotiated
+    // version and that the tagged value agrees with the session's NegotiatedProtocolVersion.
+    //
+    // A scenario where the per-request and negotiated versions differ is intentionally not asserted here:
+    // a single MCP session must not change protocol versions, so the server rejects a follow-up request
+    // whose header/_meta version differs from the negotiated one, and a conformant client never sends a
+    // differing header. Reaching that divergence would require a hand-crafted request on an invalid
+    // (failing) code path and would pin the current ordering of tagging relative to version-change
+    // validation. Instead the two inputs to the tag are covered independently: the per-request path in
+    // stateless mode (MapMcpStatelessTests, where NegotiatedProtocolVersion is null at tagging time) and the
+    // negotiated-only fallback over a header-less transport (DiagnosticTests).
+    [Fact]
+    public async Task ServerActivity_TagsNegotiatedProtocolVersion()
+    {
+        var activities = new List<Activity>();
+        string? capturedNegotiatedProtocolVersion = null;
+
+        var protocolVersionTool = McpServerTool.Create(
+            (RequestContext<CallToolRequestParams> context) =>
+            {
+                capturedNegotiatedProtocolVersion = context.Server.NegotiatedProtocolVersion;
+                return "ok";
+            },
+            new() { Name = "negotiated-capture-version" });
+
+        using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+            .AddSource("Experimental.ModelContextProtocol")
+            .AddInMemoryExporter(activities)
+            .Build())
+        {
+            Builder.Services.AddMcpServer()
+                .WithHttpTransport(ConfigureStateless)
+                .WithTools([protocolVersionTool]);
+
+            await using var app = Builder.Build();
+            app.MapMcp();
+            await app.StartAsync(TestContext.Current.CancellationToken);
+
+            await using var client = await ConnectAsync(configureClient: options =>
+                options.ProtocolVersion = "2025-11-25");
+
+            await client.CallToolAsync("negotiated-capture-version", cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        Assert.Contains(activities, activity =>
+            activity.DisplayName == "tools/call negotiated-capture-version" &&
+            activity.Kind == ActivityKind.Server &&
+            activity.GetTagItem("mcp.protocol.version") as string == "2025-11-25");
+
+        Assert.Equal("2025-11-25", capturedNegotiatedProtocolVersion);
     }
 
     [Fact]
