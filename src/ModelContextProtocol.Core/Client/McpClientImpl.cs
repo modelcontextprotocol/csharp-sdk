@@ -187,42 +187,10 @@ internal sealed partial class McpClientImpl : McpClient
         IDictionary<string, InputRequest> inputRequests,
         CancellationToken cancellationToken)
     {
-        // Resolve all input requests concurrently. If any fails, cancel the rest so user-facing
-        // handlers (sampling/elicitation prompts) don't keep running for a request whose caller
-        // has already given up, and ensure exceptions from late-completing tasks are observed.
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        var keyed = new (string Key, Task<InputResponse> Task)[inputRequests.Count];
-        int i = 0;
-        foreach (var kvp in inputRequests)
-        {
-            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(kvp.Value, linkedCts.Token));
-        }
-
-        try
-        {
-            await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
-        }
-        catch
-        {
-            linkedCts.Cancel();
-            try
-            {
-                await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Observed; the original exception is the one we want to surface.
-            }
-            throw;
-        }
-
-        var responses = new Dictionary<string, InputResponse>(keyed.Length);
-        foreach (var (key, task) in keyed)
-        {
-            responses[key] = task.Result;
-        }
-        return responses;
+        return await InputRequiredRequestRunner.ResolveInputRequestsAsync(
+            inputRequests,
+            ResolveInputRequestAsync,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<InputResponse> ResolveInputRequestAsync(InputRequest inputRequest, CancellationToken cancellationToken)
@@ -693,74 +661,44 @@ internal sealed partial class McpClientImpl : McpClient
             }
         }
 
-        const int maxRetries = 10;
-
         InjectRequestMetaIfNeeded(request);
+        return await InputRequiredRequestRunner.RunAsync(
+            request,
+            (currentRequest, token) => _sessionHandler.SendRequestAsync(currentRequest, token),
+            static response => InputRequiredRequestRunner.GetReturnedInputRequiredResult(response.Result),
+            (Func<InputRequiredResult, JsonRpcResponse>?)null,
+            PrepareRetryAsync,
+            static (message, innerException) => new McpException(message, innerException),
+            cancellationToken).ConfigureAwait(false);
 
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        async Task<JsonRpcRequest> PrepareRetryAsync(
+            JsonRpcRequest currentRequest,
+            InputRequiredResult inputRequiredResult,
+            Exception? _,
+            CancellationToken retryCancellationToken)
         {
-            JsonRpcResponse response = await _sessionHandler.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
+            WarnIfInputRequiredResultOnNonMrtrSession(currentRequest.Method);
 
-            // Check if the result is an InputRequiredResult by looking at result_type.
-            if (response.Result is JsonObject resultObj &&
-                resultObj.TryGetPropertyValue("resultType", out var resultTypeNode) &&
-                resultTypeNode?.GetValue<string>() is "input_required")
+            IDictionary<string, InputResponse>? inputResponses = null;
+            if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
             {
-                WarnIfInputRequiredResultOnNonMrtrSession(request.Method);
-
-                var inputRequiredResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.InputRequiredResult)
-                    ?? throw new JsonException("Failed to deserialize InputRequiredResult.");
-
-                if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
-                {
-                    IDictionary<string, InputResponse> inputResponses =
-                        await ResolveInputRequestsAsync(inputRequests, cancellationToken).ConfigureAwait(false);
-
-                    // Clone the original request params and add inputResponses + requestState for the retry.
-                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-
-                    paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
-                        inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
-
-                    if (inputRequiredResult.RequestState is { } requestState)
-                    {
-                        paramsObj["requestState"] = requestState;
-                    }
-                    else
-                    {
-                        // Strip any stale requestState carried over from the previous round's clone so
-                        // the server doesn't see a continuation token the current round is not using.
-                        paramsObj.Remove("requestState");
-                    }
-
-                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
-                    InjectRequestMetaIfNeeded(request);
-                }
-                else if (inputRequiredResult.RequestState is not null)
-                {
-                    // No input requests but has requestState (e.g., load shedding) - just retry with state.
-                    var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-                    paramsObj["requestState"] = inputRequiredResult.RequestState;
-                    paramsObj.Remove("inputResponses");
-
-                    request = new JsonRpcRequest { Method = request.Method, Params = paramsObj, Context = request.Context };
-                    InjectRequestMetaIfNeeded(request);
-                }
-                else
-                {
-                    // An input_required result carrying neither inputRequests nor requestState is
-                    // malformed: there is nothing to resolve and nothing to continue, so retrying the
-                    // unchanged request would just loop until maxRetries. Fail fast instead.
-                    throw new McpException("Server returned an InputRequiredResult without inputRequests or requestState.");
-                }
-
-                continue; // retry with the updated request
+                inputResponses = await ResolveInputRequestsAsync(
+                    inputRequests,
+                    retryCancellationToken).ConfigureAwait(false);
             }
 
-            return response;
+            var retryRequest = new JsonRpcRequest
+            {
+                Method = currentRequest.Method,
+                Params = InputRequiredRequestRunner.CreateRetryParams(
+                    currentRequest.Params,
+                    inputResponses,
+                    inputRequiredResult.RequestState),
+                Context = currentRequest.Context,
+            };
+            InjectRequestMetaIfNeeded(retryRequest);
+            return retryRequest;
         }
-
-        throw new McpException($"Server returned InputRequiredResult more than {maxRetries} times.");
     }
 
     /// <summary>

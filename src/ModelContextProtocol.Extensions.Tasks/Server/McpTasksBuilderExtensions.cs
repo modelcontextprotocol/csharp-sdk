@@ -213,6 +213,10 @@ public static class McpTasksBuilderExtensions
                 }
                 finally
                 {
+                    // A tool may start an outgoing input request and then fail before awaiting it.
+                    // Cancel the task token before disposing the scope so that the request waiter
+                    // observes cancellation and removes its store subscription.
+                    CancelTaskExecution(taskId);
                     await executionScope.DisposeAsync().ConfigureAwait(false);
                 }
             }
@@ -235,10 +239,29 @@ public static class McpTasksBuilderExtensions
             }
             finally
             {
-                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                {
-                    registeredCts.Dispose();
-                }
+                // Also cover races with tasks/cancel and failures during scope disposal.
+                CancelTaskExecution(taskId);
+            }
+        }
+
+        private void CancelTaskExecution(string taskId)
+        {
+            if (!_cancellationSources.TryRemove(taskId, out var cts))
+            {
+                return;
+            }
+
+            try
+            {
+                cts.Cancel();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to cancel background task '{TaskId}' during cleanup.", taskId);
+            }
+            finally
+            {
+                cts.Dispose();
             }
         }
 

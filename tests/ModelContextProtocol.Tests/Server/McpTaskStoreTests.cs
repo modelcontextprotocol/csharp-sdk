@@ -124,6 +124,15 @@ public class McpTaskStoreTests : ClientServerTestBase
 
                     if (request.Params?.Name is "max-retry-mrtr-tool")
                     {
+                        if (request.Params.Arguments?.ContainsKey("completeAtLimit") is true &&
+                            request.Params.RequestState is "10")
+                        {
+                            return new ValueTask<ResultOrAlternate<CallToolResult>>(new CallToolResult
+                            {
+                                Content = [new TextContentBlock { Text = "completed-at-limit" }],
+                            });
+                        }
+
                         int nextRound = int.TryParse(request.Params.RequestState, out var round)
                             ? round + 1
                             : 1;
@@ -635,6 +644,121 @@ public class McpTaskStoreTests : ClientServerTestBase
         Assert.Equal("first|second", Assert.IsType<TextContentBlock>(result!.Content[0]).Text);
         await _taskStore.WaitForNoInputResponseSubscribersAsync(ct);
         Assert.Equal(0, _taskStore.InputResponseSubscriberCount);
+    }
+
+    [Fact]
+    public async Task TaskPipeline_OutOfOrderDuplicateResponsesKeepOriginalValue()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "multi-mrtr-tool" }, ct);
+        var taskId = augmented.TaskCreated!.TaskId;
+        var pending = await _taskStore.WaitForTaskAsync(
+            taskId,
+            static task => task.Status is McpTaskStatus.InputRequired && task.InputRequests?.Count == 2,
+            ct);
+        var firstKey = pending.InputRequests!.Single(
+            pair => pair.Value.ElicitationParams?.Message == "first").Key;
+        var secondKey = pending.InputRequests!.Single(
+            pair => pair.Value.ElicitationParams?.Message == "second").Key;
+
+        await client.UpdateTaskAsync(new UpdateTaskRequestParams
+        {
+            TaskId = taskId,
+            InputResponses = new Dictionary<string, InputResponse>
+            {
+                [secondKey] = InputResponse.FromElicitResult(new ElicitResult { Action = "second-original" }),
+            },
+        }, ct);
+
+        await _taskStore.WaitForTaskAsync(
+            taskId,
+            task => task.Status is McpTaskStatus.InputRequired &&
+                task.InputRequests is { Count: 1 } requests &&
+                requests.ContainsKey(firstKey),
+            ct);
+
+        await client.UpdateTaskAsync(new UpdateTaskRequestParams
+        {
+            TaskId = taskId,
+            InputResponses = new Dictionary<string, InputResponse>
+            {
+                [secondKey] = InputResponse.FromElicitResult(new ElicitResult { Action = "second-duplicate" }),
+                [firstKey] = InputResponse.FromElicitResult(new ElicitResult { Action = "first" }),
+            },
+        }, ct);
+
+        await _taskStore.WaitForTaskAsync(taskId, static task => task.Status is McpTaskStatus.Completed, ct);
+        var completed = Assert.IsType<CompletedTaskResult>(await client.GetTaskAsync(taskId, ct));
+        var result = JsonSerializer.Deserialize(
+            completed.Result,
+            McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+        Assert.Equal("first|second-original", Assert.IsType<TextContentBlock>(result!.Content[0]).Text);
+        await _taskStore.WaitForInputResponseSubscriberCountAsync(0, ct);
+    }
+
+    [Fact]
+    public async Task TaskPipeline_CompletesOnTenthRetryRound()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(new CallToolRequestParams
+        {
+            Name = "max-retry-mrtr-tool",
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["completeAtLimit"] = JsonSerializer.SerializeToElement(
+                    true,
+                    McpJsonUtilities.DefaultOptions.GetTypeInfo<bool>()),
+            },
+        }, ct);
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        await _taskStore.WaitForTaskAsync(taskId, static task => task.Status is McpTaskStatus.Completed, ct);
+        var completed = Assert.IsType<CompletedTaskResult>(await client.GetTaskAsync(taskId, ct));
+        var result = JsonSerializer.Deserialize(
+            completed.Result,
+            McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+        Assert.Equal("completed-at-limit", Assert.IsType<TextContentBlock>(result!.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task TaskPipeline_PartialStoreFailureCancelsRegisteredSiblingWaiter()
+    {
+        _taskStore.FailSetInputRequestsOnCall = 2;
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "multi-mrtr-tool" }, ct);
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        await _taskStore.WaitForTaskAsync(taskId, static task => task.Status is McpTaskStatus.Completed, ct);
+        await _taskStore.WaitForInputResponseSubscriberCountAsync(0, ct);
+        var completed = Assert.IsType<CompletedTaskResult>(await client.GetTaskAsync(taskId, ct));
+        var result = JsonSerializer.Deserialize(
+            completed.Result,
+            McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+        Assert.True(result!.IsError);
+    }
+
+    [Fact]
+    public async Task TaskPipeline_UnexpectedFailureCancelsOutstandingInputWaiter()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "unawaited-input-then-fail" }, ct);
+        var taskId = augmented.TaskCreated!.TaskId;
+
+        await _taskStore.WaitForTaskAsync(taskId, static task => task.Status is McpTaskStatus.Completed, ct);
+        await _taskStore.WaitForInputResponseSubscriberCountAsync(0, ct);
+        var completed = Assert.IsType<CompletedTaskResult>(await client.GetTaskAsync(taskId, ct));
+        Assert.True(completed.Result.GetProperty("isError").GetBoolean());
     }
 
     [Fact]
@@ -1402,36 +1526,68 @@ public class McpTaskStoreTests : ClientServerTestBase
 
             return $"{first.Result.Action}|{second.Result.Action}";
         }
+
+        [McpServerTool(Name = "unawaited-input-then-fail"), System.ComponentModel.Description("A tool that leaves an input waiter while failing")]
+        public static string UnawaitedInputThenFail(McpServer server, CancellationToken cancellationToken)
+        {
+            _ = server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = "orphaned input",
+                RequestedSchema = new(),
+            }, cancellationToken);
+
+            throw new InvalidOperationException("unexpected-tool-failure");
+        }
     }
 
     private sealed class TrackingTaskStore : InMemoryMcpTaskStore, IMcpTaskStore
     {
         private readonly Channel<McpTaskInfo> _taskUpdates = Channel.CreateUnbounded<McpTaskInfo>();
-        private readonly TaskCompletionSource<bool> _noInputResponseSubscribers =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Channel<int> _inputResponseSubscriberCounts = Channel.CreateUnbounded<int>();
         private int _inputResponseSubscriberCount;
+        private int _setInputRequestsCallCount;
 
         public int InputResponseSubscriberCount => Volatile.Read(ref _inputResponseSubscriberCount);
+        public int FailSetInputRequestsOnCall { get; set; }
 
         event Action<InputResponseReceivedEventArgs>? IMcpTaskStore.InputResponseReceived
         {
             add
             {
                 InputResponseReceived += value;
-                Interlocked.Increment(ref _inputResponseSubscriberCount);
+                _inputResponseSubscriberCounts.Writer.TryWrite(
+                    Interlocked.Increment(ref _inputResponseSubscriberCount));
             }
             remove
             {
                 InputResponseReceived -= value;
-                if (Interlocked.Decrement(ref _inputResponseSubscriberCount) == 0)
-                {
-                    _noInputResponseSubscribers.TrySetResult(true);
-                }
+                _inputResponseSubscriberCounts.Writer.TryWrite(
+                    Interlocked.Decrement(ref _inputResponseSubscriberCount));
             }
         }
 
         public Task WaitForNoInputResponseSubscribersAsync(CancellationToken cancellationToken) =>
-            _noInputResponseSubscribers.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+            WaitForInputResponseSubscriberCountAsync(0, cancellationToken);
+
+        public async Task WaitForInputResponseSubscriberCountAsync(
+            int expectedCount,
+            CancellationToken cancellationToken)
+        {
+            if (InputResponseSubscriberCount == expectedCount)
+            {
+                return;
+            }
+
+            while (true)
+            {
+                var count = await _inputResponseSubscriberCounts.Reader.ReadAsync(cancellationToken).AsTask()
+                    .WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+                if (count == expectedCount)
+                {
+                    return;
+                }
+            }
+        }
 
         public async Task<McpTaskInfo> WaitForTaskAsync(
             string taskId,
@@ -1493,6 +1649,11 @@ public class McpTaskStoreTests : ClientServerTestBase
             IDictionary<string, InputRequest> inputRequests,
             CancellationToken cancellationToken)
         {
+            if (Interlocked.Increment(ref _setInputRequestsCallCount) == FailSetInputRequestsOnCall)
+            {
+                throw new InvalidOperationException("Injected SetInputRequestsAsync failure.");
+            }
+
             await SetInputRequestsAsync(taskId, inputRequests, cancellationToken);
             await PublishTaskUpdateAsync(taskId, cancellationToken);
         }
