@@ -24,6 +24,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
     private static readonly Implementation s_serverInfo = new() { Name = "result-gating-test", Version = "1" };
     private ListToolsResult _cacheableResult = null!;
     private ListResourcesResult _defaultedCacheableResult = null!;
+    private ListPromptsResult _partialCacheableResult = null!;
     private GetPromptResult _normalResult = null!;
     private CallToolResult _immediateAlternateResult = null!;
 
@@ -41,6 +42,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             CacheScope = CacheScope.Private,
         };
         _defaultedCacheableResult = new();
+        _partialCacheableResult = new() { TimeToLive = TimeSpan.FromMilliseconds(-5) };
         _normalResult = new() { ResultType = "handler-normal", Description = "normal" };
         _immediateAlternateResult = new()
         {
@@ -61,6 +63,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
                 return result;
             });
             options.Handlers.ListResourcesHandler = (_, _) => new(_defaultedCacheableResult);
+            options.Handlers.ListPromptsHandler = (_, _) => new(_partialCacheableResult);
             options.Handlers.GetPromptHandler = (_, _) => new(_normalResult);
 #pragma warning disable MCPEXP002
             options.Handlers.CallToolWithAlternateHandler = (_, _) =>
@@ -69,13 +72,17 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
         });
     }
 
-    [Fact]
-    public async Task ToolsList_On2025_11_25Session_OmitsResultTypeAndCacheHints()
+    [Theory]
+    [InlineData(McpProtocolVersions.November2024ProtocolVersion)]
+    [InlineData(McpProtocolVersions.March2025ProtocolVersion)]
+    [InlineData(McpProtocolVersions.June2025ProtocolVersion)]
+    [InlineData(McpProtocolVersions.November2025ProtocolVersion)]
+    public async Task ToolsList_OnLegacySession_OmitsResultTypeAndCacheHints(string protocolVersion)
     {
         await using var client = await CreateMcpClientForServer(
-            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+            new McpClientOptions { ProtocolVersion = protocolVersion });
 
-        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(protocolVersion, client.NegotiatedProtocolVersion);
 
         var response = await client.SendRequestAsync(
             new JsonRpcRequest { Method = RequestMethods.ToolsList },
@@ -184,6 +191,79 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
 
         AssertExact(new JsonObject { ["resources"] = new JsonArray() }, response.Result);
         AssertNoProtocolWarning();
+    }
+
+    [Fact]
+    public async Task PromptsList_OnLegacySession_OmitsOnlyExplicitCacheHint()
+    {
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.PromptsList },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(new JsonObject { ["prompts"] = new JsonArray() }, response.Result);
+        AssertProtocolWarning("ttlMs");
+        Assert.Null(_partialCacheableResult.ResultType);
+        Assert.Equal(TimeSpan.FromMilliseconds(-5), _partialCacheableResult.TimeToLive);
+        Assert.Null(_partialCacheableResult.CacheScope);
+    }
+
+    [Fact]
+    public async Task PromptsList_OnModernSession_PreservesNegativeTtlAndDefaultsMissingFields()
+    {
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.PromptsList },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(ModernResult(new JsonObject
+        {
+            ["resultType"] = "complete",
+            ["prompts"] = new JsonArray(),
+            ["ttlMs"] = -5,
+            ["cacheScope"] = "private",
+        }), response.Result);
+        AssertNoProtocolWarning();
+        Assert.Null(_partialCacheableResult.ResultType);
+        Assert.Equal(TimeSpan.FromMilliseconds(-5), _partialCacheableResult.TimeToLive);
+        Assert.Null(_partialCacheableResult.CacheScope);
+    }
+
+    [Fact]
+    public async Task LegacyResults_WarnOncePerMethod()
+    {
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        for (int i = 0; i < 2; i++)
+        {
+            var response = await client.SendRequestAsync(
+                new JsonRpcRequest { Method = RequestMethods.ToolsList },
+                TestContext.Current.CancellationToken);
+
+            AssertExact(new JsonObject { ["tools"] = new JsonArray() }, response.Result);
+        }
+
+        var promptsResponse = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.PromptsList },
+            TestContext.Current.CancellationToken);
+        AssertExact(new JsonObject { ["prompts"] = new JsonArray() }, promptsResponse.Result);
+
+        Assert.Equal(2, MockLoggerProvider.LogMessages.Count(message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal)));
+        Assert.Single(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal) &&
+            message.Message.Contains(RequestMethods.ToolsList, StringComparison.Ordinal));
+        Assert.Single(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal) &&
+            message.Message.Contains(RequestMethods.PromptsList, StringComparison.Ordinal));
     }
 
     [Theory]

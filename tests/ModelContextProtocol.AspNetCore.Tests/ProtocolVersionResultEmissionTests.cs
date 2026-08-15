@@ -77,9 +77,76 @@ public sealed class ProtocolVersionResultEmissionTests(ITestOutputHelper outputH
         Assert.Equal(CacheScope.Public, _sharedResult.CacheScope);
     }
 
-    private Task<HttpResponseMessage> SendModernListToolsAsync()
+    [Fact]
+    public async Task SharedResult_ConcurrentLegacyAndModernRequestsRemainIsolated()
     {
-        var request = CreateRequest(ListToolsModernRequest);
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new() { Name = "result-emission-http-test", Version = "1" };
+            options.Handlers.ListToolsHandler = (_, _) => new(_sharedResult);
+        })
+            .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var initializeResponse = await SendAsync(InitializeRequest);
+        Assert.Equal(HttpStatusCode.OK, initializeResponse.StatusCode);
+        var sessionId = Assert.Single(initializeResponse.Headers.GetValues("Mcp-Session-Id"));
+        using var initializedResponse = await SendAsync(InitializedNotification, sessionId);
+        Assert.Equal(HttpStatusCode.Accepted, initializedResponse.StatusCode);
+
+        var modernTasks = Enumerable.Range(0, 8).Select(async i =>
+        {
+            using var response = await SendModernListToolsAsync(id: 100 + i);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (await ReadJsonResponseAsync(response))["result"]!;
+        }).ToArray();
+        var legacyTasks = Enumerable.Range(0, 8).Select(async i =>
+        {
+            using var response = await SendAsync(
+                ListToolsRequest.Replace("\"id\":2", $"\"id\":{200 + i}", StringComparison.Ordinal),
+                sessionId);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (await ReadJsonResponseAsync(response))["result"]!;
+        }).ToArray();
+
+        var results = await Task.WhenAll(modernTasks.Concat(legacyTasks));
+        var expectedModern = JsonNode.Parse("""
+            {
+              "resultType": "shared",
+              "tools": [],
+              "ttlMs": 4321,
+              "cacheScope": "public",
+              "_meta": {
+                "io.modelcontextprotocol/serverInfo": {
+                  "name": "result-emission-http-test",
+                  "version": "1"
+                }
+              }
+            }
+            """);
+        var expectedLegacy = new JsonObject { ["tools"] = new JsonArray() };
+
+        Assert.All(results[..modernTasks.Length], result =>
+            Assert.True(JsonNode.DeepEquals(expectedModern, result), $"Unexpected modern result: {result}"));
+        Assert.All(results[modernTasks.Length..], result =>
+            Assert.True(JsonNode.DeepEquals(expectedLegacy, result), $"Unexpected legacy result: {result}"));
+        Assert.Single(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains("protocol-incompatible result field", StringComparison.Ordinal) &&
+            message.Message.Contains(RequestMethods.ToolsList, StringComparison.Ordinal));
+
+        Assert.Equal("shared", _sharedResult.ResultType);
+        Assert.Equal(TimeSpan.FromMilliseconds(4_321), _sharedResult.TimeToLive);
+        Assert.Equal(CacheScope.Public, _sharedResult.CacheScope);
+    }
+
+    private Task<HttpResponseMessage> SendModernListToolsAsync(int id = 3)
+    {
+        var request = CreateRequest(
+            ListToolsModernRequest.Replace("\"id\":3", $"\"id\":{id}", StringComparison.Ordinal));
         request.Headers.Add("MCP-Protocol-Version", McpProtocolVersions.July2026ProtocolVersion);
         request.Headers.Add("Mcp-Method", RequestMethods.ToolsList);
         return HttpClient.SendAsync(request, TestContext.Current.CancellationToken);

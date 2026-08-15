@@ -33,6 +33,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
+    private readonly ConcurrentDictionary<string, byte> _protocolIncompatibleResultFieldsWarnedMethods = new();
     private static readonly string[] s_perRequestMetadataKeys =
     [
         MetaKeys.ProtocolVersion,
@@ -1882,7 +1883,8 @@ internal sealed partial class McpServerImpl : McpServer
             }
         }
 
-        if (strippedFields is not null)
+        if (strippedFields is not null &&
+            _protocolIncompatibleResultFieldsWarnedMethods.TryAdd(request.Method, 0))
         {
             ProtocolIncompatibleResultFieldsOmitted(
                 _endpointName,
