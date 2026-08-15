@@ -560,6 +560,28 @@ public class McpAppsTests
     }
 
     [Fact]
+    public void WithAppTool_RejectsNullToolUiResourceUri()
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+
+        var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(
+            () => "result",
+            "ui://weather/view.html",
+            () => "<html />",
+            new McpServerToolCreateOptions
+            {
+                Name = "app_tool",
+                Meta = new JsonObject
+                {
+                    ["ui"] = new JsonObject { ["resourceUri"] = null },
+                },
+            }));
+
+        Assert.Equal("resourceUri", exception.ParamName);
+        Assert.Contains("must be a string", exception.Message);
+    }
+
+    [Fact]
     public void WithAppTool_RejectsConflictingToolUiMetadata()
     {
         var builder = new ServiceCollection().AddMcpServer();
@@ -626,6 +648,29 @@ public class McpAppsTests
         var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(method, resourceUri, htmlFactory));
 
         Assert.Equal("resourceUri", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task WithAppTool_AcceptsEncodedBracesAsLiteralUriContent()
+    {
+        const string ResourceUri = "ui://weather/literal%7Bview%7D.html";
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(
+                () => "result",
+                ResourceUri,
+                () => "<html />",
+                new() { Name = "app_tool" });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var tool = Assert.Single(options.ToolCollection!);
+        var resource = Assert.Single(options.ResourceCollection!);
+
+        Assert.Equal(ResourceUri, tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+        Assert.Equal(ResourceUri, resource.ProtocolResourceTemplate.UriTemplate);
+        Assert.False(resource.IsTemplated);
+        Assert.True(resource.IsMatch(ResourceUri));
     }
 
     #endregion

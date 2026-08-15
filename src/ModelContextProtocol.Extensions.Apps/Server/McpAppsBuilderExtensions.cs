@@ -27,8 +27,8 @@ public static class McpAppsBuilderExtensions
     /// <paramref name="htmlFactory"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="resourceUri"/> is not an absolute, non-templated <c>ui://</c> URI, or conflicts with the
-    /// tool's existing <c>_meta.ui.resourceUri</c> value.
+    /// <paramref name="resourceUri"/> is not an absolute, non-templated <c>ui://</c> URI, or the tool's existing
+    /// <c>_meta.ui.resourceUri</c> value is not a string that exactly matches it.
     /// </exception>
     /// <remarks>
     /// <para>
@@ -40,7 +40,7 @@ public static class McpAppsBuilderExtensions
     /// <para>
     /// Calling this method also enables <see cref="WithMcpApps(IMcpServerBuilder)"/> so the server advertises MCP Apps support.
     /// Existing <see cref="McpServerToolCreateOptions.Meta"/> UI metadata is preserved. If it already contains
-    /// <c>ui.resourceUri</c>, that value must exactly match <paramref name="resourceUri"/>.
+    /// <c>ui.resourceUri</c>, that value must be a string that exactly matches <paramref name="resourceUri"/>.
     /// </para>
     /// </remarks>
     /// <example>
@@ -95,8 +95,9 @@ public static class McpAppsBuilderExtensions
             throw new ArgumentException("The tool's _meta.ui value must be an object.", nameof(resourceUri));
         }
 
-        if (uiMetadata["resourceUri"] is { } resourceUriNode)
+        if (uiMetadata.ContainsKey("resourceUri"))
         {
+            JsonNode? resourceUriNode = uiMetadata["resourceUri"];
             if (resourceUriNode is not JsonValue resourceUriValue ||
                 !resourceUriValue.TryGetValue(out string? existingResourceUri))
             {
