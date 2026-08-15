@@ -250,72 +250,16 @@ public static class McpTasksBuilderExtensions
         {
             try
             {
-                const int MaxRetries = 10;
-                ResultOrAlternate<CallToolResult> augmented;
-
-                for (int retry = 0; ; retry++)
-                {
-                    try
-                    {
-                        augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
-                        break;
-                    }
-                    catch (InputRequiredException ex)
-                    {
-                        if (retry >= MaxRetries)
-                        {
-                            throw new McpProtocolException(
-                                $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.",
-                                McpErrorCode.InvalidRequest);
-                        }
-
-                        if (ex.Result.InputRequests is { Count: > 0 } inputRequests)
-                        {
-                            request.Params.InputResponses = await ResolveInputRequestsAsync(
-                                request.Server, inputRequests, taskCancellationToken).ConfigureAwait(false);
-                        }
-                        else if (ex.Result.RequestState is not null)
-                        {
-                            request.Params.InputResponses = null;
-                        }
-                        else
-                        {
-                            throw new McpProtocolException(
-                                "A tool returned an input-required result without input requests or request state.",
-                                McpErrorCode.InvalidRequest);
-                        }
-
-                        request.Params.RequestState = ex.Result.RequestState;
-
-                        var paramsObj = request.JsonRpcRequest.Params?.DeepClone() as JsonObject ?? new JsonObject();
-                        if (request.Params.InputResponses is { } inputResponses)
-                        {
-                            paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
-                                inputResponses, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, InputResponse>>());
-                        }
-                        else
-                        {
-                            paramsObj.Remove("inputResponses");
-                        }
-
-                        if (ex.Result.RequestState is { } requestState)
-                        {
-                            paramsObj["requestState"] = requestState;
-                        }
-                        else
-                        {
-                            paramsObj.Remove("requestState");
-                        }
-
-                        request.JsonRpcRequest = new JsonRpcRequest
-                        {
-                            Id = request.JsonRpcRequest.Id,
-                            Method = request.JsonRpcRequest.Method,
-                            Params = paramsObj,
-                            Context = request.JsonRpcRequest.Context,
-                        };
-                    }
-                }
+                var augmented = await InputRequiredRequestRunner.RunAsync(
+                    request,
+                    async (currentRequest, cancellationToken) =>
+                        await next(currentRequest, cancellationToken).ConfigureAwait(false),
+                    static result => result.IsAlternate ? result.Alternate as InputRequiredResult : null,
+                    (Func<InputRequiredResult, ResultOrAlternate<CallToolResult>>?)null,
+                    PrepareRetryAsync,
+                    static (message, innerException) =>
+                        new McpProtocolException(message, innerException, McpErrorCode.InvalidRequest),
+                    taskCancellationToken).ConfigureAwait(false);
 
                 if (augmented.IsAlternate)
                 {
@@ -331,6 +275,38 @@ public static class McpTasksBuilderExtensions
 
                 var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
+
+                async Task<RequestContext<CallToolRequestParams>> PrepareRetryAsync(
+                    RequestContext<CallToolRequestParams> currentRequest,
+                    InputRequiredResult inputRequiredResult,
+                    Exception? _,
+                    CancellationToken retryCancellationToken)
+                {
+                    IDictionary<string, InputResponse>? inputResponses = null;
+                    if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
+                    {
+                        inputResponses = await InputRequiredRequestRunner.ResolveInputRequestsAsync(
+                            inputRequests,
+                            (inputRequest, requestCancellationToken) =>
+                                ResolveInputRequestAsync(currentRequest.Server, inputRequest, requestCancellationToken),
+                            retryCancellationToken).ConfigureAwait(false);
+                    }
+
+                    currentRequest.Params.InputResponses = inputResponses;
+                    currentRequest.Params.RequestState = inputRequiredResult.RequestState;
+                    currentRequest.JsonRpcRequest = new JsonRpcRequest
+                    {
+                        Id = currentRequest.JsonRpcRequest.Id,
+                        Method = currentRequest.JsonRpcRequest.Method,
+                        Params = InputRequiredRequestRunner.CreateRetryParams(
+                            currentRequest.JsonRpcRequest.Params,
+                            inputResponses,
+                            inputRequiredResult.RequestState),
+                        Context = currentRequest.JsonRpcRequest.Context,
+                    };
+
+                    return currentRequest;
+                }
             }
             catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
             {
@@ -362,42 +338,53 @@ public static class McpTasksBuilderExtensions
             }
         }
 
-        private static async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
+#pragma warning disable MCP9005 // Tasks still supports the deprecated Sampling and Roots MRTR input methods.
+        private static async Task<InputResponse> ResolveInputRequestAsync(
             McpServer server,
-            IDictionary<string, InputRequest> inputRequests,
+            InputRequest inputRequest,
             CancellationToken cancellationToken)
         {
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var keyedTasks = inputRequests.Select(async pair =>
+            switch (inputRequest.Method)
             {
-                try
-                {
-                    var response = await server.SendRequestAsync(new JsonRpcRequest
-                    {
-                        Method = pair.Value.Method,
-                        Params = pair.Value.Params is { } paramsElement
-                            ? JsonSerializer.SerializeToNode(paramsElement, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonElement>())
-                            : null,
-                    }, linkedCts.Token).ConfigureAwait(false);
-                    var result = response.Result
-                        ?? throw new McpException($"The '{pair.Value.Method}' input request returned no result.");
+                case RequestMethods.ElicitationCreate:
+                    _ = inputRequest.ElicitationParams
+                        ?? throw new McpException("Failed to deserialize elicitation parameters from MRTR input request.");
+                    break;
 
-                    return new KeyValuePair<string, InputResponse>(pair.Key, new InputResponse
-                    {
-                        RawValue = JsonSerializer.SerializeToElement(
-                            result, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
-                    });
-                }
-                catch
-                {
-                    linkedCts.Cancel();
-                    throw;
-                }
-            }).ToArray();
+                case RequestMethods.SamplingCreateMessage:
+                    _ = inputRequest.SamplingParams
+                        ?? throw new McpException("Failed to deserialize sampling parameters from MRTR input request.");
+                    break;
 
-            return (await Task.WhenAll(keyedTasks).ConfigureAwait(false))
-                .ToDictionary(pair => pair.Key, pair => pair.Value);
+                case RequestMethods.RootsList:
+                    _ = inputRequest.RootsParams ?? new ListRootsRequestParams();
+                    break;
+
+                default:
+                    throw new McpException($"Unsupported input request method: '{inputRequest.Method}'.");
+            }
+
+            var response = await server.SendRequestAsync(new JsonRpcRequest
+            {
+                Method = inputRequest.Method,
+                Params = inputRequest.Params is { } paramsElement
+                    ? JsonSerializer.SerializeToNode(
+                        paramsElement,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonElement>())
+                    : null,
+            }, cancellationToken).ConfigureAwait(false);
+
+            var result = response.Result
+                ?? throw new McpException($"The '{inputRequest.Method}' input request returned no result.");
+
+            return new InputResponse
+            {
+                RawValue = JsonSerializer.SerializeToElement(
+                    result,
+                    McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
+            };
         }
+#pragma warning restore MCP9005
 
         private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {
