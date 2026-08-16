@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +23,13 @@ public static class McpEndpointRouteBuilderExtensions
     /// <remarks>
     /// For details about the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">2025-11-25 protocol specification</see>.
     /// When legacy SSE is enabled via <see cref="HttpServerTransportOptions.EnableLegacySse"/>, this method also maps legacy SSE endpoints at the path "/sse" and "/message". For details about the HTTP with SSE transport, see the <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">2024-11-05 protocol specification</see>.
+    /// <para>
+    /// By default, the mapped endpoints validate the <c>Origin</c> header of browser requests: requests without an
+    /// <c>Origin</c> header, same-origin requests, and loopback origins are allowed, and other cross-origin requests
+    /// are rejected with <c>403 Forbidden</c>. Additional allowed origins can be configured via
+    /// <see cref="HttpServerTransportOptions.AllowedOrigins"/>, and validation can be disabled entirely via
+    /// <see cref="HttpServerTransportOptions.DisableOriginValidation"/>.
+    /// </para>
     /// </remarks>
     public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "")
     {
@@ -78,6 +85,15 @@ public static class McpEndpointRouteBuilderExtensions
                     .WithMetadata(new AcceptsMetadata(["application/json"]))
                     .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
             }
+        }
+
+        // By default, validate the Origin header of browser requests to the MCP endpoints to protect
+        // against DNS rebinding. Requests without an Origin header (SDK clients, curl) are always allowed;
+        // see OriginValidationEndpointFilter for the exact rules. Disable via
+        // HttpServerTransportOptions.DisableOriginValidation.
+        if (!options.DisableOriginValidation)
+        {
+            mcpGroup.AddEndpointFilter(new OriginValidationEndpointFilter(options));
         }
 
         return mcpGroup;
