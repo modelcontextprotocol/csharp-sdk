@@ -577,7 +577,7 @@ public class McpAppsTests
                 },
             }));
 
-        Assert.Equal("resourceUri", exception.ParamName);
+        Assert.Equal("toolOptions", exception.ParamName);
         Assert.Contains("must be a string", exception.Message);
     }
 
@@ -599,9 +599,157 @@ public class McpAppsTests
                 },
             }));
 
-        Assert.Equal("resourceUri", exception.ParamName);
+        Assert.Equal("toolOptions", exception.ParamName);
         Assert.Contains("ui://other/view.html", exception.Message);
         Assert.Contains("ui://weather/view.html", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WithAppTool_RejectsLowLevelResourceCollision(bool registerLowLevelResourceFirst)
+    {
+        const string ResourceUri = "ui://shared/view.html";
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        var lowLevelResource = McpServerResource.Create(
+            () => "low-level",
+            new() { UriTemplate = ResourceUri, MimeType = "text/plain" });
+
+        if (registerLowLevelResourceFirst)
+        {
+            builder.WithResources([lowLevelResource]);
+        }
+
+        builder.WithAppTool(
+            () => "app",
+            ResourceUri,
+            () => "<html>app</html>",
+            new() { Name = "app_tool" });
+
+        if (!registerLowLevelResourceFirst)
+        {
+            builder.WithResources([lowLevelResource]);
+        }
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+
+        Assert.Contains(ResourceUri, exception.Message);
+        Assert.Contains("already registered", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("ui://weather/view.html", "ui://WEATHER/view.html")]
+    [InlineData("ui://weather/literal%7Bview%7D.html", "ui://weather/literal%7bview%7d.html")]
+    [InlineData("ui://weather/a/../view.html", "ui://weather/view.html")]
+    [InlineData("ui://weather/view.html#one", "ui://weather/view.html#two")]
+    [InlineData("ui://weather/%76iew.html", "ui://weather/view.html")]
+    public async Task WithAppTool_RejectsEquivalentResourceUrisWithDifferentSpelling(
+        string firstResourceUri,
+        string secondResourceUri)
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(() => "first", firstResourceUri, () => "first", new() { Name = "first" })
+            .WithAppTool(() => "second", secondResourceUri, () => "second", new() { Name = "second" });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+
+        Assert.Contains(firstResourceUri, exception.Message);
+        Assert.Contains(secondResourceUri, exception.Message);
+        Assert.Contains("same resource", exception.Message);
+    }
+
+    [Fact]
+    public async Task WithAppTool_AllowsDistinctResourceQueries()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(() => "first", "ui://weather/view.html?mode=compact", () => "first", new() { Name = "first" })
+            .WithAppTool(() => "second", "ui://weather/view.html?mode=full", () => "second", new() { Name = "second" });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.Equal(2, options.ToolCollection!.Count);
+        Assert.Equal(2, options.ResourceCollection!.Count);
+    }
+
+    [Fact]
+    public async Task WithAppTool_RejectsPostConfiguredResourceLinkMismatch()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(
+                () => "result",
+                "ui://weather/view.html",
+                () => "<html />",
+                new() { Name = "app_tool" });
+        services.PostConfigure<McpServerOptions>(options =>
+        {
+            McpServerTool tool = Assert.Single(options.ToolCollection!);
+            tool.ProtocolTool.Meta!["ui"]!["resourceUri"] = "ui://other/view.html";
+        });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+
+        Assert.Contains("app_tool", exception.Message);
+        Assert.Contains("ui://weather/view.html", exception.Message);
+    }
+
+    [Fact]
+    public async Task WithAppTool_RejectsDuplicateToolName()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithAppTool(() => "first", "ui://first/view.html", () => "first", new() { Name = "shared" })
+            .WithAppTool(() => "second", "ui://second/view.html", () => "second", new() { Name = "shared" });
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+
+        Assert.Contains("shared", exception.Message);
+        Assert.Contains("already registered", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WithAppTool_RejectsLowLevelToolCollision(bool registerLowLevelToolFirst)
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        var lowLevelTool = McpServerTool.Create(() => "low-level", new() { Name = "shared" });
+
+        if (registerLowLevelToolFirst)
+        {
+            builder.WithTools([lowLevelTool]);
+        }
+
+        builder.WithAppTool(
+            () => "app",
+            "ui://shared/view.html",
+            () => "<html>app</html>",
+            new() { Name = "shared" });
+
+        if (!registerLowLevelToolFirst)
+        {
+            builder.WithTools([lowLevelTool]);
+        }
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+
+        Assert.Contains("shared", exception.Message);
+        Assert.Contains("already registered", exception.Message);
     }
 
     [Fact]
@@ -629,6 +777,36 @@ public class McpAppsTests
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(null!, "ui://test", htmlFactory));
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, null!, htmlFactory));
         Assert.Throws<ArgumentNullException>(() => builder.WithAppTool(method, "ui://test", null!));
+    }
+
+    [Fact]
+    public void WithAppTool_RejectsHtmlFactoryWithUnsupportedReturnType()
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+        Func<ReadResourceResult> htmlFactory = () => new();
+
+        var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(
+            () => "result",
+            "ui://weather/view.html",
+            htmlFactory));
+
+        Assert.Equal("htmlFactory", exception.ParamName);
+        Assert.Contains("string", exception.Message);
+    }
+
+    [Fact]
+    public void WithAppTool_RejectsHtmlFactoryWithNonCancellationParameter()
+    {
+        var builder = new ServiceCollection().AddMcpServer();
+        Func<string, string> htmlFactory = value => value;
+
+        var exception = Assert.Throws<ArgumentException>(() => builder.WithAppTool(
+            () => "result",
+            "ui://weather/view.html",
+            htmlFactory));
+
+        Assert.Equal("htmlFactory", exception.ParamName);
+        Assert.Contains(nameof(CancellationToken), exception.Message);
     }
 
     [Theory]

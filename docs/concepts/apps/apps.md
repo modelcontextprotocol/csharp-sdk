@@ -48,9 +48,10 @@ builder.Services.AddMcpServer()
 
 The `resourceUri` argument is authoritative and must be a concrete, absolute `ui://` URI; URI templates are not accepted.
 If the tool options already contain `_meta.ui.resourceUri`, it must be a string that exactly matches the argument, while other UI metadata is preserved.
-The HTML handler may be synchronous or asynchronous and can accept a `CancellationToken` through the existing resource-handler binding.
+The HTML handler must return `string`, `Task<string>`, or `ValueTask<string>`. It can have no parameters or accept a single `CancellationToken`.
 
-When multiple app tools use the same resource URI, the existing resource collection semantics apply: the first registered HTML handler serves that URI.
+When multiple app tools use the exact same resource URI, the first registered HTML handler serves that URI.
+Equivalent URI spellings and collisions with resources registered through the lower-level APIs are rejected when server options are resolved, so every tool link identifies the HTML resource created by `WithAppTool`.
 Use the lower-level registration APIs when the tool or resource needs additional configuration.
 
 ### Using attributes with registered tool types

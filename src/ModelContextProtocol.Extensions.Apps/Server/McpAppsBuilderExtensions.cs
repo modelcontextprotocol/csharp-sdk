@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -19,7 +20,11 @@ public static class McpAppsBuilderExtensions
     /// <param name="builder">The server builder.</param>
     /// <param name="method">The tool method to expose.</param>
     /// <param name="resourceUri">The absolute <c>ui://</c> resource URI associated with the tool.</param>
-    /// <param name="htmlFactory">A resource handler that returns the HTML, synchronously or asynchronously.</param>
+    /// <param name="htmlFactory">
+    /// A resource handler that returns the HTML as a <see cref="string"/>, <see cref="Task{TResult}"/> of
+    /// <see cref="string"/>, or <see cref="ValueTask{TResult}"/> of <see cref="string"/>. It may have no parameters
+    /// or a single <see cref="CancellationToken"/> parameter.
+    /// </param>
     /// <param name="toolOptions">Optional options used when creating the tool.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException">
@@ -27,8 +32,12 @@ public static class McpAppsBuilderExtensions
     /// <paramref name="htmlFactory"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="resourceUri"/> is not an absolute, non-templated <c>ui://</c> URI, or the tool's existing
+    /// <paramref name="resourceUri"/> is not an absolute, non-templated <c>ui://</c> URI,
+    /// <paramref name="htmlFactory"/> has an unsupported signature, or the tool's existing
     /// <c>_meta.ui.resourceUri</c> value is not a string that exactly matches it.
+    /// </exception>
+    /// <exception cref="OptionsValidationException">
+    /// The app tool's name or resource URI conflicts with another registration when server options are resolved.
     /// </exception>
     /// <remarks>
     /// <para>
@@ -86,13 +95,15 @@ public static class McpAppsBuilderExtensions
             throw new ArgumentException("The resource URI must be a valid absolute URI using the ui:// scheme.", nameof(resourceUri));
         }
 
+        ValidateHtmlFactory(htmlFactory);
+
         var tool = McpApps.SetAppUi(
             McpServerTool.Create(method, toolOptions),
             new McpUiToolMeta { ResourceUri = resourceUri });
 
         if (tool.ProtocolTool.Meta?["ui"] is not JsonObject uiMetadata)
         {
-            throw new ArgumentException("The tool's _meta.ui value must be an object.", nameof(resourceUri));
+            throw new ArgumentException("The tool's _meta.ui value must be an object.", nameof(toolOptions));
         }
 
         if (uiMetadata.ContainsKey("resourceUri"))
@@ -101,14 +112,14 @@ public static class McpAppsBuilderExtensions
             if (resourceUriNode is not JsonValue resourceUriValue ||
                 !resourceUriValue.TryGetValue(out string? existingResourceUri))
             {
-                throw new ArgumentException("The tool's _meta.ui.resourceUri value must be a string.", nameof(resourceUri));
+                throw new ArgumentException("The tool's _meta.ui.resourceUri value must be a string.", nameof(toolOptions));
             }
 
             if (!string.Equals(existingResourceUri, resourceUri, StringComparison.Ordinal))
             {
                 throw new ArgumentException(
                     $"The tool's UI resource URI '{existingResourceUri}' does not match the registered resource URI '{resourceUri}'.",
-                    nameof(resourceUri));
+                    nameof(toolOptions));
             }
         }
 
@@ -122,10 +133,158 @@ public static class McpAppsBuilderExtensions
                 MimeType = McpApps.HtmlMimeType,
             });
 
+        builder.Services.AddSingleton(new AppToolRegistration(tool, resource, resourceUri));
+        builder.Services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<McpServerOptions>, AppToolOptionsValidator>());
+
         return builder
             .WithTools([tool])
             .WithResources([resource])
             .WithMcpApps();
+    }
+
+    private static void ValidateHtmlFactory(Delegate htmlFactory)
+    {
+        Type returnType = htmlFactory.Method.ReturnType;
+        if (returnType != typeof(string) &&
+            returnType != typeof(Task<string>) &&
+            returnType != typeof(ValueTask<string>))
+        {
+            throw new ArgumentException(
+                "The HTML factory must return string, Task<string>, or ValueTask<string>.",
+                nameof(htmlFactory));
+        }
+
+        var parameters = htmlFactory.Method.GetParameters();
+        if (parameters.Length > 1 ||
+            (parameters.Length == 1 && parameters[0].ParameterType != typeof(CancellationToken)))
+        {
+            throw new ArgumentException(
+                "The HTML factory must have no parameters or a single CancellationToken parameter.",
+                nameof(htmlFactory));
+        }
+    }
+
+    private sealed class AppToolRegistration(
+        McpServerTool tool,
+        McpServerResource resource,
+        string resourceUri)
+    {
+        public McpServerTool Tool { get; } = tool;
+
+        public McpServerResource Resource { get; } = resource;
+
+        public string ResourceUri { get; } = resourceUri;
+    }
+
+    private sealed class AppToolOptionsValidator(
+        IEnumerable<AppToolRegistration> registrations,
+        IEnumerable<McpServerTool> registeredTools,
+        IEnumerable<McpServerResource> registeredResources) : IValidateOptions<McpServerOptions>
+    {
+        private readonly AppToolRegistration[] _registrations = registrations.ToArray();
+        private readonly McpServerTool[] _registeredTools = registeredTools.ToArray();
+        private readonly McpServerResource[] _registeredResources = registeredResources.ToArray();
+
+        public ValidateOptionsResult Validate(string? name, McpServerOptions options)
+        {
+            if (!string.IsNullOrEmpty(name))
+            {
+                return ValidateOptionsResult.Skip;
+            }
+
+            foreach (AppToolRegistration registration in _registrations)
+            {
+                string toolName = registration.Tool.ProtocolTool.Name;
+                if (_registeredTools.Count(tool => string.Equals(
+                    tool.ProtocolTool.Name,
+                    toolName,
+                    StringComparison.Ordinal)) > 1)
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"The app tool name '{toolName}' is already registered. App tool names must be unique.");
+                }
+
+                AppToolRegistration? equivalentRegistration = _registrations.FirstOrDefault(candidate =>
+                    !ReferenceEquals(candidate, registration) &&
+                    !string.Equals(candidate.ResourceUri, registration.ResourceUri, StringComparison.Ordinal) &&
+                    ResourceUrisEqual(candidate.ResourceUri, registration.ResourceUri));
+                if (equivalentRegistration is not null)
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"The app resource URIs '{registration.ResourceUri}' and '{equivalentRegistration.ResourceUri}' " +
+                        "identify the same resource but use different spellings. Use one exact URI for all linked tools.");
+                }
+
+                foreach (McpServerResource registeredResource in _registeredResources)
+                {
+                    if (ResourceUrisEqual(
+                            registeredResource.ProtocolResourceTemplate?.UriTemplate,
+                            registration.ResourceUri) &&
+                        !_registrations.Any(candidate => ReferenceEquals(candidate.Resource, registeredResource)))
+                    {
+                        return ValidateOptionsResult.Fail(
+                            $"The app resource URI '{registration.ResourceUri}' is already registered by a lower-level resource. " +
+                            "Each app resource URI must be owned by WithAppTool.");
+                    }
+                }
+
+                if (options.ToolCollection is null ||
+                    !options.ToolCollection.TryGetPrimitive(toolName, out McpServerTool? selectedTool) ||
+                    !ReferenceEquals(selectedTool, registration.Tool))
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"The app tool name '{toolName}' is already registered and does not resolve to this WithAppTool registration.");
+                }
+
+                if (selectedTool.ProtocolTool.Meta?["ui"] is not JsonObject uiMetadata ||
+                    uiMetadata["resourceUri"] is not JsonValue resourceUriValue ||
+                    !resourceUriValue.TryGetValue(out string? selectedResourceUri) ||
+                    !string.Equals(selectedResourceUri, registration.ResourceUri, StringComparison.Ordinal))
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"The app tool '{toolName}' must link to the registered resource URI '{registration.ResourceUri}'.");
+                }
+
+                if (options.ResourceCollection is null ||
+                    !options.ResourceCollection.TryGetPrimitive(
+                        registration.ResourceUri,
+                        out McpServerResource? selectedResource) ||
+                    selectedResource?.ProtocolResourceTemplate is not { } resourceTemplate ||
+                    !_registrations.Any(candidate =>
+                        string.Equals(candidate.ResourceUri, registration.ResourceUri, StringComparison.Ordinal) &&
+                        ReferenceEquals(candidate.Resource, selectedResource)) ||
+                    !string.Equals(
+                        resourceTemplate.UriTemplate,
+                        registration.ResourceUri,
+                        StringComparison.Ordinal) ||
+                    !string.Equals(
+                        resourceTemplate.MimeType,
+                        McpApps.HtmlMimeType,
+                        StringComparison.Ordinal))
+                {
+                    return ValidateOptionsResult.Fail(
+                        $"The app tool '{toolName}' does not resolve to its HTML resource '{registration.ResourceUri}'.");
+                }
+            }
+
+            return ValidateOptionsResult.Success;
+        }
+
+        private static bool ResourceUrisEqual(string? first, string? second)
+        {
+            if (first is not null &&
+                second is not null &&
+                !first.Contains('{') &&
+                !second.Contains('{') &&
+                Uri.TryCreate(first, UriKind.Absolute, out Uri? firstUri) &&
+                Uri.TryCreate(second, UriKind.Absolute, out Uri? secondUri))
+            {
+                return firstUri == secondUri;
+            }
+
+            return string.Equals(first, second, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
