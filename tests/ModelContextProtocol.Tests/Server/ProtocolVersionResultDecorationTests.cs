@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -27,6 +28,7 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
     private ListPromptsResult _partialCacheableResult = null!;
     private GetPromptResult _normalResult = null!;
     private CallToolResult _immediateAlternateResult = null!;
+    private Func<JsonRpcResponse, JsonRpcMessage>? _outgoingResponseTransform;
 
     public ProtocolVersionResultDecorationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -69,6 +71,16 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
             options.Handlers.CallToolWithAlternateHandler = (_, _) =>
                 new(new ResultOrAlternate<CallToolResult>(_immediateAlternateResult));
 #pragma warning restore MCPEXP002
+            options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcResponse response &&
+                    _outgoingResponseTransform is { } transform)
+                {
+                    context.JsonRpcMessage = transform(response);
+                }
+
+                await next(context, cancellationToken);
+            });
         });
     }
 
@@ -111,6 +123,197 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
 
         AssertExact(JsonNode.Parse("""{"content":[{"type":"text","text":"immediate"}]}"""), response.Result);
         AssertProtocolWarning("resultType");
+    }
+
+    [Fact]
+    public async Task PromptsGet_OnLegacySession_OmitsResultTypeAddedByOutgoingFilter()
+    {
+        _outgoingResponseTransform = response =>
+        {
+            if (response.Result is JsonObject result && result.ContainsKey("messages"))
+            {
+                result["resultType"] = "filter-normal";
+            }
+
+            return response;
+        };
+
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.PromptsGet,
+                Params = JsonSerializer.SerializeToNode(
+                    new GetPromptRequestParams { Name = "shared" }, McpJsonUtilities.DefaultOptions),
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(JsonNode.Parse("""{"description":"normal","messages":[]}"""), response.Result);
+        AssertProtocolWarning("resultType");
+    }
+
+    [Fact]
+    public async Task ToolsCall_OnLegacySession_OmitsResultTypeAddedByOutgoingFilter()
+    {
+        _outgoingResponseTransform = response =>
+        {
+            if (response.Result is JsonObject result && result.ContainsKey("content"))
+            {
+                result["resultType"] = "filter-immediate";
+            }
+
+            return response;
+        };
+
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Params = JsonSerializer.SerializeToNode(
+                    new CallToolRequestParams { Name = "echo" }, McpJsonUtilities.DefaultOptions),
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(JsonNode.Parse("""{"content":[{"type":"text","text":"immediate"}]}"""), response.Result);
+        AssertProtocolWarning("resultType");
+    }
+
+    [Fact]
+    public async Task ToolsList_OnLegacySession_NormalizesFilterReplacementWithoutMutation()
+    {
+        var sharedFilterResult = JsonNode.Parse("""
+            {
+              "resultType": "filter-cacheable",
+              "tools": [],
+              "ttlMs": 2468,
+              "cacheScope": "public"
+            }
+            """)!.AsObject();
+        _outgoingResponseTransform = response =>
+            response.Result is JsonObject result && result.ContainsKey("tools") ?
+                new JsonRpcResponse
+                {
+                    Id = response.Id,
+                    Result = sharedFilterResult,
+                    Context = response.Context,
+                } :
+                response;
+
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.ToolsList },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(new JsonObject { ["tools"] = new JsonArray() }, response.Result);
+        AssertExact(JsonNode.Parse("""
+            {
+              "resultType": "filter-cacheable",
+              "tools": [],
+              "ttlMs": 2468,
+              "cacheScope": "public"
+            }
+            """), sharedFilterResult);
+        AssertProtocolWarning("resultType, ttlMs, cacheScope");
+    }
+
+    [Fact]
+    public async Task ToolsList_OnLegacySession_NormalizesEveryOutgoingFilterEmission()
+    {
+        await using var transport = new TestServerTransport();
+        var options = new McpServerOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+            ServerInfo = s_serverInfo,
+        };
+        options.Handlers.ListToolsHandler = (_, _) => new(new ListToolsResult());
+        options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+        {
+            if (context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                result.ContainsKey("tools"))
+            {
+                result["resultType"] = "first";
+                await next(context, cancellationToken);
+
+                result["resultType"] = "second";
+                await next(context, cancellationToken);
+                return;
+            }
+
+            await next(context, cancellationToken);
+        });
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        Task runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var initializeId = new RequestId("initialize");
+        var listId = new RequestId("list");
+        var initialized = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var responses = new List<JsonRpcResponse>();
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse response && response.Id == initializeId)
+            {
+                initialized.TrySetResult(true);
+            }
+            else if (message is JsonRpcResponse listResponse && listResponse.Id == listId)
+            {
+                responses.Add(listResponse);
+            }
+        };
+
+        await transport.SendClientMessageAsync(new JsonRpcRequest
+        {
+            Id = initializeId,
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "result-gating-test", Version = "1" },
+            }, McpJsonUtilities.DefaultOptions),
+        }, TestContext.Current.CancellationToken);
+        await initialized.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse response && response.Id == listId)
+            {
+                responses.Add(response);
+                if (responses.Count == 2)
+                {
+                    completed.TrySetResult(true);
+                }
+            }
+        };
+
+        await transport.SendClientMessageAsync(
+            new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
+            TestContext.Current.CancellationToken);
+        await transport.SendClientMessageAsync(new JsonRpcRequest
+        {
+            Id = listId,
+            Method = RequestMethods.ToolsList,
+        }, TestContext.Current.CancellationToken);
+        await completed.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        Assert.All(responses, response =>
+            AssertExact(new JsonObject { ["tools"] = new JsonArray() }, response.Result));
+        Assert.NotSame(responses[0], responses[1]);
+        Assert.Single(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains(ProtocolWarningMarker, StringComparison.Ordinal) &&
+            message.Message.Contains(RequestMethods.ToolsList, StringComparison.Ordinal));
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]
@@ -176,6 +379,38 @@ public class ProtocolVersionResultDecorationTests : ClientServerTestBase
         Assert.Null(_defaultedCacheableResult.ResultType);
         Assert.Null(_defaultedCacheableResult.TimeToLive);
         Assert.Null(_defaultedCacheableResult.CacheScope);
+        AssertNoProtocolWarning();
+    }
+
+    [Fact]
+    public async Task ToolsList_OnModernSession_RestoresFieldsRemovedByOutgoingFilter()
+    {
+        _outgoingResponseTransform = response =>
+        {
+            if (response.Result is JsonObject result && result.ContainsKey("tools"))
+            {
+                result.Remove("resultType");
+                result.Remove("ttlMs");
+                result.Remove("cacheScope");
+            }
+
+            return response;
+        };
+
+        await using var client = await CreateMcpClientForServer(
+            new McpClientOptions { ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion });
+
+        var response = await client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.ToolsList },
+            TestContext.Current.CancellationToken);
+
+        AssertExact(ModernResult(new JsonObject
+        {
+            ["resultType"] = "complete",
+            ["tools"] = new JsonArray(),
+            ["ttlMs"] = 0,
+            ["cacheScope"] = "private",
+        }), response.Result);
         AssertNoProtocolWarning();
     }
 
