@@ -1,10 +1,10 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Extensions.Apps;
 
@@ -42,14 +42,10 @@ public static class McpAppsBuilderExtensions
 #if NET
         ArgumentNullException.ThrowIfNull(builder);
 #else
-        if (builder is null)
-            throw new ArgumentNullException(nameof(builder));
+        if (builder is null) throw new ArgumentNullException(nameof(builder));
 #endif
 
-        builder.Services.AddSingleton<
-            IPostConfigureOptions<McpServerOptions>,
-            McpAppsPostConfigureOptions
-        >();
+        builder.Services.AddSingleton<IPostConfigureOptions<McpServerOptions>, McpAppsPostConfigureOptions>();
         return builder;
     }
 
