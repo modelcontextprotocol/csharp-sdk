@@ -1,3 +1,5 @@
+using Azure.Monitor.OpenTelemetry.AspNetCore;
+using ModelContextProtocol.AspNetCore;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -25,24 +27,36 @@ builder.Services.AddCors(options =>
 
 // Note: This sample uses SampleLlmTool which calls server.AsSamplingChatClient() to send
 // a server-to-client sampling request. This requires stateful (session-based) mode. Set
-// Stateless = false explicitly for forward compatibility in case the default changes.
+// SessionMode = HttpServerSessionMode.Stateful since sessions are required for sampling.
 // See https://csharp.sdk.modelcontextprotocol.io/concepts/sessions/sessions.html for details.
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = false)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateful)
     .WithTools<EchoTool>()
     .WithTools<SampleLlmTool>()
     .WithTools<WeatherTools>()
     .WithResources<SimpleResourceType>();
 
-builder.Services.AddOpenTelemetry()
+var telemetry = builder.Services.AddOpenTelemetry()
     .WithTracing(b => b.AddSource("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
     .WithMetrics(b => b.AddMeter("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
-    .WithLogging()
-    .UseOtlpExporter();
+    .WithLogging();
+
+string? applicationInsightsConnectionString =
+    builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+
+if (string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
+{
+    telemetry.UseOtlpExporter();
+}
+else
+{
+    telemetry.UseAzureMonitor(options =>
+        options.ConnectionString = applicationInsightsConnectionString);
+}
 
 // Configure HttpClientFactory for weather.gov API
 builder.Services.AddHttpClient("WeatherApi", client =>

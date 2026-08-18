@@ -1,4 +1,5 @@
 using AspNetCoreMcpPerSessionTools.Tools;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -14,8 +15,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // This sample demonstrates per-session tool filtering, which requires stateful mode.
-        // Set Stateless = false explicitly for forward compatibility in case the default changes.
-        options.Stateless = false;
+        // Set SessionMode = HttpServerSessionMode.Stateful since sessions are required.
+        options.SessionMode = HttpServerSessionMode.Stateful;
 
         // Configure per-session options to filter tools based on route category
         options.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>

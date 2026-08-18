@@ -105,6 +105,16 @@ public class McpHeaderEncoderTests
     }
 
     [Fact]
+    public void DecodeValue_DegenerateWrapper_ReturnsLiteralValue()
+    {
+        // "=?base64?=" matches both the prefix "=?base64?" and the suffix "?=" because they
+        // overlap on the shared '?', but it is too short to contain any base64 content. It must be
+        // returned as-is rather than throwing when the wrapper is stripped.
+        var result = McpHeaderEncoder.DecodeValue("=?base64?=");
+        Assert.Equal("=?base64?=", result);
+    }
+
+    [Fact]
     public void DecodeValue_CaseSensitivePrefix_ReturnsLiteralValue()
     {
         // Per SEP-2243: sentinel markers are case-sensitive and MUST appear exactly as shown (lowercase).

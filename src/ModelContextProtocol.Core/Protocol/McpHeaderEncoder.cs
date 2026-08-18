@@ -126,7 +126,8 @@ public static class McpHeaderEncoder
 
         // Check for Base64 wrapper. The spec requires the sentinel markers to be
         // case-sensitive and exactly lowercase per SEP-2243.
-        if (headerValue.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
+        if (headerValue.Length >= Base64Prefix.Length + Base64Suffix.Length &&
+            headerValue.StartsWith(Base64Prefix, StringComparison.Ordinal) &&
             headerValue.EndsWith(Base64Suffix, StringComparison.Ordinal))
         {
             var base64Content = headerValue.Substring(

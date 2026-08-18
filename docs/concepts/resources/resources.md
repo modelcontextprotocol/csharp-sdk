@@ -74,7 +74,7 @@ Register resource types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithResources<MyResources>()
     .WithResources<DocumentResources>();
 ```
@@ -209,8 +209,8 @@ Register subscription handlers when building the server:
 ```csharp
 builder.Services.AddMcpServer()
     // Subscriptions require stateful mode because the server pushes change notifications
-    // to clients. Set Stateless = false explicitly for forward compatibility.
-    .WithHttpTransport(o => o.Stateless = false)
+    // to clients. Set SessionMode = HttpServerSessionMode.Stateful since sessions are required.
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateful)
     .WithResources<MyResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
@@ -230,6 +230,16 @@ builder.Services.AddMcpServer()
         return new EmptyResult();
     });
 ```
+
+#### Customizing a subscriptions/listen stream
+
+For the `2026-07-28` protocol version and later, a server can fully own a long-lived
+`subscriptions/listen` stream by registering `WithSubscriptionsListenHandler`. This replaces the
+SDK's built-in listen handling. The handler must send one
+`notifications/subscriptions/acknowledged` notification before other events, tag every streamed
+notification with the listen request ID in `_meta.subscriptionId`, and remain active until its
+cancellation token is cancelled. It must also configure only the server capabilities that the
+handler actually supports; this extension does not advertise capabilities automatically.
 
 #### Sending resource update notifications
 
