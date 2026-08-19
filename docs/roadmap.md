@@ -12,6 +12,8 @@ The C# SDK tracks implementation of MCP spec components using the [modelcontextp
 
 The 1.x SDK supports the `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25` MCP specification revisions. [Tasks](concepts/tasks/tasks.md) remain experimental in this SDK line.
 
+The C# SDK's standing plan is to release support for each new MCP specification revision alongside the specification, as it did for the 2026-07-28 revision with v2.0.0. Accepted SEPs are tracked on the revision's project board throughout development so implementation is ready when the revision is published. The next revision is being developed in the [protocol repository](https://github.com/modelcontextprotocol/modelcontextprotocol).
+
 ## Feedback and end-to-end scenarios
 
 The C# SDK team is actively responding to feedback and continuing to explore end-to-end scenarios for opportunities to add more APIs that implement common patterns.
