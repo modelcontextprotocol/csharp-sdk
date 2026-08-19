@@ -45,6 +45,9 @@ The following table describes the key <xref:ModelContextProtocol.Client.StdioCli
 | `StandardErrorLines` | Callback for stderr output from the server process |
 | `Name` | Optional transport identifier for logging |
 
+> [!WARNING]
+> **Windows command-shell parsing:** On Windows, <xref:ModelContextProtocol.Client.StdioClientTransport> launches every command other than `cmd.exe` through `cmd.exe /c`. Both `Command` and `Arguments` are therefore interpreted by the Windows command shell, even though `Arguments` is supplied as a list. For values without whitespace, the SDK applies limited caret-escaping for `&`, `^`, `>`, `<`, and `|`, but this is not a general-purpose defense against command injection. Do not build either property from untrusted input; validate or allowlist any externally derived values before launching a stdio server.
+
 #### Environment variable inheritance
 
 By default, the server process inherits **all** environment variables from the current process. This includes credentials, tokens, proxy settings, and internal configuration that might be sensitive or irrelevant to the server. When running third-party or untrusted MCP servers, consider disabling inheritance to prevent unintentional credential leakage:
