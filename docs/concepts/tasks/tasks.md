@@ -153,6 +153,24 @@ var result = await client.CallToolWithPollingAsync(
     cancellationToken: cancellationToken);
 ```
 
+When you already have an <xref:ModelContextProtocol.Client.McpClientTool> from
+<xref:ModelContextProtocol.Client.McpClient.ListToolsAsync*>, invoke it directly without rebuilding
+the protocol request. The tool overload uses the original server-facing name even after
+<xref:ModelContextProtocol.Client.McpClientTool.WithName*> and preserves metadata configured with
+<xref:ModelContextProtocol.Client.McpClientTool.WithMeta*>:
+
+```csharp
+var tools = await client.ListToolsAsync(cancellationToken: cancellationToken);
+var tool = tools.Single(tool => tool.Name == "long-running-tool");
+
+var result = await tool.CallWithPollingAsync(
+    new Dictionary<string, object?> { ["input"] = "value" },
+    cancellationToken: cancellationToken);
+```
+
+Use <xref:ModelContextProtocol.Extensions.Tasks.McpTasksClientToolExtensions.CallAsTaskAsync*> when
+you want the created task handle instead of automatic polling.
+
 #### Manual control
 
 Use <xref:ModelContextProtocol.Extensions.Tasks.McpTasksClientExtensions.CallToolAsTaskAsync*> to receive the raw
