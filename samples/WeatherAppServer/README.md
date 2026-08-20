@@ -5,7 +5,8 @@ An MCP server that demonstrates the **MCP Apps** extension by serving an interac
 ## What it shows
 
 - **`[McpAppUi]` attribute** — declaratively associates a UI resource with a tool
-- **`WithMcpApps()`** — builder extension that processes `[McpAppUi]` attributes
+- **`[McpAppResource]` attribute** — configures typed CSP and display metadata for a UI resource
+- **`WithMcpApps()`** — builder extension that processes both MCP Apps attributes
 - **UI resource** — an HTML page served via `McpServerResource` with MIME type `text/html;profile=mcp-app`
 - **Structured content** — tool results include `StructuredContent` for the UI to render
 
