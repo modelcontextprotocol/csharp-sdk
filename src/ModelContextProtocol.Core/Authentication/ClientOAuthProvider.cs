@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A generic implementation of an OAuth authorization provider.
 /// </summary>
-internal sealed partial class ClientOAuthProvider : McpHttpClient
+internal sealed partial class ClientOAuthProvider : McpHttpClient, IDisposable
 {
     /// <summary>
     /// The Bearer authentication scheme.
@@ -72,6 +72,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
     private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
     private bool _hasAttemptedStepUp;
+
+    // The single in-flight authorization-code flow, if any. Written only while holding
+    // _tokenAcquisitionLock. The flow is deliberately detached from the cancellation of the request
+    // whose challenge started it: the user may already be completing the authorization in a browser,
+    // and canceling one HTTP request — for example a server/discover probe canceled by
+    // McpClientOptions.DiscoverProbeTimeout during the dual-path connect — must not abort that flow.
+    // If it did, the next challenge would start a second flow with a fresh state and PKCE verifier
+    // that the redirect the user eventually completes can never satisfy. Instead, a later challenge
+    // joins the in-flight flow and shares its result, while each caller observes its own cancellation
+    // via WaitAsync. The flow itself is bounded by the authorization callback handler's own
+    // completion and canceled on provider disposal.
+    private Task<string>? _inFlightAuthorizationCodeFlow;
+    private readonly CancellationTokenSource _disposeCts = new();
+    private int _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -189,6 +203,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             State = queryParams["state"],
             Iss = queryParams["iss"],
         });
+    }
+
+    /// <summary>
+    /// Cancels any in-flight detached authorization-code flow (see <see cref="_inFlightAuthorizationCodeFlow"/>).
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
+        }
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -480,8 +506,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
-        // Perform the OAuth flow
-        return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        // Perform the OAuth flow. A caller that reaches this point after a previous caller's request
+        // was canceled mid-flow (releasing the lock with the flow still pending) joins the in-flight
+        // flow instead of starting a competing one; see the _inFlightAuthorizationCodeFlow comment.
+        var flow = _inFlightAuthorizationCodeFlow;
+        if (flow is null || flow.IsCompleted)
+        {
+            _inFlightAuthorizationCodeFlow = flow = InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, _disposeCts.Token);
+        }
+
+        return await flow.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void ApplyClientIdMetadataDocument(Uri metadataUri)
