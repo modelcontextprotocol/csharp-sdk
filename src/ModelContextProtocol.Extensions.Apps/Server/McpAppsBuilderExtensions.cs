@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Extensions.Apps;
 
@@ -54,9 +56,29 @@ public static class McpAppsBuilderExtensions
             // Advertise server-side MCP Apps support in capabilities.
             options.Capabilities ??= new ServerCapabilities();
             options.Capabilities.Extensions ??= new Dictionary<string, object>();
-            if (!options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId))
+            if (options.Capabilities.Extensions.TryGetValue(McpApps.ExtensionId, out var existing))
             {
-                options.Capabilities.Extensions[McpApps.ExtensionId] = new System.Text.Json.Nodes.JsonObject();
+                switch (existing)
+                {
+                    case McpUiServerCapabilities typed:
+                        typed.Elicitation ??= new McpUiElicitationCapability();
+                        break;
+                    case JsonObject jsonObject:
+                        jsonObject["elicitation"] ??= new JsonObject();
+                        break;
+                    case JsonElement { ValueKind: JsonValueKind.Object } element:
+                        var merged = JsonNode.Parse(element.GetRawText())!.AsObject();
+                        merged["elicitation"] ??= new JsonObject();
+                        options.Capabilities.Extensions[McpApps.ExtensionId] = merged;
+                        break;
+                }
+            }
+            else
+            {
+                options.Capabilities.Extensions[McpApps.ExtensionId] = new JsonObject
+                {
+                    ["elicitation"] = new JsonObject(),
+                };
             }
 
             if (options.ToolCollection is { IsEmpty: false } tools)
