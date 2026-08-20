@@ -33,6 +33,7 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
+    private readonly ConcurrentDictionary<string, byte> _protocolIncompatibleResultFieldsWarnedMethods = new();
     private static readonly string[] s_perRequestMetadataKeys =
     [
         MetaKeys.ProtocolVersion,
@@ -94,7 +95,7 @@ internal sealed partial class McpServerImpl : McpServer
         UpdateEndpointNameWithClientInfo();
 
         _notificationHandlers = new();
-        _requestHandlers = [];
+        _requestHandlers = new(PrepareResultForEmission);
 
         // Configure all request handlers based on the supplied options.
         ServerCapabilities = new();
@@ -1190,10 +1191,8 @@ internal sealed partial class McpServerImpl : McpServer
 #pragma warning restore MCPEXP002
     }
 
-    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
-    {
-        _requestHandlers[method] = (request, ct) => handler(request, ct).AsTask();
-    }
+    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler) =>
+        _requestHandlers[method] = async (request, ct) => new(await handler(request, ct).ConfigureAwait(false));
 
     private void ConfigureResources(McpServerOptions options)
     {
@@ -1851,57 +1850,58 @@ internal sealed partial class McpServerImpl : McpServer
         return server;
     }
 
+    private JsonNode? PrepareResultForEmission(JsonRpcRequest request, RequestHandlerResult result)
+    {
+        if (!result.IsProtocolResult || result.Json is not JsonObject resultObject)
+        {
+            return result.Json;
+        }
+
+        if (IsJuly2026OrLaterProtocolRequest(request))
+        {
+            resultObject["resultType"] ??= "complete";
+            if (result.IsCacheable)
+            {
+                resultObject["ttlMs"] ??= 0;
+                resultObject["cacheScope"] ??= "private";
+            }
+
+            return resultObject;
+        }
+
+        string? strippedFields = resultObject.Remove("resultType") ? "resultType" : null;
+        if (result.IsCacheable)
+        {
+            if (resultObject.Remove("ttlMs"))
+            {
+                strippedFields = strippedFields is null ? "ttlMs" : $"{strippedFields}, ttlMs";
+            }
+
+            if (resultObject.Remove("cacheScope"))
+            {
+                strippedFields = strippedFields is null ? "cacheScope" : $"{strippedFields}, cacheScope";
+            }
+        }
+
+        if (strippedFields is not null &&
+            _protocolIncompatibleResultFieldsWarnedMethods.TryAdd(request.Method, 0))
+        {
+            ProtocolIncompatibleResultFieldsOmitted(
+                _endpointName,
+                request.Method,
+                strippedFields,
+                request.Context?.ProtocolVersion ?? NegotiatedProtocolVersion);
+        }
+
+        return resultObject;
+    }
+
     private void SetHandler<TParams, TResult>(
         string method,
         McpRequestHandler<TParams, TResult> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
-        // SEP-2549: results that carry caching hints (tools/list, prompts/list, resources/list,
-        // resources/templates/list, and resources/read) declare ttlMs and cacheScope as required fields.
-        // When a handler leaves them unset, fill in conservative defaults (immediately stale and not
-        // shareable) so the wire form always carries the fields while preserving today's "don't cache"
-        // behavior. Any value supplied by the handler or a filter is left untouched.
-        if (typeof(ICacheableResult).IsAssignableFrom(typeof(TResult)))
-        {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
-            {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-
-                // ttlMs and cacheScope are 2026-07-28 result fields; only stamp them when the request
-                // was negotiated under that revision or later. Earlier revisions (e.g. 2025-11-25) reject
-                // these as unrecognized keys (issue #1721).
-                if (result is ICacheableResult cacheable && IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
-                {
-                    cacheable.TimeToLive ??= TimeSpan.Zero;
-                    cacheable.CacheScope ??= CacheScope.Private;
-                }
-
-                return result;
-            };
-        }
-
-        if (typeof(Result).IsAssignableFrom(typeof(TResult)))
-        {
-            var innerHandler = handler;
-            handler = async (request, cancellationToken) =>
-            {
-                var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-
-                // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
-                // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
-                // unrecognized key (issue #1721).
-                if (result is Result protocolResult && protocolResult.ResultType is null &&
-                    IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
-                {
-                    protocolResult.ResultType = "complete";
-                }
-
-                return result;
-            };
-        }
-
         _requestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
@@ -1916,23 +1916,6 @@ internal sealed partial class McpServerImpl : McpServer
         JsonTypeInfo<TResult> responseTypeInfo)
         where TResult : Result
     {
-        var innerHandler = handler;
-        handler = async (request, cancellationToken) =>
-        {
-            var result = await innerHandler(request, cancellationToken).ConfigureAwait(false);
-
-            // resultType is a 2026-07-28 result field; only stamp it when the request was negotiated
-            // under that revision or later. Earlier revisions (e.g. 2025-11-25) reject it as an
-            // unrecognized key (issue #1721).
-            if (!result.IsAlternate && result.Result is { ResultType: null } immediateResult &&
-                IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
-            {
-                immediateResult.ResultType = "complete";
-            }
-
-            return result;
-        };
-
         _requestHandlers.SetWithAlternate(method,
             (request, jsonRpcRequest, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
@@ -2082,8 +2065,8 @@ internal sealed partial class McpServerImpl : McpServer
     /// calls (elicitation, sampling, roots) and the handler is retried with the responses - allowing
     /// MRTR-native tools to work transparently with clients that don't support MRTR.
     /// </summary>
-    private async Task<JsonNode?> InvokeWithInputRequiredResultHandlingAsync(
-        Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>> handler,
+    private async Task<RequestHandlerResult> InvokeWithInputRequiredResultHandlingAsync(
+        Func<JsonRpcRequest, CancellationToken, Task<RequestHandlerResult>> handler,
         JsonRpcRequest request,
         CancellationToken cancellationToken)
     {
@@ -2102,7 +2085,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // or by RETURNING an InputRequiredResult through the alternate result path (ResultOrAlternate).
                 // Normalize both forms so a client that doesn't natively support MRTR gets the same server-side
                 // resolution either way.
-                if (GetReturnedInputRequiredResult(result) is not { } returnedInputRequired)
+                if (GetReturnedInputRequiredResult(result.Json) is not { } returnedInputRequired)
                 {
                     return result;
                 }
@@ -2261,8 +2244,10 @@ internal sealed partial class McpServerImpl : McpServer
         }
     }
 
-    private static JsonNode? SerializeInputRequiredResult(InputRequiredResult inputRequiredResult) =>
-        JsonSerializer.SerializeToNode(inputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
+    private static RequestHandlerResult SerializeInputRequiredResult(InputRequiredResult inputRequiredResult) =>
+        new(
+            JsonSerializer.SerializeToNode(inputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult),
+            IsProtocolResult: true);
 
     /// <summary>
     /// Detects an <see cref="InputRequiredResult"/> that a handler surfaced by RETURNING it through the alternate
@@ -2384,7 +2369,7 @@ internal sealed partial class McpServerImpl : McpServer
             // on the per-request DestinationBoundMcpServer. This is picked up synchronously
             // before any await, so the finally cleanup is safe.
             _mrtrContextsByRequestId[request.Id] = mrtrContext;
-            Task<JsonNode?> handlerTask;
+            Task<RequestHandlerResult> handlerTask;
             try
             {
                 handlerTask = originalHandler(request, handlerCts.Token);
@@ -2415,8 +2400,8 @@ internal sealed partial class McpServerImpl : McpServer
     /// If the handler throws <see cref="InputRequiredException"/>, the result is returned directly
     /// without storing a continuation (explicit MRTR path).
     /// </summary>
-    private async Task<JsonNode?> AwaitMrtrHandlerAsync(
-        Task<JsonNode?> handlerTask,
+    private async Task<RequestHandlerResult> AwaitMrtrHandlerAsync(
+        Task<RequestHandlerResult> handlerTask,
         MrtrContinuation continuation,
         Task<MrtrExchange> exchangeTask,
         CancellationToken cancellationToken)
@@ -2460,7 +2445,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// double-reporting at Error) and decrements <see cref="_mrtrInFlightCount"/> when the
     /// handler completes, following the same in-flight tracking pattern as <see cref="McpSessionHandler"/>.
     /// </summary>
-    private async Task ObserveHandlerCompletionAsync(Task<JsonNode?> handlerTask)
+    private async Task ObserveHandlerCompletionAsync(Task<RequestHandlerResult> handlerTask)
     {
         try
         {
@@ -2491,7 +2476,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// Awaits a handler task, catching <see cref="InputRequiredException"/> to convert it to an
     /// <see cref="InputRequiredResult"/> JSON response without storing a continuation.
     /// </summary>
-    private static async Task<JsonNode?> AwaitHandlerWithInputRequiredResultHandlingAsync(Task<JsonNode?> handlerTask)
+    private static async Task<RequestHandlerResult> AwaitHandlerWithInputRequiredResultHandlingAsync(Task<RequestHandlerResult> handlerTask)
     {
         try
         {
@@ -2529,4 +2514,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to deliver \"{NotificationMethod}\" to subscription \"{SubscriptionId}\".")]
     private partial void SubscriptionNotificationFailed(string notificationMethod, string subscriptionId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} application returned protocol-incompatible result field(s) '{Fields}' for '{Method}' on protocol version '{ProtocolVersion}'. The fields were omitted from the response.")]
+    private partial void ProtocolIncompatibleResultFieldsOmitted(string endpointName, string method, string fields, string? protocolVersion);
 }
