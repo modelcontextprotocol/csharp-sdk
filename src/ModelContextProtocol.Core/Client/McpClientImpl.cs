@@ -367,14 +367,6 @@ internal sealed partial class McpClientImpl : McpClient
                         // fallback): falling back to initialize wouldn't fix a malformed envelope.
                         throw;
                     }
-                    catch (McpProtocolException ex) when (
-                        ex.ErrorCode == McpErrorCode.InvalidRequest &&
-                        ex.Message.Contains(McpHttpHeaders.SessionId, StringComparison.Ordinal))
-                    {
-                        // Local transport validation: a 2026-07-28+ response must not carry HTTP session state.
-                        // This is not evidence of an initialize-handshake server, so do not fall back.
-                        throw;
-                    }
                     catch (McpProtocolException)
                     {
                         // Per spec PR #2844, the fallback MUST NOT be keyed to a single error code.
