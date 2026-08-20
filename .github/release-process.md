@@ -49,4 +49,7 @@ monitor both and confirm their published outputs:
   published release tags and deploys it to
   [csharp.sdk.modelcontextprotocol.io](https://csharp.sdk.modelcontextprotocol.io). Verify the new
   version appears in the version picker and that its major-version path serves the updated content.
-  A content-only docs refresh can be run later via manual dispatch with the `docs_ref` input.
+  A content-only docs refresh can be run later via manual dispatch. Its `docs_source` input defaults
+  to `release-tags` to mirror a release deployment; select `latest-branches` to refresh every
+  published major from its current `release/{MAJOR}.x` branch, using `main` for its
+  matching major.

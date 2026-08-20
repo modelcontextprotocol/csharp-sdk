@@ -103,11 +103,14 @@ Report the run's conclusion, accounting for these docs-specific behaviors:
 - **Version discovery reads published releases.** For each major version >= 1, the workflow takes
   the most recently published non-draft release tagged `v{MAJOR}.*`. A draft release contributes
   nothing.
-- **Every major is rebuilt.** Each major's docs are built from that major's latest release tag into
-  its own path (`/v1/`, `/v2/`). A new MAJOR adds a new path; the site root redirects to the newest
-  release, prereleases included.
+- **Every major is rebuilt.** A release-triggered run builds each major from its latest release tag
+  into its own path (`/v1/`, `/v2/`). A manual dispatch defaults to the same release-tag content,
+  or can build every major from `release/{MAJOR}.x`, using `main` for its matching major,
+  by selecting `docs_source=latest-branches`. A new MAJOR adds a new path; the site root redirects
+  to the newest release, prereleases included.
 - **Orchestration comes from `main`.** The scripts and picker assets are always checked out from
-  `main`, while each version's content comes from its release tag. A docs fix that lives only in a
+  `main`. Release-triggered and default manual runs use release-tag content; a manual
+  `docs_source=latest-branches` run uses source-branch content. A docs fix that lives only in a
   release branch will not affect orchestration.
 
 If it failed, summarize the failing step. Common causes are a docs build failure in one version's
@@ -164,17 +167,21 @@ Both remediations require explicit user confirmation.
 gh run rerun {run-id} --failed
 ```
 
-**Refresh the docs without a new release** — when documentation content needs correcting after the
-release, the docs workflow accepts a manual dispatch that rebuilds one major version's content from
-an arbitrary ref, without minting a product release:
+**Rebuild the released docs** — use the default `release-tags` source to retry a failed Pages
+deployment after a release, without minting a product release:
 
 ```
-gh workflow run docs.yml --field docs_ref={branch-tag-or-commit}
+gh workflow run docs.yml --field docs_source=release-tags
 ```
 
-The ref's major version, read from `src/Directory.Build.props`, must have a published release; the
-workflow fails fast if it does not. This replaces only the matching major's HTML — orchestration
-and all other versions are unaffected.
+**Refresh docs without a new release** — select `latest-branches` to rebuild every published major
+from its current source branch (`release/{MAJOR}.x`, using `main` for its matching major):
+
+```
+gh workflow run docs.yml --field docs_source=latest-branches
+```
+
+The workflow fails instead of silently using a release tag when any major has no matching branch.
 
 ## Edge Cases
 
