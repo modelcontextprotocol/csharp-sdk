@@ -161,14 +161,13 @@ internal sealed class StreamableHttpHandler(
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
-        Func<JsonRpcMessage?, ValueTask>? onResponseStarting = null;
         if (RequiresPerRequestMetadataProtocol(context))
         {
             // SEP-2575 maps some JSON-RPC error codes onto HTTP statuses (404 for a method the server
-            // does not implement, 400 for missing-capability and unsupported-version rejections). The
-            // status line can only be chosen before the first response byte, so the transport defers
-            // its eager header flush and reports the first response message here.
-            onResponseStarting = firstMessage =>
+            // does not implement, 400 for missing-capability and unsupported-version rejections).
+            // Wait for the actual first JSON-RPC message so this mapping is deterministic regardless
+            // of how long the request handler takes.
+            StreamableHttpResponseStartFeature.Set(message, firstMessage =>
             {
                 if (firstMessage is JsonRpcError { Error: { } errorDetail } && !context.Response.HasStarted)
                 {
@@ -181,13 +180,12 @@ internal sealed class StreamableHttpHandler(
                         _ => context.Response.StatusCode,
                     };
                 }
-
-                return default;
-            };
+            });
         }
 
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, onResponseStarting, context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequestAsync(
+            message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.

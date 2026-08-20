@@ -23,8 +23,18 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
 
     private WebApplication? _app;
 
-    private async Task StartAsync(string? protocolVersion = null)
+    private async Task StartAsync(string? protocolVersion = null, McpServerTool? additionalTool = null)
     {
+        List<McpServerTool> tools =
+        [
+            McpServerTool.Create((string text) => $"echo:{text}", new() { Name = "echo" }),
+        ];
+
+        if (additionalTool is not null)
+        {
+            tools.Add(additionalTool);
+        }
+
         Builder.Services
             .AddMcpServer(options =>
             {
@@ -32,7 +42,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
                 options.ProtocolVersion = protocolVersion;
             })
             .WithHttpTransport()
-            .WithTools([McpServerTool.Create((string text) => $"echo:{text}", new() { Name = "echo" })])
+            .WithTools(tools)
             .WithTools<CapabilityTools>();
 
         _app = Builder.Build();
@@ -187,7 +197,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task July2026Post_MissingRequiredCapability_Returns400()
+    public async Task July2026Post_SlowMissingRequiredCapability_Returns400()
     {
         await StartAsync();
 
@@ -205,6 +215,58 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal(19, json["id"]!.GetValue<long>());
         Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task LegacyPost_LongRunningHandler_FlushesResponseHeadersPromptly()
+    {
+        var handlerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var longRunningTool = McpServerTool.Create(
+            async (CancellationToken cancellationToken) =>
+            {
+                handlerStarted.TrySetResult(true);
+                await releaseHandler.Task.WaitAsync(cancellationToken);
+                return "released";
+            },
+            new() { Name = "wait_for_release" });
+        await StartAsync(additionalTool: longRunningTool);
+
+        var initializeBody = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}";
+        using (var initializeRequest = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(initializeBody) })
+        using (var initializeResponse = await HttpClient.SendAsync(initializeRequest, TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.OK, initializeResponse.StatusCode);
+        }
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":2,""method"":""tools/call"",""params"":{""name"":""wait_for_release"",""arguments"":{}}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.November2025ProtocolVersion);
+        var responseTask = HttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken);
+
+        await handlerStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await responseTask.WaitAsync(
+                TestConstants.HttpClientPollingTimeout,
+                TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            releaseHandler.TrySetResult(true);
+        }
+
+        using (response)
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+            Assert.Equal("released", json["result"]!["content"]![0]!["text"]!.GetValue<string>());
+        }
     }
 
     [Fact]
@@ -501,9 +563,13 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     private sealed class CapabilityTools
     {
         [McpServerTool(Name = "requires_sampling")]
-        public static string RequiresSampling() =>
+        public static async Task<string> RequiresSampling(CancellationToken cancellationToken)
+        {
+            // Reproduce the old 250 ms header-grace race before returning the SEP-2575 error.
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
             throw new MissingRequiredClientCapabilityException(
                 new ClientCapabilities { Sampling = new() },
                 "sampling capability required but not declared by client");
+        }
     }
 }
