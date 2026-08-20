@@ -213,6 +213,10 @@ public static class McpTasksBuilderExtensions
                 }
                 finally
                 {
+                    // A tool may start an outgoing input request and then fail before awaiting it.
+                    // Cancel the task token before disposing the scope so that the request waiter
+                    // observes cancellation and removes its store subscription.
+                    CancelTaskExecution(taskId);
                     await executionScope.DisposeAsync().ConfigureAwait(false);
                 }
             }
@@ -235,10 +239,29 @@ public static class McpTasksBuilderExtensions
             }
             finally
             {
-                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                {
-                    registeredCts.Dispose();
-                }
+                // Also cover races with tasks/cancel and failures during scope disposal.
+                CancelTaskExecution(taskId);
+            }
+        }
+
+        private void CancelTaskExecution(string taskId)
+        {
+            if (!_cancellationSources.TryRemove(taskId, out var cts))
+            {
+                return;
+            }
+
+            try
+            {
+                cts.Cancel();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to cancel background task '{TaskId}' during cleanup.", taskId);
+            }
+            finally
+            {
+                cts.Dispose();
             }
         }
 
@@ -250,7 +273,16 @@ public static class McpTasksBuilderExtensions
         {
             try
             {
-                var augmented = await next(request, taskCancellationToken).ConfigureAwait(false);
+                var augmented = await InputRequiredRequestRunner.RunAsync(
+                    request,
+                    async (currentRequest, cancellationToken) =>
+                        await next(currentRequest, cancellationToken).ConfigureAwait(false),
+                    static result => result.IsAlternate ? result.Alternate as InputRequiredResult : null,
+                    (Func<InputRequiredResult, ResultOrAlternate<CallToolResult>>?)null,
+                    PrepareRetryAsync,
+                    static (message, innerException) =>
+                        new McpProtocolException(message, innerException, McpErrorCode.InvalidRequest),
+                    taskCancellationToken).ConfigureAwait(false);
 
                 if (augmented.IsAlternate)
                 {
@@ -266,20 +298,42 @@ public static class McpTasksBuilderExtensions
 
                 var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
+
+                async Task<RequestContext<CallToolRequestParams>> PrepareRetryAsync(
+                    RequestContext<CallToolRequestParams> currentRequest,
+                    InputRequiredResult inputRequiredResult,
+                    Exception? _,
+                    CancellationToken retryCancellationToken)
+                {
+                    IDictionary<string, InputResponse>? inputResponses = null;
+                    if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
+                    {
+                        inputResponses = await InputRequiredRequestRunner.ResolveInputRequestsAsync(
+                            inputRequests,
+                            (inputRequest, requestCancellationToken) =>
+                                ResolveInputRequestAsync(currentRequest.Server, inputRequest, requestCancellationToken),
+                            retryCancellationToken).ConfigureAwait(false);
+                    }
+
+                    currentRequest.Params.InputResponses = inputResponses;
+                    currentRequest.Params.RequestState = inputRequiredResult.RequestState;
+                    currentRequest.JsonRpcRequest = new JsonRpcRequest
+                    {
+                        Id = currentRequest.JsonRpcRequest.Id,
+                        Method = currentRequest.JsonRpcRequest.Method,
+                        Params = InputRequiredRequestRunner.CreateRetryParams(
+                            currentRequest.JsonRpcRequest.Params,
+                            inputResponses,
+                            inputRequiredResult.RequestState),
+                        Context = currentRequest.JsonRpcRequest.Context,
+                    };
+
+                    return currentRequest;
+                }
             }
             catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
             {
                 await _store.SetCancelledAsync(taskId, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (InputRequiredException)
-            {
-                var error = new JsonRpcErrorDetail
-                {
-                    Code = (int)McpErrorCode.InvalidRequest,
-                    Message = "MRTR and tasks cannot be composed via [McpServerTool] yet.",
-                };
-                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
-                await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
             }
             catch (McpProtocolException mcpEx)
             {
@@ -306,6 +360,54 @@ public static class McpTasksBuilderExtensions
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
             }
         }
+
+#pragma warning disable MCP9005 // Tasks still supports the deprecated Sampling and Roots MRTR input methods.
+        private static async Task<InputResponse> ResolveInputRequestAsync(
+            McpServer server,
+            InputRequest inputRequest,
+            CancellationToken cancellationToken)
+        {
+            switch (inputRequest.Method)
+            {
+                case RequestMethods.ElicitationCreate:
+                    _ = inputRequest.ElicitationParams
+                        ?? throw new McpException("Failed to deserialize elicitation parameters from MRTR input request.");
+                    break;
+
+                case RequestMethods.SamplingCreateMessage:
+                    _ = inputRequest.SamplingParams
+                        ?? throw new McpException("Failed to deserialize sampling parameters from MRTR input request.");
+                    break;
+
+                case RequestMethods.RootsList:
+                    _ = inputRequest.RootsParams ?? new ListRootsRequestParams();
+                    break;
+
+                default:
+                    throw new McpException($"Unsupported input request method: '{inputRequest.Method}'.");
+            }
+
+            var response = await server.SendRequestAsync(new JsonRpcRequest
+            {
+                Method = inputRequest.Method,
+                Params = inputRequest.Params is { } paramsElement
+                    ? JsonSerializer.SerializeToNode(
+                        paramsElement,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonElement>())
+                    : null,
+            }, cancellationToken).ConfigureAwait(false);
+
+            var result = response.Result
+                ?? throw new McpException($"The '{inputRequest.Method}' input request returned no result.");
+
+            return new InputResponse
+            {
+                RawValue = JsonSerializer.SerializeToElement(
+                    result,
+                    McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
+            };
+        }
+#pragma warning restore MCP9005
 
         private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
         {

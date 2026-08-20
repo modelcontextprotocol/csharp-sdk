@@ -2087,146 +2087,59 @@ internal sealed partial class McpServerImpl : McpServer
         JsonRpcRequest request,
         CancellationToken cancellationToken)
     {
-        const int MaxRetries = 10;
+        Func<InputRequiredResult, JsonNode?>? createDirectResult = ClientSupportsMrtr()
+            ? static inputRequiredResult => SerializeInputRequiredResult(inputRequiredResult)
+            : null;
 
-        for (int retry = 0; ; retry++)
+        return await InputRequiredRequestRunner.RunAsync(
+            request,
+            handler,
+            InputRequiredRequestRunner.GetReturnedInputRequiredResult,
+            createDirectResult,
+            PrepareRetryAsync,
+            static (message, innerException) => new McpException(message, innerException),
+            cancellationToken).ConfigureAwait(false);
+
+        async Task<JsonRpcRequest> PrepareRetryAsync(
+            JsonRpcRequest currentRequest,
+            InputRequiredResult inputRequiredResult,
+            Exception? inputRequiredException,
+            CancellationToken retryCancellationToken)
         {
-            InputRequiredResult inputRequiredResult;
-            Exception? inputRequiredException = null;
-
-            try
-            {
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-
-                // A handler can surface an input-required result two ways: by throwing InputRequiredException,
-                // or by RETURNING an InputRequiredResult through the alternate result path (ResultOrAlternate).
-                // Normalize both forms so a client that doesn't natively support MRTR gets the same server-side
-                // resolution either way.
-                if (GetReturnedInputRequiredResult(result) is not { } returnedInputRequired)
-                {
-                    return result;
-                }
-
-                inputRequiredResult = returnedInputRequired;
-            }
-            catch (InputRequiredException ex)
-            {
-                inputRequiredResult = ex.Result;
-                inputRequiredException = ex;
-            }
-
-            // If the client natively supports MRTR, serialize and return directly -
-            // the client will drive the retry loop.
-            if (ClientSupportsMrtr())
-            {
-                return SerializeInputRequiredResult(inputRequiredResult);
-            }
-
-            // In stateless mode without MRTR, the server can't resolve input requests via
-            // JSON-RPC (no persistent session for server-to-client requests), and the client
-            // won't recognize the InputRequiredResult. This is the one unsupported configuration.
+            // In stateless mode without MRTR, the server cannot resolve input requests via JSON-RPC
+            // because there is no persistent session for server-to-client requests.
             if (!HasStatefulTransport())
             {
                 throw new McpException(
                     "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
-                    "MRTR-native tools require either an MRTR-capable client or a stateful server for backward-compatible resolution.", inputRequiredException);
+                    "MRTR-native tools require either an MRTR-capable client or a stateful server for backward-compatible resolution.",
+                    inputRequiredException);
             }
 
-            // Backcompat: resolve input requests via standard JSON-RPC calls and retry the handler.
-            if (inputRequiredResult.InputRequests is not { Count: > 0 } inputRequests)
+            IDictionary<string, InputResponse>? inputResponses = null;
+            if (inputRequiredResult.InputRequests is { Count: > 0 } inputRequests)
             {
-                throw new McpException(
-                    "A tool handler returned an incomplete result without input requests, and the client does not support MRTR.", inputRequiredException);
+                // Route outgoing requests through the originating POST response stream, matching
+                // normal tool-initiated requests and avoiding a race with a separate GET stream.
+                var destinationServer = CreateDestinationBoundServer(currentRequest);
+                inputResponses = await InputRequiredRequestRunner.ResolveInputRequestsAsync(
+                    inputRequests,
+                    (inputRequest, requestCancellationToken) =>
+                        ResolveInputRequestAsync(destinationServer, inputRequest, requestCancellationToken),
+                    retryCancellationToken).ConfigureAwait(false);
             }
 
-            if (retry >= MaxRetries)
+            return new JsonRpcRequest
             {
-                throw new McpException(
-                    $"MRTR-native tool exceeded {MaxRetries} retry rounds without completing.", inputRequiredException);
-            }
-
-            // Resolve each input request by sending the corresponding JSON-RPC call to the client.
-            // Route the outgoing requests via the same DestinationBoundMcpServer used for normal tool
-            // handlers, so they go through the POST's response stream (RelatedTransport) rather than
-            // the session-level transport. Without this, the messages can race with the client's GET
-            // stream startup and be silently dropped by StreamableHttpServerTransport.SendMessageAsync
-            // when no GET request has arrived yet.
-            var destinationServer = CreateDestinationBoundServer(request);
-            var inputResponses = await ResolveInputRequestsAsync(destinationServer, inputRequests, cancellationToken).ConfigureAwait(false);
-
-            // Reconstruct request params with inputResponses and requestState for the retry.
-            var paramsObj = request.Params?.DeepClone() as JsonObject ?? new JsonObject();
-            paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
-                (IDictionary<string, InputResponse>)inputResponses, McpJsonUtilities.JsonContext.Default.IDictionaryStringInputResponse);
-
-            if (inputRequiredResult.RequestState is { } requestState)
-            {
-                paramsObj["requestState"] = requestState;
-            }
-            else
-            {
-                // Strip any stale requestState carried over from the previous round's clone so
-                // the next tool invocation doesn't see a continuation token the current round is not using.
-                paramsObj.Remove("requestState");
-            }
-
-            request = new JsonRpcRequest
-            {
-                Id = request.Id,
-                Method = request.Method,
-                Params = paramsObj,
-                Context = request.Context,
+                Id = currentRequest.Id,
+                Method = currentRequest.Method,
+                Params = InputRequiredRequestRunner.CreateRetryParams(
+                    currentRequest.Params,
+                    inputResponses,
+                    inputRequiredResult.RequestState),
+                Context = currentRequest.Context,
             };
         }
-    }
-
-    /// <summary>
-    /// Resolves a batch of MRTR input requests concurrently by dispatching each as a standard
-    /// JSON-RPC request to the client. The requests are routed via <paramref name="destinationServer"/>
-    /// so they go out through the POST's response stream (matching the behavior of tool-initiated
-    /// server-to-client requests like <c>server.SampleAsync</c>) and avoid racing with the client's
-    /// GET stream startup. On the first failure all remaining handlers are cancelled so user-facing
-    /// flows (sampling/elicitation prompts) don't keep running once the caller has given up, and
-    /// exceptions from late-completing tasks are observed before the original exception is rethrown.
-    /// </summary>
-    private static async Task<IDictionary<string, InputResponse>> ResolveInputRequestsAsync(
-        McpServer destinationServer,
-        IDictionary<string, InputRequest> inputRequests,
-        CancellationToken cancellationToken)
-    {
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        var keyed = new (string Key, Task<InputResponse> Task)[inputRequests.Count];
-        int i = 0;
-        foreach (var kvp in inputRequests)
-        {
-            keyed[i++] = (kvp.Key, ResolveInputRequestAsync(destinationServer, kvp.Value, linkedCts.Token));
-        }
-
-        try
-        {
-            await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
-        }
-        catch
-        {
-            linkedCts.Cancel();
-            try
-            {
-                await Task.WhenAll(Array.ConvertAll(keyed, k => k.Task)).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Observed; the original exception is the one we want to surface.
-            }
-            throw;
-        }
-
-        var responses = new Dictionary<string, InputResponse>(keyed.Length);
-        foreach (var (key, task) in keyed)
-        {
-            responses[key] = task.Result;
-        }
-        return responses;
     }
 
     /// <summary>
@@ -2263,24 +2176,6 @@ internal sealed partial class McpServerImpl : McpServer
 
     private static JsonNode? SerializeInputRequiredResult(InputRequiredResult inputRequiredResult) =>
         JsonSerializer.SerializeToNode(inputRequiredResult, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
-
-    /// <summary>
-    /// Detects an <see cref="InputRequiredResult"/> that a handler surfaced by RETURNING it through the alternate
-    /// result path (rather than throwing <see cref="InputRequiredException"/>), so both forms can be resolved
-    /// identically for clients that don't natively support MRTR. Returns <see langword="null"/> for any other result.
-    /// </summary>
-    private static InputRequiredResult? GetReturnedInputRequiredResult(JsonNode? result)
-    {
-        if (result is JsonObject resultObject &&
-            resultObject.TryGetPropertyValue("resultType", out var resultTypeNode) &&
-            resultTypeNode?.GetValueKind() == JsonValueKind.String &&
-            resultTypeNode.GetValue<string>() == "input_required")
-        {
-            return JsonSerializer.Deserialize(result, McpJsonUtilities.JsonContext.Default.InputRequiredResult);
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Wraps MRTR-eligible request handlers so that when a handler calls ElicitAsync/SampleAsync/RequestRootsAsync,
