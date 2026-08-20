@@ -206,6 +206,37 @@ public sealed class McpServerOptions
     public int MaxSamplingOutputTokens { get; set; } = 1000;
 
     /// <summary>
+    /// Gets or sets an optional callback used to produce a sanitized description of an exception for logging.
+    /// </summary>
+    /// <value>
+    /// A delegate that maps an <see cref="Exception"/> to a short description to be logged in place of the
+    /// exception itself, or <see langword="null"/> to log the raw <see cref="Exception"/>. The default is
+    /// <see langword="null"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// By default, server-side failure paths pass the raw <see cref="Exception"/> to <see cref="Microsoft.Extensions.Logging.ILogger"/>,
+    /// which most logging providers render as the exception message plus its stack trace. That output can include
+    /// sensitive or overly detailed runtime data. Setting this property opts into logging only the string this
+    /// delegate returns; the raw <see cref="Exception"/> is not attached to those log entries.
+    /// </para>
+    /// <para>
+    /// When the <c>ModelContextProtocol</c> package is used, this property is populated automatically from an
+    /// <c>IExceptionSummarizer</c> registered in the dependency injection container (for example, via
+    /// <c>services.AddExceptionSummarizer()</c>) if it has not already been set.
+    /// </para>
+    /// <para>
+    /// The delegate is invoked only when the log level of the event being written is enabled, and the summarized
+    /// entry carries the same <see cref="Microsoft.Extensions.Logging.EventId"/> as the raw one it replaces.
+    /// </para>
+    /// <para>
+    /// If the delegate throws or returns <see langword="null"/>, the raw <see cref="Exception"/> is logged instead,
+    /// so a faulty summarizer can never fail the session.
+    /// </para>
+    /// </remarks>
+    public Func<Exception, string>? ExceptionSummarizer { get; set; }
+
+    /// <summary>
     /// Gets or sets custom request handlers to register with the server.
     /// </summary>
     /// <remarks>
