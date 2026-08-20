@@ -192,6 +192,8 @@ By default, the HTTP transport runs **statelessly** — the server does not assi
 
 For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
 
+`MapMcp` additionally validates the `Origin` header of browser requests by default; see [Origin validation](#origin-validation).
+
 ```json
 // appsettings.Development.json
 {
@@ -203,15 +205,42 @@ For production servers, configure `AllowedHosts` to the exact public host names 
 
 If you intentionally expose the server through another host name, such as a tunnel, container host, reverse proxy, or deployed domain, add that exact host name to `AllowedHosts` instead of using `"*"`.
 
+#### Origin validation
+
+`MapMcp` validates the `Origin` header of browser requests by default, protecting servers from [DNS rebinding] attacks where a browser reaches the server through an attacker-controlled DNS name. Requests without an `Origin` header — SDK clients, `curl`, and other non-browser callers — are always allowed. Requests that carry an `Origin` header are accepted when:
+
+- The origin's host and port match the request's `Host` header (same-origin).
+- The origin is a loopback address (`localhost`, `127.0.0.1`, `[::1]`), so browsers running on the same machine (for example, a frontend dev server) can reach the server without configuration.
+- The origin is listed in `HttpServerTransportOptions.AllowedOrigins`.
+
+[DNS rebinding]: https://owasp.org/www-community/attacks/DNS_Rebinding
+
+Any other cross-origin request is rejected with `403 Forbidden`.
+
+To allow a browser client served from a different origin to call the server, add that client's origin to `AllowedOrigins` and configure a matching CORS policy (see [Browser cross-origin access](#browser-cross-origin-access)). Entries are absolute origins (`scheme://host[:port]`) matched case-insensitively:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options =>
+    {
+        options.AllowedOrigins.Add("https://app.example.com");
+    })
+    .WithTools<MyTools>();
+```
+
+Origin validation can be disabled entirely by setting `HttpServerTransportOptions.DisableOriginValidation` to `true`. Only do this when the server is not reachable from a browser or when equivalent protection (such as a reverse proxy that validates origins) is already in place.
+
 #### Browser cross-origin access
+
+Origin validation (see above) rejects cross-origin requests at the server. CORS is a separate mechanism that controls whether a browser may **read** the server's responses, and the browser's preflight (`OPTIONS`) requests are answered by the CORS middleware itself before the endpoint runs.
 
 **Only** enable cross-origin requests (CORS) if you intentionally want browser-based cross-origin access to this server.
 
-CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
+CORS is not a substitute for host name validation. When browser-based cross-origin access is required, limit which browser origins can call the MCP endpoint by using the most restrictive ASP.NET Core CORS policy possible, and add the same origins to `AllowedOrigins` so the actual requests pass origin validation. See [Enable Cross-Origin Requests (CORS) in ASP.NET Core | Microsoft Learn](https://learn.microsoft.com/aspnet/core/security/cors).
 
 For a **stateless** browser client, a narrowly scoped CORS policy usually only needs the headers the browser would otherwise preflight: `Content-Type` for JSON, `Authorization` when the endpoint is protected, and `MCP-Protocol-Version`. If you enable sessions or resumability, also allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` on responses so browser code can read it. `Accept` normally doesn't need to be listed because browsers can already send it without extra CORS configuration.
 
-_In the following sample, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains._
+_In the following sample, the MCP server will allow browser calls from `localhost:5173` where a web application is making the request. In production, this allowed origin list would be configured to the trusted web application domains. The `localhost:5173` origin is loopback, so it passes [origin validation](#origin-validation) by default; the CORS policy below is what lets the browser read the server's responses._
 
 ```json
 // appsettings.Development.json

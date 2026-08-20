@@ -115,6 +115,42 @@ public class HttpServerTransportOptions
     }
 
     /// <summary>
+    /// Gets or sets additional browser origins allowed to call the MCP endpoints in addition to the
+    /// same-origin and loopback defaults.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// By default, <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/> validates the <c>Origin</c> header on
+    /// browser requests to the MCP endpoints, protecting servers from DNS rebinding attacks. Requests without an
+    /// <c>Origin</c> header (such as SDK clients and <c>curl</c>), requests whose origin's host and port match the
+    /// request's <c>Host</c> header, and loopback origins (<c>localhost</c>, <c>127.0.0.1</c>, <c>[::1]</c>) are
+    /// allowed without configuration. Any other cross-origin request is rejected with <c>403 Forbidden</c>.
+    /// </para>
+    /// <para>
+    /// Origins listed here are allowed in addition to those defaults, enabling a browser-hosted client served from
+    /// a different origin to call the server. Each entry is an absolute origin (<c>scheme://host[:port]</c>) and is
+    /// matched case-insensitively, mirroring how ASP.NET Core's CORS middleware matches origins. A matching CORS
+    /// policy is still required for the browser to read the server's responses.
+    /// </para>
+    /// </remarks>
+    public IList<string> AllowedOrigins { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether the MCP endpoints validate the <c>Origin</c> header of browser requests.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to skip origin validation and accept requests from any origin;
+    /// <see langword="false"/> to reject cross-origin browser requests that are not explicitly allowed.
+    /// The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// Disable origin validation only when the server is not reachable from a browser, or when equivalent
+    /// protection — such as a reverse proxy that validates origins, or a per-endpoint authorization policy —
+    /// is already in place.
+    /// </remarks>
+    public bool DisableOriginValidation { get; set; }
+
+    /// <summary>
     /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
     /// for backward compatibility with clients that do not support the Streamable HTTP transport.
     /// </summary>
