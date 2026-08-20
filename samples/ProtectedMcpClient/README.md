@@ -27,7 +27,7 @@ cd tests\ModelContextProtocol.TestOAuthServer
 dotnet run --framework net9.0
 ```
 
-The OAuth server will start at `https://localhost:7029`
+The OAuth server will start at `http://localhost:7029`
 
 ### Step 2: Start the Protected MCP Server
 
@@ -66,7 +66,7 @@ The client is configured with:
 - **Client ID**: `demo-client`
 - **Client Secret**: `demo-secret` 
 - **Redirect URI**: `http://localhost:1179/callback`
-- **OAuth Server**: `https://localhost:7029`
+- **OAuth Server**: `http://localhost:7029`
 - **Protected Resource**: `http://localhost:7071`
 
 ## Available Tools
@@ -77,7 +77,10 @@ Once authenticated, the client can access weather tools including:
 
 ## Troubleshooting
 
-- Ensure the ASP.NET Core dev certificate is trusted.
+- The TestOAuthServer listens over plain HTTP on loopback. If you host it over HTTPS instead
+  (`dotnet run --framework net9.0 -- --https`, which also needs a matching `inMemoryOAuthServerUrl`
+  in the ProtectedMcpServer sample), ensure the ASP.NET Core dev certificate is trusted and allow it
+  in your browser as well.
   ```
   dotnet dev-certs https --clean
   dotnet dev-certs https --trust
@@ -85,7 +88,6 @@ Once authenticated, the client can access weather tools including:
 - Ensure all three services are running in the correct order
 - Check that ports 7029, 7071, and 1179 are available
 - If the browser doesn't open automatically, copy the authorization URL from the console and open it manually
-- Make sure to allow the OAuth server's self-signed certificate in your browser
 
 ## Key Files
 
