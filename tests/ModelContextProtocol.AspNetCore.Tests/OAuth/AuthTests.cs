@@ -2549,4 +2549,136 @@ public class AuthTests : OAuthTestBase
 
         Assert.Equal("mcp:tools", TestOAuthServer.LastRegistrationScope);
     }
+
+    [Fact]
+    public async Task InteractiveAuthorization_SurvivesCancellationOfTriggeringRequest()
+    {
+        // A challenge raised while a previous challenge's interactive flow is still pending must
+        // join that flow rather than start a second one: the user is already completing the first
+        // flow's authorization URL in a browser, and a second flow's state and PKCE verifier could
+        // never match the redirect the user eventually completes. Canceling the request whose
+        // challenge started the flow must therefore not cancel the flow itself.
+        await using var app = await StartMcpServerAsync();
+
+        var handlerInvocations = 0;
+        var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeAuthorization = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            Interlocked.Increment(ref handlerInvocations);
+            handlerEntered.TrySetResult();
+
+            // Hold the flow open, like a user mid-login. Before the fix, canceling the first
+            // connect canceled this wait via cancellationToken, and the second connect re-invoked
+            // the handler for a fresh flow.
+            await completeAuthorization.Task.WaitAsync(cancellationToken);
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2025-06-18" };
+
+        using var firstConnectCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var firstConnect = McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: firstConnectCts.Token);
+
+        await handlerEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        firstConnectCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstConnect);
+
+        // The user now completes the original flow's authorization. The flow must still be alive
+        // to receive it, and the next connect must reuse its outcome (via the in-flight flow or
+        // the token it caches) instead of starting a second flow.
+        completeAuthorization.TrySetResult();
+
+        await using var client = await McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, handlerInvocations);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_SurvivesDiscoverProbeTimeout()
+    {
+        // End-to-end version of the dual-path connect scenario: the server/discover probe draws the
+        // 401 that starts the interactive flow, DiscoverProbeTimeout cancels the probe while the
+        // flow waits on the user, and the challenge raised by the initialize fallback must join the
+        // pending flow instead of starting a second one the user never sees.
+        await using var app = await StartMcpServerAsync();
+
+        // Warm the server pipeline (JIT, auth handlers) so the in-test latencies are dominated by
+        // the configured probe timeout rather than first-request overhead.
+        using (var warmup = await HttpClient.PostAsync(
+            McpServerUrl,
+            new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, warmup.StatusCode);
+        }
+
+        var handlerInvocations = 0;
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            Interlocked.Increment(ref handlerInvocations);
+
+            // Simulate a user who finishes the browser flow only after DiscoverProbeTimeout has
+            // elapsed and the initialize fallback has raised its own challenge. The delay is
+            // deliberately not bound to cancellationToken so that, before the fix, the second
+            // flow ran to completion and the test observed both invocations.
+            await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions { DiscoverProbeTimeout = TimeSpan.FromMilliseconds(500) },
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, handlerInvocations);
+    }
+
+    [Fact]
+    public async Task DisposingTransport_CancelsDetachedAuthorizationFlow()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var handlerCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            try
+            {
+                // Park the flow past the entire connect attempt, as if the user never finishes
+                // the browser login.
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                handlerCanceled.TrySetResult();
+                throw;
+            }
+
+            return null;
+        });
+
+        await Assert.ThrowsAsync<TimeoutException>(() => McpClient.CreateAsync(
+            transport,
+            new McpClientOptions
+            {
+                DiscoverProbeTimeout = TimeSpan.FromMilliseconds(100),
+                InitializationTimeout = TimeSpan.FromSeconds(1),
+            },
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        // The flow is detached from the canceled connect requests; only disposing the transport
+        // cancels it.
+        Assert.False(handlerCanceled.Task.IsCompleted);
+
+        await transport.DisposeAsync();
+
+        await handlerCanceled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
 }

@@ -89,6 +89,12 @@ public sealed class McpClientOptions
     /// Setting an appropriate timeout prevents the client from hanging indefinitely when
     /// connecting to unresponsive servers.
     /// </para>
+    /// <para>
+    /// When the transport authenticates via OAuth with an interactive
+    /// <see cref="Authentication.ClientOAuthOptions.AuthorizationCallbackHandler"/>, the user's browser-based
+    /// authorization runs within this budget: increase this value to cover the time a person
+    /// needs to complete the login, not just the network round-trips.
+    /// </para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
@@ -120,6 +126,15 @@ public sealed class McpClientOptions
     /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// <para>
+    /// A server that requires OAuth answers the probe with a <c>401</c> challenge, which can start an
+    /// interactive authorization via <see cref="Authentication.ClientOAuthOptions.AuthorizationCallbackHandler"/>.
+    /// If this timeout then elapses while the user is still authorizing, only the probe request is
+    /// canceled: the authorization flow keeps running, and the challenge raised by the
+    /// <c>initialize</c> fallback joins that same flow and reuses its token instead of starting a
+    /// second flow the user never sees. The connect attempt overall remains bounded by
+    /// <see cref="InitializationTimeout"/>, and disposing the transport cancels the flow.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
