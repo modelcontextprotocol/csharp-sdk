@@ -3,10 +3,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Tests.Utils;
 using System.Net;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
@@ -79,6 +82,23 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         {
             TestCts.Dispose();
         }
+    }
+
+    protected Task<McpClient> CreateMcpClientAsync(
+        IClientTransport clientTransport,
+        ILoggerFactory? loggerFactory = null,
+        CancellationToken cancellationToken = default)
+    {
+        return McpClient.CreateAsync(
+            clientTransport,
+            new McpClientOptions
+            {
+                // Keep OAuth metadata discovery inside the client initialization budget on slow CI.
+                // The default five-second probe can cancel an in-flight metadata request.
+                DiscoverProbeTimeout = TestConstants.DefaultTimeout,
+            },
+            loggerFactory,
+            cancellationToken);
     }
 
     protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null, Action<WebApplication>? configureMiddleware = null)
