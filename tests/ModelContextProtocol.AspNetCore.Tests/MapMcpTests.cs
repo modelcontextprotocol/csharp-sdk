@@ -239,10 +239,9 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task LongRunningToolCall_DoesNotTimeout_WhenNoEventStreamStore()
     {
-        // Regression test for: Tool calls that last over HttpClient timeout without producing
-        // intermediate notifications will timeout because HttpClient doesn't see the 200 response
-        // until the first message is written. When primingItem is null (no ISseEventStreamStore),
-        // we should flush the response stream so HttpClient sees the 200 immediately.
+        // Legacy Streamable HTTP tool calls that run past the HttpClient timeout without producing
+        // intermediate notifications need an eager response flush. Per-request-metadata protocol
+        // revisions instead wait for the first JSON-RPC message so SEP-2575 can map its status.
 
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<LongRunningTools>();
 
@@ -274,7 +273,11 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
                     TransportMode = transportMode,
                 }, shortTimeoutClient, LoggerFactory);
 
-                await using var mcpClient = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+                await using var mcpClient = await McpClient.CreateAsync(
+                    transport,
+                    new McpClientOptions { ProtocolVersion = "2025-11-25" },
+                    LoggerFactory,
+                    TestContext.Current.CancellationToken);
 
                 // Call a tool that takes 2 seconds - this should succeed despite the 1 second HttpClient timeout
                 // because the response stream is flushed immediately after receiving the request
