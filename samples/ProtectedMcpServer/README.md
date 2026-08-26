@@ -27,10 +27,18 @@ cd tests\ModelContextProtocol.TestOAuthServer
 dotnet run --framework net9.0
 ```
 
-The OAuth server will start at `http://localhost:7029`. It listens over plain HTTP on loopback so
-that any MCP client can fetch its metadata without first trusting a certificate. To host it on the
-ASP.NET Core developer certificate instead, run `dotnet run --framework net9.0 -- --https` and
-update `inMemoryOAuthServerUrl` in this sample's `Program.cs` to match.
+The OAuth server will start at `https://localhost:7029`, on the ASP.NET Core developer certificate.
+Run `dotnet dev-certs https --trust` once if you have not already.
+
+If your MCP client cannot fetch the metadata from that certificate - see [Step 4](#step-4-test-with-an-editor) -
+start the authorization server over plain loopback HTTP instead and point this sample at it:
+
+```bash
+# terminal 1
+dotnet run --framework net9.0 -- --http
+# terminal 2
+dotnet run --OAuth:ServerUrl=http://localhost:7029
+```
 
 ### Step 2: Start the Protected MCP Server
 
@@ -59,11 +67,11 @@ gets a 401 with `WWW-Authenticate`, reads the protected resource metadata, disco
 authorization server at `http://localhost:7029`, registers itself through Dynamic Client
 Registration, and completes the code flow in the browser.
 
-If you host the authorization server over HTTPS with `--https`, the client has to trust the ASP.NET
-Core developer certificate to get that far. VS Code doesn't use the operating system trust store for
-these requests, so the metadata fetch fails, and the fallback for pre-2025-06-18 servers kicks in:
-it asks for a client ID because it no longer knows about the registration endpoint, then sends the
-browser to `http://localhost:7071/authorize`, which 404s.
+VS Code does not use the operating system trust store for these requests, so with the default HTTPS
+authorization server the metadata fetch fails even after `dotnet dev-certs https --trust`, and the
+fallback for pre-2025-06-18 servers kicks in: it asks for a client ID because it no longer knows
+about the registration endpoint, then sends the browser to `http://localhost:7071/authorize`, which
+404s. Use the `--http` pair of commands from Step 1 for those clients.
 
 ## What the Server Provides
 
@@ -89,15 +97,15 @@ The server provides weather-related tools that require authentication:
 ### Authentication Configuration
 
 The server is configured to:
-- Accept JWT bearer tokens from the OAuth server at `http://localhost:7029`
+- Accept JWT bearer tokens from the OAuth server at `https://localhost:7029`, overridable with `OAuth:ServerUrl`
 - Validate token audience as `demo-client`
 - Require tokens to have appropriate scopes (`mcp:tools`)
 - Provide OAuth resource metadata for client discovery
 
-Because that authority is an HTTP loopback address, the sample sets
-`JwtBearerOptions.RequireHttpsMetadata = false`. Never do that against an authority you don't fully
-control on the local machine: it lets the OpenID Connect metadata and the token signing keys be
-fetched over an unprotected connection.
+`JwtBearerOptions.RequireHttpsMetadata` follows the scheme of that authority, so it stays at its
+default of `true` unless you have deliberately pointed the sample at a plain-HTTP loopback address.
+Never relax it for an authority you do not fully control on the local machine: it lets the OpenID
+Connect metadata and the token signing keys be fetched over an unprotected connection.
 
 ## Architecture
 

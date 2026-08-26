@@ -9,10 +9,12 @@ using System.Security.Claims;
 var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
-// The bundled TestOAuthServer listens on loopback over plain HTTP so that MCP clients which don't
-// trust the ASP.NET Core developer certificate (VS Code, for one) can fetch its metadata. A real
-// deployment uses an HTTPS authorization server.
-var inMemoryOAuthServerUrl = "http://localhost:7029";
+// The bundled TestOAuthServer hosts over HTTPS by default, which is what the MCP authorization
+// security requirements and RFC 8414 ask for. Clients whose HTTP stack does not use the operating
+// system trust store (VS Code, for one) cannot fetch metadata from the developer certificate; for
+// those, start the authorization server with `--http` and point this sample at it by setting
+// `OAuth:ServerUrl` (for example `dotnet run -- --OAuth:ServerUrl=http://localhost:7029`).
+var inMemoryOAuthServerUrl = builder.Configuration["OAuth:ServerUrl"] ?? "https://localhost:7029";
 var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
 
 // This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
@@ -43,9 +45,12 @@ builder.Services.AddAuthentication(options =>
 {
     // Configure to validate tokens from our in-memory OAuth server
     options.Authority = inMemoryOAuthServerUrl;
-    // Only because that authority is an HTTP loopback address. Leave this at its default of true
-    // in production so the OpenID Connect metadata and signing keys are fetched over HTTPS.
-    options.RequireHttpsMetadata = false;
+    // Stays at its default of true for the HTTPS authority above. It only relaxes when the sample has
+    // been pointed at a plain-HTTP loopback authority on purpose, because metadata and signing keys
+    // would otherwise be fetched over an unprotected connection. Never relax it for an authority you
+    // do not fully control on the local machine.
+    options.RequireHttpsMetadata =
+        inMemoryOAuthServerUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,

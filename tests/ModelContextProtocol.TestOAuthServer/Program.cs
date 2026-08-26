@@ -13,8 +13,8 @@ public sealed class Program
 {
     private const int _port = 7029;
 
-    /// <summary>The command line switch that hosts the standalone server over HTTPS.</summary>
-    public const string HttpsSwitch = "--https";
+    /// <summary>The command line switch that hosts the standalone server over plain HTTP.</summary>
+    public const string HttpSwitch = "--http";
 
     private readonly string _url;
     private readonly string _clientMetadataDocumentUrl;
@@ -170,28 +170,35 @@ public sealed class Program
     /// <summary>
     /// Entry point for the application.
     /// </summary>
-    /// <param name="args">Command line arguments. Pass <c>--https</c> to serve over HTTPS instead of plain HTTP.</param>
+    /// <param name="args">Command line arguments. Pass <c>--http</c> to serve over plain HTTP instead of HTTPS.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
-    /// The samples run this server standalone and connect to it from clients such as VS Code, whose HTTP
-    /// stack carries its own CA list and therefore rejects the ASP.NET Core developer certificate. Those
-    /// clients treat a failed metadata fetch as "no metadata" and silently fall back to guessing OAuth
-    /// endpoints on the MCP server itself, so loopback is served over plain HTTP by default.
+    /// HTTPS is the default because the MCP authorization security requirements and RFC 8414 both require
+    /// authorization server endpoints to be served over HTTPS; the localhost carve-out covers redirect URIs,
+    /// not the authorization server itself.
+    /// <para>
+    /// <c>--http</c> exists for clients whose HTTP stack carries its own CA list and therefore rejects the
+    /// ASP.NET Core developer certificate - VS Code, for one. Such a client treats the failed metadata fetch
+    /// as "no metadata" and silently falls back to guessing OAuth endpoints on the MCP server itself. Serving
+    /// this fixture over loopback HTTP works around that, at the cost of a configuration that does not conform
+    /// to the requirements above, so it stays opt-in.
+    /// </para>
     /// </remarks>
     public static Task Main(string[] args) =>
-        new Program(useHttps: ShouldUseHttps(args)).RunServerAsync(WithoutHttpsSwitch(args));
+        new Program(useHttps: ShouldUseHttps(args)).RunServerAsync(WithoutHttpSwitch(args));
 
     /// <summary>
-    /// Gets whether <paramref name="args"/> asks for HTTPS hosting. Standalone runs default to plain HTTP.
+    /// Gets whether the standalone server should host over HTTPS. Defaults to <see langword="true"/>;
+    /// <see cref="HttpSwitch"/> opts out.
     /// </summary>
-    public static bool ShouldUseHttps(string[] args) => args.Contains(HttpsSwitch, StringComparer.OrdinalIgnoreCase);
+    public static bool ShouldUseHttps(string[] args) => !args.Contains(HttpSwitch, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Strips <see cref="HttpsSwitch"/>, which the host's command line configuration provider rejects
+    /// Strips <see cref="HttpSwitch"/>, which the host's command line configuration provider rejects
     /// because it carries no value.
     /// </summary>
-    public static string[] WithoutHttpsSwitch(string[] args) =>
-        args.Where(arg => !string.Equals(arg, HttpsSwitch, StringComparison.OrdinalIgnoreCase)).ToArray();
+    public static string[] WithoutHttpSwitch(string[] args) =>
+        args.Where(arg => !string.Equals(arg, HttpSwitch, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     /// <summary>
     /// Runs the OAuth server with the specified parameters.

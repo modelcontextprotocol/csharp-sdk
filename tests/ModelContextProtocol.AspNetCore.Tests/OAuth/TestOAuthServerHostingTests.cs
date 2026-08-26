@@ -3,10 +3,10 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
-// The samples run TestOAuthServer standalone over plain HTTP so that clients which don't trust the
-// ASP.NET Core developer certificate can still fetch its metadata. Whichever scheme it's hosted on,
-// the discovery document has to describe that same origin, otherwise clients follow endpoints they
-// can't reach and fall back to guessing.
+// TestOAuthServer hosts over HTTPS by default, as the MCP authorization security requirements and
+// RFC 8414 ask for; `--http` opts into plain loopback HTTP for clients that don't trust the ASP.NET
+// Core developer certificate. Whichever scheme it ends up on, the discovery document has to describe
+// that same origin, otherwise clients follow endpoints they can't reach and fall back to guessing.
 public class TestOAuthServerHostingTests : KestrelInMemoryTest
 {
     public TestOAuthServerHostingTests(ITestOutputHelper outputHelper)
@@ -17,16 +17,16 @@ public class TestOAuthServerHostingTests : KestrelInMemoryTest
     }
 
     [Fact]
-    public void StandaloneServer_UsesPlainHttp_UnlessHttpsIsRequested()
+    public void StandaloneServer_UsesHttps_UnlessPlainHttpIsRequested()
     {
-        Assert.False(TestOAuthServer.Program.ShouldUseHttps([]));
-        Assert.False(TestOAuthServer.Program.ShouldUseHttps(["--urls", "http://localhost:7029"]));
-        Assert.True(TestOAuthServer.Program.ShouldUseHttps(["--https"]));
-        Assert.True(TestOAuthServer.Program.ShouldUseHttps(["--HTTPS"]));
+        Assert.True(TestOAuthServer.Program.ShouldUseHttps([]));
+        Assert.True(TestOAuthServer.Program.ShouldUseHttps(["--urls", "https://localhost:7029"]));
+        Assert.False(TestOAuthServer.Program.ShouldUseHttps(["--http"]));
+        Assert.False(TestOAuthServer.Program.ShouldUseHttps(["--HTTP"]));
 
         // The switch carries no value, so it has to be gone before the host parses the rest.
         Assert.Equal(["--urls", "http://localhost:7029"],
-            TestOAuthServer.Program.WithoutHttpsSwitch(["--https", "--urls", "http://localhost:7029"]));
+            TestOAuthServer.Program.WithoutHttpSwitch(["--http", "--urls", "http://localhost:7029"]));
     }
 
     [Theory]

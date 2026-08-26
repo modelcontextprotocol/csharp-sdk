@@ -27,7 +27,7 @@ cd tests\ModelContextProtocol.TestOAuthServer
 dotnet run --framework net9.0
 ```
 
-The OAuth server will start at `http://localhost:7029`
+The OAuth server will start at `https://localhost:7029`
 
 ### Step 2: Start the Protected MCP Server
 
@@ -66,7 +66,7 @@ The client is configured with:
 - **Client ID**: `demo-client`
 - **Client Secret**: `demo-secret` 
 - **Redirect URI**: `http://localhost:1179/callback`
-- **OAuth Server**: `http://localhost:7029`
+- **OAuth Server**: `https://localhost:7029`
 - **Protected Resource**: `http://localhost:7071`
 
 ## Available Tools
