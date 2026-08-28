@@ -282,6 +282,78 @@ public sealed class MyTaskStore : IMcpTaskStore
 }
 ```
 
+### Delegating execution to an external runtime
+
+By default, `WithTasks` executes the tool in-process on the .NET thread pool. To delegate
+execution to a durable system such as Temporal, Orleans, Hangfire, or an external queue,
+register an <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor>:
+
+```csharp
+builder.WithTasks(
+    myDurableTaskStore,
+    options =>
+    {
+        options.TaskExecutor = new TemporalTaskExecutor(workflowClient);
+    });
+```
+
+An executor can also be resolved from the service provider — register a single
+`IMcpTaskExecutor` in DI and omit `TaskExecutor`. When neither is configured, tasks run
+in-process exactly as before.
+
+The executor is invoked after the task record is durably created in the store.
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor.StartAsync*> must return only
+after execution has been durably started — for example, after the external runtime has
+accepted the job — mirroring the durability requirement SEP-2663 §306 places on
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*>. It must not wait
+for the task to complete. If `StartAsync` throws, the task is marked failed via
+`SetFailedAsync`; after a successful `StartAsync`, the SDK stops tracking the task and the
+store is the single source of truth for its state.
+
+The <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext> passed to the
+executor exposes the task identity, the matched tool request bound to a fresh execution
+scope, and a token that fires on `tasks/cancel`. Executors that want the tool to run
+locally call
+<xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.RunToolPipelineAsync*>,
+which runs the remaining request filters and the tool, records the outcome in the store,
+and releases the execution scope. Executors that hand execution off to an external system
+should read what they need from
+<xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.Request*> and then call
+<xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.DisposeAsync*> to release
+the scope-bound services.
+
+```csharp
+public sealed class TemporalTaskExecutor(ITemporalClient workflowClient) : IMcpTaskExecutor
+{
+    public async ValueTask StartAsync(
+        McpTaskExecutionContext context, CancellationToken cancellationToken)
+    {
+        // Submit the tool request to the durable runtime. The workflow communicates with
+        // IMcpTaskStore directly to record progress and results.
+        await workflowClient.StartWorkflowAsync(
+            "run-mcp-task",
+            new McpTaskPayload(context.TaskId, context.Request.Params),
+            id: context.TaskId,
+            cancellationToken);
+
+        // The scope-bound services are no longer needed in this process.
+        await context.DisposeAsync();
+    }
+}
+```
+
+`tasks/get`, `tasks/update`, and `tasks/cancel` continue to be served entirely from the
+`IMcpTaskStore`, so a different server instance can serve polling clients after the process
+that started the task exits — the acceptance scenario for durable execution.
+
+Note that elicitation and sampling issued from *outside* the process that owns the client
+session cannot be routed through the task's input-request channel; an external worker that
+needs multi-round-trip input should rely on the store's
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.InputResponseReceived?displayProperty=nameWithType>
+event, or run the pipeline locally via
+<xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.RunToolPipelineAsync*>
+from the process that owns the session.
+
 ### Status semantics
 
 <xref:ModelContextProtocol.Extensions.Tasks.McpTaskStatus.Completed> is the terminal status whenever the
