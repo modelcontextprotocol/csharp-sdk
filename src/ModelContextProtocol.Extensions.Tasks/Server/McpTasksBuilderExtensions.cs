@@ -68,6 +68,7 @@ public static class McpTasksBuilderExtensions
                 store,
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetService<ILoggerFactory>(),
+                sp.GetService<IMcpTaskExecutor>(),
                 taskOptions));
         return builder;
     }
@@ -76,11 +77,13 @@ public static class McpTasksBuilderExtensions
         IMcpTaskStore store,
         IServiceScopeFactory serviceScopeFactory,
         ILoggerFactory? loggerFactory,
+        IMcpTaskExecutor? registeredExecutor,
         McpTasksOptions taskOptions) : IConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
+        private readonly IMcpTaskExecutor? _registeredExecutor = registeredExecutor;
         private readonly McpTasksOptions _taskOptions = taskOptions;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
@@ -189,9 +192,24 @@ public static class McpTasksBuilderExtensions
             // Capture the token before dispatching. Cancellation can remove and dispose the source
             // before the background delegate starts.
             var taskCancellationToken = cts.Token;
-            _ = Task.Run(
-                () => ExecuteTaskAsync(next, executionRequest, taskId, taskCancellationToken, executionScope),
-                CancellationToken.None);
+            var context = new McpTaskExecutionContext(
+                taskInfo,
+                executionRequest,
+                taskCancellationToken,
+                (req, ct) => ExecuteTaskAsync(next, req, taskId, ct, executionScope),
+                () => ReleaseExecutionResourcesAsync(executionScope, taskId));
+
+            var executor = _taskOptions.TaskExecutor ?? _registeredExecutor ?? ProcessLocalMcpTaskExecutor.Instance;
+            try
+            {
+                await executor.StartAsync(context, taskCancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // The task record exists, so the client will poll it. Record the start failure as
+                // the task's failure rather than failing the tools/call request after the fact.
+                _ = Task.Run(() => RecordStartFailureAsync(context, ex), CancellationToken.None);
+            }
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(
                 ToCreateTaskResult(taskInfo),
@@ -235,10 +253,52 @@ public static class McpTasksBuilderExtensions
             }
             finally
             {
-                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                {
-                    registeredCts.Dispose();
-                }
+                RemoveCancellationSource(taskId);
+            }
+        }
+
+        private async Task RecordStartFailureAsync(McpTaskExecutionContext context, Exception exception)
+        {
+            _logger.LogError(exception, "Starting execution of task '{TaskId}' failed.", context.TaskId);
+
+            try
+            {
+                await context.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception disposeEx)
+            {
+                _logger.LogError(disposeEx, "Failed to release resources of task '{TaskId}' after a failed start.", context.TaskId);
+            }
+
+            try
+            {
+                var error = new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = exception.Message };
+                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                await _store.SetFailedAsync(context.TaskId, errorJson).ConfigureAwait(false);
+            }
+            catch (Exception storeEx)
+            {
+                _logger.LogError(storeEx, "Failed to record the failure of task '{TaskId}'.", context.TaskId);
+            }
+        }
+
+        private async Task ReleaseExecutionResourcesAsync(AsyncServiceScope executionScope, string taskId)
+        {
+            try
+            {
+                await executionScope.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                RemoveCancellationSource(taskId);
+            }
+        }
+
+        private void RemoveCancellationSource(string taskId)
+        {
+            if (_cancellationSources.TryRemove(taskId, out var registeredCts))
+            {
+                registeredCts.Dispose();
             }
         }
 
