@@ -68,7 +68,6 @@ public static class McpTasksBuilderExtensions
                 store,
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetService<ILoggerFactory>(),
-                sp.GetService<IMcpTaskExecutor>(),
                 taskOptions));
         return builder;
     }
@@ -77,13 +76,11 @@ public static class McpTasksBuilderExtensions
         IMcpTaskStore store,
         IServiceScopeFactory serviceScopeFactory,
         ILoggerFactory? loggerFactory,
-        IMcpTaskExecutor? registeredExecutor,
         McpTasksOptions taskOptions) : IConfigureOptions<McpServerOptions>
     {
         private readonly IMcpTaskStore _store = store;
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
-        private readonly IMcpTaskExecutor? _registeredExecutor = registeredExecutor;
         private readonly McpTasksOptions _taskOptions = taskOptions;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
 
@@ -174,8 +171,17 @@ public static class McpTasksBuilderExtensions
             };
 
             McpTaskInfo taskInfo;
+            IMcpTaskExecutor executor;
             try
             {
+                // Resolve the executor from the execution scope (falling back to the process-local
+                // default) rather than the root provider so scoped and transient registrations get
+                // correct lifetimes; singleton registrations still yield the same instance. Resolving
+                // before the task record is created keeps a DI misconfiguration from leaving a
+                // durably-created task stuck at Working: the resolution error fails tools/call instead.
+                executor = _taskOptions.TaskExecutor
+                    ?? executionScope.ServiceProvider.GetService<IMcpTaskExecutor>()
+                    ?? ProcessLocalMcpTaskExecutor.Instance;
                 taskInfo = await _store.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
             }
             catch
@@ -199,7 +205,6 @@ public static class McpTasksBuilderExtensions
                 (req, ct) => ExecuteTaskAsync(next, req, taskId, ct, executionScope),
                 () => ReleaseExecutionResourcesAsync(executionScope, taskId));
 
-            var executor = _taskOptions.TaskExecutor ?? _registeredExecutor ?? ProcessLocalMcpTaskExecutor.Instance;
             try
             {
                 await executor.StartAsync(context, taskCancellationToken).ConfigureAwait(false);
@@ -207,8 +212,9 @@ public static class McpTasksBuilderExtensions
             catch (Exception ex)
             {
                 // The task record exists, so the client will poll it. Record the start failure as
-                // the task's failure rather than failing the tools/call request after the fact.
-                _ = Task.Run(() => RecordStartFailureAsync(context, ex), CancellationToken.None);
+                // the task's failure before returning the task alternate, so the client's first
+                // poll observes the terminal state rather than racing it.
+                await RecordStartFailureAsync(context, ex).ConfigureAwait(false);
             }
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(

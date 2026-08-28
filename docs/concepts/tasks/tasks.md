@@ -297,9 +297,10 @@ builder.WithTasks(
     });
 ```
 
-An executor can also be resolved from the service provider — register a single
-`IMcpTaskExecutor` in DI and omit `TaskExecutor`. When neither is configured, tasks run
-in-process exactly as before.
+An executor can also be resolved from the service provider — register `IMcpTaskExecutor` in DI
+and omit `TaskExecutor`. The executor is resolved from each task's execution scope, so scoped
+registrations get one instance per task; singleton registrations behave as usual. When neither
+is configured, tasks run in-process exactly as before.
 
 The executor is invoked after the task record is durably created in the store.
 <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor.StartAsync*> must return only

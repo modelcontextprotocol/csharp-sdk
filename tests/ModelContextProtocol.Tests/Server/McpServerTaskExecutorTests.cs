@@ -295,3 +295,82 @@ public class McpServerTaskExecutorTests : ClientServerTestBase
         }
     }
 }
+
+public class McpServerTaskExecutorDiResolutionTests : ClientServerTestBase
+{
+    private readonly TaskCompletionSource<McpTaskExecutionContext> _executorInvoked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _executorInstances;
+
+    public McpServerTaskExecutorDiResolutionTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
+        services.AddScoped<IMcpTaskExecutor>(_ =>
+        {
+            Interlocked.Increment(ref _executorInstances);
+            return new DiTaskExecutor(this);
+        });
+
+        mcpServerBuilder
+            .WithTasks(new InMemoryMcpTaskStore { DefaultPollIntervalMs = 10 })
+            .WithTools([McpServerTool.Create(
+                () => "local result",
+                new McpServerToolCreateOptions { Name = "local-tool" })]);
+    }
+
+    [Fact]
+    public async Task ScopedExecutor_RegisteredInDi_IsResolvedPerTaskAndRunsPipeline()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "local-tool" },
+            cancellationToken);
+        Assert.True(augmented.IsTask);
+
+        await _executorInvoked.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+        var task = await PollUntilTerminalAsync(client, augmented.TaskCreated!.TaskId, cancellationToken);
+        Assert.IsType<CompletedTaskResult>(task);
+        Assert.Equal(1, _executorInstances);
+
+        // A second task resolves a fresh scoped executor instance.
+        var second = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "local-tool" },
+            cancellationToken);
+        Assert.True(second.IsTask);
+        var secondTask = await PollUntilTerminalAsync(client, second.TaskCreated!.TaskId, cancellationToken);
+        Assert.IsType<CompletedTaskResult>(secondTask);
+        Assert.Equal(2, _executorInstances);
+    }
+
+    private static async Task<GetTaskResult> PollUntilTerminalAsync(
+        McpClient client, string taskId, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var task = await client.GetTaskAsync(taskId, cancellationToken);
+            if (task is not WorkingTaskResult)
+            {
+                return task;
+            }
+
+            await Task.Delay(10, cancellationToken);
+        }
+    }
+
+    private sealed class DiTaskExecutor(McpServerTaskExecutorDiResolutionTests test) : IMcpTaskExecutor
+    {
+        public ValueTask StartAsync(McpTaskExecutionContext context, CancellationToken cancellationToken)
+        {
+            test._executorInvoked.TrySetResult(context);
+            return context.RunToolPipelineAsync(context.CancellationToken);
+        }
+    }
+}
