@@ -307,9 +307,22 @@ The executor is invoked after the task record is durably created in the store.
 after execution has been durably started — for example, after the external runtime has
 accepted the job — mirroring the durability requirement SEP-2663 §306 places on
 <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*>. It must not wait
-for the task to complete. If `StartAsync` throws, the task is marked failed via
-`SetFailedAsync`; after a successful `StartAsync`, the SDK stops tracking the task and the
-store is the single source of truth for its state.
+for the task to complete. If `StartAsync` throws, the exception is not returned as an error
+from the original `tools/call`: that call still succeeds with
+<xref:ModelContextProtocol.Extensions.Tasks.CreateTaskResult>, the task is marked failed via
+`SetFailedAsync`, and the client discovers the failure on its first `tasks/get` poll. By
+contrast, failures before the task record exists — resolving the executor or
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*> — do fail the
+original `tools/call`. After a successful `StartAsync`, the SDK stops tracking the task and
+the store is the single source of truth for its state.
+
+One boundary to be aware of is the window between `CreateTaskAsync` completing and
+`StartAsync` returning: if the process exits during it, the store is left with a `Working`
+task whose work was never submitted to the external runtime. The SDK performs no
+reconciliation of such tasks, so integrations that must recover from a crash in this window
+need their own strategy — for example TTL cleanup, startup reconciliation, an outbox, or a
+durable execution intent. Using the task ID as an idempotency key makes resubmission safe,
+but it does not by itself retry a submission that was never attempted.
 
 The <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext> passed to the
 executor exposes the task identity, the matched tool request bound to a fresh execution
@@ -322,6 +335,14 @@ should read what they need from
 <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.Request*> and then call
 <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.DisposeAsync*> to release
 the scope-bound services.
+
+Primitive matching and the filters registered before Tasks — including ASP.NET Core
+authorization — have already run by the time `StartAsync` is called. The remaining
+alternate-result filters and the ordinary call-tool filters run only inside
+`RunToolPipelineAsync`, so an executor that performs a pure handoff to an external runtime
+bypasses them. When the tool pipeline will not run locally, validation, auditing,
+transformations, and other cross-cutting policies must be applied by the external runtime —
+or by a filter registered before Tasks — instead.
 
 ```csharp
 public sealed class TemporalTaskExecutor(ITemporalClient workflowClient) : IMcpTaskExecutor
@@ -346,6 +367,14 @@ public sealed class TemporalTaskExecutor(ITemporalClient workflowClient) : IMcpT
 `tasks/get`, `tasks/update`, and `tasks/cancel` continue to be served entirely from the
 `IMcpTaskStore`, so a different server instance can serve polling clients after the process
 that started the task exits — the acceptance scenario for durable execution.
+
+Note that <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.CancellationToken*>
+signals cancellation only within the process that created the task. A `tasks/cancel` handled
+by a different server instance can update the shared store, but it cannot signal that
+process's token. External-runtime integrations whose cancellation must survive server
+replacement therefore need to propagate it through their store or another durable mechanism;
+the token remains the cancellation signal for the default in-process executor and other
+same-process execution paths.
 
 Note that elicitation and sampling issued from *outside* the process that owns the client
 session cannot be routed through the task's input-request channel; an external worker that

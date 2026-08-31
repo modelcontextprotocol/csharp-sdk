@@ -22,8 +22,10 @@ namespace ModelContextProtocol.Extensions.Tasks;
 /// performs the execution.
 /// </para>
 /// <para>
-/// If <see cref="StartAsync"/> throws, the task is marked failed via
-/// <see cref="IMcpTaskStore.SetFailedAsync"/>. After a successful <see cref="StartAsync"/>,
+/// If <see cref="StartAsync"/> throws, the exception is not returned as an error from the
+/// original <c>tools/call</c>: that call still succeeds with <see cref="CreateTaskResult"/>,
+/// the task is marked failed via <see cref="IMcpTaskStore.SetFailedAsync"/>, and the client
+/// discovers the failure on its first poll. After a successful <see cref="StartAsync"/>,
 /// the SDK no longer tracks the task; the store is the single source of truth for its state.
 /// </para>
 /// <para>
