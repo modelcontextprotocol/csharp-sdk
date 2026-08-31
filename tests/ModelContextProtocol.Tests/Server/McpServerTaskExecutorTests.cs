@@ -24,6 +24,7 @@ public class McpServerTaskExecutorTests : ClientServerTestBase
     private readonly TaskCompletionSource<bool> _executorCancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Exception? _startException;
     private bool _runPipelineLocally;
+    private int _toolStartCount;
 
     public McpServerTaskExecutorTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
     {
@@ -46,6 +47,7 @@ public class McpServerTaskExecutorTests : ClientServerTestBase
             .WithTools([McpServerTool.Create(
                 async (CancellationToken ct) =>
                 {
+                    Interlocked.Increment(ref _toolStartCount);
                     _toolStarted.TrySetResult(true);
                     try
                     {
@@ -245,6 +247,36 @@ public class McpServerTaskExecutorTests : ClientServerTestBase
 
         var task = await PollUntilTerminalAsync(client, augmented.TaskCreated!.TaskId, cancellationToken);
         Assert.IsType<CancelledTaskResult>(task);
+    }
+
+    [Fact]
+    public async Task CustomExecutor_ConcurrentPipelineStarts_RunToolOnlyOnce()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "long-running-tool" },
+            cancellationToken);
+        Assert.True(augmented.IsTask);
+        var context = await _executorInvoked.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+
+        // Two concurrent starts of the pipeline: exactly one may win; the loser must observe
+        // the context as disposed rather than starting a second execution of the tool.
+        var first = Task.Run(() => context.RunToolPipelineAsync(context.CancellationToken).AsTask(), CancellationToken.None);
+        var second = Task.Run(() => context.RunToolPipelineAsync(context.CancellationToken).AsTask(), CancellationToken.None);
+
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+        Assert.Equal(1, _toolStartCount);
+
+        var loser = await Task.WhenAny(first, second);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => loser);
+
+        // The winning execution is still the one recorded in the store.
+        await client.CancelTaskAsync(augmented.TaskCreated!.TaskId, cancellationToken);
+        var task = await PollUntilTerminalAsync(client, augmented.TaskCreated!.TaskId, cancellationToken);
+        Assert.IsType<CancelledTaskResult>(task);
+        Assert.Equal(1, _toolStartCount);
     }
 
     private static async Task<GetTaskResult> PollUntilTerminalAsync(

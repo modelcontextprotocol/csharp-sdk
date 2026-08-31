@@ -21,12 +21,18 @@ namespace ModelContextProtocol.Extensions.Tasks;
 /// submitted via <c>tasks/update</c> are delivered even when a different server instance
 /// serves the polling client.
 /// </para>
+/// <para>
+/// <see cref="RunToolPipelineAsync"/> and <see cref="DisposeAsync"/> coordinate through an
+/// atomic state transition: concurrent callers cannot both win, so the pipeline runs at most
+/// once and disposal cannot race with it. Every caller but the winner observes the context
+/// as disposed.
+/// </para>
 /// </remarks>
 public sealed class McpTaskExecutionContext : IAsyncDisposable
 {
     private readonly Func<RequestContext<CallToolRequestParams>, CancellationToken, Task> _pipelineRunner;
     private readonly Func<Task> _disposer;
-    private bool _disposed;
+    private int _disposed;
 
     internal McpTaskExecutionContext(
         McpTaskInfo taskInfo,
@@ -83,12 +89,11 @@ public sealed class McpTaskExecutionContext : IAsyncDisposable
     /// <param name="cancellationToken">A token to cancel pipeline execution.</param>
     public async ValueTask RunToolPipelineAsync(CancellationToken cancellationToken)
     {
-        if (_disposed)
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
         {
             throw new ObjectDisposedException(nameof(McpTaskExecutionContext));
         }
 
-        _disposed = true;
         await _pipelineRunner(Request, cancellationToken).ConfigureAwait(false);
     }
 
@@ -103,12 +108,11 @@ public sealed class McpTaskExecutionContext : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
         {
             return;
         }
 
-        _disposed = true;
         await _disposer().ConfigureAwait(false);
     }
 }
