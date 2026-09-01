@@ -381,14 +381,17 @@ internal sealed partial class McpClientImpl : McpClient
                         fallbackToInitialize = true;
                     }
                     catch (HttpRequestException ex) when (
-                        ex.GetStatusCode() is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+                        ex.GetStatusCode() is HttpStatusCode.BadRequest
+                                              or HttpStatusCode.NotFound
+                                              or HttpStatusCode.MethodNotAllowed)
                     {
                         // A server predating SEP-2575 can reject the session-less server/discover POST at the
                         // HTTP layer instead of with a JSON-RPC error: 400 when it cannot parse the request,
-                        // 404 when it requires Mcp-Session-Id on every non-initialize POST. A 400 carrying a
-                        // structured JSON-RPC error is surfaced as McpProtocolException and handled above, so
-                        // anything reaching here is plain or empty. Either way this is an initialize-handshake
-                        // server, so fall back. Other statuses stay uncaught and surface to the caller.
+                        // 404 when it requires Mcp-Session-Id on every non-initialize POST, and 405 when it
+                        // does not accept POST at this endpoint at all. A 400 carrying a structured JSON-RPC
+                        // error is surfaced as McpProtocolException and handled above, so anything reaching
+                        // here is plain or empty. Either way this is an initialize-handshake server, so fall
+                        // back. Other statuses stay uncaught and surface to the caller.
                         fallbackToInitialize = true;
                     }
                     catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)

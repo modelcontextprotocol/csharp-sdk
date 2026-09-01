@@ -214,13 +214,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
     [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.AutoDetect)]
     public async Task Client_OnFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
         HttpStatusCode status, HttpTransportMode transportMode)
     {
         // A server predating SEP-2575 can reject the session-less server/discover probe at the HTTP layer
         // rather than with a JSON-RPC error: 404 when it requires Mcp-Session-Id on every non-initialize
-        // POST, or a plain/empty 400 when it cannot parse the request. Both are initialize-handshake
-        // servers, so the connect must fall back instead of failing.
+        // POST, a plain/empty 400 when it cannot parse the request, or 405 when the endpoint rejects
+        // the probe method. All three are initialize-handshake servers, so the connect must fall back
+        // instead of failing.
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
 
@@ -240,17 +243,22 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Theory]
-    [InlineData(HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpTransportMode.AutoDetect)]
-    public async Task Client_OnStructuredInvalidRequestFromHttpProbe_FallsBackTo_Initialize(
-        HttpTransportMode transportMode)
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnStructuredFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
+        HttpStatusCode status, HttpTransportMode transportMode)
     {
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        mockHttpHandler.RequestHandler = CreateStructuredInvalidRequestProbeServer(
+        mockHttpHandler.RequestHandler = CreateStructuredProbeRejectingServer(
+            status,
             () => initializeReceived = true);
 
         await using var transport = CreateTransport(httpClient, transportMode);
@@ -265,19 +273,21 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Unauthorized, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.AutoDetect)]
     public async Task Client_OnOtherHttpErrorFromProbe_Surfaces_NoFallback(
         HttpStatusCode status, HttpTransportMode transportMode)
     {
-        // Only 400 and 404 are read as "this server needs the initialize handshake". Any other HTTP failure
-        // is a genuine transport error and must surface, so callers are not handed a misleading downstream
-        // error. Guards the deliberate narrowing of the status filter.
+        // Only 400, 404, and 405 indicate that the server needs the initialize handshake. Authentication
+        // and server failures must surface directly, without probing deprecated SSE or attempting initialize.
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
+        var sseRequested = false;
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
         mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
-            status, "nope", () => initializeReceived = true);
+            status, "nope", () => initializeReceived = true, () => sseRequested = true);
 
         await using var transport = CreateTransport(httpClient, transportMode);
 
@@ -288,6 +298,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         });
 
         Assert.False(initializeReceived);
+        Assert.False(sseRequested);
     }
 
     private HttpClientTransport CreateTransport(HttpClient httpClient, HttpTransportMode transportMode)
@@ -303,13 +314,17 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     /// and, if the client falls back, completes an <c>initialize</c> handshake at 2025-11-25.
     /// </summary>
     private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateProbeRejectingServer(
-        HttpStatusCode probeStatus, string probeBody, Action onInitialize)
+        HttpStatusCode probeStatus, string probeBody, Action onInitialize, Action? onSseRequest = null)
         => async request =>
         {
             // The server offers no standalone SSE stream, which the spec permits.
             // net472 does not populate a default Content, so every response sets one explicitly.
             if (request.Method == HttpMethod.Get)
+            {
+                // Track accidental AutoDetect fallback for non-allowlisted HTTP failures.
+                onSseRequest?.Invoke();
                 return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+            }
 
             var body = await request.Content!.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(body);
@@ -339,8 +354,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             }
         };
 
-    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateStructuredInvalidRequestProbeServer(
-        Action onInitialize)
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateStructuredProbeRejectingServer(
+        HttpStatusCode probeStatus, Action onInitialize)
         => async request =>
         {
             if (request.Method == HttpMethod.Get)
@@ -356,7 +371,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                 var id = doc.RootElement.GetProperty("id").GetRawText();
                 var error = "{\"jsonrpc\":\"2.0\",\"id\":" + id
                     + ",\"error\":{\"code\":-32600,\"message\":\"Mcp-Session-Id header is required\"}}";
-                return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                return new HttpResponseMessage(probeStatus)
                 {
                     Content = new StringContent(error, Encoding.UTF8, "application/json"),
                 };
