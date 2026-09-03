@@ -182,7 +182,14 @@ public static class McpTasksBuilderExtensions
                 executor = _taskOptions.TaskExecutor
                     ?? executionScope.ServiceProvider.GetService<IMcpTaskExecutor>()
                     ?? ProcessLocalMcpTaskExecutor.Instance;
-                taskInfo = await _store.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
+
+                // Create the intent first, then persist it atomically with the task record so a
+                // crash between creation and a completed start can be recovered from the store.
+                // Both steps precede the task record: a failure here fails tools/call instead of
+                // leaving a durably-created task orphaned at Working.
+                JsonElement? executionIntent = await executor
+                    .CreateExecutionIntentAsync(request, cancellationToken).ConfigureAwait(false);
+                taskInfo = await _store.CreateTaskAsync(executionIntent, cancellationToken).ConfigureAwait(false);
             }
             catch
             {

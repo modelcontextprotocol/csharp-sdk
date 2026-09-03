@@ -1,3 +1,7 @@
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Text.Json;
+
 namespace ModelContextProtocol.Extensions.Tasks;
 
 /// <summary>
@@ -21,6 +25,15 @@ public sealed class ProcessLocalMcpTaskExecutor : IMcpTaskExecutor
     /// Gets the singleton instance of the process-local executor.
     /// </summary>
     public static ProcessLocalMcpTaskExecutor Instance { get; } = new();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The process-local executor is stateless: execution runs in this process, so there is
+    /// no submission to reconstruct and no intent to persist.
+    /// </remarks>
+    public ValueTask<JsonElement?> CreateExecutionIntentAsync(
+        RequestContext<CallToolRequestParams> request,
+        CancellationToken cancellationToken) => default;
 
     /// <inheritdoc />
     public ValueTask StartAsync(McpTaskExecutionContext context, CancellationToken cancellationToken)

@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Extensions.Tasks;
 
@@ -58,6 +59,19 @@ public sealed class McpTaskExecutionContext : IAsyncDisposable
     /// <see cref="McpTaskStatus.Working"/>.
     /// </summary>
     public McpTaskInfo TaskInfo { get; }
+
+    /// <summary>
+    /// Gets the executor-owned execution intent recovered from the store for this task, or
+    /// <see langword="null"/> when the task's executor created no intent.
+    /// </summary>
+    /// <remarks>
+    /// This is the intent returned by <see cref="IMcpTaskExecutor.CreateExecutionIntentAsync"/>
+    /// as persisted (and copied) by the store. In the normal flow the executor that created the
+    /// intent already has it; the property is useful to executors that wrap or decorate another
+    /// executor, and to reconciliation code that reads the recovered intent from the store's
+    /// <see cref="McpTaskInfo.ExecutionIntent"/> after a crash.
+    /// </remarks>
+    public JsonElement? ExecutionIntent => TaskInfo.ExecutionIntent;
 
     /// <summary>
     /// Gets the matched tool request, bound to the task's execution scope, with the task

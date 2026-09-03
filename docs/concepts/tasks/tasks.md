@@ -246,6 +246,14 @@ requirements drawn from the SEP and the SDK contract:
    resolves immediately — even from a different process or node. Stores backed by
    eventually consistent storage must wait for the write to become visible (quorum
    acknowledgement, write-through, etc.) before returning. Required by SEP-2663 §306.
+   When the call includes a non-null `executionIntent`, persist it atomically with the task
+   record so it can be read back via
+   <xref:ModelContextProtocol.Extensions.Tasks.McpTaskInfo.ExecutionIntent*>; copy the
+   `JsonElement` (for example with `Clone()`) instead of retaining the executor's original
+   backing document — the executor may dispose that document once execution is handed off,
+   and a retained reference surfaces later as an `ObjectDisposedException`. The intent is
+   server-only — never surfaced in protocol responses, notifications, or errors — and a
+   store that cannot persist it must throw rather than silently dropping it.
 5. **Singleton under stateless HTTP** — when the server runs in stateless mode (each request
    spins up a fresh server instance), the same `IMcpTaskStore` instance must be shared across
    requests — either by registering it as a singleton in DI, or by backing it with external
@@ -302,8 +310,8 @@ and omit `TaskExecutor`. The executor is resolved from each task's execution sco
 registrations get one instance per task; singleton registrations behave as usual. When neither
 is configured, tasks run in-process exactly as before.
 
-The executor is invoked after the task record is durably created in the store.
-<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor.StartAsync*> must return only
+The executor's <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor.StartAsync*> method
+is invoked after the task record is durably created in the store, and must return only
 after execution has been durably started — for example, after the external runtime has
 accepted the job — mirroring the durability requirement SEP-2663 §306 places on
 <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*>. It must not wait
@@ -311,18 +319,162 @@ for the task to complete. If `StartAsync` throws, the exception is not returned 
 from the original `tools/call`: that call still succeeds with
 <xref:ModelContextProtocol.Extensions.Tasks.CreateTaskResult>, the task is marked failed via
 `SetFailedAsync`, and the client discovers the failure on its first `tasks/get` poll. By
-contrast, failures before the task record exists — resolving the executor or
-<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*> — do fail the
-original `tools/call`. After a successful `StartAsync`, the SDK stops tracking the task and
-the store is the single source of truth for its state.
+contrast, failures before the task record exists — resolving the executor, creating the
+execution intent, or
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*> — fail the
+original `tools/call` with an error result, and nothing is persisted: no task record is left
+orphaned at `Working`, and no intent exists without its task.
+After a successful `StartAsync`, the SDK stops tracking the task and the store is the single
+source of truth for its state.
 
-One boundary to be aware of is the window between `CreateTaskAsync` completing and
-`StartAsync` returning: if the process exits during it, the store is left with a `Working`
-task whose work was never submitted to the external runtime. The SDK performs no
-reconciliation of such tasks, so integrations that must recover from a crash in this window
-need their own strategy — for example TTL cleanup, startup reconciliation, an outbox, or a
-durable execution intent. Using the task ID as an idempotency key makes resubmission safe,
-but it does not by itself retry a submission that was never attempted.
+#### Persisted execution intent
+
+There is still a crash window between `CreateTaskAsync` completing and `StartAsync` returning:
+if the process exits during it, the store is left with a `Working` task whose work was never
+durably submitted to the external runtime. To close that window, executors that delegate to an
+external runtime also implement
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskExecutor.CreateExecutionIntentAsync*>.
+The full ordering is:
+
+1. Authorization and validation (the filters registered before Tasks) run.
+2. The SDK calls `CreateExecutionIntentAsync`, which returns a portable, side-effect-free
+   description of how the task will be started — or `null` for stateless executors like
+   <xref:ModelContextProtocol.Extensions.Tasks.ProcessLocalMcpTaskExecutor>, which run tools
+   in-process and have nothing to reconstruct.
+3. The SDK passes the intent to
+   <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*>, which persists
+   the task record and the intent atomically, as a single write.
+4. The SDK calls `StartAsync` to start the external work.
+
+The intent contract:
+
+- **Opaque and executor-owned.** Its schema and versioning belong to the executor, not to the
+  SDK or the protocol. An intent can outlive the process that wrote it — an orphan recovered
+  at startup may have been persisted by an earlier deployment of the executor — so version
+  the payload (for example with a `version` field) so reconciliation code can tell
+  generations apart and evolve safely.
+- **Portable.** Only data the external runtime needs to reconstruct the submission — no
+  runtime objects, services, credentials, clients, transports, or delegates. The intent is
+  persisted in the task store alongside the task record, so treat it like any other durable
+  data: anything with store access can read it, and secrets must stay out of it.
+- **Server-only.** It never surfaces in MCP responses, notifications, or errors; it is
+  readable only through the store's
+  <xref:ModelContextProtocol.Extensions.Tasks.McpTaskInfo.ExecutionIntent*> property (and
+  <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.ExecutionIntent*> for
+  the task's executor).
+- **Copy and reject in the store.** Stores must copy the `JsonElement` (for example with
+  `Clone()`) rather than retaining a reference to the executor's backing document — the
+  executor may dispose that document once execution is handed off, and a retained reference
+  surfaces later as an `ObjectDisposedException`. A store that cannot persist a non-null
+  intent must throw, rejecting the task creation, rather than silently dropping it.
+
+The intent captures the *submission*, not the execution. The DI execution scope and its
+request-scoped services, the matched tool primitive, the context token wired to
+`tasks/cancel`, and the task's input-request channel for elicitation and sampling all die
+with the crashed process. A recovered execution therefore behaves like any other external
+worker: it runs in the external runtime, records progress and results in the store, and has
+no <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext.RunToolPipelineAsync*>
+to fall back on. Cancellation for a recovered task cannot reach the dead process's token, so
+it must be propagated through the external runtime or the store, as with any cross-process
+execution; multi-round-trip input relies on the store's
+<xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.InputResponseReceived?displayProperty=nameWithType>
+event.
+
+```csharp
+public sealed class TemporalTaskExecutor(ITemporalClient workflowClient) : IMcpTaskExecutor
+{
+    public ValueTask<JsonElement?> CreateExecutionIntentAsync(
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken)
+    {
+        // Portable, versioned data only: what the workflow needs to reconstruct the
+        // submission. No services, clients, transports, credentials, or delegates —
+        // this element must survive a process restart inside the task store.
+        JsonObject intent = new()
+        {
+            ["version"] = 1,
+            ["request"] = JsonSerializer.SerializeToNode(
+                request.Params,
+                McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolRequestParams>()),
+        };
+
+        return ValueTask.FromResult<JsonElement?>(
+            JsonSerializer.SerializeToElement(
+                intent,
+                McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()));
+    }
+
+    public async ValueTask StartAsync(
+        McpTaskExecutionContext context, CancellationToken cancellationToken)
+    {
+        // Submit the tool request to the durable runtime. The workflow communicates with
+        // IMcpTaskStore directly to record progress and results.
+        await workflowClient.StartWorkflowAsync(
+            "run-mcp-task",
+            new McpTaskPayload(context.TaskId, context.Request.Params),
+            id: context.TaskId,
+            cancellationToken);
+
+        // The scope-bound services are no longer needed in this process.
+        await context.DisposeAsync();
+    }
+}
+```
+
+#### Recovering orphaned tasks
+
+Because the task record and its intent are persisted together, a restarting integration can
+discover orphaned `Working` tasks through its own durable store, read the persisted intent,
+and reconstruct the submission. Reconciliation must be safe at either crash point: if the
+external runtime never accepted the job, resubmission starts it; if the runtime *had*
+accepted the job before the crash, resubmitting with the same task ID deduplicates — most
+external runtimes treat the ID as a unique workflow or job key. Either way, re-read the
+task's state immediately before resubmitting and leave tasks that already reached a terminal
+state — completed, failed, or cancelled by a client while the process was down — untouched.
+
+Until reconciliation runs, clients polling an orphan observe `Working` for as long as the
+task's TTL permits; reconciliation is what moves the orphan to a terminal state. An orphan
+can also linger in
+<xref:ModelContextProtocol.Extensions.Tasks.McpTaskStatus.InputRequired> when the process
+died later in execution — the same intent-based reconstruction applies, but the pending
+input exchange additionally needs a live `InputResponseReceived` subscriber before it can
+resume.
+
+The SDK performs no reconciliation itself; this is integration code, typically run at
+startup. <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> retains the
+intent alongside the task record, but like all of its state it does not survive process
+restarts — intent-based recovery requires a store backed by durable storage. For tasks
+created without an intent (a stateless executor was configured), reconciliation cannot
+reconstruct a submission, so integrations fall back to their own strategy — TTL cleanup,
+for example.
+
+```csharp
+foreach (var task in await durableStore.FindWorkingTasksAsync())
+{
+    if (task.ExecutionIntent is not { } intent)
+    {
+        continue; // Created by a stateless executor; nothing to reconstruct.
+    }
+
+    var payload = JsonNode.Parse(intent.GetRawText())!;
+    if (payload["version"]?.GetValue<int>() is not 1)
+    {
+        continue; // Unknown intent generation: skip or migrate explicitly.
+    }
+
+    var requestParams = payload["request"]!.Deserialize(
+        McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolRequestParams>())!;
+
+    // Re-check the task's state if discovery ran earlier — terminal tasks stay
+    // untouched — then resubmit. The workflow ID is the task ID: a deduplicated
+    // no-op if the job was already accepted before the crash, a reconstruction
+    // if it never was.
+    await workflowClient.StartWorkflowAsync(
+        "run-mcp-task",
+        new McpTaskPayload(task.TaskId, requestParams),
+        id: task.TaskId,
+        cancellationToken);
+}
+```
 
 The <xref:ModelContextProtocol.Extensions.Tasks.McpTaskExecutionContext> passed to the
 executor exposes the task identity, the matched tool request bound to a fresh execution
@@ -343,26 +495,6 @@ alternate-result filters and the ordinary call-tool filters run only inside
 bypasses them. When the tool pipeline will not run locally, validation, auditing,
 transformations, and other cross-cutting policies must be applied by the external runtime —
 or by a filter registered before Tasks — instead.
-
-```csharp
-public sealed class TemporalTaskExecutor(ITemporalClient workflowClient) : IMcpTaskExecutor
-{
-    public async ValueTask StartAsync(
-        McpTaskExecutionContext context, CancellationToken cancellationToken)
-    {
-        // Submit the tool request to the durable runtime. The workflow communicates with
-        // IMcpTaskStore directly to record progress and results.
-        await workflowClient.StartWorkflowAsync(
-            "run-mcp-task",
-            new McpTaskPayload(context.TaskId, context.Request.Params),
-            id: context.TaskId,
-            cancellationToken);
-
-        // The scope-bound services are no longer needed in this process.
-        await context.DisposeAsync();
-    }
-}
-```
 
 `tasks/get`, `tasks/update`, and `tasks/cancel` continue to be served entirely from the
 `IMcpTaskStore`, so a different server instance can serve polling clients after the process
@@ -452,6 +584,10 @@ compatibility bridge for the previous experimental API.
 
 - **Server-push task status notifications (SEP-2575)**: not yet implemented. Clients rely on
   polling exclusively.
+- **Orphaned-task reconciliation**: the SDK persists the executor's execution intent with the
+  task record, but discovering orphaned tasks and resubmitting them is integration code; the
+  SDK performs no reconciliation itself (see
+  [Persisted execution intent](#persisted-execution-intent)).
 - **Lazy task creation**: when a tool runs through the task store, the store's
   <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore.CreateTaskAsync*> is invoked eagerly before
   the inner handler runs, so tools that complete inline still incur a store write. There is

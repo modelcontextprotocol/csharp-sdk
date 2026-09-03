@@ -24,6 +24,11 @@ namespace ModelContextProtocol.Extensions.Tasks;
 /// For production scenarios requiring durability, session isolation, or more advanced retention
 /// policies, implement a custom <see cref="IMcpTaskStore"/>.
 /// </para>
+/// <para>
+/// The execution intent supplied to <see cref="CreateTaskAsync"/> is copied and retained with the
+/// task record, available via <see cref="McpTaskInfo.ExecutionIntent"/>. Like all state in this
+/// store, it does not survive process restarts.
+/// </para>
 /// </remarks>
 public class InMemoryMcpTaskStore : IMcpTaskStore
 {
@@ -47,14 +52,21 @@ public class InMemoryMcpTaskStore : IMcpTaskStore
     public TimeSpan? DefaultTimeToLive { get; set; }
 
     /// <inheritdoc/>
-    public Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default)
+    public Task<McpTaskInfo> CreateTaskAsync(
+        JsonElement? executionIntent = null,
+        CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
         SweepExpired(now);
 
         var taskId = Guid.NewGuid().ToString("N");
 
-        var info = new McpTaskInfo(taskId, McpTaskStatus.Working, now, now, DefaultTimeToLive, DefaultPollIntervalMs);
+        // Clone the intent so the stored record doesn't hold a reference to the executor's
+        // original backing document, which the executor may dispose.
+        var info = new McpTaskInfo(taskId, McpTaskStatus.Working, now, now, DefaultTimeToLive, DefaultPollIntervalMs)
+        {
+            ExecutionIntent = executionIntent?.Clone(),
+        };
         _tasks[taskId] = info;
 
         return Task.FromResult(info);
