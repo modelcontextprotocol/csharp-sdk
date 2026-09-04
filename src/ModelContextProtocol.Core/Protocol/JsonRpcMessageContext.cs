@@ -116,7 +116,8 @@ public sealed class JsonRpcMessageContext
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Per the spec, the server MUST NOT infer client
     /// capabilities from previous modern requests; the authoritative value is the one declared on each request.
     /// A legacy request may also carry this field for forward compatibility, but stateful legacy sessions continue
-    /// to use the capabilities negotiated during initialization.
+    /// to use the capabilities negotiated during initialization. Consequently, this low-level observed metadata
+    /// may differ from the effective capabilities exposed by the request-scoped <see cref="Server.McpServer"/>.
     /// </remarks>
     public ClientCapabilities? ClientCapabilities { get; set; }
 

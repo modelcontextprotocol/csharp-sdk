@@ -23,14 +23,6 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
     {
         get
         {
-            // In stateless transport mode, a single request does not have a persistent bidirectional channel.
-            // Server-to-client requests (sampling, roots, elicitation) are unsupported in this mode and the
-            // capability gates rely on a null ClientCapabilities value to report that unsupported-state path.
-            if (!server.HasStatefulTransport())
-            {
-                return null;
-            }
-
             // On protocol revision 2026-07-28+, client capabilities are request-scoped (_meta on each request)
             // and must not be inferred from prior requests. Missing per-request capabilities therefore means
             // "no declared capabilities for this request", represented by an empty object. A fresh instance is
@@ -41,11 +33,20 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
                 return _requestClientCapabilities ?? new ClientCapabilities();
             }
 
+            // A stateless legacy request has no initialized session. Expose well-formed forward-compatible
+            // metadata to the handler without copying it into shared server state.
+            if (!server.HasStatefulTransport())
+            {
+                return _requestClientCapabilities;
+            }
+
             // Legacy protocol behavior uses session-scoped capabilities established during initialize (or
             // pre-populated migration data), so ignore per-request values and return the server session state.
             return server.ClientCapabilities;
         }
     }
+
+    internal override bool SupportsServerToClientRequests => server.SupportsServerToClientRequests;
 
     public override Implementation? ClientInfo
     {

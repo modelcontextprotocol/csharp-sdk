@@ -23,7 +23,9 @@ public abstract partial class McpServer : McpSession
     /// <para>
     /// On protocol revisions that use the <c>initialize</c> handshake (<c>2025-11-25</c> and earlier), these
     /// capabilities are established once during initialization and are session-scoped: they are available both
-    /// on the root <see cref="McpServer"/> and on the server exposed to request handlers.
+    /// on the root <see cref="McpServer"/> and on the server exposed to request handlers. A stateless legacy
+    /// request has no initialized session; if it carries forward-compatible client-capability metadata, that
+    /// value is available on the request-scoped server.
     /// </para>
     /// <para>
     /// On the <c>2026-07-28</c> revision and later (SEP-2575) there is no <c>initialize</c> handshake; the client
@@ -32,12 +34,11 @@ public abstract partial class McpServer : McpSession
     /// the <c>Server</c> property of the <see cref="RequestContext{TParams}"/> passed to a handler; on the
     /// root <see cref="McpServer"/> (for example one constructed manually over a
     /// <see cref="System.IO.Stream"/>) it is <see langword="null"/>.
-    /// It is also <see langword="null"/> in stateless transport mode, where server-to-client requests are
-    /// unsupported.
     /// </para>
     /// <para>
-    /// Server implementations can check these capabilities to determine which features
-    /// are available when interacting with the client.
+    /// This property reports capabilities declared by the client. Their presence does not guarantee that the
+    /// transport supports server-to-client requests. Methods such as sampling, roots, and elicitation reject
+    /// those requests when the transport cannot safely deliver them, including in stateless mode.
     /// </para>
     /// </remarks>
     public abstract ClientCapabilities? ClientCapabilities { get; }

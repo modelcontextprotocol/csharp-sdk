@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
@@ -9,6 +10,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -152,6 +154,21 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var toolResponse = await client.CallToolAsync("testElicitationErrors", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
         Assert.Equal("Server to client requests are not supported in stateless mode.", Assert.IsType<TextContentBlock>(toolContent).Text);
+    }
+
+    [Fact]
+    public async Task OutgoingRequestInterceptor_BypassesCapabilitiesAndTransportSupport()
+    {
+        await StartAsync();
+        await using var client = await ConnectMcpClientAsync();
+
+        var toolResponse = await client.CallToolAsync(
+            "testOutgoingRequestInterceptor",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "intercepted|cancel",
+            Assert.IsType<TextContentBlock>(Assert.Single(toolResponse.Content)).Text);
     }
 
     [Fact]
@@ -575,8 +592,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedSamplingErrorMessage = "Sampling is not supported in stateless mode.";
 
-        // Even when the client has sampling support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Sampling);
 
         var asSamplingChatClientEx = Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
         Assert.Equal(expectedSamplingErrorMessage, asSamplingChatClientEx.Message);
@@ -596,8 +613,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedRootsErrorMessage = "Roots are not supported in stateless mode.";
 
-        // Even when the client has roots support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Roots);
 
         var requestRootsEx = Assert.Throws<InvalidOperationException>(() => server.RequestRootsAsync(new()));
         Assert.Equal(expectedRootsErrorMessage, requestRootsEx.Message);
@@ -614,8 +631,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedElicitationErrorMessage = "Elicitation is not supported in stateless mode.";
 
-        // Even when the client has elicitation support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Elicitation);
 
         var requestElicitationEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.ElicitAsync(new() { Message = string.Empty }).AsTask());
         Assert.Equal(expectedElicitationErrorMessage, requestElicitationEx.Message);
@@ -627,12 +644,68 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         return ex.Message;
     }
 
+    [McpServerTool(Name = "testOutgoingRequestInterceptor")]
+    public static async Task<string> TestOutgoingRequestInterceptor(
+        McpServer server,
+        CancellationToken cancellationToken)
+    {
+        Assert.Null(server.ClientCapabilities?.Sampling);
+        Assert.Null(server.ClientCapabilities?.Elicitation);
+        int interceptorCalls = 0;
+
+#pragma warning disable MCPEXP002
+        McpServer interceptedServer = server.WithOutgoingRequestInterceptor((method, _, _) =>
+        {
+            interceptorCalls++;
+            return new ValueTask<JsonNode?>(method switch
+            {
+                RequestMethods.SamplingCreateMessage => JsonSerializer.SerializeToNode(
+                    new CreateMessageResult
+                    {
+                        Content = [new TextContentBlock { Text = "intercepted" }],
+                        Model = "intercepted-model",
+                        Role = Role.Assistant,
+                        StopReason = "endTurn",
+                    },
+                    McpJsonUtilities.DefaultOptions),
+                RequestMethods.ElicitationCreate => JsonSerializer.SerializeToNode(
+                    new ElicitResult { Action = "cancel" },
+                    McpJsonUtilities.DefaultOptions),
+                _ => throw new InvalidOperationException($"Unexpected intercepted method '{method}'."),
+            });
+        });
+#pragma warning restore MCPEXP002
+
+        ChatResponse samplingResponse = await interceptedServer.AsSamplingChatClient().GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "test")],
+            cancellationToken: cancellationToken);
+        ElicitResult<TestElicitationForm> elicitationResponse =
+            await interceptedServer.ElicitAsync<TestElicitationForm>(
+                "test",
+                new RequestOptions
+                {
+                    JsonSerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                    {
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                },
+                cancellationToken: cancellationToken);
+
+        Assert.Equal(2, interceptorCalls);
+        return $"{samplingResponse.Text}|{elicitationResponse.Action}";
+    }
+
     [McpServerTool(Name = "testScope")]
     public static string? TestScope(ScopedService scopedService) => scopedService.State;
 
     public class ScopedService
     {
         public string? State { get; set; }
+    }
+
+    public sealed class TestElicitationForm
+    {
+        public string? Value { get; set; }
     }
 
     private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>

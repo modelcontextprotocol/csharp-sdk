@@ -705,6 +705,8 @@ internal sealed partial class McpServerImpl : McpServer
     /// <inheritdoc />
     public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
 
+    internal override bool SupportsServerToClientRequests => HasStatefulTransport();
+
     /// <inheritdoc />
     public override Implementation? ClientInfo => _clientInfo;
 

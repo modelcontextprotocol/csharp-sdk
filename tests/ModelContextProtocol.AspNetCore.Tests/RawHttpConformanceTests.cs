@@ -451,7 +451,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         Assert.Equal(
-            "chatgpt|chatgpt|request-sampling|no-stateless-backchannel",
+            "chatgpt|chatgpt|request-sampling|server-sampling|no-stateless-backchannel",
             json["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
 
@@ -524,15 +524,31 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     private sealed class CapabilityTools
     {
         [McpServerTool(Name = "legacy_meta_probe")]
-        public static string LegacyMetaProbe(RequestContext<CallToolRequestParams> context)
+        public static async Task<string> LegacyMetaProbe(
+            RequestContext<CallToolRequestParams> context,
+            CancellationToken cancellationToken)
         {
             var requestContext = context.JsonRpcRequest.Context;
+            string backchannel;
+            try
+            {
+                await context.Server.ElicitAsync(
+                    new ElicitRequestParams { Message = "test" },
+                    cancellationToken);
+                backchannel = "stateless-backchannel";
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "Elicitation is not supported in stateless mode.")
+            {
+                backchannel = "no-stateless-backchannel";
+            }
+
             return string.Join(
                 '|',
                 requestContext?.ClientInfo?.Name,
                 context.Server.ClientInfo?.Name,
                 requestContext?.ClientCapabilities?.Sampling is null ? "no-request-sampling" : "request-sampling",
-                context.Server.ClientCapabilities is null ? "no-stateless-backchannel" : "stateless-backchannel");
+                context.Server.ClientCapabilities?.Sampling is null ? "no-server-sampling" : "server-sampling",
+                backchannel);
         }
 
         [McpServerTool(Name = "requires_sampling")]
