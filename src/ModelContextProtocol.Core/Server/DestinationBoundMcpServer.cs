@@ -33,15 +33,8 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
                 return _requestClientCapabilities ?? new ClientCapabilities();
             }
 
-            // A stateless legacy request has no initialized session. Expose well-formed forward-compatible
-            // metadata to the handler without copying it into shared server state.
-            if (!server.HasStatefulTransport())
-            {
-                return _requestClientCapabilities;
-            }
-
             // Legacy protocol behavior uses session-scoped capabilities established during initialize (or
-            // pre-populated migration data), so ignore per-request values and return the server session state.
+            // pre-populated migration data). Future reserved metadata remains opaque under legacy semantics.
             return server.ClientCapabilities;
         }
     }

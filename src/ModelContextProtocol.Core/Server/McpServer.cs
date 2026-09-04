@@ -23,9 +23,7 @@ public abstract partial class McpServer : McpSession
     /// <para>
     /// On protocol revisions that use the <c>initialize</c> handshake (<c>2025-11-25</c> and earlier), these
     /// capabilities are established once during initialization and are session-scoped: they are available both
-    /// on the root <see cref="McpServer"/> and on the server exposed to request handlers. A stateless legacy
-    /// request has no initialized session; if it carries forward-compatible client-capability metadata, that
-    /// value is available on the request-scoped server.
+    /// on the root <see cref="McpServer"/> and on the server exposed to request handlers.
     /// </para>
     /// <para>
     /// On the <c>2026-07-28</c> revision and later (SEP-2575) there is no <c>initialize</c> handshake; the client

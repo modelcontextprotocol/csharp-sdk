@@ -11,8 +11,6 @@ internal sealed class OutgoingRequestInterceptingMcpServer(
 {
     internal override Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => interceptor;
 
-    internal override bool SupportsServerToClientRequests => true;
-
     public override string? SessionId => server.SessionId;
 
     public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;

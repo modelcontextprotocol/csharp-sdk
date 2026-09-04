@@ -84,6 +84,28 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
+    public async Task MalformedProtocolVersionMetadata_BeforeInitialize_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ProtocolVersion] = new JsonObject(),
+                },
+            },
+        };
+
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(MetaKeys.ProtocolVersion, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PerRequestMetadata_ServesRequestMissingClientInfo()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -144,7 +166,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task Initialize_WithAuxiliaryPerRequestMetadata_IsAccepted()
+    public async Task Initialize_IgnoresFutureReservedMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -159,15 +181,10 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
                 ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
                 Meta = new JsonObject
                 {
-                    [MetaKeys.ClientInfo] = new JsonObject
-                    {
-                        ["name"] = "per-request-meta-client",
-                        ["version"] = "1.0.0",
-                    },
-                    [MetaKeys.ClientCapabilities] = new JsonObject
-                    {
-                        ["sampling"] = new JsonObject(),
-                    },
+                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
+                    [MetaKeys.ClientInfo] = "not-an-object",
+                    [MetaKeys.ClientCapabilities] = "not-an-object",
+                    [MetaKeys.LogLevel] = "not-a-level",
                 },
             }, McpJsonUtilities.DefaultOptions),
         };
@@ -190,17 +207,15 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task LegacySession_RejectsModernProtocolVersionClaim()
+    public async Task LegacySession_IgnoresModernProtocolVersionMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
 
         Assert.IsType<JsonRpcResponse>(
             await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
 
-        var error = Assert.IsType<JsonRpcError>(
+        Assert.IsType<JsonRpcResponse>(
             await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
-        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
-        Assert.Contains("protocol version cannot change", error.Error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, _server.NegotiatedProtocolVersion);
     }
 
@@ -220,6 +235,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
             {
                 ["_meta"] = new JsonObject
                 {
+                    [MetaKeys.ProtocolVersion] = new JsonObject(),
                     [MetaKeys.ClientInfo] = "not-an-object",
                     [MetaKeys.ClientCapabilities] = "not-an-object",
                     [MetaKeys.LogLevel] = "not-a-level",
@@ -274,7 +290,6 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Theory]
-    [InlineData("initialize")]
     [InlineData("ping")]
     [InlineData("logging/setLevel")]
     [InlineData("resources/subscribe")]

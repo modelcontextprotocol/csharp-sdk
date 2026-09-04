@@ -143,8 +143,8 @@ public class McpClientMetaTests : ClientServerTestBase
         Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
             (RequestContext<CallToolRequestParams> context) =>
             {
-                Assert.Equal("request-client", context.JsonRpcRequest.Context?.ClientInfo?.Name);
-                Assert.NotNull(context.JsonRpcRequest.Context?.ClientCapabilities?.Sampling);
+                Assert.Null(context.JsonRpcRequest.Context?.ClientInfo);
+                Assert.Null(context.JsonRpcRequest.Context?.ClientCapabilities);
 
                 Assert.Equal("initialized-client", context.Server.ClientInfo?.Name);
                 Assert.NotNull(context.Server.ClientCapabilities?.Elicitation);
@@ -297,9 +297,9 @@ public class McpClientMetaTests : ClientServerTestBase
         ClientCapabilities? handlerObservedCapabilities = null;
 
         Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
-            (RequestContext<CallToolRequestParams> context) =>
+            (McpServer server) =>
             {
-                handlerObservedCapabilities = context.Server.ClientCapabilities;
+                handlerObservedCapabilities = server.ClientCapabilities;
                 return "ok";
             },
             new() { Name = "capability_probe_tool" }));

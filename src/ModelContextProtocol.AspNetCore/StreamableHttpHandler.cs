@@ -836,6 +836,14 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
+        if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersionHeader) ||
+            (string.IsNullOrEmpty(protocolVersionHeader) &&
+             message is JsonRpcRequest { Method: RequestMethods.Initialize }))
+        {
+            errorDetail = null;
+            return true;
+        }
+
         bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
 
         if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&

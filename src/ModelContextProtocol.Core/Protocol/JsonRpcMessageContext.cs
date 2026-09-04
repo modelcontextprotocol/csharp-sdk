@@ -92,8 +92,8 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// The transport may populate this from a header such as <c>Mcp-Protocol-Version</c>. For modern revisions,
-    /// the server validates and projects the matching per-request <c>_meta</c> value. A known legacy version in
-    /// <c>_meta</c> is advisory and does not establish or change the negotiated session version.
+    /// the server validates and projects the matching per-request <c>_meta</c> value. Under an established legacy
+    /// revision, future reserved metadata remains opaque and does not establish or change the negotiated session version.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -103,8 +103,8 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). When the request was made under the 2026-07-28 or later revision,
-    /// the server uses this in lieu of the value previously captured during the <c>initialize</c> handshake. A legacy request
-    /// may also carry this field for forward compatibility; stateful legacy sessions continue to use their initialized identity.
+    /// the server uses this in lieu of the value previously captured during the <c>initialize</c> handshake. Future reserved
+    /// metadata remains opaque under legacy revisions, which continue to use their initialized identity.
     /// </remarks>
     public Implementation? ClientInfo { get; set; }
 
@@ -115,9 +115,8 @@ public sealed class JsonRpcMessageContext
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Per the spec, the server MUST NOT infer client
     /// capabilities from previous modern requests; the authoritative value is the one declared on each request.
-    /// A legacy request may also carry this field for forward compatibility, but stateful legacy sessions continue
-    /// to use the capabilities negotiated during initialization. Consequently, this low-level observed metadata
-    /// may differ from the effective capabilities exposed by the request-scoped <see cref="Server.McpServer"/>.
+    /// Future reserved metadata remains opaque under legacy revisions, which continue to use the capabilities
+    /// negotiated during initialization.
     /// </remarks>
     public ClientCapabilities? ClientCapabilities { get; set; }
 

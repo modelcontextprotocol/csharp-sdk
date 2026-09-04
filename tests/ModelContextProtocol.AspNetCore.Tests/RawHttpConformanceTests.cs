@@ -387,11 +387,13 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task InitializeHandshake_StillSucceeds_OnDefaultServer()
+    public async Task InitializeHandshake_IgnoresFutureMetadata_OnDefaultServer()
     {
         await StartAsync();
 
-        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}";
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}," +
+            @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":{},""io.modelcontextprotocol/clientInfo"":""invalid"",""io.modelcontextprotocol/clientCapabilities"":""invalid""}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -435,14 +437,19 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.False(result.ContainsKey("cacheScope"), "cacheScope must be absent on a 2025-11-25 tools/list result.");
     }
 
-    [Fact]
-    public async Task Legacy2025Post_WithAuxiliaryPerRequestMetadata_Succeeds()
+    [Theory]
+    [InlineData(@"""2025-11-25""")]
+    [InlineData(@"""2026-07-28""")]
+    [InlineData(@"""9999-99-99""")]
+    [InlineData("{}")]
+    public async Task Legacy2025Post_IgnoresFuturePerRequestMetadata(string protocolVersionJson)
     {
         await StartAsync();
 
         var body =
             @"{""jsonrpc"":""2.0"",""id"":3,""method"":""tools/call"",""params"":{""name"":""legacy_meta_probe"",""arguments"":{}," +
-            @"""_meta"":{""io.modelcontextprotocol/clientInfo"":{""name"":""chatgpt"",""version"":""1.0""}," +
+            @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":" + protocolVersionJson + "," +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""chatgpt"",""version"":""1.0""}," +
             @"""io.modelcontextprotocol/clientCapabilities"":{""sampling"":{}}}}}";
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.November2025ProtocolVersion);
@@ -450,9 +457,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
-        Assert.Equal(
-            "chatgpt|chatgpt|request-sampling|server-sampling|no-stateless-backchannel",
-            json["result"]!["content"]![0]!["text"]!.GetValue<string>());
+        Assert.Equal("future-metadata-ignored", json["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
 
     [Fact]
@@ -524,31 +529,15 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     private sealed class CapabilityTools
     {
         [McpServerTool(Name = "legacy_meta_probe")]
-        public static async Task<string> LegacyMetaProbe(
-            RequestContext<CallToolRequestParams> context,
-            CancellationToken cancellationToken)
+        public static string LegacyMetaProbe(RequestContext<CallToolRequestParams> context)
         {
             var requestContext = context.JsonRpcRequest.Context;
-            string backchannel;
-            try
-            {
-                await context.Server.ElicitAsync(
-                    new ElicitRequestParams { Message = "test" },
-                    cancellationToken);
-                backchannel = "stateless-backchannel";
-            }
-            catch (InvalidOperationException ex) when (ex.Message == "Elicitation is not supported in stateless mode.")
-            {
-                backchannel = "no-stateless-backchannel";
-            }
-
-            return string.Join(
-                '|',
-                requestContext?.ClientInfo?.Name,
-                context.Server.ClientInfo?.Name,
-                requestContext?.ClientCapabilities?.Sampling is null ? "no-request-sampling" : "request-sampling",
-                context.Server.ClientCapabilities?.Sampling is null ? "no-server-sampling" : "server-sampling",
-                backchannel);
+            Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, requestContext?.ProtocolVersion);
+            Assert.Null(requestContext?.ClientInfo);
+            Assert.Null(requestContext?.ClientCapabilities);
+            Assert.Null(context.Server.ClientInfo);
+            Assert.Null(context.Server.ClientCapabilities);
+            return "future-metadata-ignored";
         }
 
         [McpServerTool(Name = "requires_sampling")]

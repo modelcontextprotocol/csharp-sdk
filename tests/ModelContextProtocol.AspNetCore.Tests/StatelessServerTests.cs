@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
@@ -10,7 +9,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -157,17 +155,21 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [Fact]
-    public async Task OutgoingRequestInterceptor_BypassesCapabilitiesAndTransportSupport()
+    public async Task ClientCapabilities_AreAvailableFromInjectedServer()
     {
         await StartAsync();
-        await using var client = await ConnectMcpClientAsync();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = (_, _, _) => throw new UnreachableException();
+        clientOptions.Handlers.RootsHandler = (_, _) => throw new UnreachableException();
+        clientOptions.Handlers.ElicitationHandler = (_, _) => throw new UnreachableException();
+        await using var client = await ConnectMcpClientAsync(clientOptions);
 
         var toolResponse = await client.CallToolAsync(
-            "testOutgoingRequestInterceptor",
+            "getClientCapabilities",
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
-            "intercepted|cancel",
+            "sampling|roots|elicitation",
             Assert.IsType<TextContentBlock>(Assert.Single(toolResponse.Content)).Text);
     }
 
@@ -644,56 +646,13 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         return ex.Message;
     }
 
-    [McpServerTool(Name = "testOutgoingRequestInterceptor")]
-    public static async Task<string> TestOutgoingRequestInterceptor(
-        McpServer server,
-        CancellationToken cancellationToken)
-    {
-        Assert.Null(server.ClientCapabilities?.Sampling);
-        Assert.Null(server.ClientCapabilities?.Elicitation);
-        int interceptorCalls = 0;
-
-#pragma warning disable MCPEXP002
-        McpServer interceptedServer = server.WithOutgoingRequestInterceptor((method, _, _) =>
-        {
-            interceptorCalls++;
-            return new ValueTask<JsonNode?>(method switch
-            {
-                RequestMethods.SamplingCreateMessage => JsonSerializer.SerializeToNode(
-                    new CreateMessageResult
-                    {
-                        Content = [new TextContentBlock { Text = "intercepted" }],
-                        Model = "intercepted-model",
-                        Role = Role.Assistant,
-                        StopReason = "endTurn",
-                    },
-                    McpJsonUtilities.DefaultOptions),
-                RequestMethods.ElicitationCreate => JsonSerializer.SerializeToNode(
-                    new ElicitResult { Action = "cancel" },
-                    McpJsonUtilities.DefaultOptions),
-                _ => throw new InvalidOperationException($"Unexpected intercepted method '{method}'."),
-            });
-        });
-#pragma warning restore MCPEXP002
-
-        ChatResponse samplingResponse = await interceptedServer.AsSamplingChatClient().GetResponseAsync(
-            [new ChatMessage(ChatRole.User, "test")],
-            cancellationToken: cancellationToken);
-        ElicitResult<TestElicitationForm> elicitationResponse =
-            await interceptedServer.ElicitAsync<TestElicitationForm>(
-                "test",
-                new RequestOptions
-                {
-                    JsonSerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-                    {
-                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-                    },
-                },
-                cancellationToken: cancellationToken);
-
-        Assert.Equal(2, interceptorCalls);
-        return $"{samplingResponse.Text}|{elicitationResponse.Action}";
-    }
+    [McpServerTool(Name = "getClientCapabilities")]
+    public static string GetClientCapabilities(McpServer server) =>
+        string.Join(
+            '|',
+            server.ClientCapabilities?.Sampling is null ? "no-sampling" : "sampling",
+            server.ClientCapabilities?.Roots is null ? "no-roots" : "roots",
+            server.ClientCapabilities?.Elicitation is null ? "no-elicitation" : "elicitation");
 
     [McpServerTool(Name = "testScope")]
     public static string? TestScope(ScopedService scopedService) => scopedService.State;
@@ -701,11 +660,6 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     public class ScopedService
     {
         public string? State { get; set; }
-    }
-
-    public sealed class TestElicitationForm
-    {
-        public string? Value { get; set; }
     }
 
     private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>

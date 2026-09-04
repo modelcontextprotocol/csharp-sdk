@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -153,7 +152,7 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps <paramref name="inner"/> so that, for every JSON-RPC request, a built-in filter first
-    /// classifies and projects per-request <c>_meta</c>, synchronizes server-side state
+    /// classifies and projects modern per-request <c>_meta</c>, synchronizes server-side state
     /// (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientInfo"/>), and validates protocol
     /// boundaries before delegating to user-supplied incoming filters.
     /// </summary>
@@ -162,10 +161,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// version and client capabilities MUST be populated per-request. Client info is optional. Per-request client
     /// capabilities and client info are consumed request-scoped by <see cref="DestinationBoundMcpServer"/> and are
     /// not read from server-wide state by request handlers. The shared <see cref="_clientInfo"/> write below is
-    /// best-effort and used only to derive the session endpoint name for logging/telemetry. For initialize-handshake
-    /// clients, known legacy protocol-version metadata and auxiliary per-request values are advisory compatibility
-    /// data. Stateful sessions continue to use the values captured during initialization, while stateless requests
-    /// may consume well-formed projected values from their request context. Modern envelopes remain strictly parsed.
+    /// best-effort and used only to derive the session endpoint name for logging/telemetry. Under initialize-handshake
+    /// revisions, reserved per-request metadata is opaque and is not parsed or projected. Modern envelopes remain
+    /// strictly parsed.
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
@@ -175,7 +173,6 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 if (request.Method == RequestMethods.Initialize)
                 {
-                    ProjectInitializeRequestMetadata(request);
                     ValidateInitializeRequestBoundary(request);
                 }
                 else
@@ -184,18 +181,13 @@ internal sealed partial class McpServerImpl : McpServer
                     ValidateRequestMethodBoundary(request);
 
                     var context = request.Context;
-                    bool useRequestScopedClientInfo =
-                        !HasStatefulTransport() ||
-                        McpProtocolVersions.RequiresPerRequestMetadata(context?.ProtocolVersion ?? _negotiatedProtocolVersion);
-                    if (useRequestScopedClientInfo &&
+                    if (McpProtocolVersions.RequiresPerRequestMetadata(context?.ProtocolVersion ?? _negotiatedProtocolVersion) &&
                         context?.ClientInfo is { } clientInfo &&
                         (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
                          !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
                     {
-                        // Modern handlers resolve client info request-scoped through DestinationBoundMcpServer. This
-                        // shared write is only for endpoint logging. Stateless legacy servers are created per request,
-                        // so retaining the request identity here also makes it available through McpServer.ClientInfo.
-                        // Stateful legacy sessions keep the identity established by initialize.
+                        // Modern handlers resolve client info request-scoped through DestinationBoundMcpServer.
+                        // This shared write is only for endpoint logging.
                         _clientInfo = clientInfo;
                         UpdateEndpointNameWithClientInfo();
                         _sessionHandler.EndpointName = _endpointName;
@@ -215,9 +207,31 @@ internal sealed partial class McpServerImpl : McpServer
 
     private void ReadRequestMetadata(JsonRpcRequest request)
     {
+        string? transportProtocolVersion = request.Context?.ProtocolVersion;
+
+        // An established legacy session or supported legacy transport header selects initialize-handshake
+        // semantics. Continue validating an authoritative transport version, but treat future body metadata
+        // as opaque under the negotiated legacy revision.
+        if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion) ||
+            McpProtocolVersions.SupportsInitializeHandshake(transportProtocolVersion))
+        {
+            if (transportProtocolVersion is not null)
+            {
+                if (!_supportedProtocolVersions.Contains(transportProtocolVersion))
+                {
+                    throw new UnsupportedProtocolVersionException(
+                        requested: transportProtocolVersion,
+                        supported: _supportedProtocolVersions);
+                }
+
+                SetNegotiatedProtocolVersion(transportProtocolVersion);
+            }
+
+            return;
+        }
+
         JsonObject? meta = GetRequestMeta(request);
         string? metadataProtocolVersion = GetProtocolVersionMeta(meta, out bool hasProtocolVersionMeta);
-        string? transportProtocolVersion = request.Context?.ProtocolVersion;
 
         ValidateProtocolVersionMatch(transportProtocolVersion, metadataProtocolVersion);
 
@@ -285,20 +299,6 @@ internal sealed partial class McpServerImpl : McpServer
             return;
         }
 
-        // A transport-level legacy version remains authoritative. A known legacy value in _meta is
-        // forward-compatible metadata only and neither establishes nor changes the session version.
-        if (transportProtocolVersion is not null)
-        {
-            if (!_supportedProtocolVersions.Contains(transportProtocolVersion))
-            {
-                throw new UnsupportedProtocolVersionException(
-                    requested: transportProtocolVersion,
-                    supported: _supportedProtocolVersions);
-            }
-
-            SetNegotiatedProtocolVersion(transportProtocolVersion);
-        }
-
         if (_negotiatedProtocolVersion is null && request.Method == RequestMethods.ServerDiscover)
         {
             throw new McpProtocolException(
@@ -306,25 +306,6 @@ internal sealed partial class McpServerImpl : McpServer
                 McpErrorCode.InvalidParams);
         }
 
-        ProjectLegacyMetadata(request, meta);
-    }
-
-    private static void ProjectInitializeRequestMetadata(JsonRpcRequest request)
-    {
-        JsonObject? meta = GetRequestMeta(request);
-        string? metadataProtocolVersion = GetProtocolVersionMeta(meta, out bool hasProtocolVersionMeta);
-        string? transportProtocolVersion = request.Context?.ProtocolVersion;
-
-        ValidateProtocolVersionMatch(transportProtocolVersion, metadataProtocolVersion);
-
-        if (hasProtocolVersionMeta &&
-            !McpProtocolVersions.SupportsInitializeHandshake(metadataProtocolVersion))
-        {
-            (request.Context ??= new()).ProtocolVersion = metadataProtocolVersion;
-            return;
-        }
-
-        ProjectLegacyMetadata(request, meta);
     }
 
     private static void ProjectModernMetadata(JsonRpcRequest request, JsonObject meta)
@@ -349,68 +330,6 @@ internal sealed partial class McpServerImpl : McpServer
                 McpJsonUtilities.JsonContext.Default.LoggingLevel,
                 MetaKeys.LogLevel)
             : null;
-    }
-
-    private static void ProjectLegacyMetadata(JsonRpcRequest request, JsonObject? meta)
-    {
-        if (meta is null)
-        {
-            return;
-        }
-
-        var context = request.Context ??= new();
-
-        // These keys are not defined by legacy revisions. Project valid values for forward-compatible
-        // filters and stateless handlers, but leave malformed values opaque as required by legacy _meta.
-        if (TryDeserializeLegacyMetadata(
-            meta,
-            MetaKeys.ClientInfo,
-            McpJsonUtilities.JsonContext.Default.Implementation,
-            out Implementation? clientInfo))
-        {
-            context.ClientInfo = clientInfo;
-        }
-
-        if (TryDeserializeLegacyMetadata(
-            meta,
-            MetaKeys.ClientCapabilities,
-            McpJsonUtilities.JsonContext.Default.ClientCapabilities,
-            out ClientCapabilities? clientCapabilities))
-        {
-            context.ClientCapabilities = clientCapabilities;
-        }
-
-        if (TryDeserializeLegacyMetadata(
-            meta,
-            MetaKeys.LogLevel,
-            McpJsonUtilities.JsonContext.Default.LoggingLevel,
-            out LoggingLevel logLevel))
-        {
-            context.LogLevel = logLevel;
-        }
-    }
-
-    private static bool TryDeserializeLegacyMetadata<T>(
-        JsonObject meta,
-        string key,
-        JsonTypeInfo<T> typeInfo,
-        [NotNullWhen(true)] out T? value)
-    {
-        value = default;
-        if (meta[key] is not JsonNode node)
-        {
-            return false;
-        }
-
-        try
-        {
-            value = JsonSerializer.Deserialize(node, typeInfo);
-            return value is not null;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
     }
 
     private static T DeserializeModernMetadata<T>(JsonNode node, JsonTypeInfo<T> typeInfo, string key)

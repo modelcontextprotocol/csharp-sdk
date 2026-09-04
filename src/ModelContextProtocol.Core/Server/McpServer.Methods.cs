@@ -557,11 +557,6 @@ public abstract partial class McpServer : McpSession
 
     private void ThrowIfSamplingUnsupported()
     {
-        if (OutgoingRequestInterceptor is not null)
-        {
-            return;
-        }
-
         if (!SupportsServerToClientRequests)
         {
             throw new InvalidOperationException("Sampling is not supported in stateless mode.");
@@ -575,11 +570,6 @@ public abstract partial class McpServer : McpSession
 
     private void ThrowIfRootsUnsupported()
     {
-        if (OutgoingRequestInterceptor is not null)
-        {
-            return;
-        }
-
         if (!SupportsServerToClientRequests)
         {
             throw new InvalidOperationException("Roots are not supported in stateless mode.");
@@ -627,11 +617,6 @@ public abstract partial class McpServer : McpSession
 
     private void ThrowIfElicitationUnsupported(ElicitRequestParams request)
     {
-        if (OutgoingRequestInterceptor is not null)
-        {
-            return;
-        }
-
         if (!SupportsServerToClientRequests)
         {
             throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
