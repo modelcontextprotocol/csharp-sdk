@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
+    <ProjectReference Include="..\HttpOverStdioServer\HttpOverStdioServer.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyHttpOverStdioServer" AfterTargets="Build">
+    <ItemGroup>
+      <_HttpOverStdioServerFiles Include="$(ArtifactsBinDir)HttpOverStdioServer\$(Configuration)\net10.0\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_HttpOverStdioServerFiles)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

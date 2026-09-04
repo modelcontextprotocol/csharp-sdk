@@ -6,6 +6,15 @@ namespace ModelContextProtocol.Authentication;
 public sealed class ClientOAuthOptions
 {
     /// <summary>
+    /// Gets or sets the HTTP client used for authorization-server discovery, dynamic client registration,
+    /// token exchange, and token refresh requests.
+    /// </summary>
+    /// <remarks>
+    /// The SDK never disposes this client. The caller retains ownership of its lifetime.
+    /// </remarks>
+    public HttpClient? Backchannel { get; set; }
+
+    /// <summary>
     /// Gets or sets the OAuth redirect URI.
     /// </summary>
     public required Uri RedirectUri { get; set; }

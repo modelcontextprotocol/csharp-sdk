@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -41,6 +45,33 @@ public static class HttpMcpServerBuilderExtensions
         {
             builder.Services.Configure(configureOptions);
         }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds the services necessary to host the MCP Streamable HTTP transport over standard input and output.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureOptions">Configures options for the Streamable HTTP transport.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// The transport hosts one HTTP/2 connection over the process standard input and output streams.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    [Experimental(Experimentals.SpecificationFeature_DiagnosticId, UrlFormat = Experimentals.HttpOverStdio_Url)]
+    public static IMcpServerBuilder WithHttpOverStdioTransport(
+        this IMcpServerBuilder builder,
+        Action<HttpServerTransportOptions>? configureOptions = null)
+    {
+        builder.WithHttpTransport(configureOptions);
+
+        builder.Services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IConnectionListenerFactory, StdioConnectionListenerFactory>());
+        builder.Services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IConfigureOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>, HttpOverStdioKestrelOptionsSetup>());
+        builder.Services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IConfigureOptions<ConsoleLoggerOptions>, HttpOverStdioConsoleLoggerOptionsSetup>());
 
         return builder;
     }

@@ -46,6 +46,16 @@ internal static class Experimentals
     public const string SpecificationFeature_DiagnosticId = "MCPEXP001";
 
     /// <summary>
+    /// Message for the experimental HTTP-over-stdio transport APIs.
+    /// </summary>
+    public const string HttpOverStdio_Message = "HTTP over stdio is experimental and subject to change as the transport specification evolves.";
+
+    /// <summary>
+    /// URL for the experimental HTTP-over-stdio transport APIs.
+    /// </summary>
+    public const string HttpOverStdio_Url = "https://github.com/modelcontextprotocol/transports-wg/blob/main/roadmaps/2026-12-15.md#2-http-over-stdio";
+
+    /// <summary>
     /// Diagnostic ID for experimental MCP Apps extension APIs.
     /// </summary>
     /// <remarks>

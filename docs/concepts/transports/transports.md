@@ -7,7 +7,7 @@ uid: transports
 
 ## Transports
 
-MCP uses a [transport layer] to handle the communication between clients and servers. Three transport mechanisms are supported: [**stdio**](#stdio-transport), [**Streamable HTTP**](#streamable-http-transport), and [**SSE**](#sse-transport-legacy) (Server-Sent Events, legacy).
+MCP uses a [transport layer] to handle the communication between clients and servers. Three standardized transport mechanisms are supported: [**stdio**](#stdio-transport), [**Streamable HTTP**](#streamable-http-transport), and [**SSE**](#sse-transport-legacy) (Server-Sent Events, legacy). The SDK also includes an opt-in [HTTP/2-over-stdio experiment](#experimental-http2-streamable-http-over-stdio).
 
 [transport layer]: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports
 
@@ -109,6 +109,86 @@ builder.Services.AddMcpServer()
 
 await builder.Build().RunAsync();
 ```
+
+### Experimental HTTP/2 Streamable HTTP over stdio
+
+<xref:ModelContextProtocol.Client.HttpOverStdioClientTransport> runs the existing Streamable HTTP transport over a child process's stdin and stdout. It does not define another HTTP implementation: the client supplies the byte stream through <xref:System.Net.Http.SocketsHttpHandler.ConnectCallback>, and the server supplies it to Kestrel through an `IConnectionListenerFactory`. `HttpClient`, Kestrel, and the SDK's normal Streamable HTTP handlers continue to own HTTP framing, multiplexing, streaming, authentication, and MCP behavior.
+
+> [!WARNING]
+> This transport is experimental (`MCPEXP001`) and is not the standardized MCP stdio transport. It requires .NET 8 or later and exact cleartext HTTP/2. HTTP/1.1 fallback, TLS on the stdio pipe, legacy HTTP-with-SSE auto-detection, and connection replacement are not supported.
+
+#### HTTP-over-stdio client
+
+Pass the normal process and HTTP option types to <xref:ModelContextProtocol.Client.HttpOverStdioClientTransport>:
+
+```csharp
+#pragma warning disable MCPEXP001
+var transport = new HttpOverStdioClientTransport(
+    new StdioClientTransportOptions
+    {
+        Command = "dotnet",
+        Arguments = ["MyServer.dll"],
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = StdioClientTransportOptions.GetDefaultEnvironmentVariables(),
+    },
+    new HttpClientTransportOptions
+    {
+        Endpoint = new Uri("http://my-local-server/mcp"),
+        TransportMode = HttpTransportMode.StreamableHttp,
+    });
+#pragma warning restore MCPEXP001
+
+await using var client = await McpClient.CreateAsync(transport);
+```
+
+The endpoint is synthetic but significant. Its authority becomes the HTTP/2 `:authority` value and ASP.NET Core `Request.Host`; its path selects the mapped MCP route; and its absolute URI is the OAuth protected-resource identifier. Configure `AllowedHosts` and OAuth resource metadata to match it.
+
+The transport creates one HTTP/2 connection over one child-process pipe. Concurrent `POST` requests and a legacy stateful standalone `GET` stream are multiplexed as HTTP/2 streams on that connection. Disposing the client closes stdin, waits for the child to stop, and applies <xref:ModelContextProtocol.Client.StdioClientTransportOptions.ShutdownTimeout> before terminating the process tree.
+
+#### HTTP-over-stdio server
+
+Use <xref:Microsoft.Extensions.DependencyInjection.HttpMcpServerBuilderExtensions.WithHttpOverStdioTransport*> in an ASP.NET Core application and map the normal MCP route:
+
+```csharp
+#pragma warning disable MCPEXP001
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddMcpServer()
+    .WithHttpOverStdioTransport()
+    .WithTools<MyTools>();
+#pragma warning restore MCPEXP001
+
+var app = builder.Build();
+app.MapMcp("/mcp");
+await app.RunAsync();
+```
+
+`WithHttpOverStdioTransport()` adds only the stdio listener and configures it for HTTP/2. Explicitly configured TCP listeners are preserved, although local child-process servers should normally expose only stdio. It also routes built-in console logging to stderr. Application code and third-party logging providers must likewise never write to stdout, because any non-HTTP bytes corrupt the connection.
+
+The extension calls `WithHttpTransport()`, so the normal HTTP server options still apply. The default is stateless `2026-07-28` behavior with no session ID. A client and server pinned to an older protocol can opt into stateful mode, including the standalone `GET`, subscriptions, and `DELETE` lifecycle:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithHttpOverStdioTransport(options =>
+        options.SessionMode = HttpServerSessionMode.Stateful);
+```
+
+#### OAuth backchannel
+
+MCP requests and protected-resource metadata use the stdio-backed HTTP client. Authorization-server discovery, dynamic client registration, token exchange, and refresh require a normal network backchannel. <xref:ModelContextProtocol.Client.HttpOverStdioClientTransport> creates and owns one by default. Set <xref:ModelContextProtocol.Authentication.ClientOAuthOptions.Backchannel> when the authorization server needs a customized handler, proxy, certificate, or test transport:
+
+```csharp
+OAuth = new ClientOAuthOptions
+{
+    RedirectUri = new Uri("http://127.0.0.1/callback"),
+    Backchannel = authorizationServerHttpClient,
+    AuthorizationCallbackHandler = HandleAuthorizationAsync,
+}
+```
+
+The caller retains ownership of an explicitly supplied backchannel.
+
+Runnable client and server projects are available in [`samples/HttpOverStdioClient`](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/HttpOverStdioClient) and [`samples/HttpOverStdioServer`](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/HttpOverStdioServer).
 
 ### Streamable HTTP transport
 
@@ -337,18 +417,18 @@ See [Stateless and Stateful — Legacy SSE transport](xref:stateless#legacy-sse-
 
 ### Transport mode comparison
 
-| Feature | stdio | Streamable HTTP (stateless) | Streamable HTTP (stateful) | SSE (legacy, stateful) |
-|---------|-------|-----------------------------|----------------------------|--------------|
-| Process model | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
-| Direction | Bidirectional | Request-response | Bidirectional | Server→client stream + client→server `POST` |
-| Sessions | Implicit (one per process) | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
-| Server-to-client requests | ✓ | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
-| Unsolicited notifications | ✓ | ✗ | ✓ | ✓ |
-| Backpressure | Implicit (stdin/stdout flow control) | ✓ (POST held open until handler completes) | ✓ (POST held open until handler completes) | ✗ (POST returns 202 immediately — see [backpressure](xref:stateless#request-backpressure)) |
-| Session resumption | N/A | N/A | ✓ | ✗ |
-| Horizontal scaling | N/A | No constraints | Requires session affinity | Requires session affinity |
-| Authentication | Process-level | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
-| Best for | Local tools, IDE integrations | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
+| Feature | stdio | HTTP/2 over stdio (experimental) | Streamable HTTP (stateless) | Streamable HTTP (stateful) | SSE (legacy, stateful) |
+|---------|-------|--------------------------------|-----------------------------|----------------------------|--------------|
+| Process model | Child process | Child process | Remote HTTP | Remote HTTP | Remote HTTP |
+| Direction | Bidirectional | HTTP/2 multiplexed streams | Request-response | Bidirectional | Server→client stream + client→server `POST` |
+| Sessions | Implicit (one per process) | Stateless by default; legacy stateful optional | None — each request is independent | `Mcp-Session-Id` tracked in memory | Session ID via query string, tracked in memory |
+| Server-to-client requests | ✓ | MRTR when stateless; in-band when legacy stateful | ✗ (see [MRTR proposal](https://github.com/modelcontextprotocol/csharp-sdk/pull/1458)) | ✓ | ✓ |
+| Unsolicited notifications | ✓ | Legacy stateful only | ✗ | ✓ | ✓ |
+| Backpressure | Implicit (stdin/stdout flow control) | HTTP response and pipe flow control | ✓ (POST held open until handler completes) | ✓ (POST held open until handler completes) | ✗ (POST returns 202 immediately — see [backpressure](xref:stateless#request-backpressure)) |
+| Session resumption | N/A | Legacy stateful only, in the same process | N/A | ✓ | ✗ |
+| Horizontal scaling | N/A | N/A — local child process | No constraints | Requires session affinity | Requires session affinity |
+| Authentication | Process-level | HTTP auth; OAuth AS uses a network backchannel | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) | HTTP auth (OAuth, headers) |
+| Best for | Standard local MCP integrations | Experimenting with local HTTP semantics | Remote servers, production deployments | Local HTTP debugging, server-to-client features | Legacy client compatibility |
 
 For a detailed comparison of stateless vs. stateful mode — including deployment trade-offs, security considerations, and configuration — see [Stateless and Stateful](xref:stateless).
 

@@ -27,7 +27,7 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="transportOptions">The configuration options for the transport.</param>
     /// <param name="loggerFactory">The logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public HttpClientTransport(HttpClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
-        : this(transportOptions, new HttpClient(), loggerFactory, ownsHttpClient: true)
+        : this(transportOptions, new HttpClient(), defaultOAuthBackchannel: null, loggerFactory, ownsHttpClient: true)
     {
     }
 
@@ -43,6 +43,16 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="transportOptions"/> or <paramref name="httpClient"/> is <see langword="null"/>.</exception>
     public HttpClientTransport(HttpClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
+        : this(transportOptions, httpClient, defaultOAuthBackchannel: null, loggerFactory, ownsHttpClient)
+    {
+    }
+
+    internal HttpClientTransport(
+        HttpClientTransportOptions transportOptions,
+        HttpClient httpClient,
+        HttpClient? defaultOAuthBackchannel,
+        ILoggerFactory? loggerFactory,
+        bool ownsHttpClient)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
@@ -53,7 +63,12 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
 
         if (transportOptions.OAuth is { } clientOAuthOptions)
         {
-            _mcpHttpClient = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
+            _mcpHttpClient = new ClientOAuthProvider(
+                _options.Endpoint,
+                clientOAuthOptions,
+                httpClient,
+                loggerFactory,
+                defaultOAuthBackchannel);
         }
         else
         {

@@ -44,7 +44,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly string? _dcrConfiguredApplicationType;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _resourceHttpClient;
+    private readonly HttpClient _backchannel;
     private readonly ILogger _logger;
 
     private string? _clientId;
@@ -78,18 +79,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
     /// <param name="options">The OAuth provider configuration options.</param>
-    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient is used.</param>
+    /// <param name="resourceHttpClient">The HTTP client to use for MCP resource and protected-resource metadata requests.</param>
     /// <param name="loggerFactory">A logger factory to handle diagnostic messages.</param>
+    /// <param name="defaultOAuthBackchannel">The transport-provided default HTTP client for authorization-server requests.</param>
     /// <exception cref="ArgumentNullException"><paramref name="serverUrl"/> or <paramref name="options"/> is null.</exception>
     public ClientOAuthProvider(
         Uri serverUrl,
         ClientOAuthOptions options,
-        HttpClient httpClient,
-        ILoggerFactory? loggerFactory = null)
-        : base(httpClient)
+        HttpClient resourceHttpClient,
+        ILoggerFactory? loggerFactory = null,
+        HttpClient? defaultOAuthBackchannel = null)
+        : base(resourceHttpClient)
     {
         _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
-        _httpClient = httpClient;
+        _resourceHttpClient = resourceHttpClient;
         _logger = (ILogger?)loggerFactory?.CreateLogger<ClientOAuthProvider>() ?? NullLogger.Instance;
 
         if (options is null)
@@ -97,6 +100,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new ArgumentNullException(nameof(options));
         }
 
+        _backchannel = options.Backchannel ?? defaultOAuthBackchannel ?? resourceHttpClient;
         _clientId = options.ClientId;
         _configuredClientId = options.ClientId;
         _clientSecret = options.ClientSecret;
@@ -514,7 +518,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             AuthorizationServerMetadata? metadata;
             try
             {
-                var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
+                var response = await _backchannel.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     continue;
@@ -686,7 +690,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
-        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await _backchannel.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!httpResponse.IsSuccessStatusCode)
         {
@@ -818,7 +822,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
 
-        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await _backchannel.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
@@ -899,7 +903,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(Uri metadataUrl, bool requireSuccess, CancellationToken cancellationToken)
     {
-        using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await _resourceHttpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
         if (requireSuccess)
         {
             await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
@@ -955,7 +959,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, _dcrInitialAccessToken);
         }
 
-        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await _backchannel.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!httpResponse.IsSuccessStatusCode)
         {

@@ -63,8 +63,19 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Tasks\ModelContextProtocol.Extensions.Tasks.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestSseServer\ModelContextProtocol.TestSseServer.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestOAuthServer\ModelContextProtocol.TestOAuthServer.csproj" />
+    <ProjectReference Include="..\ModelContextProtocol.TestHttpOverStdioServer\ModelContextProtocol.TestHttpOverStdioServer.csproj"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ModelContextProtocol.ConformanceClient\ModelContextProtocol.ConformanceClient.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.ConformanceServer\ModelContextProtocol.ConformanceServer.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyHttpOverStdioTestServer" AfterTargets="Build">
+    <ItemGroup>
+      <_HttpOverStdioTestServerFiles Include="$(ArtifactsBinDir)ModelContextProtocol.TestHttpOverStdioServer\$(Configuration)\$(TargetFramework)\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_HttpOverStdioTestServerFiles)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

@@ -55,7 +55,17 @@ public sealed partial class StdioClientTransport : IClientTransport
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        string endpointName = Name;
+        StdioClientProcess process = StartProcess(_options, _loggerFactory, Name);
+        return new StdioClientSessionTransport(process, Name, _loggerFactory);
+    }
+
+    internal static StdioClientProcess StartProcess(
+        StdioClientTransportOptions options,
+        ILoggerFactory? loggerFactory,
+        string endpointName)
+    {
+        StdioClientTransportOptions _options = options;
+        ILoggerFactory? _loggerFactory = loggerFactory;
 
         Process? process = null;
         bool processStarted = false;
@@ -224,7 +234,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             process.BeginErrorReadLine();
 
-            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, _loggerFactory);
+            return new StdioClientProcess(_options, process, stderrRollingLog, errorHandler);
         }
         catch (Exception ex)
         {

@@ -1,27 +1,18 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
-using System.Diagnostics;
 
 namespace ModelContextProtocol.Client;
 
 /// <summary>Provides the client side of a stdio-based session transport.</summary>
 internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 {
-    private readonly StdioClientTransportOptions _options;
-    private readonly Process _process;
-    private readonly Queue<string> _stderrRollingLog;
-    private readonly DataReceivedEventHandler _errorHandler;
+    private readonly StdioClientProcess _process;
     private int _cleanedUp = 0;
-    private readonly int? _processId;
 
-    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, ILoggerFactory? loggerFactory) :
-        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+    public StdioClientSessionTransport(StdioClientProcess process, string endpointName, ILoggerFactory? loggerFactory) :
+        base(process.StandardInput, process.StandardOutput, encoding: null, endpointName, loggerFactory)
     {
-        _options = options;
         _process = process;
-        _stderrRollingLog = stderrRollingLog;
-        _errorHandler = errorHandler;
-        try { _processId = process.Id; } catch { }
     }
 
     /// <inheritdoc/>
@@ -35,7 +26,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         {
             // We failed to send due to an I/O error. If the server process has exited, which is then very likely the cause
             // for the I/O error, we should throw an exception for that instead.
-            if (await GetUnexpectedExitExceptionAsync().ConfigureAwait(false) is Exception processExitException)
+            if (await _process.GetUnexpectedExitExceptionAsync().ConfigureAwait(false) is Exception processExitException)
             {
                 throw processExitException;
             }
@@ -59,7 +50,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         // We've not yet forcefully terminated the server. If it's already shut down, something went wrong,
         // so create an exception with details about that.
-        error ??= await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
+        error ??= await _process.GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
 
         // Ensure all pending ErrorDataReceived events are drained before detaching
         // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
@@ -68,21 +59,15 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // so HasExited returns false and the drain is skipped. An unconditional
         // wait here covers that gap. When the drain already happened above, the
         // call returns immediately.
-        await WaitForProcessExitAsync().ConfigureAwait(false);
-
-        // Detach the stderr handler so no further ErrorDataReceived events
-        // are dispatched during or after process disposal.
-        _process.ErrorDataReceived -= _errorHandler;
+        await _process.WaitForExitWithinTimeoutAsync().ConfigureAwait(false);
 
         // Terminate the server process (or confirm it already exited), then build
         // and publish strongly-typed completion details while the process handle
         // is still valid so we can read the exit code.
         try
         {
-            StdioClientTransport.DisposeProcess(
-                _process, 
+            _process.Dispose(
                 processRunning: true,
-                _options.ShutdownTimeout,
                 beforeDispose: () => SetDisconnected(new ClientTransportClosedException(BuildCompletionDetails(error))));
         }
         catch (Exception ex)
@@ -97,94 +82,6 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         await base.CleanupAsync(error, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<Exception?> GetUnexpectedExitExceptionAsync()
-    {
-        if (!StdioClientTransport.HasExited(_process))
-        {
-            return null;
-        }
-
-        Debug.Assert(StdioClientTransport.HasExited(_process));
-
-        await WaitForProcessExitAsync().ConfigureAwait(false);
-
-        string errorMessage = "MCP server process exited unexpectedly";
-
-        string? exitCode = null;
-        try
-        {
-            exitCode = $" (exit code: {(uint)_process.ExitCode})";
-        }
-        catch { }
-
-        lock (_stderrRollingLog)
-        {
-            if (_stderrRollingLog.Count > 0)
-            {
-                errorMessage =
-                    $"{errorMessage}{exitCode}{Environment.NewLine}" +
-                    $"Server's stderr tail:{Environment.NewLine}" +
-                    $"{string.Join(Environment.NewLine, _stderrRollingLog)}";
-            }
-        }
-
-        return new IOException(errorMessage);
-    }
-
-    /// <summary>
-    /// Waits for the process to exit within <see cref="StdioClientTransportOptions.ShutdownTimeout"/>
-    /// and flushes pending <see cref="Process.ErrorDataReceived"/> events.
-    /// </summary>
-    /// <remarks>
-    /// On .NET, <c>Process.WaitForExitAsync</c> also waits for asynchronous output readers
-    /// to complete, ensuring all events have been dispatched. On .NET Framework,
-    /// <see cref="Process.WaitForExit(int)"/> does not guarantee this; the parameterless
-    /// <see cref="Process.WaitForExit()"/> overload is needed to flush the event queue.
-    /// This method is idempotent—calling it after the process has already been waited on
-    /// returns immediately.
-    /// </remarks>
-    private async ValueTask WaitForProcessExitAsync()
-    {
-        try
-        {
-#if NET
-            using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
-            await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
-#else
-            if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
-            {
-                _process.WaitForExit();
-            }
-#endif
-        }
-        catch { }
-    }
-
-    private StdioClientCompletionDetails BuildCompletionDetails(Exception? error)
-    {
-        StdioClientCompletionDetails details = new()
-        {
-            Exception = error,
-            ProcessId = _processId,
-        };
-        
-        try
-        {
-            if (StdioClientTransport.HasExited(_process))
-            {
-                details.ExitCode = _process.ExitCode;
-            }
-        }
-        catch { }
-
-        lock (_stderrRollingLog)
-        {
-            if (_stderrRollingLog.Count > 0)
-            {
-                details.StandardErrorTail = _stderrRollingLog.ToArray();
-            }
-        }
-
-        return details;
-    }
+    private StdioClientCompletionDetails BuildCompletionDetails(Exception? error) =>
+        _process.BuildCompletionDetails(error);
 }
