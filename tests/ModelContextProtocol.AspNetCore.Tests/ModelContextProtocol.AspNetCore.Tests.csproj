@@ -27,6 +27,8 @@
     <Compile Include="..\Common\**\*.cs" />
     <Compile Include="..\..\src\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
     <Compile Include="..\..\src\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
+    <Compile Include="..\..\samples\HttpOverStdioServer\StdioTransportDetector.cs"
+             Link="HttpOverStdioServer\StdioTransportDetector.cs" />
   </ItemGroup>
 
   <ItemGroup>

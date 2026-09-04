@@ -173,6 +173,14 @@ builder.Services.AddMcpServer()
         options.SessionMode = HttpServerSessionMode.Stateful);
 ```
 
+#### Supporting both stdio formats
+
+A server can accept both the standardized newline-delimited stdio transport and HTTP/2-over-stdio on the same stdin/stdout pair by selecting the transport before constructing either host. Inspect the input for the exact 24-byte HTTP/2 prior-knowledge connection preface (`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`): a complete match selects Kestrel, while the first mismatch or EOF after a partial match selects the legacy stdio transport.
+
+Use a <xref:System.IO.Pipelines.PipeReader> so this inspection works across segmented reads, and do not consume the inspected bytes. Advance the reader with the original buffer start as the consumed position, then pass `PipeReader.AsStream()` to either `WithHttpOverStdioTransport(inputStream, outputStream)` or `WithStreamServerTransport(inputStream, outputStream)`. Construct only the selected host; starting both transports would let one reader consume bytes intended for the other. The caller retains ownership of streams passed to the HTTP-over-stdio overload.
+
+The [`HttpOverStdioServer` sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/HttpOverStdioServer) implements this pattern, and the [`HttpOverStdioClient` sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/HttpOverStdioClient) launches that same server once with each transport. Selection happens once per process. This lets old stdio clients connect to a new dual-mode server, but it does not make HTTP/2 a safe speculative probe against an old server: an old JSON-lines parser cannot recover after receiving the HTTP/2 preface.
+
 #### OAuth backchannel
 
 MCP requests and protected-resource metadata use the stdio-backed HTTP client. Authorization-server discovery, dynamic client registration, token exchange, and refresh require a normal network backchannel. <xref:ModelContextProtocol.Client.HttpOverStdioClientTransport> creates and owns one by default. Set <xref:ModelContextProtocol.Authentication.ClientOAuthOptions.Backchannel> when the authorization server needs a customized handler, proxy, certificate, or test transport:

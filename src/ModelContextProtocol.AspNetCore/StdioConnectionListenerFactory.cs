@@ -12,8 +12,10 @@ internal sealed class StdioConnectionListenerFactory : IConnectionListenerFactor
     private readonly Stream _input;
     private readonly Stream _output;
 
-    public StdioConnectionListenerFactory(IHostApplicationLifetime applicationLifetime)
-        : this(applicationLifetime, Console.OpenStandardInput(), Console.OpenStandardOutput())
+    public StdioConnectionListenerFactory(
+        IHostApplicationLifetime applicationLifetime,
+        HttpOverStdioStreams streams)
+        : this(applicationLifetime, streams.Input, streams.Output)
     {
     }
 

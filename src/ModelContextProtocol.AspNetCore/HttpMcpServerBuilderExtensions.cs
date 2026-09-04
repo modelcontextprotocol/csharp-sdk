@@ -63,8 +63,64 @@ public static class HttpMcpServerBuilderExtensions
     public static IMcpServerBuilder WithHttpOverStdioTransport(
         this IMcpServerBuilder builder,
         Action<HttpServerTransportOptions>? configureOptions = null)
+        => WithHttpOverStdioTransportCore(builder, streams: null, configureOptions);
+
+    /// <summary>
+    /// Adds the services necessary to host the MCP Streamable HTTP transport over the specified input and output streams.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="inputStream">The stream from which HTTP/2 request bytes are read.</param>
+    /// <param name="outputStream">The stream to which HTTP/2 response bytes are written.</param>
+    /// <param name="configureOptions">Configures options for the Streamable HTTP transport.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// The transport hosts one HTTP/2 connection over the supplied streams. The caller retains ownership
+    /// of both streams and should dispose them after the host stops.
+    /// </para>
+    /// <para>
+    /// This overload is useful when a server must inspect or buffer stdin before selecting HTTP-over-stdio.
+    /// Any inspected bytes must remain available from <paramref name="inputStream"/> for Kestrel to consume.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="builder"/>, <paramref name="inputStream"/>, or <paramref name="outputStream"/> is
+    /// <see langword="null"/>.
+    /// </exception>
+    [Experimental(Experimentals.SpecificationFeature_DiagnosticId, UrlFormat = Experimentals.HttpOverStdio_Url)]
+    public static IMcpServerBuilder WithHttpOverStdioTransport(
+        this IMcpServerBuilder builder,
+        Stream inputStream,
+        Stream outputStream,
+        Action<HttpServerTransportOptions>? configureOptions = null)
     {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(inputStream);
+        ArgumentNullException.ThrowIfNull(outputStream);
+
+        return WithHttpOverStdioTransportCore(
+            builder,
+            new HttpOverStdioStreams(inputStream, outputStream),
+            configureOptions);
+    }
+
+    private static IMcpServerBuilder WithHttpOverStdioTransportCore(
+        IMcpServerBuilder builder,
+        HttpOverStdioStreams? streams,
+        Action<HttpServerTransportOptions>? configureOptions)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
         builder.WithHttpTransport(configureOptions);
+
+        if (streams is null)
+        {
+            builder.Services.TryAddSingleton<HttpOverStdioStreams>();
+        }
+        else
+        {
+            builder.Services.TryAddSingleton(streams);
+        }
 
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IConnectionListenerFactory, StdioConnectionListenerFactory>());

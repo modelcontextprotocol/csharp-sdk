@@ -18,35 +18,55 @@ foreach (string variable in new[] { "DOTNET_ROOT", "DOTNET_ROOT_X64" })
     }
 }
 
-var transport = new HttpOverStdioClientTransport(
-    new StdioClientTransportOptions
+await RunAsync(
+    "HTTP/2 over stdio",
+    new HttpOverStdioClientTransport(
+        CreateStdioOptions(serverAssembly, environment),
+        new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://http-over-stdio.local/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }),
+    new McpClientOptions { ProtocolVersion = "2026-07-28" },
+    "hello over HTTP/2 on stdio");
+
+await RunAsync(
+    "Legacy JSON-RPC stdio",
+    new StdioClientTransport(CreateStdioOptions(serverAssembly, environment)),
+    new McpClientOptions { ProtocolVersion = "2025-11-25" },
+    "hello over legacy stdio");
+
+static StdioClientTransportOptions CreateStdioOptions(
+    string serverAssembly,
+    Dictionary<string, string?> environment) =>
+    new()
     {
-        Name = "HTTP/2 stdio sample server",
+        Name = "dual-mode stdio sample server",
         Command = "dotnet",
         Arguments = [serverAssembly],
         InheritEnvironmentVariables = false,
-        EnvironmentVariables = environment,
-    },
-    new HttpClientTransportOptions
-    {
-        Endpoint = new Uri("http://http-over-stdio.local/mcp"),
-        TransportMode = HttpTransportMode.StreamableHttp,
-    });
+        EnvironmentVariables = new Dictionary<string, string?>(environment),
+    };
 
-await using McpClient client = await McpClient.CreateAsync(
-    transport,
-    new McpClientOptions { ProtocolVersion = "2026-07-28" });
+static async Task RunAsync(
+    string label,
+    IClientTransport transport,
+    McpClientOptions options,
+    string message)
+{
+    await using McpClient client = await McpClient.CreateAsync(transport, options);
 
-Console.WriteLine(
-    $"Connected with protocol {client.NegotiatedProtocolVersion}; session ID: {client.SessionId ?? "<none>"}");
+    Console.WriteLine(
+        $"{label}: protocol {client.NegotiatedProtocolVersion}; session ID: {client.SessionId ?? "<none>"}");
 
-IList<McpClientTool> tools = await client.ListToolsAsync();
-Console.WriteLine($"Tools: {string.Join(", ", tools.Select(tool => tool.Name))}");
+    IList<McpClientTool> tools = await client.ListToolsAsync();
+    Console.WriteLine($"{label}: tools: {string.Join(", ", tools.Select(tool => tool.Name))}");
 
-CallToolResult result = await client.CallToolAsync(
-    "echo",
-    new Dictionary<string, object?> { ["message"] = "hello over HTTP/2 on stdio" });
-Console.WriteLine(AssertText(result));
+    CallToolResult result = await client.CallToolAsync(
+        "echo",
+        new Dictionary<string, object?> { ["message"] = message });
+    Console.WriteLine($"{label}: {AssertText(result)}");
+}
 
 static string AssertText(CallToolResult result) =>
     result.Content.OfType<TextContentBlock>().Single().Text;

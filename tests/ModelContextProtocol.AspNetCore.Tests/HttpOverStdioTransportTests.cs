@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
 using System.Reflection;
@@ -56,6 +57,42 @@ public class HttpOverStdioTransportTests
             serviceProvider.GetRequiredService<IOptions<HttpServerTransportOptions>>().Value;
 
         Assert.Equal(HttpServerSessionMode.Stateful, options.SessionMode);
+    }
+
+    [Fact]
+    public async Task WithHttpOverStdioTransport_UsesProvidedStreamsWithoutTakingOwnership()
+    {
+        byte[] requestBytes = "request bytes"u8.ToArray();
+        TestHostApplicationLifetime lifetime = new();
+        TrackingMemoryStream input = new(requestBytes);
+        TrackingMemoryStream output = new();
+        ServiceCollection services = new();
+        services.AddSingleton<IHostApplicationLifetime>(lifetime);
+        services.AddMcpServer().WithHttpOverStdioTransport(input, output);
+
+        await using ServiceProvider serviceProvider = services.BuildServiceProvider();
+        IConnectionListenerFactory factory =
+            Assert.Single(serviceProvider.GetServices<IConnectionListenerFactory>());
+        await using IConnectionListener listener =
+            await factory.BindAsync(GetStdioEndPoint(), TestContext.Current.CancellationToken);
+        ConnectionContext connection =
+            Assert.IsAssignableFrom<ConnectionContext>(
+                await listener.AcceptAsync(TestContext.Current.CancellationToken));
+
+        ReadResult readResult =
+            await connection.Transport.Input.ReadAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(requestBytes, readResult.Buffer.ToArray());
+        connection.Transport.Input.AdvanceTo(readResult.Buffer.End);
+
+        byte[] responseBytes = "response bytes"u8.ToArray();
+        await connection.Transport.Output.WriteAsync(
+            responseBytes,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(responseBytes, output.ToArray());
+
+        await connection.DisposeAsync();
+        Assert.False(input.IsDisposed);
+        Assert.False(output.IsDisposed);
     }
 
     [Fact]
