@@ -41,6 +41,24 @@ if (result is null || !result.ToString()!.Contains("Echo: Hello World"))
     throw new Exception($"Unexpected result: {result}");
 }
 
+var join = tools.FirstOrDefault(t => t.Name == "Join");
+if (join is null)
+{
+    throw new Exception("Expected the Join tool.");
+}
+
+result = await join.InvokeAsync(new() { ["items"] = new List<object> { "one", "two" } });
+if (result is null || !result.ToString()!.Contains("Joined: one,two"))
+{
+    throw new Exception($"Unexpected populated array result: {result}");
+}
+
+result = await join.InvokeAsync(new() { ["items"] = new List<object>() });
+if (result is null || !result.ToString()!.Contains("Joined: "))
+{
+    throw new Exception($"Unexpected empty array result: {result}");
+}
+
 Console.WriteLine("Success!");
 
 [McpServerToolType]
@@ -49,4 +67,7 @@ internal sealed class AotTools
     [McpServerTool(Name = "Echo")]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
+
+    [McpServerTool(Name = "Join")]
+    public static string Join(string[] items) => $"Joined: {string.Join(',', items)}";
 }
