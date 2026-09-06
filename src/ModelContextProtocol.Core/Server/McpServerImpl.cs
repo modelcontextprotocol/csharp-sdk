@@ -32,6 +32,16 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly string[] _perRequestMetadataProtocolVersions;
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
+
+    /// <summary>
+    /// Cancelled at the start of <see cref="DisposeAsync"/>, before the sweep that cancels
+    /// the continuations present at that moment. A continuation published after the sweep
+    /// observes this and cancels itself, so no MRTR handler can outlive the server.
+    /// Like the per-handler sources, it is intentionally never disposed: nothing registers
+    /// on it, and not disposing keeps <see cref="CancellationTokenSource.Token"/> usable
+    /// from the publish path without an ObjectDisposedException race against disposal.
+    /// </summary>
+    private readonly CancellationTokenSource _serverLifetimeCts = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
     private static readonly string[] s_perRequestMetadataKeys =
     [
@@ -608,6 +618,10 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         _disposed = true;
+
+        // Close the register-after-sweep race before anything else: a continuation
+        // published from here on cancels itself instead of escaping the sweep below.
+        _serverLifetimeCts.Cancel();
 
         // Dispose the session handler - cancels message processing and waits for all
         // in-flight request handlers (including retries in AwaitMrtrHandlerAsync) to complete.
@@ -2450,6 +2464,14 @@ internal sealed partial class McpServerImpl : McpServer
         // Store the continuation so the retry can resume the handler.
         continuation.PendingExchange = exchange;
         _mrtrContinuations[correlationId] = continuation;
+
+        // Publish-then-recheck: DisposeAsync cancels _serverLifetimeCts before iterating
+        // _mrtrContinuations, so either the sweep sees this entry or this check sees the
+        // cancellation. Both interleavings cancel the handler.
+        if (_serverLifetimeCts.IsCancellationRequested)
+        {
+            continuation.CancelHandler();
+        }
 
         return SerializeInputRequiredResult(inputRequiredResult);
     }
