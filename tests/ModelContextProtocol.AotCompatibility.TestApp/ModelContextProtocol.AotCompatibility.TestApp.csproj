@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Skills\ModelContextProtocol.Extensions.Skills.csproj" />
 
     <TrimmerRootAssembly Include="ModelContextProtocol.Core" />
     <TrimmerRootAssembly Include="ModelContextProtocol" />
