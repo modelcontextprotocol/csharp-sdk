@@ -1,0 +1,322 @@
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Text;
+using System.Text.Json.Nodes;
+
+namespace ModelContextProtocol.Extensions.Skills;
+
+/// <summary>
+/// Represents a skill served by an MCP server: its <see cref="Skill"/> entry together with the
+/// <see cref="McpServerResource"/> instances that serve the skill's files.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The specification requires a skill's manifest to carry the SHA-256 digest and size of every file, and a host
+/// refuses content whose bytes do not match. Building a skill through <see cref="Create"/> or
+/// <see cref="CreateFromDirectory"/> computes the manifest from the same bytes the resources serve, so the two
+/// cannot disagree.
+/// </para>
+/// <para>
+/// The frontmatter is supplied separately from the <c>SKILL.md</c> content and must reproduce that file's YAML
+/// frontmatter exactly, field by field. Hosts re-parse the fetched <c>SKILL.md</c> and compare, treating any
+/// discrepancy as a verification failure. This package does not parse YAML.
+/// </para>
+/// <para>
+/// Register skills with <see cref="McpSkillsBuilderExtensions.WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/>,
+/// which registers both the catalog entries and the file resources.
+/// </para>
+/// </remarks>
+public sealed class McpServerSkill
+{
+    private McpServerSkill(Skill protocolSkill, IReadOnlyList<McpServerResource> resources)
+    {
+        ProtocolSkill = protocolSkill;
+        Resources = resources;
+    }
+
+    /// <summary>
+    /// Gets the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
+    /// </summary>
+    public Skill ProtocolSkill { get; }
+
+    /// <summary>
+    /// Gets the resources serving the skill's files, one per file, each addressable at the URI its manifest entry names.
+    /// </summary>
+    public IReadOnlyList<McpServerResource> Resources { get; }
+
+    /// <summary>
+    /// Creates a skill from its files.
+    /// </summary>
+    /// <param name="uri">
+    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
+    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// </param>
+    /// <param name="frontmatter">
+    /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
+    /// <c>description</c> fields and reproduce the authored frontmatter exactly.
+    /// </param>
+    /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="uri"/> does not end in <c>/SKILL.md</c>, <paramref name="frontmatter"/> is missing a required
+    /// field or its name does not match <paramref name="uri"/>, <paramref name="files"/> omits <c>SKILL.md</c>,
+    /// contains a duplicate or unsafe path, or exceeds the specification's per-skill limits.
+    /// </exception>
+    public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(frontmatter);
+        ArgumentNullException.ThrowIfNull(files);
+#else
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (frontmatter is null) throw new ArgumentNullException(nameof(frontmatter));
+        if (files is null) throw new ArgumentNullException(nameof(files));
+#endif
+
+        string root = SkillValidation.GetSkillRoot(uri, nameof(uri));
+
+        // Normalize and order the files: SKILL.md first, then the rest by path, so the manifest is deterministic.
+        var normalized = new List<(string Path, McpServerSkillFile File)>();
+        var seenPaths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files)
+        {
+            if (file is null)
+            {
+                throw new ArgumentException("The skill's files must not contain null entries.", nameof(files));
+            }
+
+            string path = NormalizePath(file.Path);
+            if (!seenPaths.Add(path))
+            {
+                throw new ArgumentException($"The skill's files contain the path '{path}' more than once.", nameof(files));
+            }
+
+            normalized.Add((path, file));
+        }
+
+        if (!seenPaths.Contains(SkillsProtocol.SkillFileName))
+        {
+            throw new ArgumentException($"The skill's files must include '{SkillsProtocol.SkillFileName}' at the skill's root.", nameof(files));
+        }
+
+        normalized.Sort(static (left, right) =>
+        {
+            bool leftIsSkillFile = left.Path == SkillsProtocol.SkillFileName;
+            bool rightIsSkillFile = right.Path == SkillsProtocol.SkillFileName;
+            if (leftIsSkillFile != rightIsSkillFile)
+            {
+                return leftIsSkillFile ? -1 : 1;
+            }
+
+            return string.CompareOrdinal(left.Path, right.Path);
+        });
+
+        // Build and validate the entry before creating any resources, so an invalid skill fails fast with a
+        // message about the entry rather than about a resource.
+        var manifest = new List<SkillResource>(normalized.Count);
+        foreach (var (path, file) in normalized)
+        {
+            manifest.Add(new SkillResource
+            {
+                Uri = root + "/" + path,
+                Digest = SkillVerifier.ComputeDigest(file.Content.Span),
+                Size = file.Content.Length,
+            });
+        }
+
+        var skill = new Skill
+        {
+            Uri = uri,
+            Frontmatter = frontmatter,
+            Resources = SkillResources.FromResources(manifest),
+        };
+
+        SkillValidation.Validate(skill, nameof(frontmatter));
+
+        var resources = new McpServerResource[normalized.Count];
+        for (int i = 0; i < normalized.Count; i++)
+        {
+            var (path, file) = normalized[i];
+            bool isSkillFile = path == SkillsProtocol.SkillFileName;
+            resources[i] = CreateResource(
+                manifest[i].Uri,
+                name: isSkillFile ? skill.Name! : path,
+                description: isSkillFile ? skill.Description : null,
+                mimeType: file.MimeType ?? (isSkillFile ? SkillsProtocol.SkillFileMimeType : GuessMimeType(path, file.Content.Span)),
+                file.Content);
+        }
+
+        return new McpServerSkill(skill, resources);
+    }
+
+    /// <summary>
+    /// Creates a skill from every file in a directory, recursively.
+    /// </summary>
+    /// <param name="uri">
+    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
+    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// </param>
+    /// <param name="frontmatter">
+    /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
+    /// <c>description</c> fields and reproduce the authored frontmatter exactly.
+    /// </param>
+    /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
+    /// <exception cref="ArgumentException">The directory's contents do not form a valid skill; see <see cref="Create"/>.</exception>
+    /// <remarks>
+    /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
+    /// manifest or the served content.
+    /// </remarks>
+    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(frontmatter);
+        ArgumentNullException.ThrowIfNull(directoryPath);
+#else
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (frontmatter is null) throw new ArgumentNullException(nameof(frontmatter));
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+#endif
+
+        string fullDirectory = Path.GetFullPath(directoryPath);
+        if (!Directory.Exists(fullDirectory))
+        {
+            throw new DirectoryNotFoundException($"The skill directory '{fullDirectory}' does not exist.");
+        }
+
+        if (!fullDirectory.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+        {
+            fullDirectory += Path.DirectorySeparatorChar;
+        }
+
+        var files = new List<McpServerSkillFile>();
+        foreach (string filePath in Directory.EnumerateFiles(fullDirectory, "*", SearchOption.AllDirectories))
+        {
+            string relativePath = filePath.Substring(fullDirectory.Length).Replace(Path.DirectorySeparatorChar, '/');
+            if (Path.AltDirectorySeparatorChar != Path.DirectorySeparatorChar)
+            {
+                relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, '/');
+            }
+
+            files.Add(new McpServerSkillFile
+            {
+                Path = relativePath,
+                Content = File.ReadAllBytes(filePath),
+            });
+        }
+
+        return Create(uri, frontmatter, files);
+    }
+
+    private static string NormalizePath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            throw new ArgumentException("A skill file must have a non-empty path.", nameof(McpServerSkillFile.Path));
+        }
+
+        string normalized = path!.Replace('\\', '/');
+        if (normalized.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalized = normalized.Substring(2);
+        }
+
+        if (normalized.Length == 0 || normalized[0] == '/' || normalized[normalized.Length - 1] == '/')
+        {
+            throw new ArgumentException($"The skill file path '{path}' must be relative to the skill's root and must not end in a separator.", nameof(McpServerSkillFile.Path));
+        }
+
+        foreach (string segment in normalized.Split('/'))
+        {
+            if (segment.Length == 0 || segment == "." || segment == "..")
+            {
+                throw new ArgumentException($"The skill file path '{path}' must not contain empty, '.', or '..' segments.", nameof(McpServerSkillFile.Path));
+            }
+        }
+
+        return normalized;
+    }
+
+    private static McpServerResource CreateResource(string uri, string name, string? description, string mimeType, ReadOnlyMemory<byte> content)
+    {
+        // Text is served as TextResourceContents only when the bytes round-trip through UTF-8 exactly, because the
+        // host hashes the UTF-8 encoding of the text it receives and compares it against the manifest digest, which
+        // was computed over the raw bytes. Anything else is served as a blob, which round-trips by construction.
+        ResourceContents Read() =>
+            IsTextualMimeType(mimeType) && TryDecodeUtf8(content.Span, out string? text)
+                ? new TextResourceContents { Uri = uri, MimeType = mimeType, Text = text! }
+                : BlobResourceContents.FromBytes(content, uri, mimeType);
+
+        return McpServerResource.Create(Read, new McpServerResourceCreateOptions
+        {
+            UriTemplate = uri,
+            Name = name,
+            Description = description,
+            MimeType = mimeType,
+        });
+    }
+
+    private static bool TryDecodeUtf8(ReadOnlySpan<byte> bytes, out string? text)
+    {
+        try
+        {
+            text = s_strictUtf8.GetString(bytes.ToArray());
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            text = null;
+            return false;
+        }
+    }
+
+    private static readonly UTF8Encoding s_strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    private static bool IsTextualMimeType(string mimeType) =>
+        mimeType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.EndsWith("+json", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.EndsWith("+xml", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/json", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/xml", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/yaml", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/toml", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/javascript", StringComparison.OrdinalIgnoreCase) ||
+        mimeType.Equals("application/x-sh", StringComparison.OrdinalIgnoreCase);
+
+    private static string GuessMimeType(string path, ReadOnlySpan<byte> content)
+    {
+        int dot = path.LastIndexOf('.');
+        string extension = dot < 0 || dot < path.LastIndexOf('/') ? string.Empty : path.Substring(dot + 1).ToLowerInvariant();
+
+        return extension switch
+        {
+            "md" or "markdown" => "text/markdown",
+            "txt" => "text/plain",
+            "csv" => "text/csv",
+            "html" or "htm" => "text/html",
+            "css" => "text/css",
+            "js" or "mjs" => "text/javascript",
+            "ts" => "text/typescript",
+            "py" => "text/x-python",
+            "cs" => "text/x-csharp",
+            "sh" or "bash" => "application/x-sh",
+            "json" => "application/json",
+            "yaml" or "yml" => "application/yaml",
+            "toml" => "application/toml",
+            "xml" => "application/xml",
+            "svg" => "image/svg+xml",
+            "png" => "image/png",
+            "jpg" or "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "pdf" => "application/pdf",
+            _ => TryDecodeUtf8(content, out _) ? "text/plain" : "application/octet-stream",
+        };
+    }
+}
