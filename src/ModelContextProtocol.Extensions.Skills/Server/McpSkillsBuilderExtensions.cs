@@ -84,6 +84,89 @@ public static class McpSkillsBuilderExtensions
     }
 
     /// <summary>
+    /// Enables MCP Skills support for every skill directory found directly under <paramref name="directoryPath"/>,
+    /// serving both their entries and their files.
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="directoryPath">
+    /// A directory whose immediate subdirectories are skills. Each subdirectory containing a <c>SKILL.md</c> becomes
+    /// one skill; subdirectories without one are ignored.
+    /// </param>
+    /// <param name="uriPrefix">
+    /// The prefix of each skill's URI. A skill's <c>SKILL.md</c> is published at <c>{uriPrefix}{name}/SKILL.md</c>,
+    /// where <c>name</c> is the skill's frontmatter name. Defaults to <c>skill://</c>; use a longer prefix such as
+    /// <c>skill://acme/billing/</c> to place the skills under an organizational path.
+    /// </param>
+    /// <param name="configure">An optional callback that configures the extension's behavior.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
+    /// <exception cref="ArgumentException">
+    /// No subdirectory contains a <c>SKILL.md</c>, a skill directory is invalid (see
+    /// <see cref="McpServerSkill.CreateFromDirectory(string)"/>), or two skills declare the same name.
+    /// </exception>
+    /// <remarks>
+    /// Each skill is built with <see cref="McpServerSkill.CreateFromDirectory(string)"/>: files are read once,
+    /// digests are computed from the bytes served, and symbolic links are rejected. Only immediate subdirectories
+    /// are considered skills; a <c>SKILL.md</c> nested deeper inside a skill is one of that skill's files.
+    /// </remarks>
+    public static IMcpServerBuilder WithSkillsFromDirectory(
+        this IMcpServerBuilder builder,
+        string directoryPath,
+        string uriPrefix = "skill://",
+        Action<McpSkillsOptions>? configure = null)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(directoryPath);
+        ArgumentNullException.ThrowIfNull(uriPrefix);
+#else
+        if (builder is null) throw new ArgumentNullException(nameof(builder));
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+        if (uriPrefix is null) throw new ArgumentNullException(nameof(uriPrefix));
+#endif
+
+        if (uriPrefix.Length == 0)
+        {
+            throw new ArgumentException("The URI prefix must not be empty.", nameof(uriPrefix));
+        }
+
+        if (!uriPrefix.EndsWith("/", StringComparison.Ordinal))
+        {
+            uriPrefix += "/";
+        }
+
+        string fullDirectory = Path.GetFullPath(directoryPath);
+        if (!Directory.Exists(fullDirectory))
+        {
+            throw new DirectoryNotFoundException($"The skills directory '{fullDirectory}' does not exist.");
+        }
+
+        var skillDirectories = new List<string>(Directory.EnumerateDirectories(fullDirectory));
+        skillDirectories.Sort(StringComparer.Ordinal);
+
+        var skills = new List<McpServerSkill>();
+        foreach (string skillDirectory in skillDirectories)
+        {
+            if (!File.Exists(Path.Combine(skillDirectory, SkillsProtocol.SkillFileName)))
+            {
+                continue;
+            }
+
+            skills.Add(McpServerSkill.CreateFromDirectory(skillDirectory, uriPrefix, nameof(directoryPath)));
+        }
+
+        if (skills.Count == 0)
+        {
+            throw new ArgumentException(
+                $"No skill directories were found under '{fullDirectory}'. Each skill must be an immediate subdirectory containing a {SkillsProtocol.SkillFileName}.",
+                nameof(directoryPath));
+        }
+
+        return WithSkills(builder, skills, configure);
+    }
+
+    /// <summary>
     /// Enables MCP Skills support backed by the specified catalog.
     /// </summary>
     /// <param name="builder">The server builder.</param>

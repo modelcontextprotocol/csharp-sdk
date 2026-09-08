@@ -13,18 +13,22 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <remarks>
 /// <para>
 /// The specification requires a skill's manifest to carry the SHA-256 digest and size of every file, and a host
-/// refuses content whose bytes do not match. Building a skill through <see cref="Create"/> or
-/// <see cref="CreateFromDirectory"/> computes the manifest from the same bytes the resources serve, so the two
-/// cannot disagree.
+/// refuses content whose bytes do not match. Building a skill through <see cref="Create(IEnumerable{McpServerSkillFile})"/>
+/// or <see cref="CreateFromDirectory(string)"/> (or their overloads) computes the manifest from the same bytes the
+/// resources serve, so the two cannot disagree.
 /// </para>
 /// <para>
-/// The frontmatter is supplied separately from the <c>SKILL.md</c> content and must reproduce that file's YAML
-/// frontmatter exactly, field by field. Hosts re-parse the fetched <c>SKILL.md</c> and compare, treating any
-/// discrepancy as a verification failure. This package does not parse YAML.
+/// The skill's frontmatter is read from its <c>SKILL.md</c> by <see cref="SkillFrontmatter"/>. Hosts re-parse the
+/// fetched <c>SKILL.md</c> and compare it field by field against the published entry, treating any discrepancy as
+/// a verification failure, so the two must agree. The overloads that accept an explicit <see cref="JsonObject"/>
+/// exist for frontmatter the reader cannot handle; when it can read the file, an explicit object that differs from
+/// it is rejected.
 /// </para>
 /// <para>
 /// Register skills with <see cref="McpSkillsBuilderExtensions.WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/>,
-/// which registers both the catalog entries and the file resources.
+/// which registers both the catalog entries and the file resources, or point
+/// <see cref="McpSkillsBuilderExtensions.WithSkillsFromDirectory(IMcpServerBuilder, string, string, Action{McpSkillsOptions})"/>
+/// at a directory of skills.
 /// </para>
 /// </remarks>
 public sealed class McpServerSkill
@@ -46,7 +50,59 @@ public sealed class McpServerSkill
     public IReadOnlyList<McpServerResource> Resources { get; }
 
     /// <summary>
-    /// Creates a skill from its files.
+    /// Creates a skill from its files, reading the frontmatter from <c>SKILL.md</c> and deriving the skill's URI
+    /// from the frontmatter's <c>name</c> as <c>skill://{name}/SKILL.md</c>.
+    /// </summary>
+    /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="files"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="files"/> omits <c>SKILL.md</c>, contains a duplicate or unsafe path, or exceeds the
+    /// specification's per-skill limits; or the <c>SKILL.md</c> frontmatter cannot be read (see
+    /// <see cref="SkillFrontmatter"/>) or is missing a required field.
+    /// </exception>
+    public static McpServerSkill Create(IEnumerable<McpServerSkillFile> files)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(files);
+#else
+        if (files is null) throw new ArgumentNullException(nameof(files));
+#endif
+
+        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null, files, nameof(files));
+    }
+
+    /// <summary>
+    /// Creates a skill from its files, reading the frontmatter from <c>SKILL.md</c>.
+    /// </summary>
+    /// <param name="uri">
+    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
+    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// </param>
+    /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="uri"/> does not end in <c>/SKILL.md</c>; <paramref name="files"/> omits <c>SKILL.md</c>,
+    /// contains a duplicate or unsafe path, or exceeds the specification's per-skill limits; or the <c>SKILL.md</c>
+    /// frontmatter cannot be read (see <see cref="SkillFrontmatter"/>), is missing a required field, or has a
+    /// name that does not match <paramref name="uri"/>.
+    /// </exception>
+    public static McpServerSkill Create(string uri, IEnumerable<McpServerSkillFile> files)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(files);
+#else
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (files is null) throw new ArgumentNullException(nameof(files));
+#endif
+
+        return CreateCore(uri, uriPrefix: null, frontmatter: null, files, nameof(files));
+    }
+
+    /// <summary>
+    /// Creates a skill from its files with explicitly supplied frontmatter.
     /// </summary>
     /// <param name="uri">
     /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
@@ -60,10 +116,17 @@ public sealed class McpServerSkill
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="uri"/> does not end in <c>/SKILL.md</c>, <paramref name="frontmatter"/> is missing a required
-    /// field or its name does not match <paramref name="uri"/>, <paramref name="files"/> omits <c>SKILL.md</c>,
-    /// contains a duplicate or unsafe path, or exceeds the specification's per-skill limits.
+    /// <paramref name="uri"/> does not end in <c>/SKILL.md</c>; <paramref name="frontmatter"/> is missing a required
+    /// field, has a name that does not match <paramref name="uri"/>, or differs from the frontmatter in
+    /// <c>SKILL.md</c>; or <paramref name="files"/> omits <c>SKILL.md</c>, contains a duplicate or unsafe path, or
+    /// exceeds the specification's per-skill limits.
     /// </exception>
+    /// <remarks>
+    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>, which reads the frontmatter from the
+    /// file. This overload exists for frontmatter that <see cref="SkillFrontmatter"/> cannot read. When it can read
+    /// the file, the supplied object must match it exactly, since hosts compare the two field by field and refuse
+    /// the skill on any difference.
+    /// </remarks>
     public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files)
     {
 #if NET
@@ -76,8 +139,126 @@ public sealed class McpServerSkill
         if (files is null) throw new ArgumentNullException(nameof(files));
 #endif
 
-        string root = SkillValidation.GetSkillRoot(uri, nameof(uri));
+        return CreateCore(uri, uriPrefix: null, frontmatter, files, nameof(files));
+    }
 
+    /// <summary>
+    /// Creates a skill from every file in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>
+    /// and deriving the skill's URI from the frontmatter's <c>name</c> as <c>skill://{name}/SKILL.md</c>.
+    /// </summary>
+    /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="directoryPath"/> is <see langword="null"/>.</exception>
+    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
+    /// <exception cref="ArgumentException">
+    /// The directory's contents do not form a valid skill (see <see cref="Create(IEnumerable{McpServerSkillFile})"/>),
+    /// or the directory contains a symbolic link or other reparse point.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
+    /// manifest or the served content.
+    /// </para>
+    /// <para>
+    /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
+    /// under a URI that appears to belong to the skill, so encountering one is an error. Replace the link with a
+    /// regular file or directory, or build the skill with <see cref="Create(IEnumerable{McpServerSkillFile})"/> and
+    /// explicit files.
+    /// </para>
+    /// </remarks>
+    public static McpServerSkill CreateFromDirectory(string directoryPath)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(directoryPath);
+#else
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+#endif
+
+        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null, ReadDirectory(directoryPath), nameof(directoryPath));
+    }
+
+    /// <summary>
+    /// Creates a skill from every file in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>.
+    /// </summary>
+    /// <param name="uri">
+    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
+    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// </param>
+    /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
+    /// <exception cref="ArgumentException">
+    /// The directory's contents do not form a valid skill (see <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>),
+    /// or the directory contains a symbolic link or other reparse point.
+    /// </exception>
+    /// <remarks>
+    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
+    /// </remarks>
+    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(directoryPath);
+#else
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+#endif
+
+        return CreateCore(uri, uriPrefix: null, frontmatter: null, ReadDirectory(directoryPath), nameof(directoryPath));
+    }
+
+    /// <summary>
+    /// Creates a skill from every file in a directory, recursively, with explicitly supplied frontmatter.
+    /// </summary>
+    /// <param name="uri">
+    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
+    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// </param>
+    /// <param name="frontmatter">
+    /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
+    /// <c>description</c> fields and reproduce the authored frontmatter exactly.
+    /// </param>
+    /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <returns>The skill.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
+    /// <exception cref="ArgumentException">
+    /// The directory's contents do not form a valid skill (see <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>),
+    /// or the directory contains a symbolic link or other reparse point.
+    /// </exception>
+    /// <remarks>
+    /// Prefer <see cref="CreateFromDirectory(string, string)"/>, which reads the frontmatter from the file. This
+    /// overload exists for frontmatter that <see cref="SkillFrontmatter"/> cannot read. When it can read the file,
+    /// the supplied object must match it exactly. See <see cref="CreateFromDirectory(string)"/> for how files and
+    /// links are handled.
+    /// </remarks>
+    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(frontmatter);
+        ArgumentNullException.ThrowIfNull(directoryPath);
+#else
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (frontmatter is null) throw new ArgumentNullException(nameof(frontmatter));
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+#endif
+
+        return CreateCore(uri, uriPrefix: null, frontmatter, ReadDirectory(directoryPath), nameof(directoryPath));
+    }
+
+    private const string DefaultUriPrefix = "skill://";
+
+    /// <summary>
+    /// Creates a skill from a directory, deriving its URI as <c>{uriPrefix}{name}/SKILL.md</c>. Used by
+    /// <c>WithSkillsFromDirectory</c>.
+    /// </summary>
+    internal static McpServerSkill CreateFromDirectory(string directoryPath, string uriPrefix, string paramName) =>
+        CreateCore(uri: null, uriPrefix, frontmatter: null, ReadDirectory(directoryPath), paramName);
+
+    private static McpServerSkill CreateCore(string? uri, string? uriPrefix, JsonObject? frontmatter, IEnumerable<McpServerSkillFile> files, string filesParamName)
+    {
         // Normalize and order the files: SKILL.md first, then the rest by path, so the manifest is deterministic.
         var normalized = new List<(string Path, McpServerSkillFile File)>();
         var seenPaths = new HashSet<string>(StringComparer.Ordinal);
@@ -85,13 +266,13 @@ public sealed class McpServerSkill
         {
             if (file is null)
             {
-                throw new ArgumentException("The skill's files must not contain null entries.", nameof(files));
+                throw new ArgumentException("The skill's files must not contain null entries.", filesParamName);
             }
 
             string path = NormalizePath(file.Path);
             if (!seenPaths.Add(path))
             {
-                throw new ArgumentException($"The skill's files contain the path '{path}' more than once.", nameof(files));
+                throw new ArgumentException($"The skill's files contain the path '{path}' more than once.", filesParamName);
             }
 
             normalized.Add((path, file));
@@ -99,7 +280,7 @@ public sealed class McpServerSkill
 
         if (!seenPaths.Contains(SkillsProtocol.SkillFileName))
         {
-            throw new ArgumentException($"The skill's files must include '{SkillsProtocol.SkillFileName}' at the skill's root.", nameof(files));
+            throw new ArgumentException($"The skill's files must include '{SkillsProtocol.SkillFileName}' at the skill's root.", filesParamName);
         }
 
         normalized.Sort(static (left, right) =>
@@ -117,19 +298,72 @@ public sealed class McpServerSkill
         // Snapshot every file's bytes once. The caller's ReadOnlyMemory<byte> may alias an array the caller goes
         // on to mutate, and the digest published in the manifest must describe exactly the bytes served.
         var contents = new byte[normalized.Count][];
+        for (int i = 0; i < normalized.Count; i++)
+        {
+            contents[i] = normalized[i].File.Content.ToArray();
+        }
+
+        // Read the frontmatter from SKILL.md (always first after sorting). When the caller supplied frontmatter,
+        // the file is still read so that the two can be checked against each other; if the file uses YAML the
+        // reader does not support, the caller's frontmatter stands on its own.
+        JsonObject? fileFrontmatter = null;
+        FormatException? frontmatterError = null;
+        try
+        {
+            if (!TryDecodeUtf8(contents[0], out string? skillMarkdown))
+            {
+                throw new FormatException($"{SkillsProtocol.SkillFileName} is not valid UTF-8.");
+            }
+
+            fileFrontmatter = SkillFrontmatter.Parse(skillMarkdown!);
+        }
+        catch (FormatException e)
+        {
+            frontmatterError = e;
+        }
+
+        if (frontmatter is null)
+        {
+            frontmatter = fileFrontmatter ?? throw new ArgumentException(
+                $"The frontmatter of {SkillsProtocol.SkillFileName} could not be read: {frontmatterError!.Message} " +
+                $"If the file uses YAML that {nameof(SkillFrontmatter)} does not support, supply the frontmatter explicitly " +
+                "with the overload that takes a JsonObject.",
+                filesParamName);
+        }
+        else if (fileFrontmatter is not null && !JsonNode.DeepEquals(fileFrontmatter, frontmatter))
+        {
+            throw new ArgumentException(
+                $"The supplied frontmatter does not match the frontmatter in {SkillsProtocol.SkillFileName}. Hosts compare the two field by field " +
+                "and refuse the skill on any difference. Fix the mismatch, or omit the frontmatter argument to have it read from the file. " +
+                $"From the file: {fileFrontmatter.ToJsonString()} Supplied: {frontmatter.ToJsonString()}",
+                nameof(frontmatter));
+        }
+
+        if (uri is null)
+        {
+            string? name = new Skill { Uri = string.Empty, Frontmatter = frontmatter, Resources = SkillResources.Dynamic }.Name;
+            if (string.IsNullOrEmpty(name))
+            {
+                throw new ArgumentException(
+                    $"The frontmatter of {SkillsProtocol.SkillFileName} must declare a string 'name' for the skill's URI to be derived from it.",
+                    filesParamName);
+            }
+
+            uri = uriPrefix + name + "/" + SkillsProtocol.SkillFileName;
+        }
+
+        string root = SkillValidation.GetSkillRoot(uri, nameof(uri));
 
         // Build and validate the entry before creating any resources, so an invalid skill fails fast with a
         // message about the entry rather than about a resource.
         var manifest = new List<SkillResource>(normalized.Count);
         for (int i = 0; i < normalized.Count; i++)
         {
-            byte[] content = normalized[i].File.Content.ToArray();
-            contents[i] = content;
             manifest.Add(new SkillResource
             {
                 Uri = root + "/" + EscapePath(normalized[i].Path),
-                Digest = SkillVerifier.ComputeDigest(content),
-                Size = content.Length,
+                Digest = SkillVerifier.ComputeDigest(contents[i]),
+                Size = contents[i].Length,
             });
         }
 
@@ -158,48 +392,8 @@ public sealed class McpServerSkill
         return new McpServerSkill(skill, resources);
     }
 
-    /// <summary>
-    /// Creates a skill from every file in a directory, recursively.
-    /// </summary>
-    /// <param name="uri">
-    /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
-    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
-    /// </param>
-    /// <param name="frontmatter">
-    /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
-    /// <c>description</c> fields and reproduce the authored frontmatter exactly.
-    /// </param>
-    /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
-    /// <returns>The skill.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
-    /// <exception cref="ArgumentException">
-    /// The directory's contents do not form a valid skill (see <see cref="Create"/>), or the directory contains a
-    /// symbolic link or other reparse point.
-    /// </exception>
-    /// <remarks>
-    /// <para>
-    /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
-    /// manifest or the served content.
-    /// </para>
-    /// <para>
-    /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
-    /// under a URI that appears to belong to the skill, so encountering one is an error. Replace the link with a
-    /// regular file or directory, or build the skill with <see cref="Create"/> and explicit files.
-    /// </para>
-    /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
+    private static List<McpServerSkillFile> ReadDirectory(string directoryPath)
     {
-#if NET
-        ArgumentNullException.ThrowIfNull(uri);
-        ArgumentNullException.ThrowIfNull(frontmatter);
-        ArgumentNullException.ThrowIfNull(directoryPath);
-#else
-        if (uri is null) throw new ArgumentNullException(nameof(uri));
-        if (frontmatter is null) throw new ArgumentNullException(nameof(frontmatter));
-        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
-#endif
-
         string fullDirectory = Path.GetFullPath(directoryPath);
         if (!Directory.Exists(fullDirectory))
         {
@@ -213,8 +407,7 @@ public sealed class McpServerSkill
 
         var files = new List<McpServerSkillFile>();
         CollectFiles(fullDirectory, fullDirectory, files);
-
-        return Create(uri, frontmatter, files);
+        return files;
     }
 
     /// <summary>

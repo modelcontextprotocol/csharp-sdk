@@ -36,48 +36,45 @@ lets a user's approval bind to specific content.
 
 ### Serving skills
 
-The simplest way to serve skills is to describe each one with
-<xref:ModelContextProtocol.Extensions.Skills.McpServerSkill> and register them with `WithSkills`. The SDK computes
-every digest and size from the same bytes the resources serve, so the manifest and the content cannot disagree,
-and registers the file resources for you.
+The simplest way to serve skills is to keep each one in its own directory, as the Agent Skills specification
+lays them out, and point `WithSkillsFromDirectory` at the parent:
 
 ```csharp
 using ModelContextProtocol.Extensions.Skills;
-using System.Text.Json.Nodes;
-
-var gitWorkflow = McpServerSkill.CreateFromDirectory(
-    uri: "skill://git-workflow/SKILL.md",
-    frontmatter: new JsonObject
-    {
-        ["name"] = "git-workflow",
-        ["description"] = "Follow this team's Git conventions for branching and commits.",
-    },
-    directoryPath: Path.Combine(AppContext.BaseDirectory, "Skills", "git-workflow"));
 
 builder.Services
     .AddMcpServer()
     .WithHttpTransport()
-    .WithSkills([gitWorkflow], options =>
+    .WithSkillsFromDirectory(Path.Combine(AppContext.BaseDirectory, "Skills"), configure: options =>
     {
         options.TimeToLive = TimeSpan.FromMinutes(5);
         options.CacheScope = CacheScope.Public;
     });
 ```
 
-`McpServerSkill.Create` takes the files explicitly when they are not on disk:
+Every immediate subdirectory containing a `SKILL.md` becomes a skill. The SDK reads the frontmatter from each
+`SKILL.md`, computes every digest and size from the same bytes the resources serve, registers the file resources,
+and publishes each skill at `skill://{name}/SKILL.md`, where `name` comes from the frontmatter. Pass a `uriPrefix`
+such as `skill://acme/billing/` to place the skills under an organizational path.
+
+For finer control, build skills individually with <xref:ModelContextProtocol.Extensions.Skills.McpServerSkill> and
+register them with `WithSkills`:
 
 ```csharp
-var skill = McpServerSkill.Create(
-    "skill://refunds/SKILL.md",
-    new JsonObject { ["name"] = "refunds", ["description"] = "Process refunds." },
+var gitWorkflow = McpServerSkill.CreateFromDirectory(Path.Combine(skillsRoot, "git-workflow"));
+
+var refunds = McpServerSkill.Create(
+    "skill://acme/billing/refunds/SKILL.md",
     [
         McpServerSkillFile.FromText("SKILL.md", skillMarkdown),
         McpServerSkillFile.FromText("examples/approved.md", approvedTemplate),
         new McpServerSkillFile { Path = "assets/logo.png", Content = logoBytes },
     ]);
+
+builder.Services.AddMcpServer().WithHttpTransport().WithSkills([gitWorkflow, refunds]);
 ```
 
-Both methods validate the skill against the specification and throw <xref:System.ArgumentException> with a
+All of these validate the skill against the specification and throw <xref:System.ArgumentException> with a
 specific message when, for example, the frontmatter `name` does not match the URI, `SKILL.md` is missing, or the
 skill exceeds the per-skill limits of 512 files or 16 MiB. File contents are copied when the skill is created, so
 later changes to a caller's buffer or to files on disk do not affect what is served. `CreateFromDirectory` does not
@@ -86,10 +83,19 @@ names containing characters with URI syntax (such as `{`, `?`, or a space) are p
 
 #### Frontmatter
 
-The frontmatter is supplied as a <xref:System.Text.Json.Nodes.JsonObject> and must reproduce the YAML frontmatter
-at the top of `SKILL.md` exactly, field by field. Hosts re-parse the fetched `SKILL.md` and compare it against the
-entry, treating any discrepancy as a verification failure. The SDK does not include a YAML parser and does not
-derive the frontmatter from the file, so keep the two in sync.
+<xref:ModelContextProtocol.Extensions.Skills.SkillFrontmatter> reads the YAML frontmatter of a `SKILL.md` into a
+<xref:System.Text.Json.Nodes.JsonObject> without a YAML library. It accepts the subset of YAML that Agent Skills
+frontmatter uses: block mappings nested to any depth, block and flow sequences, plain, quoted, and block scalars,
+and comments. Unquoted scalars are resolved per the YAML 1.2 core schema (`null`, booleans, integers, finite
+floats, otherwise strings), matching the YAML libraries used by other SDKs and by hosts. That matters because a
+host verifies a skill by parsing the fetched `SKILL.md` itself and comparing field by field against the published
+entry; a value that one side types as a number and the other as a string is a verification failure. Quote values
+such as version numbers that are meant to be strings.
+
+Anchors, aliases, tags, multi-document streams, complex keys, and tab indentation are rejected with a
+<xref:System.FormatException> naming the construct. For such a file, the `Create` and `CreateFromDirectory`
+overloads that take an explicit `JsonObject` supply the frontmatter directly. When the reader can parse the file,
+an explicit object must match it exactly, or the skill is rejected at construction rather than by every host.
 
 #### Custom catalogs
 
@@ -180,7 +186,10 @@ specification places most of the burden on hosts. In particular:
   identity and URI.
 
 The SDK implements digest and size verification and the unlisted-file rule. It does not verify frontmatter against
-the fetched `SKILL.md`, since it does not parse YAML; a host must do that itself before loading a skill.
+the fetched `SKILL.md` automatically. A host can do so with
+<xref:ModelContextProtocol.Extensions.Skills.SkillFrontmatter.Parse(System.String)> on the fetched text and
+<xref:System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode,System.Text.Json.Nodes.JsonNode)>
+against the entry's frontmatter, treating a parse failure or a difference as a verification failure.
 
 ### Not implemented
 

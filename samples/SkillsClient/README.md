@@ -39,12 +39,12 @@ Expected output (abridged):
 ```
 === skills/list ===
   caching hints: ttlMs=300000 cacheScope=Public
-  skill://acme/billing/refunds/SKILL.md
-    name: refunds
-    ...
   skill://git-workflow/SKILL.md
     name: git-workflow
     manifest: 3 file(s), 1523 bytes
+  skill://refunds/SKILL.md
+    name: refunds
+    ...
 
 === skills/get ===
   skill://git-workflow/SKILL.md (git-workflow)
@@ -65,5 +65,5 @@ Expected output (abridged):
 
 - Digest verification proves that the entry and the content are consistent. It is not a trust boundary: both come
   from the same server. Treat skill content as untrusted model input and tag it with its originating server.
-- The SDK does not verify frontmatter (re-parsing the fetched `SKILL.md`'s YAML and comparing it to the entry),
-  because it does not include a YAML parser. A host must do that itself before loading a skill.
+- The SDK does not verify frontmatter automatically. A host can re-parse the fetched `SKILL.md` with
+  `SkillFrontmatter.Parse` and compare it to the entry with `JsonNode.DeepEquals` before loading a skill.

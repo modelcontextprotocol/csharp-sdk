@@ -9,10 +9,10 @@ namespace ModelContextProtocol.ConformanceServer.Skills;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The three static skills are authored through <see cref="McpServerSkill"/>, so their manifests are computed
-/// from the same bytes their resources serve. A fourth, deliberately unenumerable skill is added to the catalog
-/// by hand: it is served and answerable through <c>skills/get</c>, but carries no digests and so cannot be
-/// content-bound.
+/// The three static skills are authored through <see cref="McpServerSkill"/>, so their frontmatter is read from
+/// their <c>SKILL.md</c> and their manifests are computed from the same bytes their resources serve. A fourth,
+/// deliberately unenumerable skill is added to the catalog by hand: it is served and answerable through
+/// <c>skills/get</c>, but carries no digests and so cannot be content-bound.
 /// </para>
 /// <para>
 /// The page size is deliberately small so the scenarios exercise cursor pagination.
@@ -26,14 +26,12 @@ public static class ConformanceSkills
     [
         McpServerSkill.Create(
             "skill://git-workflow/SKILL.md",
-            Frontmatter("git-workflow", "Follow this team's Git conventions for branching and commits"),
             [
                 SkillFile("git-workflow", "Follow this team's Git conventions for branching and commits", "# Git workflow\n"),
             ]),
 
         McpServerSkill.Create(
             "skill://pdf-processing/SKILL.md",
-            Frontmatter("pdf-processing", "Extract, fill, and assemble PDF documents"),
             [
                 SkillFile("pdf-processing", "Extract, fill, and assemble PDF documents", "# PDF processing\n"),
                 McpServerSkillFile.FromText("references/FORMS.md", "# Forms\n\nField reference for PDF form filling.\n"),
@@ -44,7 +42,6 @@ public static class ConformanceSkills
 
         McpServerSkill.Create(
             "skill://acme/billing/refunds/SKILL.md",
-            Frontmatter("refunds", "Process customer refund requests per company policy"),
             [
                 SkillFile("refunds", "Process customer refund requests per company policy", "# Refunds\n"),
                 McpServerSkillFile.FromText("examples/email.md", "Subject: Your refund\n"),

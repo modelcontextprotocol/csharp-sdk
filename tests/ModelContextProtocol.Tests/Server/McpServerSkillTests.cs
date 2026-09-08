@@ -154,11 +154,85 @@ public class McpServerSkillTests
     }
 
     [Fact]
+    public void Create_ReadsFrontmatterFromSkillFile()
+    {
+        var skill = McpServerSkill.Create(SkillUri, [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]);
+
+        Assert.True(JsonNode.DeepEquals(Frontmatter(), skill.ProtocolSkill.Frontmatter));
+    }
+
+    [Fact]
+    public void Create_DerivesUriFromFrontmatterName()
+    {
+        var skill = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", SkillMarkdown), McpServerSkillFile.FromText("a.md", "x")]);
+
+        Assert.Equal(SkillUri, skill.ProtocolSkill.Uri);
+        Assert.Equal("skill://git-workflow/a.md", skill.ProtocolSkill.Resources.Resources![1].Uri);
+    }
+
+    [Fact]
+    public void Create_RejectsUriWhoseNameDiffersFromTheFile()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create("skill://other-name/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]));
+
+        Assert.Contains("git-workflow", exception.Message);
+    }
+
+    [Fact]
+    public void Create_WithUnreadableFrontmatter_ExplainsAndPointsAtTheExplicitOverload()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: &a git-workflow\ndescription: d\n---\n")]));
+
+        Assert.Contains("anchors", exception.Message);
+        Assert.Contains("JsonObject", exception.Message);
+
+        var noFrontmatter = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "# No frontmatter\n")]));
+        Assert.Contains("must begin", noFrontmatter.Message);
+    }
+
+    [Fact]
+    public void Create_WithExplicitFrontmatter_RejectsMismatchWithTheFile()
+    {
+        var mismatched = Frontmatter();
+        mismatched["license"] = "MIT";
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create(SkillUri, mismatched, [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]));
+
+        Assert.Equal("frontmatter", exception.ParamName);
+        Assert.Contains("does not match", exception.Message);
+        Assert.Contains("\"license\"", exception.Message);
+    }
+
+    [Fact]
+    public void Create_WithExplicitFrontmatter_AcceptsMatchAndUnreadableFile()
+    {
+        // Matches the file: fine.
+        McpServerSkill.Create(SkillUri, Frontmatter(), [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]);
+
+        // Typed value in the file must match a typed value in the object.
+        McpServerSkill.Create(SkillUri, new JsonObject { ["name"] = "git-workflow", ["description"] = "d", ["metadata"] = new JsonObject { ["major"] = 2 } },
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: d\nmetadata:\n  major: 2\n---\n")]);
+
+        // File uses YAML the reader rejects: the explicit object stands on its own.
+        var escapeHatch = McpServerSkill.Create(SkillUri, Frontmatter(),
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: &n git-workflow\ndescription: Git conventions\n---\n")]);
+        Assert.Equal("git-workflow", escapeHatch.ProtocolSkill.Name);
+    }
+
+    [Fact]
     public void Create_RejectsNullArguments()
     {
         Assert.Throws<ArgumentNullException>(() => McpServerSkill.Create(null!, Frontmatter(), []));
         Assert.Throws<ArgumentNullException>(() => McpServerSkill.Create(SkillUri, null!, []));
         Assert.Throws<ArgumentNullException>(() => McpServerSkill.Create(SkillUri, Frontmatter(), null!));
+        Assert.Throws<ArgumentNullException>(() => McpServerSkill.Create((IEnumerable<McpServerSkillFile>)null!));
+        Assert.Throws<ArgumentNullException>(() => McpServerSkill.Create((string)null!, []));
+        Assert.Throws<ArgumentNullException>(() => McpServerSkill.CreateFromDirectory((string)null!));
+        Assert.Throws<ArgumentNullException>(() => McpServerSkill.CreateFromDirectory(SkillUri, (string)null!));
     }
 
     [Fact]
@@ -172,7 +246,11 @@ public class McpServerSkillTests
             File.WriteAllText(Path.Combine(directory, "templates", "invoice.md"), "# Invoice\n");
             File.WriteAllBytes(Path.Combine(directory, "templates", "regional", "logo.png"), [0x89, 0x50, 0x4E, 0x47, 0xFF, 0xFE]);
 
-            var skill = McpServerSkill.CreateFromDirectory(SkillUri, Frontmatter(), directory);
+            // All three overloads agree.
+            var skill = McpServerSkill.CreateFromDirectory(directory);
+            Assert.Equal(SkillUri, skill.ProtocolSkill.Uri);
+            Assert.Equal(SkillUri, McpServerSkill.CreateFromDirectory(SkillUri, directory).ProtocolSkill.Uri);
+            Assert.Equal(SkillUri, McpServerSkill.CreateFromDirectory(SkillUri, Frontmatter(), directory).ProtocolSkill.Uri);
 
             var uris = skill.ProtocolSkill.Resources.Resources!.Select(r => r.Uri).ToList();
             Assert.Equal(
