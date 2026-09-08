@@ -176,6 +176,58 @@ public static class SkillVerifier
         }
     }
 
+    /// <summary>
+    /// Verifies the result of reading a specific file of a skill through <c>resources/read</c> against the skill's
+    /// manifest, additionally requiring that the result actually contains the requested file.
+    /// </summary>
+    /// <param name="skill">The skill entry being acted on.</param>
+    /// <param name="uri">The URI that was requested. It must be listed in <paramref name="skill"/>'s manifest.</param>
+    /// <param name="result">The result of the read.</param>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>, which cannot be verified.</exception>
+    /// <exception cref="SkillVerificationException">
+    /// <paramref name="uri"/> is not listed in the manifest, the result does not contain contents for
+    /// <paramref name="uri"/>, or any contents in the result fail verification per <see cref="Verify(Skill, ReadResourceResult)"/>.
+    /// </exception>
+    /// <remarks>
+    /// Checking every returned content against the manifest is not enough on its own: a server could answer a read
+    /// of one file with another, correctly digested, file of the same skill. Binding the result to the requested
+    /// URI closes that gap.
+    /// </remarks>
+    public static void Verify(Skill skill, string uri, ReadResourceResult result)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(skill);
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(result);
+#else
+        if (skill is null) throw new ArgumentNullException(nameof(skill));
+        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (result is null) throw new ArgumentNullException(nameof(result));
+#endif
+
+        if (!skill.Resources.IsDynamic && FindResource(skill, uri) is null)
+        {
+            throw new SkillVerificationException(
+                $"'{uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
+                "refresh the entry with skills/get before reading it.");
+        }
+
+        Verify(skill, result);
+
+        bool found = false;
+        foreach (var contents in result.Contents)
+        {
+            found |= string.Equals(contents.Uri, uri, StringComparison.Ordinal);
+        }
+
+        if (!found)
+        {
+            throw new SkillVerificationException(
+                $"The read of '{uri}' returned no contents for that URI. The server answered with a different file of skill '{skill.Uri}'.");
+        }
+    }
+
     internal static SkillResource? FindResource(Skill skill, string uri)
     {
         var resources = skill.Resources.Resources;

@@ -79,7 +79,10 @@ var skill = McpServerSkill.Create(
 
 Both methods validate the skill against the specification and throw <xref:System.ArgumentException> with a
 specific message when, for example, the frontmatter `name` does not match the URI, `SKILL.md` is missing, or the
-skill exceeds the per-skill limits of 512 files or 16 MiB.
+skill exceeds the per-skill limits of 512 files or 16 MiB. File contents are copied when the skill is created, so
+later changes to a caller's buffer or to files on disk do not affect what is served. `CreateFromDirectory` does not
+follow symbolic links, since a link can point outside the skill directory; it throws if it encounters one. File
+names containing characters with URI syntax (such as `{`, `?`, or a space) are percent-encoded in the resource URIs.
 
 #### Frontmatter
 

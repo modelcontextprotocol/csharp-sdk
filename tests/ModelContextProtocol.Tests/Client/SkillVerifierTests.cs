@@ -133,6 +133,30 @@ public class SkillVerifierTests
             new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
     }
 
+    [Fact]
+    public void Verify_SkillAndUri_RequiresTheRequestedFileInTheResult()
+    {
+        byte[] skillFile = Encoding.UTF8.GetBytes("x");
+        byte[] other = Encoding.UTF8.GetBytes("other");
+        var skill = CreateSkill(skillFile);
+        skill.Resources = SkillResources.FromResources(
+        [
+            Entry(skillFile),
+            new SkillResource { Uri = "skill://alpha/other.md", Digest = SkillVerifier.ComputeDigest(other), Size = other.Length },
+        ]);
+
+        // A correctly digested but different file of the same skill must not satisfy a read of SKILL.md.
+        var substituted = new ReadResourceResult { Contents = [new TextResourceContents { Uri = "skill://alpha/other.md", Text = "other" }] };
+        SkillVerifier.Verify(skill, substituted);
+        var exception = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, Uri, substituted));
+        Assert.Contains("returned no contents for that URI", exception.Message);
+
+        SkillVerifier.Verify(skill, Uri, new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] });
+
+        Assert.Throws<SkillVerificationException>(() =>
+            SkillVerifier.Verify(skill, "skill://alpha/unlisted.md", new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
+    }
+
     private static Skill CreateSkill(byte[] skillFileContent) => new()
     {
         Uri = Uri,

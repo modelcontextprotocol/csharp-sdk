@@ -192,6 +192,105 @@ public class McpServerSkillTests
     }
 
     [Fact]
+    public void Create_EscapesUriSyntaxCharactersInFilePaths()
+    {
+        var skill = McpServerSkill.Create(SkillUri, Frontmatter(),
+        [
+            McpServerSkillFile.FromText("SKILL.md", SkillMarkdown),
+            McpServerSkillFile.FromText("templates/{name} v2.md", "template"),
+            McpServerSkillFile.FromText("notes/a#b?c.md", "note"),
+        ]);
+
+        var manifest = skill.ProtocolSkill.Resources.Resources!;
+        Assert.Equal("skill://git-workflow/templates/%7Bname%7D%20v2.md", manifest[2].Uri);
+        Assert.Equal("skill://git-workflow/notes/a%23b%3Fc.md", manifest[1].Uri);
+
+        // Every file is a concrete resource, never a template, and its resource URI equals its manifest URI.
+        for (int i = 0; i < manifest.Count; i++)
+        {
+            Assert.False(skill.Resources[i].IsTemplated);
+            Assert.Equal(manifest[i].Uri, skill.Resources[i].ProtocolResource!.Uri);
+        }
+
+        Assert.Equal("templates/{name} v2.md", skill.Resources[2].ProtocolResource!.Name);
+    }
+
+    [Fact]
+    public void Create_SnapshotsCallerOwnedContent()
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(SkillMarkdown);
+        var skill = McpServerSkill.Create(SkillUri, Frontmatter(), [new McpServerSkillFile { Path = "SKILL.md", Content = bytes }]);
+        string digestBefore = skill.ProtocolSkill.Resources.Resources![0].Digest;
+
+        bytes[0] = (byte)'X';
+
+        // The manifest was computed from the original bytes; the served bytes must be those same bytes. The
+        // end-to-end check that the served content still verifies lives in McpServerSkillsSnapshotTests.
+        Assert.Equal(SkillVerifier.ComputeDigest(Encoding.UTF8.GetBytes(SkillMarkdown)), digestBefore);
+    }
+
+#if NET
+    [Fact]
+    public void CreateFromDirectory_RejectsSymbolicLinks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skill-link-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string skillDirectory = Path.Combine(root, "skill");
+            Directory.CreateDirectory(skillDirectory);
+            File.WriteAllText(Path.Combine(skillDirectory, "SKILL.md"), SkillMarkdown);
+            File.WriteAllText(Path.Combine(root, "outside.txt"), "private data");
+
+            try
+            {
+                File.CreateSymbolicLink(Path.Combine(skillDirectory, "linked.txt"), Path.Combine(root, "outside.txt"));
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+            {
+                Assert.Skip($"Cannot create symbolic links here: {e.Message}");
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, Frontmatter(), skillDirectory));
+            Assert.Contains("linked.txt", exception.Message);
+            Assert.Equal("directoryPath", exception.ParamName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CreateFromDirectory_RejectsDirectorySymbolicLinks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skill-dirlink-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string skillDirectory = Path.Combine(root, "skill");
+            Directory.CreateDirectory(skillDirectory);
+            Directory.CreateDirectory(Path.Combine(root, "outside"));
+            File.WriteAllText(Path.Combine(skillDirectory, "SKILL.md"), SkillMarkdown);
+            File.WriteAllText(Path.Combine(root, "outside", "secret.txt"), "private data");
+
+            try
+            {
+                Directory.CreateSymbolicLink(Path.Combine(skillDirectory, "linked"), Path.Combine(root, "outside"));
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+            {
+                Assert.Skip($"Cannot create symbolic links here: {e.Message}");
+            }
+
+            Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, Frontmatter(), skillDirectory));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+#endif
+
+    [Fact]
     public void CreateFromDirectory_WithMissingDirectory_Throws()
     {
         string directory = Path.Combine(Path.GetTempPath(), "mcp-skill-missing-" + Guid.NewGuid().ToString("N"));

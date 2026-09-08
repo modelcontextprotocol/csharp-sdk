@@ -184,7 +184,8 @@ public static class McpSkillsClientExtensions
     /// only if the host has decided to load unverifiable skills.
     /// </exception>
     /// <exception cref="SkillVerificationException">
-    /// <paramref name="uri"/> is not listed in the manifest, or the content's size or digest does not match its entry.
+    /// <paramref name="uri"/> is not listed in the manifest, the server's response does not contain contents for
+    /// <paramref name="uri"/>, or any returned content's size or digest does not match its manifest entry.
     /// </exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
@@ -223,7 +224,7 @@ public static class McpSkillsClientExtensions
         }
 
         var result = await client.ReadResourceAsync(uri, cancellationToken: cancellationToken).ConfigureAwait(false);
-        SkillVerifier.Verify(skill, result);
+        SkillVerifier.Verify(skill, uri, result);
         return result;
     }
 

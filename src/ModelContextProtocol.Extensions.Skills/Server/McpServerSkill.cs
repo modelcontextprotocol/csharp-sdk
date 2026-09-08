@@ -114,16 +114,22 @@ public sealed class McpServerSkill
             return string.CompareOrdinal(left.Path, right.Path);
         });
 
+        // Snapshot every file's bytes once. The caller's ReadOnlyMemory<byte> may alias an array the caller goes
+        // on to mutate, and the digest published in the manifest must describe exactly the bytes served.
+        var contents = new byte[normalized.Count][];
+
         // Build and validate the entry before creating any resources, so an invalid skill fails fast with a
         // message about the entry rather than about a resource.
         var manifest = new List<SkillResource>(normalized.Count);
-        foreach (var (path, file) in normalized)
+        for (int i = 0; i < normalized.Count; i++)
         {
+            byte[] content = normalized[i].File.Content.ToArray();
+            contents[i] = content;
             manifest.Add(new SkillResource
             {
-                Uri = root + "/" + path,
-                Digest = SkillVerifier.ComputeDigest(file.Content.Span),
-                Size = file.Content.Length,
+                Uri = root + "/" + EscapePath(normalized[i].Path),
+                Digest = SkillVerifier.ComputeDigest(content),
+                Size = content.Length,
             });
         }
 
@@ -145,8 +151,8 @@ public sealed class McpServerSkill
                 manifest[i].Uri,
                 name: isSkillFile ? skill.Name! : path,
                 description: isSkillFile ? skill.Description : null,
-                mimeType: file.MimeType ?? (isSkillFile ? SkillsProtocol.SkillFileMimeType : GuessMimeType(path, file.Content.Span)),
-                file.Content);
+                mimeType: file.MimeType ?? (isSkillFile ? SkillsProtocol.SkillFileMimeType : GuessMimeType(path, contents[i])),
+                contents[i]);
         }
 
         return new McpServerSkill(skill, resources);
@@ -167,10 +173,20 @@ public sealed class McpServerSkill
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
-    /// <exception cref="ArgumentException">The directory's contents do not form a valid skill; see <see cref="Create"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The directory's contents do not form a valid skill (see <see cref="Create"/>), or the directory contains a
+    /// symbolic link or other reparse point.
+    /// </exception>
     /// <remarks>
+    /// <para>
     /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
     /// manifest or the served content.
+    /// </para>
+    /// <para>
+    /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
+    /// under a URI that appears to belong to the skill, so encountering one is an error. Replace the link with a
+    /// regular file or directory, or build the skill with <see cref="Create"/> and explicit files.
+    /// </para>
     /// </remarks>
     public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
     {
@@ -196,9 +212,37 @@ public sealed class McpServerSkill
         }
 
         var files = new List<McpServerSkillFile>();
-        foreach (string filePath in Directory.EnumerateFiles(fullDirectory, "*", SearchOption.AllDirectories))
+        CollectFiles(fullDirectory, fullDirectory, files);
+
+        return Create(uri, frontmatter, files);
+    }
+
+    /// <summary>
+    /// Walks a skill directory without following links. A symbolic link (or any other reparse point) can point
+    /// outside the skill directory, and a file reached through one would be published under a URI that looks like
+    /// it lives inside the skill. Rather than try to decide which link targets are acceptable, links are rejected.
+    /// </summary>
+    private static void CollectFiles(string root, string directory, List<McpServerSkillFile> files)
+    {
+        foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
         {
-            string relativePath = filePath.Substring(fullDirectory.Length).Replace(Path.DirectorySeparatorChar, '/');
+            FileAttributes attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new ArgumentException(
+                    $"'{entry}' is a symbolic link or other reparse point. Links are not followed when loading a skill directory, " +
+                    $"because a link can point outside the skill. Replace it with a regular file or directory, or build the skill " +
+                    $"with {nameof(McpServerSkill)}.{nameof(Create)} and explicit files.",
+                    "directoryPath");
+            }
+
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                CollectFiles(root, entry, files);
+                continue;
+            }
+
+            string relativePath = entry.Substring(root.Length).Replace(Path.DirectorySeparatorChar, '/');
             if (Path.AltDirectorySeparatorChar != Path.DirectorySeparatorChar)
             {
                 relativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, '/');
@@ -207,11 +251,25 @@ public sealed class McpServerSkill
             files.Add(new McpServerSkillFile
             {
                 Path = relativePath,
-                Content = File.ReadAllBytes(filePath),
+                Content = File.ReadAllBytes(entry),
             });
         }
+    }
 
-        return Create(uri, frontmatter, files);
+    /// <summary>
+    /// Percent-encodes each segment of a normalized relative path so that characters with URI syntax (such as
+    /// <c>{</c>, <c>?</c>, <c>#</c>, or a space) in a file name stay literal. Without this, a file named
+    /// <c>{name}.md</c> would register as a resource template rather than a concrete resource.
+    /// </summary>
+    private static string EscapePath(string normalizedPath)
+    {
+        string[] segments = normalizedPath.Split('/');
+        for (int i = 0; i < segments.Length; i++)
+        {
+            segments[i] = Uri.EscapeDataString(segments[i]);
+        }
+
+        return string.Join("/", segments);
     }
 
     private static string NormalizePath(string? path)
