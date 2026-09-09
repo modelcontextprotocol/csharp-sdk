@@ -308,31 +308,38 @@ public sealed class McpServerSkill
         }
 
         // Read the frontmatter from SKILL.md (always first after sorting). When the caller supplied frontmatter,
-        // the file is still read so that the two can be checked against each other; if the file uses YAML the
-        // reader does not support, the caller's frontmatter stands on its own.
+        // the file is still read so that the two can be checked against each other. The caller's frontmatter
+        // stands on its own only when the file uses valid YAML the reader does not support; a file that is not
+        // UTF-8, has no frontmatter block, or is malformed cannot be reproduced by any host and is rejected.
+        if (!TryDecodeUtf8(contents[0], out string? skillMarkdown))
+        {
+            throw new ArgumentException($"{SkillsProtocol.SkillFileName} is not valid UTF-8.", filesParamName);
+        }
+
         JsonObject? fileFrontmatter = null;
-        FormatException? frontmatterError = null;
         try
         {
-            if (!TryDecodeUtf8(contents[0], out string? skillMarkdown))
-            {
-                throw new FormatException($"{SkillsProtocol.SkillFileName} is not valid UTF-8.");
-            }
-
             fileFrontmatter = SkillFrontmatter.Parse(skillMarkdown!);
+        }
+        catch (SkillFrontmatter.UnsupportedYamlException e) when (frontmatter is null)
+        {
+            throw new ArgumentException(
+                $"The frontmatter of {SkillsProtocol.SkillFileName} uses YAML that {nameof(SkillFrontmatter)} does not support: {e.Message} " +
+                "Supply the frontmatter explicitly with the overload that takes a JsonObject.",
+                filesParamName);
+        }
+        catch (SkillFrontmatter.UnsupportedYamlException)
+        {
+            // Explicit frontmatter covers this case.
         }
         catch (FormatException e)
         {
-            frontmatterError = e;
+            throw new ArgumentException($"The frontmatter of {SkillsProtocol.SkillFileName} could not be read: {e.Message}", filesParamName);
         }
 
         if (frontmatter is null)
         {
-            frontmatter = fileFrontmatter ?? throw new ArgumentException(
-                $"The frontmatter of {SkillsProtocol.SkillFileName} could not be read: {frontmatterError!.Message} " +
-                $"If the file uses YAML that {nameof(SkillFrontmatter)} does not support, supply the frontmatter explicitly " +
-                "with the overload that takes a JsonObject.",
-                filesParamName);
+            frontmatter = fileFrontmatter!;
         }
         else if (fileFrontmatter is not null && !JsonNode.DeepEquals(fileFrontmatter, frontmatter))
         {

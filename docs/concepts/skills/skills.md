@@ -93,10 +93,12 @@ host verifies a skill by parsing the fetched `SKILL.md` itself and comparing fie
 entry; a value that one side types as a number and the other as a string is a verification failure. Quote values
 such as version numbers that are meant to be strings.
 
-Anchors, aliases, tags, multi-document streams, complex keys, and tab indentation are rejected with a
-<xref:System.FormatException> naming the construct. For such a file, the `Create` and `CreateFromDirectory`
-overloads that take an explicit `JsonObject` supply the frontmatter directly. When the reader can parse the file,
-an explicit object must match it exactly, or the skill is rejected at construction rather than by every host.
+Anchors, aliases, tags, complex keys, nested flow collections, and multi-line quoted scalars are valid YAML the
+reader does not support; it rejects them with a <xref:System.FormatException> naming the construct. For such a
+file, the `Create` and `CreateFromDirectory` overloads that take an explicit `JsonObject` supply the frontmatter
+directly. That escape hatch covers only valid-but-unsupported YAML: a file with no frontmatter block, malformed
+YAML, or invalid UTF-8 is rejected regardless, since no host could parse it either. When the reader can parse the
+file, an explicit object must match it exactly, or the skill is rejected at construction rather than by every host.
 
 #### Custom catalogs
 
@@ -166,7 +168,10 @@ Skill skill = await client.GetSkillAsync("skill://git-workflow/SKILL.md");
 ReadResourceResult contents = await client.ReadSkillResourceAsync(skill, skill.Uri);
 ```
 
-`ReadSkillResourceAsync` throws <xref:ModelContextProtocol.Extensions.Skills.SkillVerificationException> when the
+`ListSkillsAsync` and `GetSkillAsync` validate every entry the server returns against the specification's structural
+requirements and throw <xref:ModelContextProtocol.Extensions.Skills.SkillVerificationException> for an entry a host
+must not load, such as one whose manifest omits its own `SKILL.md`, carries a malformed digest, or lists a file
+outside the skill. `ReadSkillResourceAsync` throws the same exception when the
 content's size or digest does not match the manifest, or when the URI is not listed in it at all. In both cases the
 content must not be used. To recover, refresh the entry with `GetSkillAsync` and proceed from the new manifest;
 because the manifest changed, any approval bound to the previous one is revoked and must be obtained again.

@@ -96,6 +96,7 @@ public class SkillFrontmatterTests
     [InlineData("\"quote \\\" inside\"", "quote \" inside")]
     [InlineData("\"\\u00e9\\x41\"", "éA")]
     [InlineData("\"\\U0001F600\"", "😀")]
+    [InlineData("\"\\uD83D\\uDE00\"", "😀")]
     [InlineData("\"1.0\"", "1.0")]
     [InlineData("'true'", "true")]
     [InlineData("\"a # not a comment\"", "a # not a comment")]
@@ -313,6 +314,10 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: \"\\U0000D800\"\n---", "not a valid Unicode scalar")]
     [InlineData("---\nvalue: \"\\U00110000\"\n---", "not a valid Unicode scalar")]
     [InlineData("---\nvalue: \"\\UFFFFFFFF\"\n---", "not a valid Unicode scalar")]
+    [InlineData("---\nvalue: \"\\uD800\"\n---", "unpaired surrogate")]
+    [InlineData("---\nvalue: \"\\uDE00x\"\n---", "unpaired surrogate")]
+    [InlineData("---\nvalue: [a: b]\n---", "compact mappings inside flow sequences")]
+    [InlineData("---\nvalue: [a, b: c]\n---", "compact mappings inside flow sequences")]
     [InlineData("---\nvalue: -\n---", "same line as its key")]
     [InlineData("---\nvalue: \"\\q\"\n---", "unsupported escape")]
     [InlineData("---\njust a scalar\n---", "key: value")]
@@ -322,7 +327,8 @@ public class SkillFrontmatterTests
     [InlineData("---\nname: x\n  extra: indented\n---", "cannot contain ': '")]
     public void RejectsUnsupportedOrMalformedInput(string markdown, string messageFragment)
     {
-        var exception = Assert.Throws<FormatException>(() => SkillFrontmatter.Parse(markdown));
+        // Unsupported-but-valid YAML throws a FormatException subclass, so match by assignability.
+        var exception = Assert.ThrowsAny<FormatException>(() => SkillFrontmatter.Parse(markdown));
 
         Assert.Contains(messageFragment, exception.Message, StringComparison.OrdinalIgnoreCase);
     }

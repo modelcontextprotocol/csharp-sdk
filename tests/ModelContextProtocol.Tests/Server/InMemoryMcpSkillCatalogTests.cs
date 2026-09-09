@@ -188,6 +188,16 @@ public class InMemoryMcpSkillCatalogTests
     }
 
     [Fact]
+    public void Constructor_AcceptsEmptyAuthority()
+    {
+        var skill = CreateSkill("alpha");
+        skill.Uri = "file:///alpha/SKILL.md";
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = skill.Uri, Digest = s_validDigest, Size = 1 }]);
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
+
+    [Fact]
     public void Constructor_AcceptsDynamicSkill()
     {
         var catalog = new InMemoryMcpSkillCatalog([CreateSkill("generated", resources: SkillResources.Dynamic)]);
@@ -217,6 +227,14 @@ public class InMemoryMcpSkillCatalogTests
         }
 
         yield return Case("uri not ending in /SKILL.md", s => s.Uri = "skill://alpha/skill.md");
+        yield return Case("syntactically invalid uri", s =>
+        {
+            s.Uri = "1 bad://alpha/SKILL.md";
+            s.Resources = SkillResources.FromResources([new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 }]);
+        });
+        yield return Case("metadata present but null", s => s.Frontmatter["metadata"] = null);
+        yield return Case("compatibility present but null", s => s.Frontmatter["compatibility"] = null);
+        yield return Case("license present but null", s => s.Frontmatter["license"] = null);
         yield return Case("relative uri", s =>
         {
             s.Uri = "alpha/SKILL.md";

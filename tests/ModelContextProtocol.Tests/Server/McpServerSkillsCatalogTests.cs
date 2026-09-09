@@ -19,6 +19,7 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     private const string TamperedUri = "skill://tampered/SKILL.md";
     private const string UnlistedUri = "skill://hidden/SKILL.md";
     private const string DynamicUri = "skill://generated/SKILL.md";
+    private const string BrokenUri = "skill://broken/SKILL.md";
 
     public McpServerSkillsCatalogTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -42,9 +43,18 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             Resources = SkillResources.Dynamic,
         };
 
+        // A catalog bug: an entry whose manifest omits its own SKILL.md. The handler must not publish it.
+        var broken = new Skill
+        {
+            Uri = BrokenUri,
+            Frontmatter = new JsonObject { ["name"] = "broken", ["description"] = "d" },
+            Resources = SkillResources.FromResources([new SkillResource { Uri = "skill://broken/other.md", Digest = "sha256:" + new string('a', 64), Size = 1 }]),
+        };
+
         var catalog = new PartialCatalog(
             listed: new InMemoryMcpSkillCatalog([.. listed, tampered, dynamic], pageSize: 2),
-            unlisted: unlisted);
+            unlisted: unlisted,
+            broken: broken);
 
         mcpServerBuilder
             .WithSkills(catalog, options =>
@@ -102,6 +112,18 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
         var skill = await client.GetSkillAsync(UnlistedUri, TestContext.Current.CancellationToken);
 
         Assert.Equal("hidden", skill.Name);
+    }
+
+    [Fact]
+    public async Task SkillsGet_WithInvalidCatalogEntry_ReturnsInternalError()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(
+            async () => await client.GetSkillAsync(BrokenUri, TestContext.Current.CancellationToken));
+
+        Assert.Equal(McpErrorCode.InternalError, exception.ErrorCode);
+        Assert.Contains("invalid entry", exception.Message);
     }
 
     [Fact]
@@ -221,7 +243,7 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     /// <summary>
     /// A catalog that lists some skills and serves one more by URI only.
     /// </summary>
-    private sealed class PartialCatalog(InMemoryMcpSkillCatalog listed, Skill unlisted) : IMcpSkillCatalog
+    private sealed class PartialCatalog(InMemoryMcpSkillCatalog listed, Skill unlisted, Skill broken) : IMcpSkillCatalog
     {
         public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
         {
@@ -232,9 +254,17 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
         public async ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsGet);
-            return string.Equals(uri, unlisted.Uri, StringComparison.Ordinal)
-                ? unlisted
-                : await listed.GetAsync(uri, context, cancellationToken);
+            if (string.Equals(uri, unlisted.Uri, StringComparison.Ordinal))
+            {
+                return unlisted;
+            }
+
+            if (string.Equals(uri, broken.Uri, StringComparison.Ordinal))
+            {
+                return broken;
+            }
+
+            return await listed.GetAsync(uri, context, cancellationToken);
         }
 
         // The catalog receives the request it is answering, so a per-caller catalog can decide from it.

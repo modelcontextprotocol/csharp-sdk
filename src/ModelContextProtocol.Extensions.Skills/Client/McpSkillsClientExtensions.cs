@@ -39,6 +39,10 @@ public static class McpSkillsClientExtensions
     /// <returns>The listed skills.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
+    /// <exception cref="SkillVerificationException">
+    /// The server returned an entry that violates the specification (for example, a name that does not match its
+    /// URI, a malformed digest, or a manifest over the per-skill limits). Hosts must not load such entries.
+    /// </exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// <para>
@@ -73,9 +77,10 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="requestParams">The request parameters, including the cursor of the page to retrieve.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The page, as returned by the server.</returns>
+    /// <returns>The page, as returned by the server, with every entry validated against the specification.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
+    /// <exception cref="SkillVerificationException">The server returned an entry that violates the specification.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public static async ValueTask<ListSkillsResult> ListSkillsAsync(
         this McpClient client,
@@ -99,8 +104,15 @@ public static class McpSkillsClientExtensions
         };
 
         JsonRpcResponse response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        return response.Result?.Deserialize(McpSkillsJsonContext.Default.ListSkillsResult) ??
+        var result = response.Result?.Deserialize(McpSkillsJsonContext.Default.ListSkillsResult) ??
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsList}'.");
+
+        foreach (var skill in result.Skills)
+        {
+            SkillValidation.ValidateReceived(skill, SkillsProtocol.MethodSkillsList);
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -109,9 +121,10 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="uri">The URI of the skill's <c>SKILL.md</c>.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The skill's entry.</returns>
+    /// <returns>The skill's entry, validated against the specification.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
+    /// <exception cref="SkillVerificationException">The server returned an entry that violates the specification.</exception>
     /// <exception cref="McpException">
     /// The request failed or the server returned an error response, including <see cref="McpErrorCode.InvalidParams"/>
     /// when the server serves no skill at <paramref name="uri"/>.
@@ -165,8 +178,11 @@ public static class McpSkillsClientExtensions
         };
 
         JsonRpcResponse response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        return response.Result?.Deserialize(McpSkillsJsonContext.Default.GetSkillResult) ??
+        var result = response.Result?.Deserialize(McpSkillsJsonContext.Default.GetSkillResult) ??
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsGet}'.");
+
+        SkillValidation.ValidateReceived(result.Skill, SkillsProtocol.MethodSkillsGet);
+        return result;
     }
 
     /// <summary>

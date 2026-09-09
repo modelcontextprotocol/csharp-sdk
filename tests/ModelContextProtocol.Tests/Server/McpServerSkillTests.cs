@@ -24,7 +24,8 @@ public class McpServerSkillTests
     {
         byte[] guide = Encoding.UTF8.GetBytes("# Guide\n");
 
-        var skill = McpServerSkill.Create(SkillUri, Frontmatter(),
+        var frontmatter = Frontmatter();
+        var skill = McpServerSkill.Create(SkillUri, frontmatter,
         [
             new McpServerSkillFile { Path = "references/GUIDE.md", Content = guide },
             McpServerSkillFile.FromText("SKILL.md", SkillMarkdown),
@@ -32,7 +33,7 @@ public class McpServerSkillTests
 
         var entry = skill.ProtocolSkill;
         Assert.Equal(SkillUri, entry.Uri);
-        Assert.Same(entry.Frontmatter, entry.Frontmatter);
+        Assert.Same(frontmatter, entry.Frontmatter);
         Assert.False(entry.Resources.IsDynamic);
 
         var manifest = entry.Resources.Resources!;
@@ -83,7 +84,7 @@ public class McpServerSkillTests
     [InlineData("references\\GUIDE.md", "references/GUIDE.md")]
     public void Create_NormalizesFilePaths(string input, string expectedRelative)
     {
-        var files = new List<McpServerSkillFile> { McpServerSkillFile.FromText(input, "x") };
+        var files = new List<McpServerSkillFile> { McpServerSkillFile.FromText(input, expectedRelative == "SKILL.md" ? SkillMarkdown : "x") };
         if (expectedRelative != "SKILL.md")
         {
             files.Add(McpServerSkillFile.FromText("SKILL.md", SkillMarkdown));
@@ -217,10 +218,33 @@ public class McpServerSkillTests
         McpServerSkill.Create(SkillUri, new JsonObject { ["name"] = "git-workflow", ["description"] = "d", ["metadata"] = new JsonObject { ["major"] = "2" } },
             [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: d\nmetadata:\n  major: \"2\"\n---\n")]);
 
-        // File uses YAML the reader rejects: the explicit object stands on its own.
+        // File uses valid YAML the reader does not support: the explicit object stands on its own.
         var escapeHatch = McpServerSkill.Create(SkillUri, Frontmatter(),
             [McpServerSkillFile.FromText("SKILL.md", "---\nname: &n git-workflow\ndescription: Git conventions\n---\n")]);
         Assert.Equal("git-workflow", escapeHatch.ProtocolSkill.Name);
+    }
+
+    [Theory]
+    [InlineData("# no frontmatter block\n", "must begin")]
+    [InlineData("---\nname: git-workflow\n", "not closed")]
+    [InlineData("---\nname: a: b\n---\n", "cannot contain")]
+    [InlineData("---\n\tname: x\n---\n", "tabs")]
+    public void Create_WithExplicitFrontmatter_StillRejectsMalformedSkillFile(string markdown, string messageFragment)
+    {
+        // Only valid-but-unsupported YAML may be bypassed. A file no host can parse must not be published.
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create(SkillUri, Frontmatter(), [McpServerSkillFile.FromText("SKILL.md", markdown)]));
+
+        Assert.Contains(messageFragment, exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Create_WithExplicitFrontmatter_RejectsNonUtf8SkillFile()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(SkillUri, Frontmatter(),
+            [new McpServerSkillFile { Path = "SKILL.md", Content = new byte[] { 0x2D, 0x2D, 0x2D, 0x0A, 0xFF, 0xFE } }]));
+
+        Assert.Contains("UTF-8", exception.Message);
     }
 
     [Fact]

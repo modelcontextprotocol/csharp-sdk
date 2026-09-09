@@ -29,6 +29,12 @@ public static class SkillFrontmatter
     private const string Delimiter = "---";
 
     /// <summary>
+    /// Thrown for YAML that is valid but outside the subset this reader supports, as opposed to malformed
+    /// frontmatter. Callers that accept explicitly supplied frontmatter may fall back on it for this case only.
+    /// </summary>
+    internal sealed class UnsupportedYamlException(string message) : FormatException(message);
+
+    /// <summary>
     /// Parses the frontmatter at the start of <paramref name="skillMarkdown"/>.
     /// </summary>
     /// <param name="skillMarkdown">The full text of a <c>SKILL.md</c>.</param>
@@ -222,7 +228,7 @@ public static class SkillFrontmatter
                 string content = line.Content;
                 if (content[0] == '?')
                 {
-                    throw new FormatException($"Line {line.Number}: complex mapping keys ('? ') are not supported in frontmatter.");
+                    throw new UnsupportedYamlException($"Line {line.Number}: complex mapping keys ('? ') are not supported in frontmatter.");
                 }
 
                 int consumed;
@@ -351,7 +357,7 @@ public static class SkillFrontmatter
                     return ParseBlockScalar(rest, parentIndent, lineNumber);
 
                 case '&' or '*' or '!':
-                    throw new FormatException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
+                    throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
 
                 case '[':
                     return ParseFlowSequence(rest, lineNumber);
@@ -675,7 +681,7 @@ public static class SkillFrontmatter
             char c = text[pos];
             if (c is '[' or '{')
             {
-                throw new FormatException($"Line {lineNumber}: nested flow collections are not supported in frontmatter.");
+                throw new UnsupportedYamlException($"Line {lineNumber}: nested flow collections are not supported in frontmatter.");
             }
 
             if (c is '"' or '\'')
@@ -697,9 +703,14 @@ public static class SkillFrontmatter
             }
 
             string plain = text.Substring(start, pos - start).Trim();
+            if (FindKeySeparator(plain) >= 0)
+            {
+                throw new UnsupportedYamlException($"Line {lineNumber}: compact mappings inside flow sequences ('[key: value]') are not supported in frontmatter.");
+            }
+
             if (plain.Length > 0 && plain[0] is '&' or '*' or '!')
             {
-                throw new FormatException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
+                throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
             }
 
             if (plain.Length > 0 && plain[0] is '@' or '`' or '%')
@@ -729,7 +740,20 @@ public static class SkillFrontmatter
                     }
 
                     end = i + 1;
-                    return builder.ToString();
+                    string result = builder.ToString();
+                    for (int k = 0; k < result.Length; k++)
+                    {
+                        if (char.IsHighSurrogate(result[k]) && k + 1 < result.Length && char.IsLowSurrogate(result[k + 1]))
+                        {
+                            k++;
+                        }
+                        else if (char.IsSurrogate(result[k]))
+                        {
+                            throw new FormatException($"Line {lineNumber}: the quoted scalar contains an unpaired surrogate escape, which is not a valid Unicode character.");
+                        }
+                    }
+
+                    return result;
                 }
 
                 if (quote == '"' && c == '\\')
@@ -783,7 +807,7 @@ public static class SkillFrontmatter
                 i++;
             }
 
-            throw new FormatException($"Line {lineNumber}: unterminated quoted scalar; multi-line quoted scalars are not supported.");
+            throw new UnsupportedYamlException($"Line {lineNumber}: unterminated quoted scalar; multi-line quoted scalars are not supported.");
         }
 
         private static int ParseHex(string text, int start, int length, int lineNumber)

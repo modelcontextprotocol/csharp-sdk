@@ -265,6 +265,10 @@ public static class McpSkillsBuilderExtensions
         {
             var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams);
             var page = await catalog.ListAsync(requestParams?.Cursor, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false);
+            foreach (var entry in page.Skills)
+            {
+                ValidateCatalogEntry(entry);
+            }
 
             var result = new ListSkillsResult
             {
@@ -296,6 +300,7 @@ public static class McpSkillsBuilderExtensions
 
             var skill = await catalog.GetAsync(requestParams!.Uri, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false) ??
                 throw new McpProtocolException($"No skill is served at '{requestParams.Uri}'.", McpErrorCode.InvalidParams);
+            ValidateCatalogEntry(skill);
 
             var result = new GetSkillResult { Skill = skill };
             if (IsJuly2026OrLaterProtocolRequest(request))
@@ -304,6 +309,22 @@ public static class McpSkillsBuilderExtensions
             }
 
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult);
+        }
+
+        /// <summary>
+        /// A custom catalog is trusted to answer, but not to be correct: an invalid entry is a server bug, reported
+        /// as an internal error rather than published to hosts that would have to reject it.
+        /// </summary>
+        private static void ValidateCatalogEntry(Skill? entry)
+        {
+            try
+            {
+                SkillValidation.Validate(entry!, "entry");
+            }
+            catch (ArgumentException e)
+            {
+                throw new McpProtocolException($"The skill catalog returned an invalid entry: {e.Message}", McpErrorCode.InternalError);
+            }
         }
 
         private static T? DeserializeParams<T>(JsonRpcRequest request, JsonTypeInfo<T> typeInfo) where T : class

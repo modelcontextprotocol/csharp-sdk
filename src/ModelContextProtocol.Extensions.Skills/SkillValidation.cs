@@ -102,9 +102,9 @@ internal static class SkillValidation
     public static void ValidateUriShape(string uri, string what, string paramName)
     {
         int schemeEnd = uri.IndexOf("://", StringComparison.Ordinal);
-        if (schemeEnd <= 0)
+        if (schemeEnd <= 0 || !System.Uri.TryCreate(uri, UriKind.Absolute, out _))
         {
-            throw new ArgumentException($"{what} '{uri}' must be an absolute URI with a scheme, such as skill://name/SKILL.md.", paramName);
+            throw new ArgumentException($"{what} '{uri}' must be a syntactically valid absolute URI with a scheme, such as skill://name/SKILL.md.", paramName);
         }
 
         if (uri.IndexOf('?') >= 0 || uri.IndexOf('#') >= 0)
@@ -112,10 +112,13 @@ internal static class SkillValidation
             throw new ArgumentException($"{what} '{uri}' must not contain a query or fragment.", paramName);
         }
 
-        string path = uri.Substring(schemeEnd + 3);
-        foreach (string segment in path.Split('/'))
+        // Check the raw text rather than System.Uri's view of it, which compacts dot segments. The authority
+        // (the first segment) may be empty, as in file:///name/SKILL.md; path segments may not.
+        string[] segments = uri.Substring(schemeEnd + 3).Split('/');
+        for (int i = 0; i < segments.Length; i++)
         {
-            if (segment.Length == 0 || segment == "." || segment == "..")
+            string segment = segments[i];
+            if ((segment.Length == 0 && i > 0) || segment == "." || segment == "..")
             {
                 throw new ArgumentException($"{what} '{uri}' must not contain empty, '.', or '..' path segments.", paramName);
             }
@@ -133,6 +136,22 @@ internal static class SkillValidation
             ? SkillResources.Dynamic
             : SkillResources.FromResources(skill.Resources.Resources!.Select(static r => new SkillResource { Uri = r.Uri, Digest = r.Digest, Size = r.Size })),
     };
+
+    /// <summary>
+    /// Validates an entry received from a server, throwing <see cref="SkillVerificationException"/> describing the
+    /// first violation found. Hosts must not load invalid entries, so an invalid entry is a verification failure.
+    /// </summary>
+    public static void ValidateReceived(Skill skill, string method)
+    {
+        try
+        {
+            Validate(skill, "skill");
+        }
+        catch (ArgumentException e)
+        {
+            throw new SkillVerificationException($"The server returned an invalid skill entry from '{method}': {e.Message}", e);
+        }
+    }
 
     /// <summary>
     /// Validates a complete skill entry, throwing <see cref="ArgumentException"/> describing the first violation found.
@@ -192,7 +211,7 @@ internal static class SkillValidation
         ValidateOptionalString(skill, "compatibility", MaxCompatibilityLength, paramName);
         ValidateOptionalString(skill, "allowed-tools", maxLength: null, paramName);
 
-        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode) && metadataNode is not null)
+        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode))
         {
             if (metadataNode is not JsonObject metadata)
             {
@@ -303,14 +322,16 @@ internal static class SkillValidation
 
     private static void ValidateOptionalString(Skill skill, string key, int? maxLength, string paramName)
     {
-        if (!skill.Frontmatter.TryGetPropertyValue(key, out var node) || node is null)
+        if (!skill.Frontmatter.TryGetPropertyValue(key, out var node))
         {
             return;
         }
 
         if (node is not JsonValue value || !value.TryGetValue(out string? text))
         {
-            throw new ArgumentException($"Skill '{skill.Uri}' has a '{key}' frontmatter field that is not a string.", paramName);
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a '{key}' frontmatter field that is not a string. Give it a value, or remove the key if it is not needed.",
+                paramName);
         }
 
         if (text!.Length == 0 || (maxLength is { } max && text.Length > max))
