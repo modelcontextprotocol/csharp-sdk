@@ -214,16 +214,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
     [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
-    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.AutoDetect)]
     public async Task Client_OnFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
         HttpStatusCode status, HttpTransportMode transportMode)
     {
         // A server predating SEP-2575 can reject the session-less server/discover probe at the HTTP layer
         // rather than with a JSON-RPC error: 404 when it requires Mcp-Session-Id on every non-initialize
-        // POST, a plain/empty 400 when it cannot parse the request, or 405 when the endpoint rejects
-        // the probe method. All three are initialize-handshake servers, so the connect must fall back
-        // instead of failing.
+        // POST, or a plain/empty 400 when it cannot parse the request. Both are initialize-handshake
+        // servers, so the connect must fall back instead of failing. (405 is deliberately excluded: the
+        // POST endpoint rejecting the request method does not mean initialize will succeed over the same
+        // transport, and the spec routes 405 to the AutoDetect transport's SSE fallback — see
+        // Client_On405FromProbe_DoesNotFallBackTo_Initialize.)
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
 
@@ -247,8 +247,6 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
     [InlineData(HttpStatusCode.NotFound, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
-    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpStatusCode.MethodNotAllowed, HttpTransportMode.AutoDetect)]
     public async Task Client_OnStructuredFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
         HttpStatusCode status, HttpTransportMode transportMode)
     {
@@ -270,6 +268,66 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp, false)]
+    [InlineData(HttpTransportMode.AutoDetect, true)]
+    public async Task Client_On405FromProbe_DoesNotFallBackTo_Initialize(
+        HttpTransportMode transportMode, bool expectSseAttempt)
+    {
+        // 405 means the POST endpoint rejected the request method, so retrying initialize over the same
+        // transport is not useful. The spec routes 405 to the AutoDetect transport's SSE fallback: in
+        // Streamable HTTP mode the 405 surfaces directly, and in AutoDetect mode the client attempts the
+        // deprecated SSE GET instead of initialize. Neither path may attempt initialize.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+        var sseRequested = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
+            HttpStatusCode.MethodNotAllowed, "Invalid session ID",
+            () => initializeReceived = true, () => sseRequested = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.False(initializeReceived);
+        Assert.Equal(expectSseAttempt, sseRequested);
+    }
+
+    [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpTransportMode.AutoDetect)]
+    public async Task Client_OnStructured405FromProbe_DoesNotFallBackTo_Initialize(
+        HttpTransportMode transportMode)
+    {
+        // A 405 carrying a structured JSON-RPC error body means the peer is a Streamable HTTP server
+        // that rejected the method; the AutoDetect transport adopts the transport and surfaces the error
+        // instead of trying SSE, and neither transport should attempt initialize.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateStructuredProbeRejectingServer(
+            HttpStatusCode.MethodNotAllowed, () => initializeReceived = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.False(initializeReceived);
+    }
+
+    [Theory]
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
@@ -278,8 +336,9 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     public async Task Client_OnOtherHttpErrorFromProbe_Surfaces_NoFallback(
         HttpStatusCode status, HttpTransportMode transportMode)
     {
-        // Only 400, 404, and 405 indicate that the server needs the initialize handshake. Authentication
-        // and server failures must surface directly, without probing deprecated SSE or attempting initialize.
+        // Only 400 and 404 indicate that the server needs the initialize handshake (405 routes to the
+        // AutoDetect SSE fallback instead). Authentication and server failures must surface directly,
+        // without probing deprecated SSE or attempting initialize.
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
         var sseRequested = false;

@@ -382,16 +382,18 @@ internal sealed partial class McpClientImpl : McpClient
                     }
                     catch (HttpRequestException ex) when (
                         ex.GetStatusCode() is HttpStatusCode.BadRequest
-                                              or HttpStatusCode.NotFound
-                                              or HttpStatusCode.MethodNotAllowed)
+                                              or HttpStatusCode.NotFound)
                     {
                         // A server predating SEP-2575 can reject the session-less server/discover POST at the
-                        // HTTP layer instead of with a JSON-RPC error: 400 when it cannot parse the request,
-                        // 404 when it requires Mcp-Session-Id on every non-initialize POST, and 405 when it
-                        // does not accept POST at this endpoint at all. A 400 carrying a structured JSON-RPC
-                        // error is surfaced as McpProtocolException and handled above, so anything reaching
-                        // here is plain or empty. Either way this is an initialize-handshake server, so fall
-                        // back. Other statuses stay uncaught and surface to the caller.
+                        // HTTP layer instead of with a JSON-RPC error: 400 when it cannot parse the request, or
+                        // 404 when it requires Mcp-Session-Id on every non-initialize POST. A 400 carrying a
+                        // structured JSON-RPC error is surfaced as McpProtocolException and handled above, so
+                        // anything reaching here is plain or empty. Either way this is an initialize-handshake
+                        // server, so fall back. A 405 means the POST endpoint rejected the request method
+                        // entirely, so retrying initialize over the same transport is not useful; the spec's 405
+                        // handling is the AutoDetect transport's fallback to SSE, and in explicit Streamable HTTP
+                        // mode a 405 surfaces to the caller. Other statuses stay uncaught and surface to the
+                        // caller.
                         fallbackToInitialize = true;
                     }
                     catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
