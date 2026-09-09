@@ -331,12 +331,19 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal([McpProtocolVersions.November2025ProtocolVersion], supported);
     }
 
-    [Fact]
-    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsInvalidParams_Minus32602()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    public async Task July2026Post_MissingOrMalformedBodyProtocolVersion_ReturnsInvalidParams_Minus32602(string? protocolVersionJson)
     {
         await StartAsync();
 
-        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{""_meta"":{""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
+        var versionProperty = protocolVersionJson is null ? "" : @"""io.modelcontextprotocol/protocolVersion"":" + protocolVersionJson + ",";
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{""_meta"":{" + versionProperty +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
@@ -352,8 +359,24 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Contains(MetaKeys.ProtocolVersion, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("{}", McpErrorCode.InvalidParams)]
+    [InlineData(@"{""io.modelcontextprotocol/protocolVersion"":{}}", McpErrorCode.InvalidParams)]
+    [InlineData(@"{""io.modelcontextprotocol/protocolVersion"":""2025-11-25""}", McpErrorCode.UnsupportedProtocolVersion)]
+    public async Task ModernOnlyServer_HeaderlessRequest_StillRequiresModernMetadata(string metaJson, McpErrorCode expectedError)
+    {
+        await StartAsync(McpProtocolVersions.July2026ProtocolVersion);
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":" + metaJson + "}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)expectedError, json["error"]!["code"]!.GetValue<int>());
+    }
+
     [Fact]
-    public async Task July2026Post_MissingProtocolVersionHeader_ReturnsHeaderMismatch_Minus32020()
+    public async Task MissingProtocolVersionHeader_WithModernMetadata_IsServedFromBodyMetadata()
     {
         await StartAsync();
 
@@ -363,10 +386,61 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // The 2025-03-26 header default only applies when the server has "no other way to identify the
+        // version". The body metadata is another way, so the transport does not reject the request on the
+        // strength of a reserved _meta value. stdio, which has no header at all, behaves identically.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
-        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
-        Assert.Contains(ProtocolVersionHeader, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.NotNull(json["result"]);
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithUnsupportedMetadata_ReturnsUnsupportedProtocolVersion_Minus32022()
+    {
+        await StartAsync();
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment("9999-99-99") + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal("9999-99-99", json["error"]!["data"]!["requested"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithMalformedMetadata_IsIgnored()
+    {
+        await StartAsync();
+
+        // No header and no established era means legacy handling, where the reserved namespace is opaque.
+        // A value we cannot read is not a version claim, so it must not turn a legacy request into an error.
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":{""io.modelcontextprotocol/protocolVersion"":{}}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.NotNull(json["result"]!["tools"]);
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithLegacyMetadata_IsIgnored()
+    {
+        await StartAsync();
+
+        // A legacy reserved value on a headerless request stays opaque, which is the ChatGPT shape from #1783.
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2025-06-18""}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.NotNull(json["result"]!["tools"]);
     }
 
     [Fact]

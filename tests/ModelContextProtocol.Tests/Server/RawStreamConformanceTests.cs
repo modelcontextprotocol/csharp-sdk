@@ -166,14 +166,14 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     }
 
     [Fact]
-    public async Task MixedSequence_Discover_Then_Initialize_Then_ToolsCall_AllSucceed()
+    public async Task MixedSequence_FailedDiscoverProbe_Then_Initialize_Then_ToolsCall_AllSucceed()
     {
-        // Dual-path servers must accept 2026-07-28 per-request metadata and initialize-handshake traffic
-        // on the same connection. The exact mix below is what a permissive client running against an unknown
-        // server would emit while probing.
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+        // Dual-path servers must accept an initialize-handshake fallback after a 2026-07-28 probe fails.
+        // This is the sequence a permissive client emits against an unknown server: the failed probe never
+        // establishes a version, so initialize is still available.
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment("9999-99-99") + "}}");
         var discover = await ReadAsync();
-        Assert.NotNull(discover["result"]);
+        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, discover["error"]!["code"]!.GetValue<int>());
 
         await SendAsync(@"{""jsonrpc"":""2.0"",""id"":2,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}");
         var init = await ReadAsync();
@@ -185,6 +185,30 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         await SendAsync(@"{""jsonrpc"":""2.0"",""id"":3,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""after-init""}}}");
         var call = await ReadAsync();
         Assert.Equal("echo:after-init", call["result"]!["content"]![0]!["text"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("tools/list")]
+    [InlineData("server/discover")]
+    public async Task Initialize_AfterEstablishedModernRequest_IsRejected(string establishingMethod)
+    {
+        // A modern request locks the session's protocol version. initialize declares nothing on stdio, so
+        // without this gate it would force the session back to a handshake version and make the modern
+        // _meta on in-flight requests opaque.
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""" + establishingMethod + @""",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+        var established = await ReadAsync();
+        Assert.NotNull(established["result"]);
+
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":2,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}");
+        var init = await ReadAsync();
+        Assert.Equal((int)McpErrorCode.MethodNotFound, init["error"]!["code"]!.GetValue<int>());
+
+        // The session is still modern: a request carrying full per-request metadata keeps working.
+        await SendAsync(
+            @"{""jsonrpc"":""2.0"",""id"":3,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""still-modern""}," +
+            July2026ProtocolMetaFragment() + "}}");
+        var call = await ReadAsync();
+        Assert.Equal("echo:still-modern", call["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
 }
 #endif

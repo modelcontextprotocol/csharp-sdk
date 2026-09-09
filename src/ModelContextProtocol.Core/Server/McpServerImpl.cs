@@ -230,34 +230,26 @@ internal sealed partial class McpServerImpl : McpServer
             return;
         }
 
-        JsonObject? meta = GetRequestMeta(request);
-        string? metadataProtocolVersion = GetProtocolVersionMeta(meta, out bool hasProtocolVersionMeta);
+        JsonObject? meta = request.Params is JsonObject paramsObj ? paramsObj["_meta"] as JsonObject : null;
+        // An unreadable value cannot select a protocol; only the modern path requires a usable version.
+        string? metadataProtocolVersion =
+            meta?[MetaKeys.ProtocolVersion] is JsonValue value && value.TryGetValue(out string? version) ? version : null;
 
-        ValidateProtocolVersionMatch(transportProtocolVersion, metadataProtocolVersion);
-
-        bool establishedModernProtocol = McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion);
-        bool transportClaimsModernProtocol =
-            transportProtocolVersion is not null &&
-            !McpProtocolVersions.SupportsInitializeHandshake(transportProtocolVersion);
-        bool metadataClaimsModernProtocol =
-            hasProtocolVersionMeta &&
-            !McpProtocolVersions.SupportsInitializeHandshake(metadataProtocolVersion);
-        bool serverRequiresModernProtocol =
-            _initializeHandshakeProtocolVersions.Length == 0 &&
-            _perRequestMetadataProtocolVersions.Length > 0;
-
-        if (establishedModernProtocol ||
-            transportClaimsModernProtocol ||
-            metadataClaimsModernProtocol ||
-            serverRequiresModernProtocol)
+        if (transportProtocolVersion is not null &&
+            metadataProtocolVersion is not null &&
+            !string.Equals(transportProtocolVersion, metadataProtocolVersion, StringComparison.Ordinal))
         {
-            string protocolVersionForError =
-                metadataProtocolVersion ??
-                transportProtocolVersion ??
-                _negotiatedProtocolVersion ??
-                _perRequestMetadataProtocolVersions[0];
+            throw new McpProtocolException(
+                $"Header mismatch: the per-request _meta protocol version '{metadataProtocolVersion}' does not match the MCP-Protocol-Version header value '{transportProtocolVersion}'.",
+                McpErrorCode.HeaderMismatch);
+        }
 
-            if (!hasProtocolVersionMeta)
+        if (McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ||
+            transportProtocolVersion is not null ||
+            (metadataProtocolVersion is not null && !McpProtocolVersions.SupportsInitializeHandshake(metadataProtocolVersion)) ||
+            _initializeHandshakeProtocolVersions.Length == 0)
+        {
+            if (metadataProtocolVersion is null)
             {
                 if (transportProtocolVersion is not null &&
                     !_supportedProtocolVersions.Contains(transportProtocolVersion))
@@ -267,51 +259,60 @@ internal sealed partial class McpServerImpl : McpServer
                         supported: _supportedProtocolVersions);
                 }
 
-                ThrowMissingPerRequestMetadata(protocolVersionForError, MetaKeys.ProtocolVersion);
+                throw MissingPerRequestMetadata(
+                    transportProtocolVersion ?? _negotiatedProtocolVersion ?? _perRequestMetadataProtocolVersions[0],
+                    MetaKeys.ProtocolVersion);
             }
 
-            if (!_supportedProtocolVersions.Contains(metadataProtocolVersion!))
+            if (!_supportedProtocolVersions.Contains(metadataProtocolVersion))
             {
                 throw new UnsupportedProtocolVersionException(
-                    requested: metadataProtocolVersion!,
+                    requested: metadataProtocolVersion,
                     supported: _perRequestMetadataProtocolVersions.Length > 0
                         ? _perRequestMetadataProtocolVersions
                         : _supportedProtocolVersions);
             }
 
+            // Reject version changes before parsing, but establish a new version only after parsing succeeds.
             bool protocolVersionAlreadyEstablished = _negotiatedProtocolVersion is not null;
             if (protocolVersionAlreadyEstablished)
             {
-                SetNegotiatedProtocolVersion(metadataProtocolVersion!);
+                SetNegotiatedProtocolVersion(metadataProtocolVersion);
             }
 
-            ValidateRequiredPerRequestMetadata(
-                metadataProtocolVersion!,
-                hasProtocolVersionMeta,
-                meta?.ContainsKey(MetaKeys.ClientCapabilities) is true);
-            ProjectModernMetadata(request, meta!);
+            ProjectModernMetadata(request, meta!, metadataProtocolVersion);
 
             if (!protocolVersionAlreadyEstablished)
             {
-                SetNegotiatedProtocolVersion(metadataProtocolVersion!);
+                SetNegotiatedProtocolVersion(metadataProtocolVersion);
             }
 
             return;
         }
 
-        if (_negotiatedProtocolVersion is null && request.Method == RequestMethods.ServerDiscover)
+        if (request.Method == RequestMethods.ServerDiscover)
         {
             throw new McpProtocolException(
                 $"The '{RequestMethods.ServerDiscover}' request requires per-request metadata declaring a supported protocol version.",
                 McpErrorCode.InvalidParams);
         }
 
+        // With no established era, warn in case a modern peer accidentally fell back to legacy handling.
+        if (metadataProtocolVersion is null && meta?.ContainsKey(MetaKeys.ProtocolVersion) is true)
+        {
+            LogIgnoredUnreadableProtocolVersionMetadata(_endpointName, request.Method);
+        }
     }
 
-    private static void ProjectModernMetadata(JsonRpcRequest request, JsonObject meta)
+    private static void ProjectModernMetadata(JsonRpcRequest request, JsonObject meta, string protocolVersion)
     {
+        if (!meta.ContainsKey(MetaKeys.ClientCapabilities))
+        {
+            throw MissingPerRequestMetadata(protocolVersion, MetaKeys.ClientCapabilities);
+        }
+
         var context = request.Context ??= new();
-        context.ProtocolVersion = GetProtocolVersionMeta(meta, out _);
+        context.ProtocolVersion = protocolVersion;
         context.ClientInfo = meta[MetaKeys.ClientInfo] is JsonNode clientInfoNode
             ? DeserializeModernMetadata(
                 clientInfoNode,
@@ -351,62 +352,8 @@ internal sealed partial class McpServerImpl : McpServer
     private static McpProtocolException InvalidMetadata(string key) =>
         new($"The per-request metadata key '_meta/{key}' has an invalid value.", McpErrorCode.InvalidParams);
 
-    private static JsonObject? GetRequestMeta(JsonRpcRequest request) =>
-        request.Params is JsonObject paramsObj ? paramsObj["_meta"] as JsonObject : null;
-
-    private static string? GetProtocolVersionMeta(JsonObject? meta, out bool hasProtocolVersionMeta)
-    {
-        hasProtocolVersionMeta = meta?.ContainsKey(MetaKeys.ProtocolVersion) is true;
-        if (!hasProtocolVersionMeta)
-        {
-            return null;
-        }
-
-        if (meta![MetaKeys.ProtocolVersion] is JsonValue value &&
-            value.TryGetValue(out string? protocolVersion))
-        {
-            return protocolVersion;
-        }
-
-        throw InvalidMetadata(MetaKeys.ProtocolVersion);
-    }
-
-    private static void ValidateProtocolVersionMatch(
-        string? transportProtocolVersion,
-        string? metadataProtocolVersion)
-    {
-        if (transportProtocolVersion is not null &&
-            metadataProtocolVersion is not null &&
-            !string.Equals(transportProtocolVersion, metadataProtocolVersion, StringComparison.Ordinal) &&
-            (!McpProtocolVersions.SupportsInitializeHandshake(transportProtocolVersion) ||
-             !McpProtocolVersions.SupportsInitializeHandshake(metadataProtocolVersion)))
-        {
-            throw new McpProtocolException(
-                $"Header mismatch: the per-request _meta protocol version '{metadataProtocolVersion}' does not match the MCP-Protocol-Version header value '{transportProtocolVersion}'.",
-                McpErrorCode.HeaderMismatch);
-        }
-    }
-
-    private static void ValidateRequiredPerRequestMetadata(
-        string protocolVersion,
-        bool hasProtocolVersionMeta,
-        bool hasClientCapabilitiesMeta)
-    {
-        if (!hasProtocolVersionMeta)
-        {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
-        }
-
-        // clientInfo is optional: requests whose _meta omits it are served, not rejected.
-
-        if (!hasClientCapabilitiesMeta)
-        {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientCapabilities);
-        }
-    }
-
-    private static void ThrowMissingPerRequestMetadata(string protocolVersion, string key) =>
-        throw new McpProtocolException(
+    private static McpProtocolException MissingPerRequestMetadata(string protocolVersion, string key) =>
+        new(
             $"Requests using protocol version '{protocolVersion}' must include '_meta/{key}'.",
             McpErrorCode.InvalidParams);
 
@@ -441,12 +388,17 @@ internal sealed partial class McpServerImpl : McpServer
 
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
-        // Per-request-metadata revisions (SEP-2575) removed the initialize handshake entirely:
-        // the request is for a method the server does not implement on that revision.
-        if (McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion))
+        // Modern revisions removed initialize. An established modern session is authoritative even when
+        // the new request has no version header; a failed discovery probe does not establish a version.
+        string? modernProtocolVersion =
+            McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion) ? request.Context!.ProtocolVersion :
+            McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ? _negotiatedProtocolVersion :
+            null;
+
+        if (modernProtocolVersion is not null)
         {
             throw new McpProtocolException(
-                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{request.Context?.ProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
+                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{modernProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
                 McpErrorCode.MethodNotFound);
         }
 
@@ -458,7 +410,6 @@ internal sealed partial class McpServerImpl : McpServer
                 supported: _initializeHandshakeProtocolVersions,
                 message: $"Protocol version '{protocolVersion}' is not available through the initialize handshake.");
         }
-
     }
 
     private static string[] GetConfiguredSupportedProtocolVersions(string? protocolVersion)
@@ -761,11 +712,8 @@ internal sealed partial class McpServerImpl : McpServer
 
                 string negotiatedProtocolVersion = protocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
 
-                // The initialize handshake is authoritative: it may supersede a protocol version
-                // a prior server/discover probe established on the same connection (the dual-path
-                // fallback path a permissive client takes against an unknown server). Unlike the
-                // per-request 2026-07-28 version - which SetNegotiatedProtocolVersion locks once negotiated -
-                // initialize force-sets the version.
+                // initialize may supersede a legacy transport version. ValidateInitializeRequestBoundary
+                // prevents it from downgrading an established modern session.
                 _negotiatedProtocolVersion = negotiatedProtocolVersion;
                 _sessionHandler.NegotiatedProtocolVersion = negotiatedProtocolVersion;
 
@@ -2602,6 +2550,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "An MRTR handler threw an unhandled exception.")]
     private partial void MrtrHandlerError(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} ignored an unreadable '_meta/io.modelcontextprotocol/protocolVersion' value on '{Method}' and selected initialize-handshake semantics. The client may not be spec-compliant.")]
+    private partial void LogIgnoredUnreadableProtocolVersionMetadata(string endpointName, string method);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to deliver \"{NotificationMethod}\" to subscription \"{SubscriptionId}\".")]
     private partial void SubscriptionNotificationFailed(string notificationMethod, string subscriptionId, Exception exception);

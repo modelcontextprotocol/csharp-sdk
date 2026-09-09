@@ -293,8 +293,16 @@ public class McpServerTests : LoggedTest
             });
     }
 
-    [Fact]
-    public async Task LegacyTransportProtocolVersion_RemainsAuthoritativeOverMetadata()
+    [Theory]
+    [InlineData("2025-11-25", "\"2025-03-26\"", null)]
+    [InlineData("2025-11-25", "\"2026-07-28\"", null)]
+    [InlineData("2025-11-25", "{}", null)]
+    [InlineData("2026-07-28", "\"2025-11-25\"", McpErrorCode.HeaderMismatch)]
+    [InlineData("2026-07-28", "\"9999-99-99\"", McpErrorCode.HeaderMismatch)]
+    [InlineData("2026-07-28", "{}", McpErrorCode.InvalidParams)]
+    [InlineData("9999-99-99", "{}", McpErrorCode.UnsupportedProtocolVersion)]
+    public async Task TransportProtocolVersion_IsValidatedBeforeBodyMetadata(
+        string transportVersion, string metadataVersionJson, McpErrorCode? expectedError)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var transport = new TestServerTransport();
@@ -304,12 +312,12 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, options, LoggerFactory);
         var runTask = server.RunAsync(ct);
 
-        var acceptedResponse = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.OnMessageSent = message =>
         {
             if (message is JsonRpcMessageWithId { Id: var responseId } && responseId.ToString() == "1")
             {
-                acceptedResponse.TrySetResult(message);
+                response.TrySetResult(message);
             }
         };
 
@@ -321,19 +329,27 @@ public class McpServerTests : LoggedTest
             {
                 ["_meta"] = new JsonObject
                 {
-                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.March2025ProtocolVersion,
+                    [MetaKeys.ProtocolVersion] = JsonNode.Parse(metadataVersionJson),
                 },
             },
             Context = new JsonRpcMessageContext
             {
-                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                ProtocolVersion = transportVersion,
                 ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
             },
         }, ct);
 
-        Assert.IsType<JsonRpcResponse>(
-            await acceptedResponse.Task.WaitAsync(TestConstants.DefaultTimeout, ct));
-        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, server.NegotiatedProtocolVersion);
+        var message = await response.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        if (expectedError is { } errorCode)
+        {
+            Assert.Equal((int)errorCode, Assert.IsType<JsonRpcError>(message).Error.Code);
+            Assert.Null(server.NegotiatedProtocolVersion);
+        }
+        else
+        {
+            Assert.IsType<JsonRpcResponse>(message);
+            Assert.Equal(transportVersion, server.NegotiatedProtocolVersion);
+        }
 
         await transport.DisposeAsync();
         await runTask;
