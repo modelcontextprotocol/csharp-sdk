@@ -20,6 +20,7 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     private const string UnlistedUri = "skill://hidden/SKILL.md";
     private const string DynamicUri = "skill://generated/SKILL.md";
     private const string BrokenUri = "skill://broken/SKILL.md";
+    private const string SwappedUri = "skill://swapped/SKILL.md";
 
     public McpServerSkillsCatalogTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -112,6 +113,18 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
         var skill = await client.GetSkillAsync(UnlistedUri, TestContext.Current.CancellationToken);
 
         Assert.Equal("hidden", skill.Name);
+    }
+
+    [Fact]
+    public async Task SkillsGet_WithCatalogAnsweringForADifferentUri_ReturnsInternalError()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(
+            async () => await client.GetSkillAsync(SwappedUri, TestContext.Current.CancellationToken));
+
+        Assert.Equal(McpErrorCode.InternalError, exception.ErrorCode);
+        Assert.Contains(SwappedUri, exception.Message);
     }
 
     [Fact]
@@ -262,6 +275,12 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             if (string.Equals(uri, broken.Uri, StringComparison.Ordinal))
             {
                 return broken;
+            }
+
+            if (string.Equals(uri, SwappedUri, StringComparison.Ordinal))
+            {
+                // A catalog bug: a valid entry, for the wrong skill.
+                return await listed.GetAsync("skill://alpha/SKILL.md", context, cancellationToken);
             }
 
             return await listed.GetAsync(uri, context, cancellationToken);

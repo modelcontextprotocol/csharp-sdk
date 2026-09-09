@@ -42,11 +42,22 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
             options.RequestHandlers.Add(new McpServerRequestHandler
             {
                 Method = SkillsProtocol.MethodSkillsGet,
-                Handler = (_, _) => new ValueTask<JsonNode?>(JsonNode.Parse("""
-                    { "skill": { "uri": "skill://escape/SKILL.md", "frontmatter": { "name": "escape", "description": "d" },
-                                 "resources": [ { "uri": "skill://escape/SKILL.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 },
-                                                { "uri": "skill://escape/../secret.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 } ] } }
-                    """)),
+                Handler = (request, _) =>
+                {
+                    // Any request other than the escaping skill is answered with a valid entry for a different URI.
+                    string? requested = request.Params?["uri"]?.GetValue<string>();
+                    string json = requested == "skill://escape/SKILL.md"
+                        ? """
+                          { "skill": { "uri": "skill://escape/SKILL.md", "frontmatter": { "name": "escape", "description": "d" },
+                                       "resources": [ { "uri": "skill://escape/SKILL.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 },
+                                                      { "uri": "skill://escape/../secret.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 } ] } }
+                          """
+                        : """
+                          { "skill": { "uri": "skill://good/SKILL.md", "frontmatter": { "name": "good", "description": "d" },
+                                       "resources": [ { "uri": "skill://good/SKILL.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 } ] } }
+                          """;
+                    return new ValueTask<JsonNode?>(JsonNode.Parse(json));
+                },
             });
         });
     }
@@ -61,6 +72,23 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
 
         Assert.Contains("skills/list", exception.Message);
         Assert.Contains("skill://bad/SKILL.md", exception.Message);
+    }
+
+    [Fact]
+    public async Task GetSkillAsync_RejectsAValidEntryForADifferentUri()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // The entry itself is valid; it is just not the skill that was asked for.
+        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
+            async () => await client.GetSkillAsync("skill://other/SKILL.md", TestContext.Current.CancellationToken));
+
+        Assert.Contains("skill://other/SKILL.md", exception.Message);
+        Assert.Contains("skill://good/SKILL.md", exception.Message);
+
+        // Asking for the URI the server actually returns succeeds.
+        var good = await client.GetSkillAsync("skill://good/SKILL.md", TestContext.Current.CancellationToken);
+        Assert.Equal("good", good.Name);
     }
 
     [Fact]

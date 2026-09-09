@@ -301,6 +301,12 @@ public static class McpSkillsBuilderExtensions
             var skill = await catalog.GetAsync(requestParams!.Uri, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false) ??
                 throw new McpProtocolException($"No skill is served at '{requestParams.Uri}'.", McpErrorCode.InvalidParams);
             ValidateCatalogEntry(skill);
+            if (!string.Equals(skill.Uri, requestParams.Uri, StringComparison.Ordinal))
+            {
+                throw new McpProtocolException(
+                    $"The skill catalog answered a request for '{requestParams.Uri}' with the entry for '{skill.Uri}'.",
+                    McpErrorCode.InternalError);
+            }
 
             var result = new GetSkillResult { Skill = skill };
             if (IsJuly2026OrLaterProtocolRequest(request))

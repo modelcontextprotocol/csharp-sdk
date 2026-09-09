@@ -124,7 +124,9 @@ public static class McpSkillsClientExtensions
     /// <returns>The skill's entry, validated against the specification.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
-    /// <exception cref="SkillVerificationException">The server returned an entry that violates the specification.</exception>
+    /// <exception cref="SkillVerificationException">
+    /// The server returned an entry that violates the specification, or an entry for a different URI than the one requested.
+    /// </exception>
     /// <exception cref="McpException">
     /// The request failed or the server returned an error response, including <see cref="McpErrorCode.InvalidParams"/>
     /// when the server serves no skill at <paramref name="uri"/>.
@@ -182,6 +184,12 @@ public static class McpSkillsClientExtensions
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsGet}'.");
 
         SkillValidation.ValidateReceived(result.Skill, SkillsProtocol.MethodSkillsGet);
+        if (!string.Equals(result.Skill.Uri, requestParams.Uri, StringComparison.Ordinal))
+        {
+            throw new SkillVerificationException(
+                $"The server answered '{SkillsProtocol.MethodSkillsGet}' for '{requestParams.Uri}' with the entry for '{result.Skill.Uri}'.");
+        }
+
         return result;
     }
 
