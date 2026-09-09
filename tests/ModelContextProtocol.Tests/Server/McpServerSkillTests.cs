@@ -425,6 +425,51 @@ public class McpServerSkillTests
 #endif
 
     [Fact]
+    public void CreateFromDirectory_RejectsTooManyFilesBeforeReadingThem()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "mcp-skill-many-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "SKILL.md"), SkillMarkdown);
+            for (int i = 0; i < SkillsProtocol.MaxResourcesPerSkill; i++)
+            {
+                File.WriteAllText(Path.Combine(directory, $"f{i:D4}.txt"), "x");
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, directory));
+            Assert.Contains(SkillsProtocol.MaxResourcesPerSkill.ToString(), exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CreateFromDirectory_RejectsOversizedContentBeforeReadingIt()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "mcp-skill-big-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "SKILL.md"), SkillMarkdown);
+            using (var big = new FileStream(Path.Combine(directory, "big.bin"), FileMode.CreateNew))
+            {
+                // A sparse file: the size check must trip without the bytes ever being read.
+                big.SetLength(SkillsProtocol.MaxTotalSizeBytes + 1);
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, directory));
+            Assert.Contains(SkillsProtocol.MaxTotalSizeBytes.ToString(), exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CreateFromDirectory_WithMissingDirectory_Throws()
     {
         string directory = Path.Combine(Path.GetTempPath(), "mcp-skill-missing-" + Guid.NewGuid().ToString("N"));

@@ -69,6 +69,22 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
     }
 
     [Fact]
+    public void WithSkills_DetectsFilesThatCollideUnderUriEquivalence()
+    {
+        // The resource collection compares URIs case-insensitively in scheme and authority, so these two skills
+        // would silently share one registered resource. With different content that must be an error.
+        var upper = McpServerSkill.Create("skill://Acme/refunds/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", "---\nname: refunds\ndescription: upper\n---\n")]);
+        var lower = McpServerSkill.Create("skill://acme/refunds/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", "---\nname: refunds\ndescription: lower\n---\n")]);
+
+        var exception = Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkills([upper, lower]));
+        Assert.Contains("equivalent", exception.Message);
+
+        // Identical content is the nested-skill case and is allowed: the file is registered once.
+        var same = McpServerSkill.Create("skill://ACME/refunds/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", "---\nname: refunds\ndescription: upper\n---\n")]);
+        new ServiceCollection().AddMcpServer().WithSkills([upper, same]);
+    }
+
+    [Fact]
     public void WithSkillsFromDirectory_RejectsDirectoriesWithoutSkills()
     {
         string empty = Path.Combine(Path.GetTempPath(), "mcp-skills-empty-" + Guid.NewGuid().ToString("N"));

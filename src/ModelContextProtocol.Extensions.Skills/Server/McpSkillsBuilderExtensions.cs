@@ -49,7 +49,11 @@ public static class McpSkillsBuilderExtensions
 #endif
 
         var entries = new List<Skill>();
-        var registeredFiles = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // The server's resource collection keys concrete resources by System.Uri equality, under which scheme and
+        // authority are case-insensitive, and it registers silently. Detect shared files under those same
+        // semantics, so two URIs the collection would merge are caught here rather than served as one another.
+        var registeredFiles = new Dictionary<Uri, (string Uri, string Digest)>();
         foreach (var skill in skills)
         {
             if (skill is null)
@@ -63,19 +67,22 @@ public static class McpSkillsBuilderExtensions
             for (int i = 0; i < manifest.Count; i++)
             {
                 var entry = manifest[i];
-                if (registeredFiles.TryGetValue(entry.Uri, out string? existingDigest))
+                var key = new Uri(entry.Uri, UriKind.Absolute);
+                if (registeredFiles.TryGetValue(key, out var existing))
                 {
-                    if (!string.Equals(existingDigest, entry.Digest, StringComparison.Ordinal))
+                    if (!string.Equals(existing.Digest, entry.Digest, StringComparison.Ordinal))
                     {
                         throw new ArgumentException(
-                            $"The file '{entry.Uri}' is listed by more than one skill with different content.",
+                            string.Equals(existing.Uri, entry.Uri, StringComparison.Ordinal)
+                                ? $"The file '{entry.Uri}' is listed by more than one skill with different content."
+                                : $"The file '{entry.Uri}' is equivalent to '{existing.Uri}', which another skill lists with different content. Resource URIs are compared case-insensitively in their scheme and authority.",
                             nameof(skills));
                     }
 
                     continue;
                 }
 
-                registeredFiles.Add(entry.Uri, entry.Digest);
+                registeredFiles.Add(key, (entry.Uri, entry.Digest));
                 builder.Services.AddSingleton(skill.Resources[i]);
             }
         }

@@ -425,7 +425,8 @@ public sealed class McpServerSkill
         }
 
         var files = new List<McpServerSkillFile>();
-        CollectFiles(fullDirectory, fullDirectory, files);
+        long totalSize = 0;
+        CollectFiles(fullDirectory, fullDirectory, files, ref totalSize);
         return files;
     }
 
@@ -434,7 +435,7 @@ public sealed class McpServerSkill
     /// outside the skill directory, and a file reached through one would be published under a URI that looks like
     /// it lives inside the skill. Rather than try to decide which link targets are acceptable, links are rejected.
     /// </summary>
-    private static void CollectFiles(string root, string directory, List<McpServerSkillFile> files)
+    private static void CollectFiles(string root, string directory, List<McpServerSkillFile> files, ref long totalSize)
     {
         foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
         {
@@ -450,9 +451,29 @@ public sealed class McpServerSkill
 
             if ((attributes & FileAttributes.Directory) != 0)
             {
-                CollectFiles(root, entry, files);
+                CollectFiles(root, entry, files, ref totalSize);
                 continue;
             }
+
+            // Apply the specification's per-skill limits before reading, so an oversized or overly broad directory
+            // fails with the limit named rather than after allocating everything under it. The manifest built from
+            // the bytes actually read is validated against the same limits afterwards.
+            if (files.Count >= SkillsProtocol.MaxResourcesPerSkill)
+            {
+                throw new ArgumentException(
+                    $"The skill directory '{root}' contains more than {SkillsProtocol.MaxResourcesPerSkill} files, the limit per skill.",
+                    "directoryPath");
+            }
+
+            long length = new FileInfo(entry).Length;
+            if (length > SkillsProtocol.MaxTotalSizeBytes - totalSize)
+            {
+                throw new ArgumentException(
+                    $"The files under '{root}' total more than {SkillsProtocol.MaxTotalSizeBytes} bytes, the limit per skill.",
+                    "directoryPath");
+            }
+
+            totalSize += length;
 
             string relativePath = entry.Substring(root.Length).Replace(Path.DirectorySeparatorChar, '/');
             if (Path.AltDirectorySeparatorChar != Path.DirectorySeparatorChar)
