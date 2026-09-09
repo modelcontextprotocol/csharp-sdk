@@ -12,7 +12,8 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// When a host retrieves a file listed in a skill's manifest, it must verify the content against that entry's
 /// digest and size, and must treat a read of a file the manifest does not list as a verification failure. These
 /// helpers implement those checks. Frontmatter verification (re-parsing the fetched <c>SKILL.md</c> and comparing
-/// its YAML frontmatter against the entry) is not implemented here, since this package does not parse YAML.
+/// its YAML frontmatter against the entry) is not performed automatically; a host can do it with
+/// <see cref="SkillFrontmatter.Parse"/> and <see cref="System.Text.Json.Nodes.JsonNode.DeepEquals"/>.
 /// </para>
 /// <para>
 /// Digests are unsigned and supplied by the same server that supplies the content. A match proves the manifest
