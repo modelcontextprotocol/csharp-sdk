@@ -437,25 +437,37 @@ public static class SkillFrontmatter
             bool literal = header[0] == '|';
             char chomping = 'c';
             int explicitIndent = 0;
-            for (int i = 1; i < header.Length; i++)
+            int headerPos = 1;
+            for (; headerPos < header.Length && header[headerPos] != ' '; headerPos++)
             {
-                char c = header[i];
+                char c = header[headerPos];
                 if (c is '-' or '+')
                 {
+                    if (chomping != 'c')
+                    {
+                        throw new FormatException($"Line {lineNumber}: invalid block scalar header '{header}': repeated chomping indicator.");
+                    }
+
                     chomping = c == '-' ? 's' : 'k';
                 }
                 else if (c is >= '1' and <= '9')
                 {
+                    if (explicitIndent != 0)
+                    {
+                        throw new FormatException($"Line {lineNumber}: invalid block scalar header '{header}': repeated indentation indicator.");
+                    }
+
                     explicitIndent = c - '0';
-                }
-                else if (c == ' ' || c == '#')
-                {
-                    break;
                 }
                 else
                 {
                     throw new FormatException($"Line {lineNumber}: invalid block scalar header '{header}'.");
                 }
+            }
+
+            if (StripComment(header.Substring(headerPos)).Trim().Length != 0)
+            {
+                throw new FormatException($"Line {lineNumber}: invalid block scalar header '{header}': only a comment may follow the indicators.");
             }
 
             // Gather the raw lines of the block: everything blank, plus everything indented more than the parent.
@@ -676,6 +688,11 @@ public static class SkillFrontmatter
             int start = pos;
             while (pos < text.Length && terminators.IndexOf(text[pos]) < 0)
             {
+                if (text[pos] == '#' && (pos == start || text[pos - 1] is ' ' or '\t'))
+                {
+                    throw new FormatException($"Line {lineNumber}: a comment inside a flow collection runs to the end of the line, leaving the collection unterminated. Move the comment after the closing bracket.");
+                }
+
                 pos++;
             }
 
@@ -744,7 +761,16 @@ public static class SkillFrontmatter
                         case 'P': builder.Append('\u2029'); break;
                         case 'x': builder.Append((char)ParseHex(text, i + 1, 2, lineNumber)); i += 2; break;
                         case 'u': builder.Append((char)ParseHex(text, i + 1, 4, lineNumber)); i += 4; break;
-                        case 'U': builder.Append(char.ConvertFromUtf32(ParseHex(text, i + 1, 8, lineNumber))); i += 8; break;
+                        case 'U':
+                            int scalar = ParseHex(text, i + 1, 8, lineNumber);
+                            if (scalar is < 0 or > 0x10FFFF or (>= 0xD800 and <= 0xDFFF))
+                            {
+                                throw new FormatException($"Line {lineNumber}: '\\U{text.Substring(i + 1, 8)}' is not a valid Unicode scalar value.");
+                            }
+
+                            builder.Append(char.ConvertFromUtf32(scalar));
+                            i += 8;
+                            break;
                         default:
                             throw new FormatException($"Line {lineNumber}: unsupported escape sequence '\\{e}' in double-quoted scalar.");
                     }

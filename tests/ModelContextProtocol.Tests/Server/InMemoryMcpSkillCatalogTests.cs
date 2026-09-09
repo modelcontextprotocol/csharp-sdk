@@ -1,4 +1,5 @@
 using ModelContextProtocol.Extensions.Skills;
+using ModelContextProtocol.Protocol;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -10,6 +11,8 @@ namespace ModelContextProtocol.Tests.Server;
 public class InMemoryMcpSkillCatalogTests
 {
     private static readonly string s_validDigest = "sha256:" + new string('a', 64);
+
+    private static McpSkillRequestContext Context => new(new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsList });
 
     private static Skill CreateSkill(string name, string? description = "A skill", SkillResources? resources = null)
     {
@@ -34,7 +37,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "zebra", "alpha", "middle");
 
-        var page = await catalog.ListAsync(null, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
 
         Assert.Collection(
             page.Skills,
@@ -55,7 +58,7 @@ public class InMemoryMcpSkillCatalogTests
         int pages = 0;
         do
         {
-            var page = await catalog.ListAsync(cursor, TestContext.Current.CancellationToken);
+            var page = await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken);
             seen.AddRange(page.Skills.Select(skill => skill.Uri));
             cursor = page.NextCursor;
             Assert.True(++pages < 20, "Pagination did not terminate.");
@@ -73,8 +76,8 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(2, "a", "b", "c", "d");
 
-        var first = await catalog.ListAsync(null, TestContext.Current.CancellationToken);
-        var second = await catalog.ListAsync(first.NextCursor, TestContext.Current.CancellationToken);
+        var first = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var second = await catalog.ListAsync(first.NextCursor, Context, TestContext.Current.CancellationToken);
 
         Assert.NotNull(first.NextCursor);
         Assert.Equal(2, second.Skills.Count);
@@ -87,7 +90,7 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = CreateCatalog(10, "a", "c");
         string cursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("skill://b/SKILL.md"));
 
-        var page = await catalog.ListAsync(cursor, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken);
 
         Assert.Single(page.Skills);
         Assert.Equal("skill://c/SKILL.md", page.Skills[0].Uri);
@@ -98,7 +101,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10);
 
-        var page = await catalog.ListAsync(null, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
 
         Assert.Empty(page.Skills);
         Assert.Null(page.NextCursor);
@@ -110,7 +113,7 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = CreateCatalog(10, "a");
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await catalog.ListAsync("not-base64!!", TestContext.Current.CancellationToken));
+            async () => await catalog.ListAsync("not-base64!!", Context, TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
@@ -120,7 +123,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "alpha");
 
-        var skill = await catalog.GetAsync("skill://alpha/SKILL.md", TestContext.Current.CancellationToken);
+        var skill = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
 
         Assert.NotNull(skill);
         Assert.Equal("alpha", skill.Name);
@@ -134,7 +137,23 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "alpha");
 
-        Assert.Null(await catalog.GetAsync(uri, TestContext.Current.CancellationToken));
+        Assert.Null(await catalog.GetAsync(uri, Context, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Constructor_SnapshotsEntries_SoLaterMutationsAreNotServed()
+    {
+        var source = CreateSkill("alpha");
+        var catalog = new InMemoryMcpSkillCatalog([source]);
+
+        source.Frontmatter["description"] = "changed";
+        source.Resources.Resources![0].Digest = "sha256:" + new string('f', 64);
+        source.Uri = "skill://renamed/SKILL.md";
+
+        var served = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        Assert.NotNull(served);
+        Assert.Equal("A skill", served.Description);
+        Assert.Equal(s_validDigest, served.Resources.Resources![0].Digest);
     }
 
     [Fact]
@@ -154,6 +173,19 @@ public class InMemoryMcpSkillCatalogTests
     [InlineData(-1)]
     public void Constructor_WithNonPositivePageSize_Throws(int pageSize) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => new InMemoryMcpSkillCatalog([], pageSize));
+
+    [Fact]
+    public void Constructor_AcceptsFullAgentSkillsFrontmatter()
+    {
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter["license"] = "MIT";
+        skill.Frontmatter["compatibility"] = "Needs git";
+        skill.Frontmatter["allowed-tools"] = "Bash(git:*) Read";
+        skill.Frontmatter["metadata"] = new JsonObject { ["author"] = "acme", ["version"] = "2.1.0" };
+        skill.Frontmatter["description"] = new string('d', 1024);
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
 
     [Fact]
     public void Constructor_AcceptsDynamicSkill()
@@ -185,6 +217,43 @@ public class InMemoryMcpSkillCatalogTests
         }
 
         yield return Case("uri not ending in /SKILL.md", s => s.Uri = "skill://alpha/skill.md");
+        yield return Case("relative uri", s =>
+        {
+            s.Uri = "alpha/SKILL.md";
+            s.Resources = SkillResources.FromResources([new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 }]);
+        });
+        yield return Case("uri with query", s =>
+        {
+            s.Uri = "skill://alpha/SKILL.md?x=1";
+            s.Resources = SkillResources.FromResources([new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 }]);
+        });
+        yield return Case("resource escapes the skill through '..'", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = "skill://alpha/../secret.md", Digest = s_validDigest, Size = 1 },
+        ]));
+        yield return Case("resource with empty segment", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = "skill://alpha//x.md", Digest = s_validDigest, Size = 1 },
+        ]));
+        yield return Case("resource with fragment", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = "skill://alpha/x.md#frag", Digest = s_validDigest, Size = 1 },
+        ]));
+        yield return Case("sizes that overflow when summed", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = long.MaxValue },
+            new SkillResource { Uri = "skill://alpha/x.md", Digest = s_validDigest, Size = long.MaxValue },
+        ]));
+        yield return Case("description over 1024 characters", s => s.Frontmatter["description"] = new string('d', 1025));
+        yield return Case("compatibility over 500 characters", s => s.Frontmatter["compatibility"] = new string('c', 501));
+        yield return Case("compatibility empty", s => s.Frontmatter["compatibility"] = "");
+        yield return Case("license not a string", s => s.Frontmatter["license"] = 1);
+        yield return Case("allowed-tools not a string", s => s.Frontmatter["allowed-tools"] = new JsonArray("Bash"));
+        yield return Case("metadata not a mapping", s => s.Frontmatter["metadata"] = "x");
+        yield return Case("metadata value not a string", s => s.Frontmatter["metadata"] = new JsonObject { ["version"] = 2.1 });
         yield return Case("name missing", s => s.Frontmatter.Remove("name"));
         yield return Case("name not a string", s => s.Frontmatter["name"] = 1);
         yield return Case("name does not match uri segment", s => s.Frontmatter["name"] = "beta");

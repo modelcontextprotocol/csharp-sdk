@@ -213,9 +213,9 @@ public class McpServerSkillTests
         // Matches the file: fine.
         McpServerSkill.Create(SkillUri, Frontmatter(), [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]);
 
-        // Typed value in the file must match a typed value in the object.
-        McpServerSkill.Create(SkillUri, new JsonObject { ["name"] = "git-workflow", ["description"] = "d", ["metadata"] = new JsonObject { ["major"] = 2 } },
-            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: d\nmetadata:\n  major: 2\n---\n")]);
+        // Values are compared as typed JSON: a quoted "2" in the file is the string "2" in the object.
+        McpServerSkill.Create(SkillUri, new JsonObject { ["name"] = "git-workflow", ["description"] = "d", ["metadata"] = new JsonObject { ["major"] = "2" } },
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: d\nmetadata:\n  major: \"2\"\n---\n")]);
 
         // File uses YAML the reader rejects: the explicit object stands on its own.
         var escapeHatch = McpServerSkill.Create(SkillUri, Frontmatter(),
@@ -331,6 +331,38 @@ public class McpServerSkillTests
             var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, Frontmatter(), skillDirectory));
             Assert.Contains("linked.txt", exception.Message);
             Assert.Equal("directoryPath", exception.ParamName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CreateFromDirectory_RejectsASymbolicLinkAsTheRoot()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skill-rootlink-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string target = Path.Combine(root, "target");
+            Directory.CreateDirectory(target);
+            File.WriteAllText(Path.Combine(target, "SKILL.md"), SkillMarkdown);
+
+            string link = Path.Combine(root, "link");
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+            {
+                Assert.Skip($"Cannot create symbolic links here: {e.Message}");
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(link));
+            Assert.Equal("directoryPath", exception.ParamName);
+
+            // The target itself is fine.
+            Assert.Equal(SkillUri, McpServerSkill.CreateFromDirectory(target).ProtocolSkill.Uri);
         }
         finally
         {

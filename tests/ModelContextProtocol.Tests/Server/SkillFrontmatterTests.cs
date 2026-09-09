@@ -95,6 +95,7 @@ public class SkillFrontmatterTests
     [InlineData("\"new\\nline\"", "new\nline")]
     [InlineData("\"quote \\\" inside\"", "quote \" inside")]
     [InlineData("\"\\u00e9\\x41\"", "éA")]
+    [InlineData("\"\\U0001F600\"", "😀")]
     [InlineData("\"1.0\"", "1.0")]
     [InlineData("'true'", "true")]
     [InlineData("\"a # not a comment\"", "a # not a comment")]
@@ -198,6 +199,9 @@ public class SkillFrontmatterTests
     [InlineData("|", "a\nb\n")]
     [InlineData("|+", "a\nb\n\n")]
     [InlineData(">-", "a b")]
+    [InlineData("|- # comment", "a\nb")]
+    [InlineData("|2-", "a\nb")]
+    [InlineData("|-2", "a\nb")]
     public void HonorsChompingIndicators(string header, string expected)
     {
         var frontmatter = Parse($"value: {header}\n  a\n  b\n\nnext: 1");
@@ -300,6 +304,15 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: %pct\n---", "reserves")]
     [InlineData("---\nvalue: [@a]\n---", "reserves")]
     [InlineData("---\nvalue: - a\n---", "same line as its key")]
+    [InlineData("---\nvalue: |--\n  a\n---", "repeated chomping")]
+    [InlineData("---\nvalue: |2-2\n  a\n---", "repeated indentation")]
+    [InlineData("---\nvalue: | garbage\n  a\n---", "only a comment may follow")]
+    [InlineData("---\nvalue: |x\n  a\n---", "invalid block scalar header")]
+    [InlineData("---\nvalue: [a # comment, b]\n---", "comment inside a flow collection")]
+    [InlineData("---\nvalue: { a: b # c }\n---", "comment inside a flow collection")]
+    [InlineData("---\nvalue: \"\\U0000D800\"\n---", "not a valid Unicode scalar")]
+    [InlineData("---\nvalue: \"\\U00110000\"\n---", "not a valid Unicode scalar")]
+    [InlineData("---\nvalue: \"\\UFFFFFFFF\"\n---", "not a valid Unicode scalar")]
     [InlineData("---\nvalue: -\n---", "same line as its key")]
     [InlineData("---\nvalue: \"\\q\"\n---", "unsupported escape")]
     [InlineData("---\njust a scalar\n---", "key: value")]

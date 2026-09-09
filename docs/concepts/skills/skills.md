@@ -75,8 +75,9 @@ builder.Services.AddMcpServer().WithHttpTransport().WithSkills([gitWorkflow, ref
 ```
 
 All of these validate the skill against the specification and throw <xref:System.ArgumentException> with a
-specific message when, for example, the frontmatter `name` does not match the URI, `SKILL.md` is missing, or the
-skill exceeds the per-skill limits of 512 files or 16 MiB. File contents are copied when the skill is created, so
+specific message when, for example, the frontmatter `name` does not match the URI, `description` exceeds the
+Agent Skills limit of 1024 characters, `metadata` is not a map of strings, a resource URI escapes the skill's
+directory, `SKILL.md` is missing, or the skill exceeds the per-skill limits of 512 files or 16 MiB. File contents are copied when the skill is created, so
 later changes to a caller's buffer or to files on disk do not affect what is served. `CreateFromDirectory` does not
 follow symbolic links, since a link can point outside the skill directory; it throws if it encounters one. File
 names containing characters with URI syntax (such as `{`, `?`, or a space) are percent-encoded in the resource URIs.
@@ -105,21 +106,26 @@ When skills come from a database, a file share, or a large or generated catalog,
 ```csharp
 public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkillCatalog
 {
-    public async ValueTask<McpSkillPage> ListAsync(string? cursor, CancellationToken cancellationToken)
+    public async ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
     {
-        var (skills, nextCursor) = await repository.GetPageAsync(cursor, pageSize: 50, cancellationToken);
+        string tenant = GetTenant(context.User);
+        var (skills, nextCursor) = await repository.GetPageAsync(tenant, cursor, pageSize: 50, cancellationToken);
         return new McpSkillPage { Skills = skills, NextCursor = nextCursor };
     }
 
-    public ValueTask<Skill?> GetAsync(string uri, CancellationToken cancellationToken) =>
-        repository.FindAsync(uri, cancellationToken);
+    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
+        repository.FindAsync(GetTenant(context.User), uri, cancellationToken);
 }
 ```
 
+Both methods receive an <xref:ModelContextProtocol.Extensions.Skills.McpSkillRequestContext> with the JSON-RPC request,
+the caller's <xref:System.Security.Claims.ClaimsPrincipal> when the transport supplies one (the ASP.NET Core
+transport does), and any items that incoming-message filters attached to the request.
+
 A catalog supplies entries only; the skills' files must still be served as resources, since hosts read them with
 `resources/read`. A catalog may list only part of what it serves, or nothing at all, as long as `GetAsync` answers
-for every skill the server serves. Throw <xref:ModelContextProtocol.McpProtocolException> with
-<xref:ModelContextProtocol.McpErrorCode.InvalidParams> for a cursor the catalog did not issue.
+for every skill the server serves to the caller. Throw <xref:ModelContextProtocol.McpProtocolException> with
+<xref:ModelContextProtocol.McpErrorCode.InvalidParams> for a cursor the catalog cannot interpret.
 <xref:ModelContextProtocol.Extensions.Skills.InMemoryMcpSkillCatalog> is the built-in implementation over a fixed
 set of entries and can be composed into a custom one.
 
@@ -175,6 +181,12 @@ that read resources through other means.
 Skill content is instructional text delivered to a model and is therefore a prompt-injection surface. The
 specification places most of the burden on hosts. In particular:
 
+- `skills/list` and `skills/get` are registered as raw request handlers, so they do not pass through the request
+  filters that guard the built-in resource methods, including the ASP.NET Core authorization filters. A listing
+  therefore discloses frontmatter, file names, sizes, and digests to any caller the transport admits. If some
+  callers must not see some skills, implement <xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and
+  decide from the request context's user, and guard the corresponding resources the same way. The built-in
+  in-memory catalog serves the same entries to every caller.
 - Treat MCP-served skill content as untrusted model input, and tag it with its originating server when it enters
   the model's context.
 - Digests are unsigned and come from the same server as the content. A match proves consistency between the entry

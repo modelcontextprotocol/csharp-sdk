@@ -42,6 +42,10 @@ public sealed class McpServerSkill
     /// <summary>
     /// Gets the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
+    /// <remarks>
+    /// The catalog that <c>WithSkills</c> creates keeps its own copy of this entry, so changes made to this object
+    /// after registration do not affect what is served.
+    /// </remarks>
     public Skill ProtocolSkill { get; }
 
     /// <summary>
@@ -398,6 +402,14 @@ public sealed class McpServerSkill
         if (!Directory.Exists(fullDirectory))
         {
             throw new DirectoryNotFoundException($"The skill directory '{fullDirectory}' does not exist.");
+        }
+
+        if ((File.GetAttributes(fullDirectory) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new ArgumentException(
+                $"'{fullDirectory}' is a symbolic link or other reparse point. Links are not followed when loading a skill directory, " +
+                "because a link can point outside the intended location. Pass the target directory instead.",
+                nameof(directoryPath));
         }
 
         if (!fullDirectory.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))

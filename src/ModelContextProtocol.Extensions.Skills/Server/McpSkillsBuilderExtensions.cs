@@ -195,6 +195,12 @@ public static class McpSkillsBuilderExtensions
     /// automatically, build the skills with <see cref="McpServerSkill"/> and use the
     /// <see cref="WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/> overload.
     /// </para>
+    /// <para>
+    /// <c>skills/list</c> and <c>skills/get</c> are registered as raw request handlers and do not pass through the
+    /// request filters that guard the built-in resource methods, such as the ASP.NET Core authorization filters.
+    /// When some callers must not see some skills, the catalog decides from the <see cref="McpSkillRequestContext"/>
+    /// it receives, and the corresponding file resources must be guarded separately.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithSkills(
         this IMcpServerBuilder builder,
@@ -258,7 +264,7 @@ public static class McpSkillsBuilderExtensions
         private async ValueTask<JsonNode?> HandleListSkillsAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams);
-            var page = await catalog.ListAsync(requestParams?.Cursor, cancellationToken).ConfigureAwait(false);
+            var page = await catalog.ListAsync(requestParams?.Cursor, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false);
 
             var result = new ListSkillsResult
             {
@@ -288,7 +294,7 @@ public static class McpSkillsBuilderExtensions
                 throw new McpProtocolException("The 'uri' parameter is required.", McpErrorCode.InvalidParams);
             }
 
-            var skill = await catalog.GetAsync(requestParams!.Uri, cancellationToken).ConfigureAwait(false) ??
+            var skill = await catalog.GetAsync(requestParams!.Uri, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false) ??
                 throw new McpProtocolException($"No skill is served at '{requestParams.Uri}'.", McpErrorCode.InvalidParams);
 
             var result = new GetSkillResult { Skill = skill };

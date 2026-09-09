@@ -223,12 +223,25 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     /// </summary>
     private sealed class PartialCatalog(InMemoryMcpSkillCatalog listed, Skill unlisted) : IMcpSkillCatalog
     {
-        public ValueTask<McpSkillPage> ListAsync(string? cursor, CancellationToken cancellationToken) =>
-            listed.ListAsync(cursor, cancellationToken);
+        public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+        {
+            AssertContext(context, SkillsProtocol.MethodSkillsList);
+            return listed.ListAsync(cursor, context, cancellationToken);
+        }
 
-        public async ValueTask<Skill?> GetAsync(string uri, CancellationToken cancellationToken) =>
-            string.Equals(uri, unlisted.Uri, StringComparison.Ordinal)
+        public async ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+        {
+            AssertContext(context, SkillsProtocol.MethodSkillsGet);
+            return string.Equals(uri, unlisted.Uri, StringComparison.Ordinal)
                 ? unlisted
-                : await listed.GetAsync(uri, cancellationToken);
+                : await listed.GetAsync(uri, context, cancellationToken);
+        }
+
+        // The catalog receives the request it is answering, so a per-caller catalog can decide from it.
+        private static void AssertContext(McpSkillRequestContext context, string method)
+        {
+            Assert.Equal(method, context.JsonRpcRequest.Method);
+            Assert.Null(context.User);
+        }
     }
 }

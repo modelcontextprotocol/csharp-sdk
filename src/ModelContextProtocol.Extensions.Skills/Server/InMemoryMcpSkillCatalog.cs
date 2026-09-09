@@ -11,8 +11,13 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// so a server cannot publish an entry a conforming host would refuse to load.
 /// </para>
 /// <para>
-/// Entries are ordered by URI so that pagination is stable across calls. Cursors are keyset cursors over that
-/// order rather than offsets.
+/// The catalog keeps its own copy of every entry, so later changes to the objects passed to the constructor do
+/// not affect what is served. Entries are ordered by URI so that pagination is stable across calls. Cursors are
+/// keyset cursors over that order rather than offsets.
+/// </para>
+/// <para>
+/// Every caller sees the same entries. For a catalog whose contents depend on the caller, implement
+/// <see cref="IMcpSkillCatalog"/> directly and consult <see cref="McpSkillRequestContext.User"/>.
 /// </para>
 /// </remarks>
 public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
@@ -54,7 +59,7 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
                 throw new ArgumentException($"Duplicate skill URI '{skill.Uri}'.", nameof(skills));
             }
 
-            _byUri.Add(skill.Uri, skill);
+            _byUri.Add(skill.Uri, SkillValidation.Snapshot(skill));
         }
 
         _ordered = [.. _byUri.Values];
@@ -68,7 +73,7 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
     public int Count => _ordered.Length;
 
     /// <inheritdoc />
-    public ValueTask<McpSkillPage> ListAsync(string? cursor, CancellationToken cancellationToken)
+    public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -97,7 +102,7 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
     }
 
     /// <inheritdoc />
-    public ValueTask<Skill?> GetAsync(string uri, CancellationToken cancellationToken)
+    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
