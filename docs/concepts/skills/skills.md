@@ -198,7 +198,7 @@ Servers built with this package do not declare `directoryRead`, and hosts must n
 
 ### Samples
 
-- [SkillsServer](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/SkillsServer): a Streamable
+- [SkillsServer](../../../samples/SkillsServer/README.md): a Streamable
   HTTP server serving two skills from directories on disk.
-- [SkillsClient](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/SkillsClient): a client that
+- [SkillsClient](../../../samples/SkillsClient/README.md): a client that
   connects to it and discovers, retrieves, and verifies them.
