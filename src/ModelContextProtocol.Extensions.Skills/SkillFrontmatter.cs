@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Text.Json.Nodes;
 
@@ -259,7 +260,7 @@ public static class SkillFrontmatter
                     throw new FormatException($"Line {line.Number}: duplicate key '{key}'.");
                 }
 
-                string rest = StripComment(content.Substring(consumed)).Trim();
+                string rest = PrepareValue(content.Substring(consumed));
                 _pos++;
                 result[key] = ParseValue(rest, indent, line.Number, allowSameIndentSequence: true);
             }
@@ -313,7 +314,7 @@ public static class SkillFrontmatter
                     continue;
                 }
 
-                result.Add(ParseValue(StripComment(trimmedItem).Trim(), indent, line.Number, allowSameIndentSequence: false));
+                result.Add(ParseValue(PrepareValue(trimmedItem), indent, line.Number, allowSameIndentSequence: false));
             }
 
             return result;
@@ -368,6 +369,16 @@ public static class SkillFrontmatter
                     return JsonValue.Create(quoted);
 
                 default:
+                    if (rest[0] is '@' or '`' or '%')
+                    {
+                        throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{rest[0]}', which YAML reserves. Quote the value.");
+                    }
+
+                    if (IsSequenceEntry(rest))
+                    {
+                        throw new FormatException($"Line {lineNumber}: a sequence cannot start on the same line as its key. Put the '- ' entries on the following lines, or quote the value if '-' is meant literally.");
+                    }
+
                     if (FindKeySeparator(rest) >= 0)
                     {
                         throw new FormatException($"Line {lineNumber}: a plain scalar cannot contain ': '. Quote the value if it is meant literally.");
@@ -515,16 +526,18 @@ public static class SkillFrontmatter
                     }
 
                     bool moreIndented = text[0] == ' ';
-                    if (builder.Length > 0)
+                    if (builder.Length == 0)
                     {
-                        if (emptyRun > 0)
-                        {
-                            builder.Append('\n', emptyRun + (moreIndented || previousMoreIndented ? 1 : 0));
-                        }
-                        else
-                        {
-                            builder.Append(moreIndented || previousMoreIndented ? '\n' : ' ');
-                        }
+                        // Leading empty lines are content: each becomes a line break.
+                        builder.Append('\n', emptyRun);
+                    }
+                    else if (emptyRun > 0)
+                    {
+                        builder.Append('\n', emptyRun + (moreIndented || previousMoreIndented ? 1 : 0));
+                    }
+                    else
+                    {
+                        builder.Append(moreIndented || previousMoreIndented ? '\n' : ' ');
                     }
 
                     emptyRun = 0;
@@ -672,6 +685,11 @@ public static class SkillFrontmatter
                 throw new FormatException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
             }
 
+            if (plain.Length > 0 && plain[0] is '@' or '`' or '%')
+            {
+                throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{plain[0]}', which YAML reserves. Quote the value.");
+            }
+
             return ResolvePlainScalar(plain, lineNumber);
         }
 
@@ -776,6 +794,24 @@ public static class SkillFrontmatter
 
         private static JsonNode? TryResolveNumber(string text, int lineNumber)
         {
+            // Hexadecimal and octal integers take no sign in the core schema, and may exceed 64 bits.
+            if (text.StartsWith("0x", StringComparison.Ordinal) && text.Length > 2 && IsAll(text, 2, IsHexDigit))
+            {
+                var value = BigInteger.Parse("0" + text.Substring(2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+                return JsonNode.Parse(value.ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (text.StartsWith("0o", StringComparison.Ordinal) && text.Length > 2 && IsAll(text, 2, static c => c is >= '0' and <= '7'))
+            {
+                BigInteger value = BigInteger.Zero;
+                for (int j = 2; j < text.Length; j++)
+                {
+                    value = (value * 8) + (text[j] - '0');
+                }
+
+                return JsonNode.Parse(value.ToString(CultureInfo.InvariantCulture));
+            }
+
             int i = 0;
             bool negative = false;
             if (text[0] is '+' or '-')
@@ -790,18 +826,6 @@ public static class SkillFrontmatter
             }
 
             string body = text.Substring(i);
-
-            if (body.StartsWith("0x", StringComparison.Ordinal) && body.Length > 2 && IsAll(body, 2, IsHexDigit))
-            {
-                long value = Convert.ToInt64(body.Substring(2), 16);
-                return JsonValue.Create(negative ? -value : value);
-            }
-
-            if (body.StartsWith("0o", StringComparison.Ordinal) && body.Length > 2 && IsAll(body, 2, static c => c is >= '0' and <= '7'))
-            {
-                long value = Convert.ToInt64(body.Substring(2), 8);
-                return JsonValue.Create(negative ? -value : value);
-            }
 
             if (body is ".inf" or ".Inf" or ".INF" or ".nan" or ".NaN" or ".NAN")
             {
@@ -915,7 +939,7 @@ public static class SkillFrontmatter
                     return i;
                 }
 
-                if (content[i] == ' ' && i + 1 < content.Length && content[i + 1] == '#')
+                if (content[i] is ' ' or '\t' && i + 1 < content.Length && content[i + 1] == '#')
                 {
                     // Anything after " #" is a comment; a key cannot be separated inside one.
                     return -1;
@@ -925,37 +949,31 @@ public static class SkillFrontmatter
             return -1;
         }
 
-        /// <summary>Removes a trailing comment (" #...") from a line fragment that does not start with a quote.</summary>
-        private static string StripComment(string text)
+        /// <summary>
+        /// Prepares the remainder of a line for <see cref="ParseValue"/>: quoted values and flow collections are
+        /// returned as written, since their own parsers find their end and check what follows; anything else is a
+        /// plain value, from which a trailing comment is removed.
+        /// </summary>
+        private static string PrepareValue(string rest)
         {
-            if (text.Length > 0 && text[0] == '#')
+            rest = rest.TrimStart();
+            if (rest.Length > 0 && rest[0] is '"' or '\'' or '[' or '{')
             {
-                return string.Empty;
+                return rest.TrimEnd();
             }
 
-            char quote = '\0';
+            return StripComment(rest).Trim();
+        }
+
+        /// <summary>
+        /// Removes a trailing comment from plain text. A comment starts at a '#' that begins the text or follows
+        /// whitespace; quotes inside plain text are ordinary characters, so an apostrophe never suppresses a comment.
+        /// </summary>
+        private static string StripComment(string text)
+        {
             for (int i = 0; i < text.Length; i++)
             {
-                char c = text[i];
-                if (quote != '\0')
-                {
-                    if (c == '\\' && quote == '"')
-                    {
-                        i++;
-                    }
-                    else if (c == quote)
-                    {
-                        quote = '\0';
-                    }
-
-                    continue;
-                }
-
-                if (c is '"' or '\'')
-                {
-                    quote = c;
-                }
-                else if (c == '#' && i > 0 && text[i - 1] == ' ')
+                if (text[i] == '#' && (i == 0 || text[i - 1] is ' ' or '\t'))
                 {
                     return text.Substring(0, i);
                 }

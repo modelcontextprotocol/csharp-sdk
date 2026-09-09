@@ -61,6 +61,12 @@ public class SkillFrontmatterTests
     [InlineData("007", "7")]
     [InlineData("0x1F", "31")]
     [InlineData("0o17", "15")]
+    [InlineData("0xffffffffffffffff", "18446744073709551615")]
+    [InlineData("0o777777777777777777777777", "4722366482869645213695")]
+    [InlineData("+0x10", "\"+0x10\"")]
+    [InlineData("-0o10", "\"-0o10\"")]
+    [InlineData("0x", "\"0x\"")]
+    [InlineData("0xG", "\"0xG\"")]
     [InlineData("1.5", "1.5")]
     [InlineData(".5", "0.5")]
     [InlineData("1e3", "1000")]
@@ -109,11 +115,26 @@ public class SkillFrontmatterTests
             description: has#hash inside # but this is a comment
               # an indented comment line
             license: 'MIT' # after quotes
+            apostrophe: Follow the team's workflow # author note
+            quote: She said "go" # and left
+            tags: ["a # b", 'c # d', e] # trailing
+            map: { k: "v # w" } # trailing
+            block: | # header comment
+              text # kept
+            tab: x	#tab before hash
+            dash: -a
             """);
 
         Assert.Equal("demo", frontmatter["name"]?.GetValue<string>());
         Assert.Equal("has#hash inside", frontmatter["description"]?.GetValue<string>());
         Assert.Equal("MIT", frontmatter["license"]?.GetValue<string>());
+        Assert.Equal("Follow the team's workflow", frontmatter["apostrophe"]?.GetValue<string>());
+        Assert.Equal("She said \"go\"", frontmatter["quote"]?.GetValue<string>());
+        AssertJson("""["a # b", "c # d", "e"]""", frontmatter["tags"]);
+        Assert.Equal("v # w", frontmatter["map"]?["k"]?.GetValue<string>());
+        Assert.Equal("text # kept\n", frontmatter["block"]?.GetValue<string>());
+        Assert.Equal("x", frontmatter["tab"]?.GetValue<string>());
+        Assert.Equal("-a", frontmatter["dash"]?.GetValue<string>());
     }
 
     [Fact]
@@ -158,6 +179,18 @@ public class SkillFrontmatterTests
             """);
 
         Assert.Equal("Folded text on two lines.\nNew paragraph.\n", frontmatter["description"]?.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData(">", "\nText\n")]
+    [InlineData(">-", "\nText")]
+    [InlineData("|", "\nText\n")]
+    public void PreservesLeadingEmptyLinesInBlockScalars(string header, string expected)
+    {
+        var frontmatter = Parse($"value: {header}\n\n  Text\nnext: 1");
+
+        Assert.Equal(expected, frontmatter["value"]?.GetValue<string>());
+        Assert.Equal(1, frontmatter["next"]?.GetValue<int>());
     }
 
     [Theory]
@@ -262,6 +295,12 @@ public class SkillFrontmatterTests
     [InlineData("---\nname: [a, [b]]\n---", "nested flow")]
     [InlineData("---\nname: [a,\n  b]\n---", "unterminated flow")]
     [InlineData("---\nvalue: .inf\n---", "cannot be represented")]
+    [InlineData("---\nvalue: @handle\n---", "reserves")]
+    [InlineData("---\nvalue: `tick\n---", "reserves")]
+    [InlineData("---\nvalue: %pct\n---", "reserves")]
+    [InlineData("---\nvalue: [@a]\n---", "reserves")]
+    [InlineData("---\nvalue: - a\n---", "same line as its key")]
+    [InlineData("---\nvalue: -\n---", "same line as its key")]
     [InlineData("---\nvalue: \"\\q\"\n---", "unsupported escape")]
     [InlineData("---\njust a scalar\n---", "key: value")]
     [InlineData("---\n- item\n---", "must be a YAML mapping")]

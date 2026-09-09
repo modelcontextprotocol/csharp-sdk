@@ -148,6 +148,16 @@ public static class McpSkillsBuilderExtensions
         var skills = new List<McpServerSkill>();
         foreach (string skillDirectory in skillDirectories)
         {
+            // The per-skill loader rejects links inside a skill; the same rule applies to the skill directory
+            // itself, which could otherwise be a link to a directory outside the skills root.
+            if ((File.GetAttributes(skillDirectory) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new ArgumentException(
+                    $"'{skillDirectory}' is a symbolic link or other reparse point. Links are not followed when loading skills, " +
+                    "because a link can point outside the skills directory. Replace it with a regular directory.",
+                    nameof(directoryPath));
+            }
+
             if (!File.Exists(Path.Combine(skillDirectory, SkillsProtocol.SkillFileName)))
             {
                 continue;

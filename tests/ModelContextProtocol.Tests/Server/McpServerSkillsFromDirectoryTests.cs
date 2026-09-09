@@ -88,6 +88,39 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
         }
     }
 
+#if NET
+    [Fact]
+    public void WithSkillsFromDirectory_RejectsSymbolicLinkSkillDirectories()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skills-linkroot-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string skills = Path.Combine(root, "skills");
+            string outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(skills);
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "SKILL.md"), "---\nname: alpha\ndescription: d\n---\n");
+            File.WriteAllText(Path.Combine(outside, "private.txt"), "private data");
+
+            try
+            {
+                Directory.CreateSymbolicLink(Path.Combine(skills, "alpha"), outside);
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+            {
+                Assert.Skip($"Cannot create symbolic links here: {e.Message}");
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkillsFromDirectory(skills));
+            Assert.Contains("symbolic link", exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+#endif
+
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
