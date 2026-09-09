@@ -29,12 +29,6 @@
   <ItemGroup>
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
-    <!--
-      Core's CacheScopeConverter tolerates unknown cacheScope values on read so a single unexpected hint
-      cannot break deserialization of a whole listing. It is internal to Core, so it is compiled into this
-      assembly as well to give ListSkillsResult the same read-side leniency as the built-in list results.
-    -->
-    <Compile Include="..\ModelContextProtocol.Core\Protocol\CacheScopeConverter.cs" Link="Protocol\CacheScopeConverter.cs" />
   </ItemGroup>
 
   <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs a handful of them. -->

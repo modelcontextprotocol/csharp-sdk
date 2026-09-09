@@ -34,6 +34,13 @@ public static class McpSkillsBuilderExtensions
     /// Nested skills may legitimately list the same file. A file URI shared by several skills is registered once,
     /// provided every skill lists it with the same digest.
     /// </para>
+    /// <para>
+    /// Every caller sees every skill. <c>skills/list</c> and <c>skills/get</c> are raw request handlers and do not
+    /// pass through the request filters that guard the built-in resource methods, such as the ASP.NET Core
+    /// authorization filters. When some callers must not see some skills, implement <see cref="IMcpSkillCatalog"/>
+    /// and use <see cref="WithSkills(IMcpServerBuilder, IMcpSkillCatalog, Action{McpSkillsOptions})"/>, and guard
+    /// the corresponding file resources separately.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithSkills(
         this IMcpServerBuilder builder,
@@ -113,9 +120,24 @@ public static class McpSkillsBuilderExtensions
     /// <see cref="McpServerSkill.CreateFromDirectory(string)"/>), or two skills declare the same name.
     /// </exception>
     /// <remarks>
+    /// <para>
     /// Each skill is built with <see cref="McpServerSkill.CreateFromDirectory(string)"/>: files are read once,
     /// digests are computed from the bytes served, and symbolic links are rejected. Only immediate subdirectories
     /// are considered skills; a <c>SKILL.md</c> nested deeper inside a skill is one of that skill's files.
+    /// </para>
+    /// <para>
+    /// A subdirectory without a <c>SKILL.md</c> is not a skill and is ignored, so shared assets or documentation can
+    /// live alongside skills. A subdirectory with a <c>SKILL.md</c> is a skill, and a skill that fails validation is
+    /// an error rather than a skipped entry, so that a broken skill is noticed at startup instead of being silently
+    /// absent from the catalog.
+    /// </para>
+    /// <para>
+    /// Every caller sees every skill. <c>skills/list</c> and <c>skills/get</c> are raw request handlers and do not
+    /// pass through the request filters that guard the built-in resource methods, such as the ASP.NET Core
+    /// authorization filters. When some callers must not see some skills, implement <see cref="IMcpSkillCatalog"/>
+    /// and use <see cref="WithSkills(IMcpServerBuilder, IMcpSkillCatalog, Action{McpSkillsOptions})"/>, and guard
+    /// the corresponding file resources separately.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithSkillsFromDirectory(
         this IMcpServerBuilder builder,

@@ -155,11 +155,7 @@ public static class SkillVerifier
         if (result is null) throw new ArgumentNullException(nameof(result));
 #endif
 
-        if (skill.Resources.IsDynamic)
-        {
-            throw new InvalidOperationException(
-                $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified.");
-        }
+        ThrowIfDynamic(skill);
 
         if (result.Contents is not { Count: > 0 })
         {
@@ -207,7 +203,8 @@ public static class SkillVerifier
         if (result is null) throw new ArgumentNullException(nameof(result));
 #endif
 
-        if (!skill.Resources.IsDynamic && FindResource(skill, uri) is null)
+        ThrowIfDynamic(skill);
+        if (FindResource(skill, uri) is null)
         {
             throw new SkillVerificationException(
                 $"'{uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
@@ -229,9 +226,27 @@ public static class SkillVerifier
         }
     }
 
+    /// <summary>
+    /// Rejects a skill whose manifest is missing (the property is <c>required</c> but can still be assigned
+    /// <see langword="null"/>) or dynamic, neither of which can be verified.
+    /// </summary>
+    internal static void ThrowIfDynamic(Skill skill)
+    {
+        if (skill.Resources is null)
+        {
+            throw new ArgumentException($"Skill '{skill.Uri}' has no resources manifest.", nameof(skill));
+        }
+
+        if (skill.Resources.IsDynamic)
+        {
+            throw new InvalidOperationException(
+                $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified.");
+        }
+    }
+
     internal static SkillResource? FindResource(Skill skill, string uri)
     {
-        var resources = skill.Resources.Resources;
+        var resources = skill.Resources?.Resources;
         if (resources is null)
         {
             return null;

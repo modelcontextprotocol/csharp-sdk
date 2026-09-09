@@ -154,9 +154,12 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="requestParams">The request parameters.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The result, as returned by the server.</returns>
+    /// <returns>The result, as returned by the server, with the entry validated against the specification.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
+    /// <exception cref="SkillVerificationException">
+    /// The server returned an entry that violates the specification, or an entry for a different URI than the one requested.
+    /// </exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public static async ValueTask<GetSkillResult> GetSkillAsync(
         this McpClient client,
@@ -233,13 +236,14 @@ public static class McpSkillsClientExtensions
         if (uri is null) throw new ArgumentNullException(nameof(uri));
 #endif
 
-        if (skill.Resources.IsDynamic)
+        if (skill.Resources is { IsDynamic: true })
         {
             throw new InvalidOperationException(
                 $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified. " +
                 $"Use {nameof(McpClient.ReadResourceAsync)} directly if unverifiable content is acceptable.");
         }
 
+        SkillVerifier.ThrowIfDynamic(skill);
         if (SkillVerifier.FindResource(skill, uri) is null)
         {
             throw new SkillVerificationException(

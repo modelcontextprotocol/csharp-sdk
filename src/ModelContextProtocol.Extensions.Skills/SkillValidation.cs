@@ -207,26 +207,18 @@ internal static class SkillValidation
                 paramName);
         }
 
-        ValidateOptionalString(skill, "license", maxLength: null, paramName);
+        // Beyond name and description, only the constraints the Agent Skills specification states as requirements
+        // are enforced: compatibility is 1 to 500 characters if provided, and metadata is a mapping. Other fields,
+        // and the values inside metadata, pass through verbatim. Hosts compare frontmatter field by field against
+        // the file and ignore fields such as allowed-tools for MCP-origin skills, so rejecting a whole skill over
+        // the shape of a field no host acts on would help nobody.
         ValidateOptionalString(skill, "compatibility", MaxCompatibilityLength, paramName);
-        ValidateOptionalString(skill, "allowed-tools", maxLength: null, paramName);
 
-        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode))
+        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode) && metadataNode is not JsonObject)
         {
-            if (metadataNode is not JsonObject metadata)
-            {
-                throw new ArgumentException($"Skill '{skill.Uri}' has a 'metadata' frontmatter field that is not a mapping; the Agent Skills specification requires a map from string keys to string values.", paramName);
-            }
-
-            foreach (var entry in metadata)
-            {
-                if (entry.Value is not JsonValue value || !value.TryGetValue(out string? _))
-                {
-                    throw new ArgumentException(
-                        $"Skill '{skill.Uri}' has a 'metadata.{entry.Key}' frontmatter value that is not a string; the Agent Skills specification requires string values. Quote it in SKILL.md if it is meant literally.",
-                        paramName);
-                }
-            }
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a 'metadata' frontmatter field that is not a mapping. Give it key-value entries, or remove the key if it is not needed.",
+                paramName);
         }
 
         if (skill.Resources is null)

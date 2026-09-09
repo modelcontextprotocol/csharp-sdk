@@ -124,6 +124,18 @@ public class SkillVerifierTests
     }
 
     [Fact]
+    public void Verify_Skill_RejectsMissingManifestWithoutCrashing()
+    {
+        var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));
+        skill.Resources = null!;
+
+        Assert.Throws<ArgumentException>(() => SkillVerifier.Verify(skill,
+            new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
+        Assert.Throws<ArgumentException>(() => SkillVerifier.Verify(skill, Uri,
+            new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
+    }
+
+    [Fact]
     public void Verify_Skill_ThrowsForDynamicSkill()
     {
         var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));

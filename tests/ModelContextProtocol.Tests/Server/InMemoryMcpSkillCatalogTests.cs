@@ -188,6 +188,19 @@ public class InMemoryMcpSkillCatalogTests
     }
 
     [Fact]
+    public void Constructor_PassesThroughFieldsHostsDoNotActOn()
+    {
+        // allowed-tools is experimental and hosts ignore it for MCP-origin skills; license is free-form; metadata
+        // values are whatever the author wrote. None of these should cost a skill its listing.
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter["allowed-tools"] = new JsonArray("Read", "Write");
+        skill.Frontmatter["license"] = null;
+        skill.Frontmatter["metadata"] = new JsonObject { ["version"] = 2.1, ["tags"] = new JsonArray("a") };
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
+
+    [Fact]
     public void Constructor_AcceptsEmptyAuthority()
     {
         var skill = CreateSkill("alpha");
@@ -234,7 +247,6 @@ public class InMemoryMcpSkillCatalogTests
         });
         yield return Case("metadata present but null", s => s.Frontmatter["metadata"] = null);
         yield return Case("compatibility present but null", s => s.Frontmatter["compatibility"] = null);
-        yield return Case("license present but null", s => s.Frontmatter["license"] = null);
         yield return Case("relative uri", s =>
         {
             s.Uri = "alpha/SKILL.md";
@@ -268,10 +280,7 @@ public class InMemoryMcpSkillCatalogTests
         yield return Case("description over 1024 characters", s => s.Frontmatter["description"] = new string('d', 1025));
         yield return Case("compatibility over 500 characters", s => s.Frontmatter["compatibility"] = new string('c', 501));
         yield return Case("compatibility empty", s => s.Frontmatter["compatibility"] = "");
-        yield return Case("license not a string", s => s.Frontmatter["license"] = 1);
-        yield return Case("allowed-tools not a string", s => s.Frontmatter["allowed-tools"] = new JsonArray("Bash"));
         yield return Case("metadata not a mapping", s => s.Frontmatter["metadata"] = "x");
-        yield return Case("metadata value not a string", s => s.Frontmatter["metadata"] = new JsonObject { ["version"] = 2.1 });
         yield return Case("name missing", s => s.Frontmatter.Remove("name"));
         yield return Case("name not a string", s => s.Frontmatter["name"] = 1);
         yield return Case("name does not match uri segment", s => s.Frontmatter["name"] = "beta");
