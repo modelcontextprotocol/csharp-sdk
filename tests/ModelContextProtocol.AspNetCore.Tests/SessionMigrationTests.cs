@@ -222,7 +222,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
                 Name = "SessionMigrationTestServer",
                 Version = "1.0.0",
             };
-        }).WithTools(Tools).WithHttpTransport(options => options.Stateless = false);
+        }).WithTools(Tools).WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateful);
 
         if (migrationHandler is not null)
         {

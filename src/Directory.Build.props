@@ -5,7 +5,7 @@
     <PackageProjectUrl>https://csharp.sdk.modelcontextprotocol.io</PackageProjectUrl>
     <RepositoryUrl>https://github.com/modelcontextprotocol/csharp-sdk</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <VersionPrefix>2.1.0</VersionPrefix>
+    <VersionPrefix>2.2.0</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <Authors>ModelContextProtocol</Authors>
     <Copyright>© Model Context Protocol a Series of LF Projects, LLC.</Copyright>

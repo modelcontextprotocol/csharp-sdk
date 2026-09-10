@@ -77,16 +77,19 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError)
             {
                 // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server.
-                // It just rejected our specific request (e.g., -32022 UnsupportedProtocolVersion,
-                // -32021 MissingRequiredClientCapability, -32020 HeaderMismatch, or any other
-                // application-level error). Don't fall back to SSE — that would mask the real signal
-                // and surface a misleading "session id required" error from the SSE GET path.
-                // Adopt the Streamable HTTP transport and throw the structured exception so the
-                // connect-time fallback logic can react per spec PR #2844. Setting ActiveTransport
-                // first makes the catch filter below leave the now-owned transport alone.
+                // Adopt it before surfacing the failure so the catch filter leaves the now-owned
+                // transport alone, and never mask the response by attempting deprecated SSE.
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
-                throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
+
+                if (StreamableHttpClientSessionTransport.ShouldSurfaceJsonRpcErrorAsProtocolException(response.StatusCode, parsedError))
+                {
+                    throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
+                }
+
+                // TryReadJsonRpcErrorAsync buffered the content, so this preserves the same response
+                // body and status without consuming the network stream a second time.
+                throw await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
             }
             else
             {

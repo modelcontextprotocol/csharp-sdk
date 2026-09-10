@@ -114,7 +114,7 @@ internal sealed partial class McpServerImpl : McpServer
         // 2026-07-28+ client) is decided per response in GetAdvertisedCapabilities rather than cleared here,
         // because the same ServerCapabilities feeds both the legacy initialize handshake (which can never
         // deliver it) and server/discover (which can, given a custom handler).
-        if (HasStatefulTransport())
+        if (HasStatefulTransport)
         {
             Register(ServerOptions.ToolCollection, NotificationMethods.ToolListChangedNotification);
             Register(ServerOptions.PromptCollection, NotificationMethods.PromptListChangedNotification);
@@ -540,7 +540,7 @@ internal sealed partial class McpServerImpl : McpServer
         bool listenStreamCanDeliverListChanged,
         bool includeDeprecatedLogging)
     {
-        bool includeListChanged = HasStatefulTransport() || listenStreamCanDeliverListChanged;
+        bool includeListChanged = HasStatefulTransport || listenStreamCanDeliverListChanged;
         if (includeListChanged && includeDeprecatedLogging)
         {
             return ServerCapabilities;
@@ -575,7 +575,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// <inheritdoc />
     public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
 
-    internal override bool SupportsServerToClientRequests => HasStatefulTransport();
+    internal override bool SupportsServerToClientRequests => HasStatefulTransport;
 
     /// <inheritdoc />
     public override Implementation? ClientInfo => _clientInfo;
@@ -865,7 +865,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // request granting no notifications and complete immediately. This runs after protocol
                 // negotiation, so it is not an initialize-handshake-server signal and never triggers a client fallback to the
                 // initialize handshake.
-                if (!HasStatefulTransport())
+                if (!HasStatefulTransport)
                 {
                     var statelessSubscription = new ActiveSubscription(
                         jsonRpcRequest.Id,
@@ -2072,7 +2072,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// sites where the intent is "the client understands <see cref="InputRequiredResult"/>" rather than
     /// "the peer speaks the 2026-07-28 or later revision".
     /// </summary>
-    internal bool ClientSupportsMrtr() => IsJuly2026OrLaterProtocol();
+    private bool ClientSupportsMrtr => IsJuly2026OrLaterProtocol();
 
     /// <summary>
     /// Returns <see langword="true"/> when the session is stateful - the same server instance handles
@@ -2081,8 +2081,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> to the client and
     /// retry the handler with the responses.
     /// </summary>
-    internal bool HasStatefulTransport() =>
+    private bool HasStatefulTransport =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+
     /// <summary>
     /// Returns <see langword="true"/> when the given request was negotiated under the 2026-07-28 or later protocol
     /// revision, derived from the per-request <c>_meta</c>/<c>MCP-Protocol-Version</c> value (so it works
@@ -2097,7 +2098,7 @@ internal sealed partial class McpServerImpl : McpServer
             requestContext?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />
-    public override bool IsMrtrSupported => ClientSupportsMrtr() || HasStatefulTransport();
+    public override bool IsMrtrSupported => ClientSupportsMrtr || HasStatefulTransport;
 
     /// <summary>
     /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an
@@ -2141,7 +2142,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             // If the client natively supports MRTR, serialize and return directly -
             // the client will drive the retry loop.
-            if (ClientSupportsMrtr())
+            if (ClientSupportsMrtr)
             {
                 return SerializeInputRequiredResult(inputRequiredResult);
             }
@@ -2149,7 +2150,7 @@ internal sealed partial class McpServerImpl : McpServer
             // In stateless mode without MRTR, the server can't resolve input requests via
             // JSON-RPC (no persistent session for server-to-client requests), and the client
             // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-            if (!HasStatefulTransport())
+            if (!HasStatefulTransport)
             {
                 throw new McpException(
                     "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
@@ -2388,7 +2389,7 @@ internal sealed partial class McpServerImpl : McpServer
             // For all other cases - legacy clients, stateless sessions - fall through to the
             // exception-based path, which transparently resolves InputRequiredException via
             // legacy JSON-RPC requests when the client doesn't speak MRTR.
-            if (!ClientSupportsMrtr() || !HasStatefulTransport())
+            if (!ClientSupportsMrtr || !HasStatefulTransport)
             {
                 return await InvokeWithInputRequiredResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }

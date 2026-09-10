@@ -211,6 +211,27 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
+    public async Task July2026Post_SlowHandler_MissingRequiredCapability_Returns400()
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":20,""method"":""tools/call"",""params"":{""name"":""slow_requires_sampling"",""arguments"":{}," +
+            July2026ProtocolMetaFragment() + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "slow_requires_sampling");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal(20, json["id"]!.GetValue<long>());
+        Assert.Equal((int)McpErrorCode.MissingRequiredClientCapability, json["error"]!["code"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task ServerDiscover_WithConfiguredPerRequestMetadataProtocol_ReturnsOnlyConfiguredVersion()
     {
         await StartAsync(McpProtocolVersions.July2026ProtocolVersion);
@@ -543,7 +564,7 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Accept.Add(new("text/event-stream"));
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
-        // Stateless=true (the new default) doesn't map the GET endpoint - per SEP-2567 the standalone SSE
+        // SessionMode = HttpServerSessionMode.Stateless doesn't map the GET endpoint - per SEP-2567 the standalone SSE
         // stream is replaced by subscriptions/listen POST requests. Existing routing in
         // McpEndpointRouteBuilderExtensions only maps GET when Stateless == false.
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
@@ -602,6 +623,8 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     [McpServerToolType]
     private sealed class CapabilityTools
     {
+        private static readonly TimeSpan SlowHandlerDelay = TimeSpan.FromSeconds(1);
+
         [McpServerTool(Name = "legacy_meta_probe")]
         public static string LegacyMetaProbe(RequestContext<CallToolRequestParams> context)
         {
@@ -619,5 +642,14 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
             throw new MissingRequiredClientCapabilityException(
                 new ClientCapabilities { Sampling = new() },
                 "sampling capability required but not declared by client");
+
+        [McpServerTool(Name = "slow_requires_sampling")]
+        public static async Task<string> SlowRequiresSampling(CancellationToken cancellationToken)
+        {
+            await Task.Delay(SlowHandlerDelay, cancellationToken);
+            throw new MissingRequiredClientCapabilityException(
+                new ClientCapabilities { Sampling = new() },
+                "sampling capability required but not declared by client");
+        }
     }
 }

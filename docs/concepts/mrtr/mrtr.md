@@ -29,7 +29,7 @@ MRTR is useful when:
 
 ## Opting in
 
-MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers `2026-07-28` by default — it probes with `server/discover` and falls back to an `initialize` handshake only when the server doesn't support it. Stateless HTTP servers accept `2026-07-28` automatically when a client offers it; HTTP servers configured with `Stateless = false` refuse that revision with `UnsupportedProtocolVersion` so dual-path clients can fall back to a session-capable revision. No experimental flags are required; pinning `ProtocolVersion` to an initialize-capable revision opts back out.
+MRTR activates when both peers negotiate protocol revision **`2026-07-28`**. The C# SDK client prefers `2026-07-28` by default — it probes with `server/discover` and falls back to an `initialize` handshake only when the server doesn't support it. Stateless HTTP servers accept `2026-07-28` automatically when a client offers it; HTTP servers configured with `SessionMode = HttpServerSessionMode.Stateful` refuse that revision with `UnsupportedProtocolVersion` so dual-path clients can fall back to a session-capable revision. `HttpServerSessionMode.StatefulForInitializeClients` ([hybrid mode](xref:stateless#hybrid-mode-sessions-for-initialize-clients-only)) accepts `2026-07-28` statelessly — and therefore enables MRTR — while still issuing sessions to `initialize`-handshake clients on the same endpoint. No experimental flags are required; pinning `ProtocolVersion` to an initialize-capable revision opts back out.
 
 ```csharp
 // Client — the SDK prefers 2026-07-28 (and therefore MRTR) by default.
@@ -373,7 +373,7 @@ public static string CloseSupportTicket(
 
 ## Compatibility
 
-The SDK supports `InputRequiredException` across two protocol revisions and two session modes:
+The SDK supports `InputRequiredException` across protocol eras and effective request modes:
 
 | Negotiated protocol              | Session mode | Behavior                                                                                                                                            |
 |----------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -391,4 +391,4 @@ The SDK supports `InputRequiredException` across two protocol revisions and two 
 
 Under `2025-11-25` and earlier, stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 
-Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP can serve that revision only through the stateless path. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies to stdio and other non-HTTP stateful sessions; an HTTP server explicitly set to `Stateless = false` refuses `2026-07-28` with `UnsupportedProtocolVersion` and creates a session only when an older client falls back to `initialize`.
+Because `2026-07-28` removes `Mcp-Session-Id` (SEP-2567) and the `initialize` handshake (SEP-2575), Streamable HTTP can serve that revision only through the stateless path. The `Stateful` row for `2026-07-28` in the compatibility matrix above therefore applies to stdio and other non-HTTP stateful sessions; an HTTP server explicitly set to `SessionMode = HttpServerSessionMode.Stateful` refuses `2026-07-28` with `UnsupportedProtocolVersion` and creates a session only when an older client falls back to `initialize`. `HttpServerSessionMode.StatefulForInitializeClients` ([hybrid mode](xref:stateless#hybrid-mode-sessions-for-initialize-clients-only)) serves `2026-07-28` requests through the stateless path — the `2026-07-28` / `Stateless` row — while `initialize`-handshake clients on the same endpoint follow the `2025-11-25` / `Stateful` row.

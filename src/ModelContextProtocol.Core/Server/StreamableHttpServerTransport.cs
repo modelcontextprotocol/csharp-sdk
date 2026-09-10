@@ -216,14 +216,14 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// This overload additionally reports the first JSON-RPC message written to the response via
     /// <paramref name="onResponseStarting"/>, before any response bytes are written, so the HTTP
     /// application can still choose the response status line (SEP-2575 maps some JSON-RPC error
-    /// codes to HTTP statuses). When <paramref name="onResponseStarting"/> is provided, the eager
-    /// response-header flush that normally precedes request processing is deferred until that first
-    /// message; the callback receives <see langword="null"/> when the first write is not a JSON-RPC
-    /// message (e.g. a resumability priming event).
+    /// codes to HTTP statuses). When <paramref name="onResponseStarting"/> is provided for a
+    /// per-request-metadata protocol revision, the eager response-header flush that normally precedes
+    /// request processing is deferred until that first message; the callback receives
+    /// <see langword="null"/> when the first write is not a JSON-RPC message (e.g. a resumability
+    /// priming event).
     /// The status line can only be influenced by the FIRST write: when a handler streams a
-    /// notification (e.g. progress) before failing, or runs past the transport's bounded
-    /// header-flush grace window, the status is already committed and a later JSON-RPC error
-    /// rides the committed status.
+    /// notification (e.g. progress) before failing, the status is already committed and a later
+    /// JSON-RPC error rides the committed status.
     /// </summary>
     /// <param name="message">The JSON-RPC message to process.</param>
     /// <param name="responseStream">The response stream to write any JSON-RPC responses to.</param>
