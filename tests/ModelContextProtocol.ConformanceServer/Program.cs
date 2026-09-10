@@ -51,17 +51,16 @@ public class Program
         bool stateless)
     {
         services.AddDistributedMemoryCache();
-        var conformanceSkills = new ConformanceSkills();
         var mcpServerBuilder = services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
-            .WithSkills(conformanceSkills.CreateCatalog(), options =>
+            .WithSkills(ConformanceSkills.CreateCatalog(), options =>
             {
                 options.TimeToLive = TimeSpan.FromMinutes(5);
                 options.CacheScope = CacheScope.Public;
             })
-            .WithResources(conformanceSkills.CreateResources())
+            .WithResources(ConformanceSkills.CreateResources())
             .WithTasks(
                 new InMemoryMcpTaskStore
                 {

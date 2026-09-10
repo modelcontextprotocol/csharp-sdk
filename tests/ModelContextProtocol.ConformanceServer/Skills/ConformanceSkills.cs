@@ -1,7 +1,5 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Server;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.ConformanceServer.Skills;
@@ -11,160 +9,89 @@ namespace ModelContextProtocol.ConformanceServer.Skills;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Digests and sizes are computed from the same byte buffers the resources serve, so a manifest can never
-/// disagree with the content a host reads back. Skill files are registered as concrete resources rather
-/// than through a URI template so that they appear in <c>resources/list</c> carrying the name, description,
-/// and MIME type SEP-2640 asks for.
+/// The three static skills are authored through <see cref="McpServerSkill"/>, so their frontmatter is read from
+/// their <c>SKILL.md</c> and their manifests are computed from the same bytes their resources serve. A fourth,
+/// deliberately unenumerable skill is added to the catalog by hand: it is served and answerable through
+/// <c>skills/get</c>, but carries no digests and so cannot be content-bound.
+/// </para>
+/// <para>
+/// The page size is deliberately small so the scenarios exercise cursor pagination.
 /// </para>
 /// </remarks>
-public sealed class ConformanceSkills
+public static class ConformanceSkills
 {
-    private const string GitWorkflowManifest =
-        "---\nname: git-workflow\ndescription: Follow this team's Git conventions for branching and commits\n---\n\n# Git workflow\n";
+    private const string GeneratedReportUri = "skill://generated-report/SKILL.md";
 
-    private const string PdfProcessingManifest =
-        "---\nname: pdf-processing\ndescription: Extract, fill, and assemble PDF documents\n---\n\n# PDF processing\n";
+    private static readonly McpServerSkill[] s_skills =
+    [
+        McpServerSkill.Create(
+            "skill://git-workflow/SKILL.md",
+            [
+                SkillFile("git-workflow", "Follow this team's Git conventions for branching and commits", "# Git workflow\n"),
+            ]),
 
-    private const string RefundsManifest =
-        "---\nname: refunds\ndescription: Process customer refund requests per company policy\n---\n\n# Refunds\n";
+        McpServerSkill.Create(
+            "skill://pdf-processing/SKILL.md",
+            [
+                SkillFile("pdf-processing", "Extract, fill, and assemble PDF documents", "# PDF processing\n"),
+                McpServerSkillFile.FromText("references/FORMS.md", "# Forms\n\nField reference for PDF form filling.\n"),
+                McpServerSkillFile.FromText("scripts/extract.py", "import sys\n\nprint('extract')\n"),
+                McpServerSkillFile.FromText("templates/invoice.md", "# Invoice\n"),
+                McpServerSkillFile.FromText("templates/regional/eu-invoice.md", "# EU Invoice\n"),
+            ]),
 
-    private const string GeneratedReportManifest =
-        "---\nname: generated-report\ndescription: Assemble a report from live data\n---\n\n# Generated report\n";
+        McpServerSkill.Create(
+            "skill://acme/billing/refunds/SKILL.md",
+            [
+                SkillFile("refunds", "Process customer refund requests per company policy", "# Refunds\n"),
+                McpServerSkillFile.FromText("examples/email.md", "Subject: Your refund\n"),
+            ]),
+    ];
 
-    private readonly Dictionary<string, byte[]> _content = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (string Name, string Description)> _manifestMetadata = new(StringComparer.Ordinal);
-    private readonly List<SkillEntry> _skills = [];
-
-    public ConformanceSkills()
+    private static readonly Skill s_generatedReport = new()
     {
-        AddSkill(
-            "git-workflow",
-            "Follow this team's Git conventions for branching and commits",
-            [("SKILL.md", GitWorkflowManifest)]);
-
-        AddSkill(
-            "pdf-processing",
-            "Extract, fill, and assemble PDF documents",
-            [
-                ("SKILL.md", PdfProcessingManifest),
-                ("references/FORMS.md", "# Forms\n\nField reference for PDF form filling.\n"),
-                ("scripts/extract.py", "import sys\n\nprint('extract')\n"),
-                ("templates/invoice.md", "# Invoice\n"),
-                ("templates/regional/eu-invoice.md", "# EU Invoice\n"),
-            ]);
-
-        AddSkill(
-            "acme/billing/refunds",
-            "Process customer refund requests per company policy",
-            [
-                ("SKILL.md", RefundsManifest),
-                ("examples/email.md", "Subject: Your refund\n"),
-            ]);
-
-        // A deliberately unenumerable skill: it is served and answerable through skills/get, but carries
-        // no digests and so cannot be content-bound.
-        _skills.Add(new SkillEntry
-        {
-            Uri = "skill://generated-report/SKILL.md",
-            Frontmatter = new JsonObject
-            {
-                ["name"] = "generated-report",
-                ["description"] = "Assemble a report from live data",
-            },
-            Resources = SkillResources.Dynamic,
-        });
-        _content["skill://generated-report/SKILL.md"] = Encoding.UTF8.GetBytes(GeneratedReportManifest);
-        _manifestMetadata["skill://generated-report/SKILL.md"] =
-            ("generated-report", "Assemble a report from live data");
-    }
+        Uri = GeneratedReportUri,
+        Frontmatter = Frontmatter("generated-report", "Assemble a report from live data"),
+        Resources = SkillResources.Dynamic,
+    };
 
     /// <summary>
     /// Creates the catalog backing <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
-    /// <remarks>
-    /// The page size is deliberately small so the conformance scenarios exercise cursor pagination.
-    /// </remarks>
-    public InMemoryMcpSkillCatalog CreateCatalog() => new(_skills, pageSize: 2);
+    public static IMcpSkillCatalog CreateCatalog() =>
+        new InMemoryMcpSkillCatalog([.. s_skills.Select(s => s.ProtocolSkill), s_generatedReport], pageSize: 2);
 
     /// <summary>
-    /// Creates one concrete resource per skill file, so the files are enumerable through
-    /// <c>resources/list</c> and readable through <c>resources/read</c>.
+    /// Creates the resources serving every skill file, so the files are enumerable through <c>resources/list</c>
+    /// and readable through <c>resources/read</c>.
     /// </summary>
-    public IEnumerable<McpServerResource> CreateResources()
+    public static IEnumerable<McpServerResource> CreateResources()
     {
-        foreach (var entry in _content)
+        foreach (var skill in s_skills)
         {
-            string uri = entry.Key;
-            string text = Encoding.UTF8.GetString(entry.Value);
-            bool isManifest = _manifestMetadata.TryGetValue(uri, out var metadata);
-
-            yield return McpServerResource.Create(
-                () => text,
-                new McpServerResourceCreateOptions
-                {
-                    UriTemplate = uri,
-                    // SEP-2640: a SKILL.md resource SHOULD carry the name and description from its own
-                    // frontmatter, so a host can build its registry from resources/list alone.
-                    Name = isManifest ? metadata.Name : uri[(uri.LastIndexOf('/') + 1)..],
-                    Description = isManifest ? metadata.Description : "Skill supporting file",
-                    MimeType = isManifest ? SkillsProtocol.SkillManifestMimeType : GuessMimeType(uri),
-                });
-        }
-    }
-
-    private void AddSkill(string skillPath, string description, (string Path, string Body)[] files)
-    {
-        string name = skillPath.Split('/')[^1];
-        var resources = new List<SkillResource>();
-
-        foreach (var (path, body) in files)
-        {
-            string uri = $"skill://{skillPath}/{path}";
-            byte[] bytes = Encoding.UTF8.GetBytes(body);
-            _content[uri] = bytes;
-            if (string.Equals(path, SkillsProtocol.SkillManifestFileName, StringComparison.Ordinal))
+            foreach (var resource in skill.Resources)
             {
-                _manifestMetadata[uri] = (name, description);
+                yield return resource;
             }
+        }
 
-            resources.Add(new SkillResource
+        yield return McpServerResource.Create(
+            () => $"---\nname: generated-report\ndescription: Assemble a report from live data\n---\n\n# Generated report\n\nGenerated at {DateTimeOffset.UtcNow:O}.\n",
+            new McpServerResourceCreateOptions
             {
-                Uri = uri,
-                Digest = ComputeDigest(bytes),
-                Size = bytes.LongLength,
+                UriTemplate = GeneratedReportUri,
+                Name = "generated-report",
+                Description = "Assemble a report from live data",
+                MimeType = "text/markdown",
             });
-        }
-
-        _skills.Add(new SkillEntry
-        {
-            Uri = $"skill://{skillPath}/{SkillsProtocol.SkillManifestFileName}",
-            Frontmatter = new JsonObject
-            {
-                ["name"] = name,
-                ["description"] = description,
-            },
-            Resources = SkillResources.FromResources(resources),
-        });
     }
 
-    private string ComputeDigest(byte[] bytes)
+    private static JsonObject Frontmatter(string name, string description) => new()
     {
-        byte[] hash = SHA256.HashData(bytes);
-
-        var builder = new StringBuilder("sha256:", 71);
-        foreach (byte value in hash)
-        {
-            builder.Append(value.ToString("x2"));
-        }
-
-        return builder.ToString();
-    }
-
-    private string GuessMimeType(string uri) => uri[(uri.LastIndexOf('.') + 1)..] switch
-    {
-        "md" => "text/markdown",
-        "py" => "text/x-python",
-        "json" => "application/json",
-        _ => "text/plain",
+        ["name"] = name,
+        ["description"] = description,
     };
+
+    private static McpServerSkillFile SkillFile(string name, string description, string body) =>
+        McpServerSkillFile.FromText(SkillsProtocol.SkillFileName, $"---\nname: {name}\ndescription: {description}\n---\n\n{body}");
 }

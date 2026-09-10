@@ -3,20 +3,21 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Text.Json;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// End-to-end tests for the SEP-2640 skills methods over the client-server transport: capability
-/// declaration, <c>skills/list</c> enumeration and pagination, <c>skills/get</c> retrieval including
-/// skills absent from the listing, and the error contract for unknown URIs.
+/// End-to-end tests for skills registered through <see cref="McpServerSkill"/>: capability declaration, listing,
+/// retrieval, automatic resource registration, and verified reads through the client extensions.
 /// </summary>
 public class McpServerSkillsTests : ClientServerTestBase
 {
-    private const string ListedSkillUri = "skill://git-workflow/SKILL.md";
-    private const string NestedSkillUri = "skill://acme/billing/refunds/SKILL.md";
+    private const string GitWorkflowUri = "skill://git-workflow/SKILL.md";
+    private const string GitWorkflowMarkdown = "---\nname: git-workflow\ndescription: Git conventions\nlicense: MIT\n---\n\n# Git workflow\n";
+    private const string RefundsUri = "skill://acme/billing/refunds/SKILL.md";
+    private static readonly byte[] s_binaryFile = [0x89, 0x50, 0x4E, 0x47, 0xFF, 0xFE, 0x00];
 
     public McpServerSkillsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -25,192 +26,139 @@ public class McpServerSkillsTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        var catalog = new InMemoryMcpSkillCatalog(
-        [
-            CreateSkill(ListedSkillUri, "git-workflow", SkillResources.FromResources(
+        var gitWorkflow = McpServerSkill.Create(
+            GitWorkflowUri,
+            new JsonObject { ["name"] = "git-workflow", ["description"] = "Git conventions", ["license"] = "MIT" },
             [
-                new SkillResource
-                {
-                    Uri = ListedSkillUri,
-                    Digest = "sha256:" + new string('a', 64),
-                    Size = 2314,
-                },
-            ])),
-            CreateSkill(NestedSkillUri, "refunds", SkillResources.Dynamic),
-        ]);
+                McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown),
+                McpServerSkillFile.FromText("references/GUIDE.md", "# Guide\n"),
+                new McpServerSkillFile { Path = "assets/logo.png", Content = s_binaryFile },
+            ]);
 
-        mcpServerBuilder.WithSkills(catalog, options =>
-        {
-            options.TimeToLive = TimeSpan.FromMinutes(5);
-            options.CacheScope = CacheScope.Public;
-        });
-    }
+        var refunds = McpServerSkill.Create(
+            RefundsUri,
+            new JsonObject { ["name"] = "refunds", ["description"] = "Process refunds" },
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: refunds\ndescription: Process refunds\n---\n")]);
 
-    private static SkillEntry CreateSkill(string uri, string name, SkillResources resources) => new()
-    {
-        Uri = uri,
-        Frontmatter = new JsonObject
-        {
-            ["name"] = name,
-            ["description"] = $"The {name} skill",
-        },
-        Resources = resources,
-    };
-
-    private async Task<JsonNode?> SendAsync(McpClient client, string method, JsonObject? parameters)
-    {
-        var request = new JsonRpcRequest
-        {
-            Method = method,
-            Params = parameters,
-        };
-
-        var response = await client.SendRequestAsync(request, TestContext.Current.CancellationToken);
-        return response.Result;
+        mcpServerBuilder.WithSkills([gitWorkflow, refunds]);
     }
 
     [Fact]
-    public async Task Server_DeclaresSkillsExtensionCapability()
+    public async Task Server_DeclaresSkillsExtensionAndResourcesCapability()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var extensions = client.ServerCapabilities.Extensions;
+        Assert.True(client.SupportsSkills());
+        Assert.NotNull(client.ServerCapabilities.Resources);
 
-        Assert.NotNull(extensions);
-        Assert.True(extensions.ContainsKey(SkillsProtocol.ExtensionId));
-    }
-
-    [Fact]
-    public async Task Server_DoesNotDeclareDirectoryRead_WhenNotSupported()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var settings = JsonSerializer.SerializeToNode(
-            client.ServerCapabilities.Extensions![SkillsProtocol.ExtensionId])?.AsObject();
-
+        var settings = System.Text.Json.JsonSerializer.SerializeToNode(client.ServerCapabilities.Extensions![SkillsProtocol.ExtensionId], McpJsonUtilities.DefaultOptions)?.AsObject();
         Assert.NotNull(settings);
-        Assert.False(settings.ContainsKey(SkillsProtocol.DirectoryReadSetting));
+        Assert.Empty(settings);
     }
 
     [Fact]
-    public async Task SkillsList_ReturnsEveryPublishedSkill()
+    public async Task ListSkillsAsync_ReturnsEveryRegisteredSkill()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await SendAsync(client, SkillsProtocol.MethodSkillsList, []);
-        var listing = result.Deserialize(McpSkillsJsonContext.Default.ListSkillsResult);
+        var skills = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
 
-        Assert.NotNull(listing);
-        Assert.Equal(2, listing.Skills.Count);
-        Assert.Contains(listing.Skills, skill => skill.Uri == ListedSkillUri);
-        Assert.Contains(listing.Skills, skill => skill.Uri == NestedSkillUri);
+        Assert.Equal(2, skills.Count);
+        var gitWorkflow = Assert.Single(skills, s => s.Uri == GitWorkflowUri);
+        Assert.Equal("git-workflow", gitWorkflow.Name);
+        Assert.Equal("MIT", gitWorkflow.Frontmatter["license"]?.GetValue<string>());
+        Assert.Equal(3, gitWorkflow.Resources.Resources!.Count);
+        Assert.Contains(skills, s => s.Uri == RefundsUri && s.Name == "refunds");
     }
 
     [Fact]
-    public async Task SkillsList_MarksResultComplete()
+    public async Task GetSkillAsync_ReturnsTheRequestedEntry()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await SendAsync(client, SkillsProtocol.MethodSkillsList, []);
+        var skill = await client.GetSkillAsync(RefundsUri, TestContext.Current.CancellationToken);
 
-        Assert.Equal("complete", result?["resultType"]?.GetValue<string>());
+        Assert.Equal(RefundsUri, skill.Uri);
+        Assert.Equal("refunds", skill.Name);
+        Assert.Single(skill.Resources.Resources!);
     }
 
     [Fact]
-    public async Task SkillsList_SerializesEnumeratedManifestAsArray()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var result = await SendAsync(client, SkillsProtocol.MethodSkillsList, []);
-
-        var entry = result!["skills"]!.AsArray()
-            .Single(skill => skill!["uri"]!.GetValue<string>() == ListedSkillUri)!;
-        var resources = entry["resources"]!.AsArray();
-
-        Assert.Single(resources);
-        Assert.Equal(2314, resources[0]!["size"]!.GetValue<long>());
-        Assert.StartsWith("sha256:", resources[0]!["digest"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task SkillsList_SerializesDynamicManifestAsTheDynamicString()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var result = await SendAsync(client, SkillsProtocol.MethodSkillsList, []);
-
-        var entry = result!["skills"]!.AsArray()
-            .Single(skill => skill!["uri"]!.GetValue<string>() == NestedSkillUri)!;
-
-        Assert.Equal("dynamic", entry["resources"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task SkillsList_PreservesFrontmatterVerbatim()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var result = await SendAsync(client, SkillsProtocol.MethodSkillsList, []);
-
-        var entry = result!["skills"]!.AsArray()
-            .Single(skill => skill!["uri"]!.GetValue<string>() == ListedSkillUri)!;
-        var frontmatter = entry["frontmatter"]!.AsObject();
-
-        Assert.Equal("git-workflow", frontmatter["name"]!.GetValue<string>());
-        Assert.Equal("The git-workflow skill", frontmatter["description"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task SkillsGet_ReturnsTheRequestedEntry()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var result = await SendAsync(
-            client,
-            SkillsProtocol.MethodSkillsGet,
-            new JsonObject { ["uri"] = ListedSkillUri });
-        var skill = result.Deserialize(McpSkillsJsonContext.Default.GetSkillResult);
-
-        Assert.NotNull(skill);
-        Assert.Equal(ListedSkillUri, skill.Skill.Uri);
-        Assert.False(skill.Skill.Resources.IsDynamic);
-    }
-
-    [Fact]
-    public async Task SkillsGet_CarriesNoPaginationCursor()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var result = await SendAsync(
-            client,
-            SkillsProtocol.MethodSkillsGet,
-            new JsonObject { ["uri"] = ListedSkillUri });
-
-        Assert.False(result!.AsObject().ContainsKey("nextCursor"));
-    }
-
-    [Fact]
-    public async Task SkillsGet_WithUnknownUri_ReturnsInvalidParams()
+    public async Task GetSkillAsync_WithUnknownUri_ReturnsInvalidParams()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await SendAsync(
-                client,
-                SkillsProtocol.MethodSkillsGet,
-                new JsonObject { ["uri"] = "skill://missing/SKILL.md" }));
+            async () => await client.GetSkillAsync("skill://missing/SKILL.md", TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
 
     [Fact]
-    public async Task SkillsGet_WithMissingUri_ReturnsInvalidParams()
+    public async Task SkillFiles_AreListedAsResources()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var exception = await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await SendAsync(client, SkillsProtocol.MethodSkillsGet, []));
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
+        var skillFile = Assert.Single(resources, r => r.Uri == GitWorkflowUri);
+        Assert.Equal("git-workflow", skillFile.Name);
+        Assert.Equal("Git conventions", skillFile.Description);
+        Assert.Equal("text/markdown", skillFile.MimeType);
+        Assert.Contains(resources, r => r.Uri == "skill://git-workflow/references/GUIDE.md");
+        Assert.Contains(resources, r => r.Uri == "skill://git-workflow/assets/logo.png" && r.MimeType == "image/png");
+        Assert.Contains(resources, r => r.Uri == RefundsUri);
+    }
+
+    [Fact]
+    public async Task ReadSkillResourceAsync_ReturnsVerifiedText()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var skill = await client.GetSkillAsync(GitWorkflowUri, TestContext.Current.CancellationToken);
+
+        var result = await client.ReadSkillResourceAsync(skill, GitWorkflowUri, TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents));
+        Assert.Equal(GitWorkflowMarkdown, text.Text);
+        Assert.Equal("text/markdown", text.MimeType);
+    }
+
+    [Fact]
+    public async Task ReadSkillResourceAsync_ReturnsVerifiedBlobForBinaryFile()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var skill = await client.GetSkillAsync(GitWorkflowUri, TestContext.Current.CancellationToken);
+
+        var result = await client.ReadSkillResourceAsync(skill, "skill://git-workflow/assets/logo.png", TestContext.Current.CancellationToken);
+
+        var blob = Assert.IsType<BlobResourceContents>(Assert.Single(result.Contents));
+        Assert.Equal(s_binaryFile, blob.DecodedData.ToArray());
+        Assert.Equal("image/png", blob.MimeType);
+    }
+
+    [Fact]
+    public async Task ReadSkillResourceAsync_RejectsUnlistedFileWithoutContactingServer()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var skill = await client.GetSkillAsync(GitWorkflowUri, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<SkillVerificationException>(
+            async () => await client.ReadSkillResourceAsync(skill, "skill://git-workflow/references/NEW.md", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ReadSkillResourceAsync_DetectsContentThatNoLongerMatchesTheHeldEntry()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var skill = await client.GetSkillAsync(GitWorkflowUri, TestContext.Current.CancellationToken);
+
+        // Simulate a stale held entry: the host approved the skill against a different manifest.
+        var stale = skill.Resources.Resources!.Select(r => new SkillResource { Uri = r.Uri, Digest = r.Digest, Size = r.Size }).ToList();
+        stale[0].Digest = SkillVerifier.ComputeDigest(Encoding.UTF8.GetBytes("previous content"));
+        stale[0].Size = Encoding.UTF8.GetByteCount("previous content");
+        skill.Resources = SkillResources.FromResources(stale);
+
+        await Assert.ThrowsAsync<SkillVerificationException>(
+            async () => await client.ReadSkillResourceAsync(skill, GitWorkflowUri, TestContext.Current.CancellationToken));
     }
 }

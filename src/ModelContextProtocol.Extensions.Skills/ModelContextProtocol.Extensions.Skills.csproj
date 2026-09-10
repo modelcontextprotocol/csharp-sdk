@@ -11,8 +11,8 @@
     <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
     <!--
       Package validation stays enabled so cross-target-framework API compatibility is checked. The
-      repo-wide baseline is cleared because this package has no released version to compare against yet;
-      set it to the first shipped version once this package has been released.
+      repo-wide baseline is cleared because this package has not shipped yet; set it to the first
+      released version once it has.
     -->
     <PackageValidationBaselineVersion />
   </PropertyGroup>
@@ -31,7 +31,7 @@
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
-  <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs the ExperimentalAttribute polyfill. -->
+  <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs a handful of them. -->
   <ItemGroup>
     <Compile Remove="..\Common\Polyfills\**\*.cs" />
     <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\ExperimentalAttribute.cs"
