@@ -3,10 +3,15 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <summary>
 /// Provides constants for the MCP Skills extension (SEP-2640).
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// for details.
+/// </remarks>
 public static class SkillsProtocol
 {
     /// <summary>
-    /// The extension identifier for the MCP Skills extension.
+    /// The extension identifier for the MCP Skills extension, as it appears in the <c>extensions</c>
+    /// field of a server's capabilities.
     /// </summary>
     public const string ExtensionId = "io.modelcontextprotocol/skills";
 
@@ -21,49 +26,32 @@ public static class SkillsProtocol
     public const string MethodSkillsGet = "skills/get";
 
     /// <summary>
-    /// The name of the optional request method sent from the client to list the direct children
-    /// of a directory resource.
+    /// The file name of the manifest every skill directory must contain at its root.
     /// </summary>
-    public const string MethodResourcesDirectoryRead = "resources/directory/read";
+    public const string SkillFileName = "SKILL.md";
 
     /// <summary>
-    /// The name of the capability setting indicating that the server implements
-    /// <see cref="MethodResourcesDirectoryRead"/>.
+    /// The maximum number of files a single skill may declare in its manifest, <see cref="SkillFileName"/> included.
     /// </summary>
-    public const string DirectoryReadSetting = "directoryRead";
-
-    /// <summary>
-    /// The reverse-domain prefix reserved by this extension for <c>_meta</c> keys on skill resources.
-    /// </summary>
-    public const string MetaPrefix = "io.modelcontextprotocol.skills/";
-
-    /// <summary>
-    /// The file name of the required skill manifest at the root of every skill directory.
-    /// </summary>
-    public const string SkillManifestFileName = "SKILL.md";
-
-    /// <summary>
-    /// The MIME type identifying a directory resource.
-    /// </summary>
-    public const string DirectoryMimeType = "inode/directory";
-
-    /// <summary>
-    /// The MIME type recommended for a skill's <c>SKILL.md</c> resource.
-    /// </summary>
-    public const string SkillManifestMimeType = "text/markdown";
-
-    /// <summary>
-    /// The sentinel used in place of a resource array when a skill's content is generated dynamically.
-    /// </summary>
-    public const string DynamicResourcesSentinel = "dynamic";
-
-    /// <summary>
-    /// The maximum number of resources a single skill may declare, per the SEP-2640 limits.
-    /// </summary>
+    /// <remarks>
+    /// Hosts must support skills up to and including this limit. Servers should not serve a skill that exceeds it.
+    /// </remarks>
     public const int MaxResourcesPerSkill = 512;
 
     /// <summary>
-    /// The maximum total size in bytes of a single skill's resources, per the SEP-2640 limits.
+    /// The maximum total size in bytes of a single skill's files, summed over its manifest.
     /// </summary>
+    /// <remarks>
+    /// Hosts must support skills up to and including this limit. Servers should not serve a skill that exceeds it.
+    /// </remarks>
     public const long MaxTotalSizeBytes = 16 * 1024 * 1024;
+
+    /// <summary>The value of a skill's <c>resources</c> field when its content is generated dynamically.</summary>
+    internal const string DynamicResourcesSentinel = "dynamic";
+
+    /// <summary>The prefix of a manifest digest.</summary>
+    internal const string DigestPrefix = "sha256:";
+
+    /// <summary>The MIME type recommended for a skill's <c>SKILL.md</c> resource.</summary>
+    internal const string SkillFileMimeType = "text/markdown";
 }

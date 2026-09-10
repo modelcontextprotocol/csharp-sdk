@@ -21,9 +21,8 @@ public abstract class PaginatedResult : Result
     /// Initializes a new instance of the <see cref="PaginatedResult"/> class.
     /// </summary>
     /// <remarks>
-    /// This is <see langword="protected"/> rather than <c>private protected</c> so that extension packages
-    /// implementing paginated methods defined outside the core specification can derive from it. See
-    /// <see cref="Server.McpServerRequestHandler"/>.
+    /// This constructor is <see langword="protected"/> rather than <c>private protected</c> so that extension
+    /// packages implementing paginated methods defined outside the core specification can derive from it.
     /// </remarks>
     protected PaginatedResult()
     {

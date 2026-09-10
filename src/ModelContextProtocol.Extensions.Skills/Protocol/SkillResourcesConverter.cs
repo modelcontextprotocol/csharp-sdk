@@ -13,69 +13,55 @@ internal sealed class SkillResourcesConverter : JsonConverter<SkillResources>
     /// Gets a value indicating that this converter is invoked for <c>null</c> tokens.
     /// </summary>
     /// <remarks>
-    /// Without this, System.Text.Json assigns <see langword="null"/> directly for a reference type and
-    /// never calls <see cref="Read"/>, so <c>"resources": null</c> would be silently accepted. SEP-2640
-    /// requires a manifest on every entry and admits only an array or the <c>"dynamic"</c> string, so a
-    /// null must be rejected like any other invalid value.
+    /// Without this, System.Text.Json assigns <see langword="null"/> directly for a reference type and never
+    /// calls <see cref="Read"/>, so <c>"resources": null</c> would be silently accepted. The specification
+    /// requires a manifest on every entry and admits only an array or the <c>"dynamic"</c> string, so a null
+    /// must be rejected like any other invalid value.
     /// </remarks>
     public override bool HandleNull => true;
 
     public override SkillResources Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null)
+        switch (reader.TokenType)
         {
-            throw new JsonException(
-                $"Invalid skill manifest: expected an array or the string '{SkillsProtocol.DynamicResourcesSentinel}' but found null.");
-        }
-
-        if (reader.TokenType == JsonTokenType.String)
-        {
-            string? sentinel = reader.GetString();
-            if (!string.Equals(sentinel, SkillsProtocol.DynamicResourcesSentinel, StringComparison.Ordinal))
-            {
+            case JsonTokenType.Null:
                 throw new JsonException(
-                    $"Invalid skill manifest: expected the string '{SkillsProtocol.DynamicResourcesSentinel}' but found '{sentinel}'.");
-            }
+                    $"Invalid skill manifest: expected an array or the string '{SkillsProtocol.DynamicResourcesSentinel}' but found null.");
 
-            return SkillResources.Dynamic;
+            case JsonTokenType.String:
+                string? sentinel = reader.GetString();
+                if (!string.Equals(sentinel, SkillsProtocol.DynamicResourcesSentinel, StringComparison.Ordinal))
+                {
+                    throw new JsonException(
+                        $"Invalid skill manifest: expected the string '{SkillsProtocol.DynamicResourcesSentinel}' but found '{sentinel}'.");
+                }
+
+                return SkillResources.Dynamic;
+
+            case JsonTokenType.StartArray:
+                var resources = new List<SkillResource>();
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonTokenType.EndArray)
+                    {
+                        return SkillResources.FromResources(resources);
+                    }
+
+                    var resource = JsonSerializer.Deserialize(ref reader, McpSkillsJsonContext.Default.SkillResource) ??
+                        throw new JsonException("Invalid skill manifest: a resource entry was null.");
+                    resources.Add(resource);
+                }
+
+                throw new JsonException("Invalid skill manifest: unterminated array.");
+
+            default:
+                throw new JsonException(
+                    $"Invalid skill manifest: expected an array or the string '{SkillsProtocol.DynamicResourcesSentinel}' but found {reader.TokenType}.");
         }
-
-        if (reader.TokenType != JsonTokenType.StartArray)
-        {
-            throw new JsonException(
-                $"Invalid skill manifest: expected an array or the string '{SkillsProtocol.DynamicResourcesSentinel}' but found {reader.TokenType}.");
-        }
-
-        var resources = new List<SkillResource>();
-        while (reader.Read())
-        {
-            if (reader.TokenType == JsonTokenType.EndArray)
-            {
-                return SkillResources.FromResources(resources);
-            }
-
-            var resource = JsonSerializer.Deserialize(ref reader, McpSkillsJsonContext.Default.SkillResource);
-            if (resource is null)
-            {
-                throw new JsonException("Invalid skill manifest: a resource entry was null.");
-            }
-
-            resources.Add(resource);
-        }
-
-        throw new JsonException("Invalid skill manifest: unterminated array.");
     }
 
     public override void Write(Utf8JsonWriter writer, SkillResources value, JsonSerializerOptions options)
     {
-#if NET
-        ArgumentNullException.ThrowIfNull(writer);
-        ArgumentNullException.ThrowIfNull(value);
-#else
-        if (writer is null) throw new ArgumentNullException(nameof(writer));
-        if (value is null) throw new ArgumentNullException(nameof(value));
-#endif
-
         if (value.IsDynamic)
         {
             writer.WriteStringValue(SkillsProtocol.DynamicResourcesSentinel);

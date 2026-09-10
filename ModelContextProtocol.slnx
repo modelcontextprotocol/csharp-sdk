@@ -49,6 +49,8 @@
     <Project Path="samples/ProtectedMcpServer/ProtectedMcpServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
+    <Project Path="samples/SkillsClient/SkillsClient.csproj" />
+    <Project Path="samples/SkillsServer/SkillsServer.csproj" />
     <Project Path="samples/TasksExtension/TasksExtension.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
     <Project Path="samples/WeatherAppServer/WeatherAppServer.csproj" />

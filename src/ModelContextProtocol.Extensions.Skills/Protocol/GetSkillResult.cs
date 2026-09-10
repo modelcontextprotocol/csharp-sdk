@@ -9,11 +9,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <remarks>
 /// <para>
 /// A server answers for every skill it serves, whether or not that skill appears in its <c>skills/list</c>
-/// result. The result carries no pagination cursor, because a single entry is not a list.
+/// result. The result carries no pagination cursor.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640">SEP-2640</see>
-/// specification for details.
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// for details.
 /// </para>
 /// </remarks>
 public sealed class GetSkillResult : Result
@@ -22,5 +22,5 @@ public sealed class GetSkillResult : Result
     /// Gets or sets the skill's entry, identical in shape and meaning to an entry of <c>skills/list</c>.
     /// </summary>
     [JsonPropertyName("skill")]
-    public required SkillEntry Skill { get; set; }
+    public required Skill Skill { get; set; }
 }

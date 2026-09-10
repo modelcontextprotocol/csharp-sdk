@@ -7,8 +7,8 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// Represents the parameters for a <c>skills/get</c> request retrieving a single skill's entry by URI.
 /// </summary>
 /// <remarks>
-/// See the <see href="https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640">SEP-2640</see>
-/// specification for details.
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// for details.
 /// </remarks>
 public sealed class GetSkillRequestParams : RequestParams
 {
@@ -16,7 +16,7 @@ public sealed class GetSkillRequestParams : RequestParams
     /// Gets or sets the URI of the skill's <c>SKILL.md</c>.
     /// </summary>
     /// <remarks>
-    /// If the URI does not identify a skill the server serves, the server returns error -32602
+    /// If the URI does not identify a skill the server serves, the server returns error <c>-32602</c>
     /// (Invalid params), the same code <c>resources/read</c> uses for unknown resources.
     /// </remarks>
     [JsonPropertyName("uri")]

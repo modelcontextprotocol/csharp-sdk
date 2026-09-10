@@ -6,12 +6,12 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Tests.Protocol;
 
 /// <summary>
-/// Serialization and deserialization tests for the SEP-2640 skills protocol types, with particular
-/// attention to the array-or-<c>"dynamic"</c> union used for a skill's manifest.
+/// Serialization and deserialization tests for the SEP-2640 skills protocol types, with particular attention to
+/// the array-or-<c>"dynamic"</c> union used for a skill's manifest.
 /// </summary>
 public class SkillSerializationTests
 {
-    private SkillEntry CreateEntry(SkillResources resources) => new()
+    private static Skill CreateEntry(SkillResources resources) => new()
     {
         Uri = "skill://git-workflow/SKILL.md",
         Frontmatter = new JsonObject
@@ -22,7 +22,7 @@ public class SkillSerializationTests
         Resources = resources,
     };
 
-    private SkillResource CreateResource(string uri, string digest, long size) => new()
+    private static SkillResource CreateResource(string uri, string digest, long size) => new()
     {
         Uri = uri,
         Digest = digest,
@@ -30,7 +30,7 @@ public class SkillSerializationTests
     };
 
     [Fact]
-    public void SkillEntry_WithEnumeratedResources_RoundTrips()
+    public void Skill_WithEnumeratedResources_RoundTrips()
     {
         var original = CreateEntry(SkillResources.FromResources(
         [
@@ -38,12 +38,13 @@ public class SkillSerializationTests
             CreateResource("skill://git-workflow/examples/email.md", "sha256:" + new string('b', 64), 962),
         ]));
 
-        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.SkillEntry);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.SkillEntry);
+        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.Skill);
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
 
         Assert.NotNull(deserialized);
         Assert.Equal("skill://git-workflow/SKILL.md", deserialized.Uri);
-        Assert.Equal("git-workflow", deserialized.Frontmatter["name"]?.GetValue<string>());
+        Assert.Equal("git-workflow", deserialized.Name);
+        Assert.Equal("Follow this team's Git conventions", deserialized.Description);
         Assert.False(deserialized.Resources.IsDynamic);
 
         var resources = deserialized.Resources.Resources;
@@ -55,23 +56,19 @@ public class SkillSerializationTests
     }
 
     [Fact]
-    public void SkillEntry_WithDynamicResources_SerializesAsTheDynamicString()
+    public void Skill_WithDynamicResources_SerializesAsTheDynamicString()
     {
-        var original = CreateEntry(SkillResources.Dynamic);
-
-        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.SkillEntry);
+        string json = JsonSerializer.Serialize(CreateEntry(SkillResources.Dynamic), McpSkillsJsonContext.Default.Skill);
 
         var node = JsonNode.Parse(json)!.AsObject();
         Assert.Equal("dynamic", node["resources"]?.GetValue<string>());
     }
 
     [Fact]
-    public void SkillEntry_WithDynamicResources_RoundTrips()
+    public void Skill_WithDynamicResources_RoundTrips()
     {
-        var original = CreateEntry(SkillResources.Dynamic);
-
-        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.SkillEntry);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.SkillEntry);
+        string json = JsonSerializer.Serialize(CreateEntry(SkillResources.Dynamic), McpSkillsJsonContext.Default.Skill);
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
 
         Assert.NotNull(deserialized);
         Assert.True(deserialized.Resources.IsDynamic);
@@ -79,16 +76,56 @@ public class SkillSerializationTests
     }
 
     [Fact]
-    public void SkillEntry_WithEmptyResourceArray_RoundTripsAsNonDynamic()
+    public void Skill_WithEmptyResourceArray_RoundTripsAsNonDynamic()
     {
-        var original = CreateEntry(SkillResources.FromResources([]));
-
-        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.SkillEntry);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.SkillEntry);
+        string json = JsonSerializer.Serialize(CreateEntry(SkillResources.FromResources([])), McpSkillsJsonContext.Default.Skill);
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
 
         Assert.NotNull(deserialized);
         Assert.False(deserialized.Resources.IsDynamic);
         Assert.Empty(deserialized.Resources.Resources!);
+    }
+
+    [Fact]
+    public void Skill_PreservesArbitraryFrontmatterFields()
+    {
+        const string Json = """
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": {
+                "name": "refunds",
+                "description": "Process refunds",
+                "license": "Apache-2.0",
+                "metadata": { "version": "2.1.0", "owner": "billing" },
+                "allowed-tools": "Bash(git:*)"
+              },
+              "resources": "dynamic"
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(Json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.Equal("Apache-2.0", skill.Frontmatter["license"]?.GetValue<string>());
+        Assert.Equal("2.1.0", skill.Frontmatter["metadata"]?["version"]?.GetValue<string>());
+        Assert.Equal("Bash(git:*)", skill.Frontmatter["allowed-tools"]?.GetValue<string>());
+
+        string reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Json), JsonNode.Parse(reserialized)));
+    }
+
+    [Fact]
+    public void Skill_NameAndDescription_AreNullWhenAbsentOrNotStrings()
+    {
+        var skill = new Skill
+        {
+            Uri = "skill://x/SKILL.md",
+            Frontmatter = new JsonObject { ["name"] = 42 },
+            Resources = SkillResources.Dynamic,
+        };
+
+        Assert.Null(skill.Name);
+        Assert.Null(skill.Description);
     }
 
     [Theory]
@@ -99,7 +136,8 @@ public class SkillSerializationTests
     [InlineData("123")]
     [InlineData("true")]
     [InlineData("{}")]
-    public void SkillEntry_WithInvalidResourcesValue_Throws(string resourcesJson)
+    [InlineData("[null]")]
+    public void Skill_WithInvalidResourcesValue_Throws(string resourcesJson)
     {
         string json = $$"""
             {
@@ -109,8 +147,20 @@ public class SkillSerializationTests
             }
             """;
 
-        Assert.ThrowsAny<JsonException>(
-            () => JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.SkillEntry));
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill));
+    }
+
+    [Fact]
+    public void Skill_WithoutResources_Throws()
+    {
+        const string Json = """
+            {
+              "uri": "skill://git-workflow/SKILL.md",
+              "frontmatter": { "name": "git-workflow", "description": "d" }
+            }
+            """;
+
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize(Json, McpSkillsJsonContext.Default.Skill));
     }
 
     [Fact]
@@ -144,8 +194,11 @@ public class SkillSerializationTests
         };
 
         string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.ListSkillsResult);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.ListSkillsResult);
+        var node = JsonNode.Parse(json)!.AsObject();
+        Assert.Equal(300_000, node["ttlMs"]?.GetValue<long>());
+        Assert.Equal("public", node["cacheScope"]?.GetValue<string>());
 
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.ListSkillsResult);
         Assert.NotNull(deserialized);
         Assert.Equal("cursor-1", deserialized.NextCursor);
         Assert.Equal("complete", deserialized.ResultType);
@@ -155,26 +208,28 @@ public class SkillSerializationTests
     }
 
     [Fact]
-    public void ListSkillsResult_WritesCacheScopeUsingSpecifiedWireValues()
+    public void ListSkillsResult_ToleratesUnknownCacheScopeOnRead()
     {
-        var result = new ListSkillsResult { CacheScope = CacheScope.Private };
+        const string Json = """{ "skills": [], "ttlMs": 0, "cacheScope": "regional" }""";
 
-        string json = JsonSerializer.Serialize(result, McpSkillsJsonContext.Default.ListSkillsResult);
+        var deserialized = JsonSerializer.Deserialize(Json, McpSkillsJsonContext.Default.ListSkillsResult);
 
-        Assert.Equal("private", JsonNode.Parse(json)!["cacheScope"]?.GetValue<string>());
+        Assert.NotNull(deserialized);
+        Assert.Null(deserialized.CacheScope);
+        Assert.Equal(TimeSpan.Zero, deserialized.TimeToLive);
     }
 
     [Fact]
-    public void ListSkillsResult_OmitsCacheAttributesWhenUnset()
+    public void ListSkillsResult_OmitsOptionalFieldsWhenUnset()
     {
-        var result = new ListSkillsResult { Skills = [] };
-
-        string json = JsonSerializer.Serialize(result, McpSkillsJsonContext.Default.ListSkillsResult);
+        string json = JsonSerializer.Serialize(new ListSkillsResult(), McpSkillsJsonContext.Default.ListSkillsResult);
 
         var node = JsonNode.Parse(json)!.AsObject();
         Assert.False(node.ContainsKey("ttlMs"));
         Assert.False(node.ContainsKey("cacheScope"));
         Assert.False(node.ContainsKey("nextCursor"));
+        Assert.False(node.ContainsKey("resultType"));
+        Assert.Empty(node["skills"]!.AsArray());
     }
 
     [Fact]
@@ -190,32 +245,21 @@ public class SkillSerializationTests
         };
 
         string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.GetSkillResult);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.GetSkillResult);
+        Assert.False(JsonNode.Parse(json)!.AsObject().ContainsKey("nextCursor"));
 
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.GetSkillResult);
         Assert.NotNull(deserialized);
         Assert.Equal("skill://git-workflow/SKILL.md", deserialized.Skill.Uri);
         Assert.Equal("complete", deserialized.ResultType);
     }
 
     [Fact]
-    public void GetSkillResult_HasNoPaginationCursor()
+    public void RequestParams_RoundTrip()
     {
-        var result = new GetSkillResult { Skill = CreateEntry(SkillResources.Dynamic) };
+        string listJson = JsonSerializer.Serialize(new ListSkillsRequestParams { Cursor = "abc" }, McpSkillsJsonContext.Default.ListSkillsRequestParams);
+        Assert.Equal("abc", JsonSerializer.Deserialize(listJson, McpSkillsJsonContext.Default.ListSkillsRequestParams)?.Cursor);
 
-        string json = JsonSerializer.Serialize(result, McpSkillsJsonContext.Default.GetSkillResult);
-
-        Assert.False(JsonNode.Parse(json)!.AsObject().ContainsKey("nextCursor"));
-    }
-
-    [Fact]
-    public void ListSkillsRequestParams_RoundTripsCursor()
-    {
-        var original = new ListSkillsRequestParams { Cursor = "abc" };
-
-        string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.ListSkillsRequestParams);
-        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.ListSkillsRequestParams);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal("abc", deserialized.Cursor);
+        string getJson = JsonSerializer.Serialize(new GetSkillRequestParams { Uri = "skill://a/SKILL.md" }, McpSkillsJsonContext.Default.GetSkillRequestParams);
+        Assert.Equal("skill://a/SKILL.md", JsonSerializer.Deserialize(getJson, McpSkillsJsonContext.Default.GetSkillRequestParams)?.Uri);
     }
 }

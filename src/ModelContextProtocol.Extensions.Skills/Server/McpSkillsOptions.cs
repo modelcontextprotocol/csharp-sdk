@@ -8,34 +8,34 @@ namespace ModelContextProtocol.Extensions.Skills;
 public sealed class McpSkillsOptions
 {
     /// <summary>
-    /// Gets or sets a value indicating whether <c>skills/list</c> results carry the base protocol's
-    /// list-caching attributes (<c>ttlMs</c> and <c>cacheScope</c>) only when the negotiated protocol
-    /// version is 2026-07-28 or later.
+    /// Gets or sets the freshness hint advertised on <c>skills/list</c> results.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// SEP-2640 scopes those attributes to protocol versions 2026-07-28 and later, so gating is the
-    /// conservative reading and the default. The condition is under active discussion in the working group
-    /// however: the Go SDK and the specification restructure both dropped it independently, and it may be
-    /// removed from the SEP rather than added to implementations. Set this to <see langword="false"/> to
-    /// emit the attributes on every negotiated version.
+    /// This is the base protocol's <c>ttlMs</c> list-caching attribute, with the same semantics as on
+    /// <c>tools/list</c>. It is a hint about the listing, not an integrity property of the skills' content.
+    /// </para>
+    /// <para>
+    /// The attribute is defined from protocol revision <c>2026-07-28</c>. On a request negotiated under that
+    /// revision or later, a <see langword="null"/> value is sent as <see cref="TimeSpan.Zero"/> (immediately stale),
+    /// matching what the SDK does for the built-in list methods. On earlier revisions the attribute is not sent.
     /// </para>
     /// </remarks>
-    public bool GateCacheAttributesByProtocolVersion { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the freshness hint advertised on <c>skills/list</c> results, or <see langword="null"/>
-    /// to advertise none.
-    /// </summary>
     public TimeSpan? TimeToLive { get; set; }
 
     /// <summary>
-    /// Gets or sets the cache scope advertised on <c>skills/list</c> results, or <see langword="null"/>
-    /// to advertise none.
+    /// Gets or sets the cache scope advertised on <c>skills/list</c> results.
     /// </summary>
     /// <remarks>
-    /// Set this to a public scope only when the catalog is identical for every caller. A listing that varies
-    /// by principal must not be advertised as publicly cacheable.
+    /// <para>
+    /// Set this to <see cref="Protocol.CacheScope.Public"/> only when the catalog is identical for every caller.
+    /// A listing that varies by principal must not be advertised as publicly cacheable.
+    /// </para>
+    /// <para>
+    /// The attribute is defined from protocol revision <c>2026-07-28</c>. On a request negotiated under that
+    /// revision or later, a <see langword="null"/> value is sent as <see cref="Protocol.CacheScope.Private"/>,
+    /// matching what the SDK does for the built-in list methods. On earlier revisions the attribute is not sent.
+    /// </para>
     /// </remarks>
     public CacheScope? CacheScope { get; set; }
 }
