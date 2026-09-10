@@ -238,6 +238,49 @@ public class SkillFrontmatterTests
     }
 
     [Fact]
+    public void ResolvesPlainMappingKeysLikeReferenceParsers()
+    {
+        var frontmatter = Parse("TRUE: a\n0x10: b\n~: c\n1.5: d\nplain: e");
+
+        Assert.Equal(["true", "16", "", "1.5", "plain"], frontmatter.Select(p => p.Key));
+    }
+
+    [Fact]
+    public void PreservesNonBreakingSpacesInScalars()
+    {
+        var frontmatter = Parse("value: \u00A0padded\u00A0\nother: a\u00A0b");
+
+        Assert.Equal("\u00A0padded\u00A0", frontmatter["value"]?.GetValue<string>());
+        Assert.Equal("a\u00A0b", frontmatter["other"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void FlowMappingHonorsSeparatorRules()
+    {
+        var frontmatter = Parse("""
+            a: {version:1}
+            b: {version: 1}
+            c: {"version":1}
+            d: {k, m: 2}
+            e: {TRUE: x}
+            """);
+
+        AssertJson("""{ "a": { "version:1": null }, "b": { "version": 1 }, "c": { "version": 1 }, "d": { "k": null, "m": 2 }, "e": { "true": "x" } }""", frontmatter);
+    }
+
+    [Fact]
+    public void RejectsNestingBeyondTheDepthLimit()
+    {
+        string deep = string.Join("\n", Enumerable.Range(0, 40).Select(i => new string(' ', i) + $"k{i}:")) + " v";
+
+        var exception = Assert.Throws<FormatException>(() => Parse(deep));
+        Assert.Contains("nested more than", exception.Message);
+
+        string shallow = string.Join("\n", Enumerable.Range(0, 20).Select(i => new string(' ', i) + $"k{i}:")) + " v";
+        Assert.NotNull(Parse(shallow));
+    }
+
+    [Fact]
     public void ParsesFlowCollections()
     {
         var frontmatter = Parse("""
@@ -317,6 +360,10 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: \"\\uD800\"\n---", "unpaired surrogate")]
     [InlineData("---\nvalue: \"\\uDE00x\"\n---", "unpaired surrogate")]
     [InlineData("---\nvalue: [a: b]\n---", "compact mappings inside flow sequences")]
+    [InlineData("---\ndescription: first # note\n  second\n---", "a comment ended that value")]
+    [InlineData("---\nitems:\n  - first # note\n      second\n---", "a comment ended that value")]
+    [InlineData("---\nname: \"never closed\ndescription: d\n---", "unterminated quoted scalar")]
+    [InlineData("---\nvalue: {a: b # c}\n---", "comment inside a flow collection")]
     [InlineData("---\nvalue: [a, b: c]\n---", "compact mappings inside flow sequences")]
     [InlineData("---\nvalue: -\n---", "same line as its key")]
     [InlineData("---\nvalue: \"\\q\"\n---", "unsupported escape")]

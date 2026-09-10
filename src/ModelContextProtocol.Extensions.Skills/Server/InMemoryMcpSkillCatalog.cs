@@ -11,8 +11,8 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// so a server cannot publish an entry a conforming host would refuse to load.
 /// </para>
 /// <para>
-/// The catalog keeps its own copy of every entry, so later changes to the objects passed to the constructor do
-/// not affect what is served. Entries are ordered by URI so that pagination is stable across calls. Cursors are
+/// The catalog keeps its own copy of every entry and hands out copies, so neither later changes to the objects
+/// passed to the constructor nor changes to a returned entry affect what is served. Entries are ordered by URI so that pagination is stable across calls. Cursors are
 /// keyset cursors over that order rather than offsets.
 /// </para>
 /// <para>
@@ -91,7 +91,10 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
         }
 
         var page = new Skill[count];
-        Array.Copy(_ordered, start, page, 0, count);
+        for (int i = 0; i < count; i++)
+        {
+            page[i] = SkillValidation.Snapshot(_ordered[start + i]);
+        }
 
         bool hasMore = start + count < _ordered.Length;
         return new ValueTask<McpSkillPage>(new McpSkillPage
@@ -112,8 +115,7 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        _byUri.TryGetValue(uri, out var skill);
-        return new ValueTask<Skill?>(skill);
+        return new ValueTask<Skill?>(_byUri.TryGetValue(uri, out var skill) ? SkillValidation.Snapshot(skill) : null);
     }
 
     private static string EncodeCursor(string uri) => Convert.ToBase64String(Encoding.UTF8.GetBytes(uri));

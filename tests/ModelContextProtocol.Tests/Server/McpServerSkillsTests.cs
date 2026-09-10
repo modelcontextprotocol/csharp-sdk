@@ -51,7 +51,7 @@ public class McpServerSkillsTests : ClientServerTestBase
         Assert.True(client.SupportsSkills());
         Assert.NotNull(client.ServerCapabilities.Resources);
 
-        var settings = System.Text.Json.JsonSerializer.SerializeToNode(client.ServerCapabilities.Extensions![SkillsProtocol.ExtensionId])?.AsObject();
+        var settings = System.Text.Json.JsonSerializer.SerializeToNode(client.ServerCapabilities.Extensions![SkillsProtocol.ExtensionId], McpJsonUtilities.DefaultOptions)?.AsObject();
         Assert.NotNull(settings);
         Assert.Empty(settings);
     }

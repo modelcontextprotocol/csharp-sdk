@@ -32,7 +32,8 @@ public static class McpSkillsBuilderExtensions
     /// </para>
     /// <para>
     /// Nested skills may legitimately list the same file. A file URI shared by several skills is registered once,
-    /// provided every skill lists it with the same digest.
+    /// provided every skill lists it with the same digest and the identical URI text. URIs that differ only in the
+    /// case of their scheme or authority are rejected, because the server's resource collection treats them as one.
     /// </para>
     /// <para>
     /// Every caller sees every skill. <c>skills/list</c> and <c>skills/get</c> are raw request handlers and do not
@@ -77,12 +78,20 @@ public static class McpSkillsBuilderExtensions
                 var key = new Uri(entry.Uri, UriKind.Absolute);
                 if (registeredFiles.TryGetValue(key, out var existing))
                 {
+                    if (!string.Equals(existing.Uri, entry.Uri, StringComparison.Ordinal))
+                    {
+                        // Even with identical content the alias cannot be served: the collection registers one
+                        // resource, whose contents carry the first URI, so a verified read of the second fails.
+                        throw new ArgumentException(
+                            $"The file '{entry.Uri}' is equivalent to '{existing.Uri}', listed by another skill. Resource URIs are compared " +
+                            "case-insensitively in their scheme and authority, so the two would be served as one. Use identical URIs for a shared file.",
+                            nameof(skills));
+                    }
+
                     if (!string.Equals(existing.Digest, entry.Digest, StringComparison.Ordinal))
                     {
                         throw new ArgumentException(
-                            string.Equals(existing.Uri, entry.Uri, StringComparison.Ordinal)
-                                ? $"The file '{entry.Uri}' is listed by more than one skill with different content."
-                                : $"The file '{entry.Uri}' is equivalent to '{existing.Uri}', which another skill lists with different content. Resource URIs are compared case-insensitively in their scheme and authority.",
+                            $"The file '{entry.Uri}' is listed by more than one skill with different content.",
                             nameof(skills));
                     }
 

@@ -41,8 +41,8 @@ internal static class SkillValidation
     }
 
     /// <summary>
-    /// Returns whether <paramref name="name"/> satisfies the Agent Skills naming rules: 1 to 64 characters,
-    /// lowercase letters, digits, and hyphens, with no leading, trailing, or consecutive hyphens.
+    /// Returns whether <paramref name="name"/> satisfies the Agent Skills naming rules: 1 to 64 characters of
+    /// Unicode lowercase (or caseless) letters, digits, and hyphens, with no leading, trailing, or consecutive hyphens.
     /// </summary>
     public static bool IsValidSkillName(string name)
     {
@@ -54,7 +54,7 @@ internal static class SkillValidation
         char previous = '-';
         foreach (char c in name)
         {
-            bool isAlphanumeric = c is (>= 'a' and <= 'z') or (>= '0' and <= '9');
+            bool isAlphanumeric = (char.IsLetter(c) && !char.IsUpper(c)) || char.IsDigit(c);
             if (!isAlphanumeric && c != '-')
             {
                 return false;
@@ -112,15 +112,24 @@ internal static class SkillValidation
             throw new ArgumentException($"{what} '{uri}' must not contain a query or fragment.", paramName);
         }
 
-        // Check the raw text rather than System.Uri's view of it, which compacts dot segments. The authority
-        // (the first segment) may be empty, as in file:///name/SKILL.md; path segments may not.
+        // Check the raw text rather than System.Uri's view of it, which decodes and compacts dot segments, so that
+        // "%2e%2e" is caught as well as "..". The authority (the first segment) may be empty, as in
+        // file:///name/SKILL.md; path segments may not.
         string[] segments = uri.Substring(schemeEnd + 3).Split('/');
         for (int i = 0; i < segments.Length; i++)
         {
             string segment = segments[i];
-            if ((segment.Length == 0 && i > 0) || segment == "." || segment == "..")
+            if (segment.Length == 0 && i > 0)
             {
-                throw new ArgumentException($"{what} '{uri}' must not contain empty, '.', or '..' path segments.", paramName);
+                throw new ArgumentException($"{what} '{uri}' must not contain empty path segments.", paramName);
+            }
+
+            string decoded = System.Uri.UnescapeDataString(segment);
+            if (decoded == "." || decoded == ".." || decoded.IndexOf('/') >= 0 || decoded.IndexOf('\\') >= 0)
+            {
+                throw new ArgumentException(
+                    $"{what} '{uri}' must not contain '.', '..', or encoded separator path segments, which would resolve outside the skill.",
+                    paramName);
             }
         }
     }
@@ -182,7 +191,7 @@ internal static class SkillValidation
         {
             throw new ArgumentException(
                 $"Skill '{skill.Uri}' has the name '{name}', which does not satisfy the Agent Skills naming rules " +
-                "(1 to 64 lowercase letters, digits, and single hyphens, not starting or ending with a hyphen).",
+                "(1 to 64 lowercase or caseless letters, digits, and single hyphens, not starting or ending with a hyphen).",
                 paramName);
         }
 

@@ -222,6 +222,11 @@ public class McpServerSkillTests
         var escapeHatch = McpServerSkill.Create(SkillUri, Frontmatter(),
             [McpServerSkillFile.FromText("SKILL.md", "---\nname: &n git-workflow\ndescription: Git conventions\n---\n")]);
         Assert.Equal("git-workflow", escapeHatch.ProtocolSkill.Name);
+
+        // A quoted scalar that closes on a later line is valid YAML the reader does not support, so it is bypassable too.
+        var multiLine = McpServerSkill.Create(SkillUri, Frontmatter(),
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: \"Git\n  conventions\"\n---\n")]);
+        Assert.Equal("Git conventions", multiLine.ProtocolSkill.Description);
     }
 
     [Theory]
@@ -229,6 +234,7 @@ public class McpServerSkillTests
     [InlineData("---\nname: git-workflow\n", "not closed")]
     [InlineData("---\nname: a: b\n---\n", "cannot contain")]
     [InlineData("---\n\tname: x\n---\n", "tabs")]
+    [InlineData("---\nname: git-workflow\ndescription: \"never closed\n---\n", "unterminated")]
     public void Create_WithExplicitFrontmatter_StillRejectsMalformedSkillFile(string markdown, string messageFragment)
     {
         // Only valid-but-unsupported YAML may be bypassed. A file no host can parse must not be published.

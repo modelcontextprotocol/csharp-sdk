@@ -28,11 +28,23 @@ public static class SkillFrontmatter
 {
     private const string Delimiter = "---";
 
+    /// <summary>YAML's white space characters. Other Unicode spaces, such as U+00A0, are scalar content.</summary>
+    private static readonly char[] s_yamlWhitespace = [' ', '\t'];
+
+    /// <summary>The deepest nesting of block collections the reader accepts. Frontmatter is shallow; this only exists to keep a hostile file from exhausting the stack.</summary>
+    private const int MaxNestingDepth = 32;
+
     /// <summary>
     /// Thrown for YAML that is valid but outside the subset this reader supports, as opposed to malformed
     /// frontmatter. Callers that accept explicitly supplied frontmatter may fall back on it for this case only.
     /// </summary>
     internal sealed class UnsupportedYamlException(string message) : FormatException(message);
+
+    /// <summary>Thrown when a quoted scalar has no closing quote on its line. Malformed unless a later line closes it.</summary>
+    private sealed class UnterminatedQuoteException(string message, char quote) : FormatException(message)
+    {
+        public char Quote { get; } = quote;
+    }
 
     /// <summary>
     /// Parses the frontmatter at the start of <paramref name="skillMarkdown"/>.
@@ -46,7 +58,7 @@ public static class SkillFrontmatter
     public static JsonObject Parse(string skillMarkdown)
     {
         var lines = SplitLines(skillMarkdown);
-        if (lines.Count == 0 || lines[0].TrimEnd() != Delimiter)
+        if (lines.Count == 0 || lines[0].TrimEnd(s_yamlWhitespace) != Delimiter)
         {
             throw new FormatException($"{SkillsProtocol.SkillFileName} must begin with a line containing only '{Delimiter}' that opens the YAML frontmatter.");
         }
@@ -54,7 +66,7 @@ public static class SkillFrontmatter
         int end = -1;
         for (int i = 1; i < lines.Count; i++)
         {
-            string trimmed = lines[i].TrimEnd();
+            string trimmed = lines[i].TrimEnd(s_yamlWhitespace);
             if (trimmed == Delimiter || trimmed == "...")
             {
                 end = i;
@@ -141,6 +153,7 @@ public static class SkillFrontmatter
     {
         private readonly List<Line> _lines = lines;
         private int _pos;
+        private int _depth;
 
         public JsonNode? ParseDocument()
         {
@@ -192,7 +205,20 @@ public static class SkillFrontmatter
         {
             SkipBlank();
             var line = _lines[_pos];
-            return IsSequenceEntry(line.Content) ? ParseSequence(indent) : ParseMapping(indent);
+            if (_depth >= MaxNestingDepth)
+            {
+                throw new FormatException($"Line {line.Number}: the frontmatter is nested more than {MaxNestingDepth} levels deep.");
+            }
+
+            _depth++;
+            try
+            {
+                return IsSequenceEntry(line.Content) ? ParseSequence(indent) : ParseMapping(indent);
+            }
+            finally
+            {
+                _depth--;
+            }
         }
 
         private static bool IsSequenceEntry(string content) =>
@@ -252,12 +278,14 @@ public static class SkillFrontmatter
                         throw new FormatException($"Line {line.Number}: expected a 'key: value' pair.");
                     }
 
-                    key = content.Substring(0, separator).TrimEnd();
-                    if (key.Length == 0)
+                    string rawKey = content.Substring(0, separator).TrimEnd(s_yamlWhitespace);
+                    if (rawKey.Length == 0)
                     {
                         throw new FormatException($"Line {line.Number}: empty mapping key.");
                     }
 
+                    // Keys resolve like values: "TRUE:" is the key "true" and "0x10:" is "16" to a YAML parser.
+                    key = KeyToString(ResolvePlainScalar(rawKey, line.Number));
                     consumed = separator + 1;
                 }
 
@@ -266,9 +294,9 @@ public static class SkillFrontmatter
                     throw new FormatException($"Line {line.Number}: duplicate key '{key}'.");
                 }
 
-                string rest = PrepareValue(content.Substring(consumed));
+                string rest = PrepareValue(content.Substring(consumed), out bool commentEndedValue);
                 _pos++;
-                result[key] = ParseValue(rest, indent, line.Number, allowSameIndentSequence: true);
+                result[key] = ParseValue(rest, commentEndedValue, indent, line.Number, allowSameIndentSequence: true);
             }
 
             return result;
@@ -300,7 +328,7 @@ public static class SkillFrontmatter
                 int itemIndent = indent + 2;
                 _pos++;
 
-                string trimmedItem = item.TrimStart();
+                string trimmedItem = item.TrimStart(s_yamlWhitespace);
                 if (trimmedItem.Length == 0 || trimmedItem[0] == '#')
                 {
                     // "- " followed by nothing: the value is the more-indented block that follows, or null.
@@ -320,7 +348,8 @@ public static class SkillFrontmatter
                     continue;
                 }
 
-                result.Add(ParseValue(PrepareValue(trimmedItem), indent, line.Number, allowSameIndentSequence: false));
+                string itemValue = PrepareValue(trimmedItem, out bool itemCommentEndedValue);
+                result.Add(ParseValue(itemValue, itemCommentEndedValue, indent, line.Number, allowSameIndentSequence: false));
             }
 
             return result;
@@ -330,7 +359,7 @@ public static class SkillFrontmatter
         /// Parses the value that follows a key or sequence dash. <paramref name="rest"/> is the remainder of the
         /// line, with comments removed; the line itself has already been consumed.
         /// </summary>
-        private JsonNode? ParseValue(string rest, int parentIndent, int lineNumber, bool allowSameIndentSequence)
+        private JsonNode? ParseValue(string rest, bool commentEndedValue, int parentIndent, int lineNumber, bool allowSameIndentSequence)
         {
             if (rest.Length == 0)
             {
@@ -366,8 +395,20 @@ public static class SkillFrontmatter
                     return ParseFlowMapping(rest, lineNumber);
 
                 case '"' or '\'':
-                    string quoted = ParseQuotedScalar(rest, 0, lineNumber, out int consumed);
-                    if (StripComment(rest.Substring(consumed)).Trim().Length != 0)
+                    string quoted;
+                    int consumed;
+                    try
+                    {
+                        quoted = ParseQuotedScalar(rest, 0, lineNumber, out consumed);
+                    }
+                    catch (UnterminatedQuoteException e) when (ClosesLater(e.Quote))
+                    {
+                        // Valid YAML (a quoted scalar spanning lines) that this reader does not support, as opposed
+                        // to a quote that is never closed, which is malformed and stays a plain FormatException.
+                        throw new UnsupportedYamlException($"Line {lineNumber}: multi-line quoted scalars are not supported in frontmatter.");
+                    }
+
+                    if (StripComment(rest.Substring(consumed)).Trim(s_yamlWhitespace).Length != 0)
                     {
                         throw new FormatException($"Line {lineNumber}: unexpected content after the quoted value.");
                     }
@@ -390,8 +431,34 @@ public static class SkillFrontmatter
                         throw new FormatException($"Line {lineNumber}: a plain scalar cannot contain ': '. Quote the value if it is meant literally.");
                     }
 
+                    if (commentEndedValue)
+                    {
+                        // A comment ends a plain scalar. A more-indented line after it cannot continue the scalar
+                        // and cannot start a nested block either, so it is an error, as it is to a YAML parser.
+                        if (PeekSignificant() is { } following && following.Indent > parentIndent)
+                        {
+                            throw new FormatException(
+                                $"Line {following.Number}: this line cannot continue the value on line {lineNumber}, because a comment ended that value.");
+                        }
+
+                        return ResolvePlainScalar(rest, lineNumber);
+                    }
+
                     return ResolvePlainScalar(CollectPlainContinuation(rest, parentIndent, lineNumber), lineNumber);
             }
+        }
+
+        private bool ClosesLater(char quote)
+        {
+            for (int i = _pos; i < _lines.Count; i++)
+            {
+                if (_lines[i].Raw.IndexOf(quote) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Folds the more-indented continuation lines of a plain multi-line scalar into it.</summary>
@@ -414,7 +481,7 @@ public static class SkillFrontmatter
                     break;
                 }
 
-                string text = StripComment(line.Content).Trim();
+                string text = StripComment(line.Content).Trim(s_yamlWhitespace);
                 if (text.Length == 0)
                 {
                     break;
@@ -471,7 +538,7 @@ public static class SkillFrontmatter
                 }
             }
 
-            if (StripComment(header.Substring(headerPos)).Trim().Length != 0)
+            if (StripComment(header.Substring(headerPos)).Trim(s_yamlWhitespace).Length != 0)
             {
                 throw new FormatException($"Line {lineNumber}: invalid block scalar header '{header}': only a comment may follow the indicators.");
             }
@@ -610,7 +677,7 @@ public static class SkillFrontmatter
                 }
             }
 
-            if (StripComment(text.Substring(pos)).Trim().Length != 0)
+            if (StripComment(text.Substring(pos)).Trim(s_yamlWhitespace).Length != 0)
             {
                 throw new FormatException($"Line {lineNumber}: unexpected content after the flow sequence.");
             }
@@ -636,21 +703,72 @@ public static class SkillFrontmatter
                     break;
                 }
 
-                var keyNode = ParseFlowScalar(text, ref pos, lineNumber, ":");
-                string key = keyNode is JsonValue v && v.TryGetValue(out string? s) ? s : keyNode?.ToJsonString() ?? "null";
-                pos = SkipSpaces(text, pos);
-                if (pos >= text.Length || text[pos] != ':')
+                JsonNode? keyNode;
+                bool hasValue;
+                if (text[pos] is '"' or '\'')
                 {
-                    throw new FormatException($"Line {lineNumber}: expected ':' in flow mapping.");
+                    keyNode = JsonValue.Create(ParseQuotedScalar(text, pos, lineNumber, out int afterQuote));
+                    pos = SkipSpaces(text, afterQuote);
+                    hasValue = pos < text.Length && text[pos] == ':';
+                    if (hasValue)
+                    {
+                        pos++;
+                    }
+                }
+                else
+                {
+                    // A plain key ends at ',' or '}' (giving it a null value) or at a ':' that is followed by a
+                    // space, a comma, a closing brace, or the end of the text. A ':' followed by anything else is
+                    // part of the key, so "{version:1}" is the key "version:1" with a null value.
+                    int start = pos;
+                    int colonAt = -1;
+                    while (pos < text.Length && text[pos] is not (',' or '}'))
+                    {
+                        if (text[pos] == ':' && (pos + 1 == text.Length || text[pos + 1] is ' ' or ',' or '}'))
+                        {
+                            colonAt = pos;
+                            break;
+                        }
+
+                        if (text[pos] == '#' && (pos == start || text[pos - 1] is ' ' or '\t'))
+                        {
+                            throw new FormatException($"Line {lineNumber}: a comment inside a flow collection runs to the end of the line, leaving the collection unterminated. Move the comment after the closing brace.");
+                        }
+
+                        pos++;
+                    }
+
+                    string rawKey = text.Substring(start, pos - start).Trim(s_yamlWhitespace);
+                    if (rawKey.Length > 0 && rawKey[0] is '[' or '{')
+                    {
+                        throw new UnsupportedYamlException($"Line {lineNumber}: nested flow collections are not supported in frontmatter.");
+                    }
+
+                    if (rawKey.Length > 0 && rawKey[0] is '&' or '*' or '!')
+                    {
+                        throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
+                    }
+
+                    if (rawKey.Length > 0 && rawKey[0] is '@' or '`' or '%')
+                    {
+                        throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{rawKey[0]}', which YAML reserves. Quote the value.");
+                    }
+
+                    keyNode = ResolvePlainScalar(rawKey, lineNumber);
+                    hasValue = colonAt >= 0;
+                    if (hasValue)
+                    {
+                        pos = colonAt + 1;
+                    }
                 }
 
-                pos++;
+                string key = KeyToString(keyNode);
                 if (result.ContainsKey(key))
                 {
                     throw new FormatException($"Line {lineNumber}: duplicate key '{key}'.");
                 }
 
-                result[key] = ParseFlowScalar(text, ref pos, lineNumber, ",}");
+                result[key] = hasValue ? ParseFlowScalar(text, ref pos, lineNumber, ",}") : null;
                 pos = SkipSpaces(text, pos);
                 if (pos < text.Length && text[pos] == ',')
                 {
@@ -662,7 +780,7 @@ public static class SkillFrontmatter
                 }
             }
 
-            if (StripComment(text.Substring(pos)).Trim().Length != 0)
+            if (StripComment(text.Substring(pos)).Trim(s_yamlWhitespace).Length != 0)
             {
                 throw new FormatException($"Line {lineNumber}: unexpected content after the flow mapping.");
             }
@@ -702,7 +820,7 @@ public static class SkillFrontmatter
                 pos++;
             }
 
-            string plain = text.Substring(start, pos - start).Trim();
+            string plain = text.Substring(start, pos - start).Trim(s_yamlWhitespace);
             if (FindKeySeparator(plain) >= 0)
             {
                 throw new UnsupportedYamlException($"Line {lineNumber}: compact mappings inside flow sequences ('[key: value]') are not supported in frontmatter.");
@@ -807,7 +925,7 @@ public static class SkillFrontmatter
                 i++;
             }
 
-            throw new UnsupportedYamlException($"Line {lineNumber}: unterminated quoted scalar; multi-line quoted scalars are not supported.");
+            throw new UnterminatedQuoteException($"Line {lineNumber}: unterminated quoted scalar.", quote);
         }
 
         private static int ParseHex(string text, int start, int length, int lineNumber)
@@ -820,6 +938,15 @@ public static class SkillFrontmatter
 
             return value;
         }
+
+        /// <summary>
+        /// Renders a resolved key as a JSON object key the way reference parsers do: strings as themselves, null as
+        /// the empty string, and booleans and numbers as their JSON text.
+        /// </summary>
+        private static string KeyToString(JsonNode? key) =>
+            key is null ? string.Empty
+            : key is JsonValue value && value.TryGetValue(out string? text) ? text
+            : key.ToJsonString();
 
         /// <summary>Resolves an unquoted scalar per the YAML 1.2 core schema.</summary>
         private static JsonNode? ResolvePlainScalar(string text, int lineNumber)
@@ -1004,15 +1131,18 @@ public static class SkillFrontmatter
         /// returned as written, since their own parsers find their end and check what follows; anything else is a
         /// plain value, from which a trailing comment is removed.
         /// </summary>
-        private static string PrepareValue(string rest)
+        private static string PrepareValue(string rest, out bool commentEndedValue)
         {
-            rest = rest.TrimStart();
+            commentEndedValue = false;
+            rest = rest.TrimStart(s_yamlWhitespace);
             if (rest.Length > 0 && rest[0] is '"' or '\'' or '[' or '{')
             {
-                return rest.TrimEnd();
+                return rest.TrimEnd(s_yamlWhitespace);
             }
 
-            return StripComment(rest).Trim();
+            string stripped = StripComment(rest);
+            commentEndedValue = stripped.Length != rest.Length && stripped.Trim(s_yamlWhitespace).Length > 0;
+            return stripped.Trim(s_yamlWhitespace);
         }
 
         /// <summary>

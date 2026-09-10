@@ -484,9 +484,38 @@ public sealed class McpServerSkill
             files.Add(new McpServerSkillFile
             {
                 Path = relativePath,
-                Content = File.ReadAllBytes(entry),
+                Content = ReadExactly(entry, length),
             });
         }
+    }
+
+    /// <summary>
+    /// Reads a file whose length was checked against the per-skill limits a moment ago, allocating only that
+    /// length, and fails if the file turns out to be a different size, so a file that grows or shrinks between the
+    /// check and the read can neither exceed the limit nor be served with a manifest that does not describe it.
+    /// </summary>
+    private static byte[] ReadExactly(string path, long expectedLength)
+    {
+        var buffer = new byte[expectedLength];
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        int total = 0;
+        while (total < buffer.Length)
+        {
+            int read = stream.Read(buffer, total, buffer.Length - total);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
+        }
+
+        if (total != buffer.Length || stream.ReadByte() != -1)
+        {
+            throw new ArgumentException($"'{path}' changed size while it was being read.", "directoryPath");
+        }
+
+        return buffer;
     }
 
     /// <summary>

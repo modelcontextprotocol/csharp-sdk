@@ -88,8 +88,8 @@ names containing characters with URI syntax (such as `{`, `?`, or a space) are p
 
 <xref:ModelContextProtocol.Extensions.Skills.SkillFrontmatter> reads the YAML frontmatter of a `SKILL.md` into a
 <xref:System.Text.Json.Nodes.JsonObject> without a YAML library. It accepts the subset of YAML that Agent Skills
-frontmatter uses: block mappings nested to any depth, block and flow sequences, plain, quoted, and block scalars,
-and comments. Unquoted scalars are resolved per the YAML 1.2 core schema (`null`, booleans, integers, finite
+frontmatter uses: block mappings (nested up to 32 levels), block and flow sequences, plain, quoted, and block
+scalars, and comments. Unquoted scalars are resolved per the YAML 1.2 core schema (`null`, booleans, integers, finite
 floats, otherwise strings), matching the YAML libraries used by other SDKs and by hosts. That matters because a
 host verifies a skill by parsing the fetched `SKILL.md` itself and comparing field by field against the published
 entry; a value that one side types as a number and the other as a string is a verification failure. Quote values

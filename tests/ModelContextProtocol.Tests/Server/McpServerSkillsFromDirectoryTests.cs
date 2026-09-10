@@ -79,9 +79,21 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
         var exception = Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkills([upper, lower]));
         Assert.Contains("equivalent", exception.Message);
 
-        // Identical content is the nested-skill case and is allowed: the file is registered once.
+        // Identical content does not help: the collection would register one resource whose contents carry the
+        // first URI, so a verified read of the alias would fail. Only the identical URI text may be shared.
         var same = McpServerSkill.Create("skill://ACME/refunds/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", "---\nname: refunds\ndescription: upper\n---\n")]);
-        new ServiceCollection().AddMcpServer().WithSkills([upper, same]);
+        Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkills([upper, same]));
+
+        // The legitimate shared-file case: a nested skill's SKILL.md is also a file of the enclosing skill, under
+        // the identical URI text and with identical content. That registers once and is fine.
+        const string InnerMarkdown = "---\nname: inner\ndescription: nested\n---\n";
+        var outer = McpServerSkill.Create("skill://acme/SKILL.md",
+        [
+            McpServerSkillFile.FromText("SKILL.md", "---\nname: acme\ndescription: outer\n---\n"),
+            McpServerSkillFile.FromText("inner/SKILL.md", InnerMarkdown),
+        ]);
+        var inner = McpServerSkill.Create("skill://acme/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown)]);
+        new ServiceCollection().AddMcpServer().WithSkills([outer, inner]);
     }
 
     [Fact]

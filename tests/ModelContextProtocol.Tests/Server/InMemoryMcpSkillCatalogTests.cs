@@ -157,6 +157,32 @@ public class InMemoryMcpSkillCatalogTests
     }
 
     [Fact]
+    public async Task ReturnedEntries_AreCopies_SoMutatingThemDoesNotAffectLaterResponses()
+    {
+        var catalog = new InMemoryMcpSkillCatalog([CreateSkill("alpha")]);
+
+        var first = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        first!.Frontmatter["description"] = "tampered";
+        first.Resources.Resources![0].Digest = "sha256:" + new string('f', 64);
+
+        var listed = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        listed.Skills[0].Frontmatter["description"] = "tampered again";
+
+        var again = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        Assert.Equal("A skill", again!.Description);
+        Assert.Equal(s_validDigest, again.Resources.Resources![0].Digest);
+    }
+
+    [Theory]
+    [InlineData("café")]
+    [InlineData("数据分析")]
+    [InlineData("données-2024")]
+    public void Constructor_AcceptsUnicodeLowercaseNames(string name)
+    {
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([CreateSkill(name)]).Count);
+    }
+
+    [Fact]
     public void Constructor_WithDuplicateUris_Throws()
     {
         var duplicate = new[] { CreateSkill("alpha"), CreateSkill("alpha") };
@@ -284,6 +310,22 @@ public class InMemoryMcpSkillCatalogTests
         yield return Case("name missing", s => s.Frontmatter.Remove("name"));
         yield return Case("name not a string", s => s.Frontmatter["name"] = 1);
         yield return Case("name does not match uri segment", s => s.Frontmatter["name"] = "beta");
+        yield return Case("name with an uppercase letter", s =>
+        {
+            s.Uri = "skill://Café/SKILL.md";
+            s.Frontmatter["name"] = "Café";
+            s.Resources = SkillResources.FromResources([new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 }]);
+        });
+        yield return Case("resource escapes the skill through an encoded '..'", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = "skill://alpha/%2e%2e/secret.md", Digest = s_validDigest, Size = 1 },
+        ]));
+        yield return Case("resource with an encoded slash", s => s.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = s.Uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = "skill://alpha/a%2Fb.md", Digest = s_validDigest, Size = 1 },
+        ]));
         yield return Case("name violates naming rules", s =>
         {
             s.Uri = "skill://Alpha/SKILL.md";
