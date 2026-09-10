@@ -1,3 +1,4 @@
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Security.Cryptography;
 using System.Text;
@@ -112,6 +113,11 @@ public static class SkillVerifier
         switch (contents)
         {
             case TextResourceContents text:
+                if (text.Text is null)
+                {
+                    throw new SkillVerificationException($"The text contents of '{contents.Uri}' carry no text and cannot be verified.");
+                }
+
                 Verify(expected, Encoding.UTF8.GetBytes(text.Text));
                 break;
 
@@ -240,7 +246,8 @@ public static class SkillVerifier
         if (skill.Resources.IsDynamic)
         {
             throw new InvalidOperationException(
-                $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified.");
+                $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified. " +
+                $"Use {nameof(McpClient.ReadResourceAsync)} directly if unverifiable content is acceptable.");
         }
     }
 

@@ -32,7 +32,7 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
             options.RequestHandlers.Add(new McpServerRequestHandler
             {
                 Method = SkillsProtocol.MethodSkillsList,
-                Handler = (_, _) => new ValueTask<JsonNode?>(JsonNode.Parse("""
+                Handler = (request, _) => new ValueTask<JsonNode?>(JsonNode.Parse(request.Params?["cursor"]?.GetValue<string>() == "no-skills-array" ? """{ "skills": null }""" : """
                     { "skills": [ { "uri": "skill://good/SKILL.md", "frontmatter": { "name": "good", "description": "d" },
                                     "resources": [ { "uri": "skill://good/SKILL.md", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 1 } ] },
                                   { "uri": "skill://bad/SKILL.md", "frontmatter": { "name": "mismatch", "description": "d" },
@@ -72,6 +72,15 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
 
         Assert.Contains("skills/list", exception.Message);
         Assert.Contains("skill://bad/SKILL.md", exception.Message);
+    }
+
+    [Fact]
+    public async Task ListSkillsAsync_RejectsAPageWithoutASkillsArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams { Cursor = "no-skills-array" }, TestContext.Current.CancellationToken));
     }
 
     [Fact]

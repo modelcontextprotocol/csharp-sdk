@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// mapping (<c>metadata</c>) and the occasional sequence. This reader accepts that subset deliberately and
 /// rejects everything else with a <see cref="FormatException"/> naming the construct, so that a skill whose
 /// frontmatter it cannot represent faithfully is never published with a guessed rendering. Anchors, aliases,
-/// tags, multi-document streams, complex keys, and tab indentation are rejected.
+/// tags, multi-document streams, complex keys, multi-line flow collections, and tab indentation are rejected.
 /// </para>
 /// <para>
 /// Unquoted scalars are resolved per the YAML 1.2 core schema (<c>null</c>, booleans, integers, finite floats,
@@ -44,6 +44,12 @@ public static class SkillFrontmatter
     private sealed class UnterminatedQuoteException(string message, char quote) : FormatException(message)
     {
         public char Quote { get; } = quote;
+    }
+
+    /// <summary>Thrown when a flow collection has no closing bracket on its line. Malformed unless a later line closes it.</summary>
+    private sealed class UnterminatedFlowException(string message, char closer) : FormatException(message)
+    {
+        public char Closer { get; } = closer;
     }
 
     /// <summary>
@@ -130,13 +136,17 @@ public static class SkillFrontmatter
                 indent++;
             }
 
-            if (indent < raw.Length && raw[indent] == '\t')
+            // Tabs cannot indent block structure, but they may separate a value from its indicator and are content
+            // inside block scalars, so a leading tab only marks the line here; the parser rejects it where it matters.
+            int contentStart = indent;
+            while (contentStart < raw.Length && raw[contentStart] is ' ' or '\t')
             {
-                throw new FormatException($"Line {number}: tabs are not allowed for indentation in YAML frontmatter.");
+                contentStart++;
             }
 
             Indent = indent;
-            Content = raw.Substring(indent);
+            HasTabIndentation = contentStart != indent;
+            Content = raw.Substring(contentStart);
             IsBlank = Content.Length == 0 || Content[0] == '#';
         }
 
@@ -144,6 +154,9 @@ public static class SkillFrontmatter
         public int Number { get; }
         public int Indent { get; }
         public string Content { get; }
+
+        /// <summary>Whether a tab appears in the line's leading white space, which YAML does not allow for indentation.</summary>
+        public bool HasTabIndentation { get; }
 
         /// <summary>Whether the line is empty or a comment, and therefore structurally insignificant.</summary>
         public bool IsBlank { get; }
@@ -222,7 +235,71 @@ public static class SkillFrontmatter
         }
 
         private static bool IsSequenceEntry(string content) =>
-            content.Length > 0 && content[0] == '-' && (content.Length == 1 || content[1] == ' ');
+            content.Length > 0 && content[0] == '-' && (content.Length == 1 || content[1] is ' ' or '\t');
+
+        /// <summary>
+        /// Whether a sequence item's text is a "key: value" line, with a plain or quoted key, that begins a nested
+        /// block mapping.
+        /// </summary>
+        private static bool IsCompactMappingEntry(string item, int lineNumber)
+        {
+            if (item[0] is '"' or '\'')
+            {
+                try
+                {
+                    ParseQuotedScalar(item, 0, lineNumber, out int afterQuote);
+                    int colon = SkipSpaces(item, afterQuote);
+                    return colon < item.Length && item[colon] == ':' && (colon + 1 == item.Length || item[colon + 1] is ' ' or '\t');
+                }
+                catch (FormatException)
+                {
+                    // Not a well-formed quoted key; the item is parsed as a value and reported there.
+                    return false;
+                }
+            }
+
+            return item[0] is not ('[' or '{' or '|' or '>' or '&' or '*' or '!') && FindKeySeparator(item) >= 0;
+        }
+
+        private static void ThrowIfTabIndented(Line line)
+        {
+            if (line.HasTabIndentation)
+            {
+                throw new FormatException($"Line {line.Number}: tabs are not allowed for indentation in YAML frontmatter.");
+            }
+        }
+
+        /// <summary>
+        /// Rejects a plain scalar that starts with a character YAML gives another meaning: an anchor, alias, or tag
+        /// (valid YAML this reader does not support), a reserved character, a flow indicator, a block scalar header,
+        /// or a block indicator followed by white space.
+        /// </summary>
+        private static void ThrowIfReservedPlainStart(string text, int lineNumber)
+        {
+            if (text.Length == 0)
+            {
+                return;
+            }
+
+            char c = text[0];
+            switch (c)
+            {
+                case '&' or '*' or '!':
+                    throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
+
+                case '@' or '`' or '%':
+                    throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{c}', which YAML reserves. Quote the value.");
+
+                case ']' or '}' or ',':
+                    throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with the flow indicator '{c}'. Quote the value.");
+
+                case '|' or '>':
+                    throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{c}', which YAML reads as a block scalar header. Quote the value.");
+
+                case '-' or '?' or ':' when text.Length == 1 || text[1] is ' ' or '\t':
+                    throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{c}' followed by white space, which YAML reads as a block indicator. Quote the value.");
+            }
+        }
 
         private JsonObject ParseMapping(int indent)
         {
@@ -246,15 +323,21 @@ public static class SkillFrontmatter
                     throw new FormatException($"Line {line.Number}: unexpected indentation.");
                 }
 
+                ThrowIfTabIndented(line);
                 if (IsSequenceEntry(line.Content))
                 {
                     throw new FormatException($"Line {line.Number}: a sequence entry cannot appear directly inside a mapping. Put it under a key.");
                 }
 
                 string content = line.Content;
-                if (content[0] == '?')
+                if (content[0] == '?' && (content.Length == 1 || content[1] is ' ' or '\t'))
                 {
                     throw new UnsupportedYamlException($"Line {line.Number}: complex mapping keys ('? ') are not supported in frontmatter.");
+                }
+
+                if (content[0] is '[' or '{')
+                {
+                    throw new UnsupportedYamlException($"Line {line.Number}: flow collections are not supported as mapping keys in frontmatter.");
                 }
 
                 int consumed;
@@ -263,7 +346,7 @@ public static class SkillFrontmatter
                 {
                     key = ParseQuotedScalar(content, 0, line.Number, out consumed);
                     int colon = SkipSpaces(content, consumed);
-                    if (colon >= content.Length || content[colon] != ':' || (colon + 1 < content.Length && content[colon + 1] != ' '))
+                    if (colon >= content.Length || content[colon] != ':' || (colon + 1 < content.Length && content[colon + 1] is not (' ' or '\t')))
                     {
                         throw new FormatException($"Line {line.Number}: expected ':' after the quoted key.");
                     }
@@ -283,6 +366,8 @@ public static class SkillFrontmatter
                     {
                         throw new FormatException($"Line {line.Number}: empty mapping key.");
                     }
+
+                    ThrowIfReservedPlainStart(content, line.Number);
 
                     // Keys resolve like values: "TRUE:" is the key "true" and "0x10:" is "16" to a YAML parser.
                     key = KeyToString(ResolvePlainScalar(rawKey, line.Number));
@@ -324,8 +409,9 @@ public static class SkillFrontmatter
                     throw new FormatException($"Line {line.Number}: unexpected indentation.");
                 }
 
-                string item = line.Content.Length > 1 ? line.Content.Substring(2) : string.Empty;
-                int itemIndent = indent + 2;
+                ThrowIfTabIndented(line);
+                // Everything after the '-', white space included, so that the item's column is known exactly.
+                string item = line.Content.Substring(1);
                 _pos++;
 
                 string trimmedItem = item.TrimStart(s_yamlWhitespace);
@@ -337,9 +423,15 @@ public static class SkillFrontmatter
                     continue;
                 }
 
-                itemIndent = indent + 2 + (item.Length - trimmedItem.Length);
-                if (IsSequenceEntry(trimmedItem) || (trimmedItem[0] is not ('"' or '\'' or '[' or '{' or '|' or '>' or '&' or '*' or '!') && FindKeySeparator(trimmedItem) >= 0))
+                int itemIndent = indent + 1 + (item.Length - trimmedItem.Length);
+                if (IsSequenceEntry(trimmedItem) || IsCompactMappingEntry(trimmedItem, line.Number))
                 {
+                    if (item.IndexOf('\t', 0, item.Length - trimmedItem.Length) >= 0)
+                    {
+                        // The nested node's indentation would be set by a tab.
+                        throw new FormatException($"Line {line.Number}: tabs are not allowed for indentation in YAML frontmatter.");
+                    }
+
                     // A compact nested node ("- key: value" or "- - x"): re-read this line as if the item started on
                     // its own line at the item's column, then continue with the block at that indentation.
                     _pos--;
@@ -388,11 +480,17 @@ public static class SkillFrontmatter
                 case '&' or '*' or '!':
                     throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
 
-                case '[':
-                    return ParseFlowSequence(rest, lineNumber);
-
-                case '{':
-                    return ParseFlowMapping(rest, lineNumber);
+                case '[' or '{':
+                    try
+                    {
+                        return rest[0] == '[' ? ParseFlowSequence(rest, lineNumber) : ParseFlowMapping(rest, lineNumber);
+                    }
+                    catch (UnterminatedFlowException e) when (ClosesLater(e.Closer))
+                    {
+                        // Valid YAML (a flow collection spanning lines) that this reader does not support, as
+                        // opposed to a collection that is never closed, which is malformed.
+                        throw new UnsupportedYamlException($"Line {lineNumber}: multi-line flow collections are not supported in frontmatter.");
+                    }
 
                 case '"' or '\'':
                     string quoted;
@@ -416,35 +514,29 @@ public static class SkillFrontmatter
                     return JsonValue.Create(quoted);
 
                 default:
-                    if (rest[0] is '@' or '`' or '%')
-                    {
-                        throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{rest[0]}', which YAML reserves. Quote the value.");
-                    }
-
                     if (IsSequenceEntry(rest))
                     {
                         throw new FormatException($"Line {lineNumber}: a sequence cannot start on the same line as its key. Put the '- ' entries on the following lines, or quote the value if '-' is meant literally.");
                     }
 
+                    ThrowIfReservedPlainStart(rest, lineNumber);
                     if (FindKeySeparator(rest) >= 0)
                     {
                         throw new FormatException($"Line {lineNumber}: a plain scalar cannot contain ': '. Quote the value if it is meant literally.");
                     }
 
-                    if (commentEndedValue)
-                    {
-                        // A comment ends a plain scalar. A more-indented line after it cannot continue the scalar
-                        // and cannot start a nested block either, so it is an error, as it is to a YAML parser.
-                        if (PeekSignificant() is { } following && following.Indent > parentIndent)
-                        {
-                            throw new FormatException(
-                                $"Line {following.Number}: this line cannot continue the value on line {lineNumber}, because a comment ended that value.");
-                        }
+                    string plain = commentEndedValue ? rest : CollectPlainContinuation(rest, parentIndent, lineNumber, out commentEndedValue);
 
-                        return ResolvePlainScalar(rest, lineNumber);
+                    // A comment ends a plain scalar, on whichever of its lines it appears. A more-indented line after
+                    // it cannot continue the scalar and cannot start a nested block either, so it is an error, as it
+                    // is to a YAML parser.
+                    if (commentEndedValue && PeekSignificant() is { } following && following.Indent > parentIndent)
+                    {
+                        throw new FormatException(
+                            $"Line {following.Number}: this line cannot continue the value that started on line {lineNumber}, because a comment ended that value.");
                     }
 
-                    return ResolvePlainScalar(CollectPlainContinuation(rest, parentIndent, lineNumber), lineNumber);
+                    return ResolvePlainScalar(plain, lineNumber);
             }
         }
 
@@ -461,9 +553,13 @@ public static class SkillFrontmatter
             return false;
         }
 
-        /// <summary>Folds the more-indented continuation lines of a plain multi-line scalar into it.</summary>
-        private string CollectPlainContinuation(string first, int parentIndent, int lineNumber)
+        /// <summary>
+        /// Folds the more-indented continuation lines of a plain multi-line scalar into it. A trailing comment on a
+        /// continuation line ends the scalar, which <paramref name="commentEndedValue"/> reports.
+        /// </summary>
+        private string CollectPlainContinuation(string first, int parentIndent, int lineNumber, out bool commentEndedValue)
         {
+            commentEndedValue = false;
             var builder = new StringBuilder(first);
             int pendingNewlines = 0;
             while (_pos < _lines.Count)
@@ -481,7 +577,8 @@ public static class SkillFrontmatter
                     break;
                 }
 
-                string text = StripComment(line.Content).Trim(s_yamlWhitespace);
+                string stripped = StripComment(line.Content);
+                string text = stripped.Trim(s_yamlWhitespace);
                 if (text.Length == 0)
                 {
                     break;
@@ -498,6 +595,12 @@ public static class SkillFrontmatter
                 pendingNewlines = 0;
                 builder.Append(text);
                 _pos++;
+
+                if (stripped.Length != line.Content.Length)
+                {
+                    commentEndedValue = true;
+                    break;
+                }
             }
 
             // Trailing blank lines belong to whatever follows, so give them back.
@@ -546,12 +649,31 @@ public static class SkillFrontmatter
             // Gather the raw lines of the block: everything blank, plus everything indented more than the parent.
             var raw = new List<string>();
             int contentIndent = explicitIndent > 0 ? parentIndent + explicitIndent : -1;
+            int widestLeadingEmptyLine = 0;
             while (_pos < _lines.Count)
             {
                 var line = _lines[_pos];
                 if (line.Content.Length == 0)
                 {
-                    raw.Add(string.Empty);
+                    // A white-space-only line is empty unless it reaches past the content indentation, in which case
+                    // the excess is content. Until the indentation is known, the widest such line is remembered:
+                    // YAML rejects a leading empty line wider than the first content line. A tab short of the
+                    // content indentation is neither indentation nor content.
+                    if (line.HasTabIndentation && (contentIndent < 0 || line.Indent < contentIndent))
+                    {
+                        throw new FormatException($"Line {line.Number}: tabs are not allowed for indentation in YAML frontmatter.");
+                    }
+
+                    if (contentIndent < 0)
+                    {
+                        widestLeadingEmptyLine = Math.Max(widestLeadingEmptyLine, line.Raw.Length);
+                        raw.Add(string.Empty);
+                    }
+                    else
+                    {
+                        raw.Add(line.Raw.Length > contentIndent ? line.Raw.Substring(contentIndent) : string.Empty);
+                    }
+
                     _pos++;
                     continue;
                 }
@@ -564,6 +686,11 @@ public static class SkillFrontmatter
                 if (contentIndent < 0)
                 {
                     contentIndent = line.Indent;
+                    if (widestLeadingEmptyLine > contentIndent)
+                    {
+                        throw new FormatException(
+                            $"Line {line.Number}: a leading empty line of the block scalar is indented more than its first content line. Use an explicit indentation indicator, or remove the extra white space.");
+                    }
                 }
                 else if (line.Indent < contentIndent)
                 {
@@ -656,7 +783,7 @@ public static class SkillFrontmatter
                 pos = SkipSpaces(text, pos);
                 if (pos >= text.Length)
                 {
-                    throw new FormatException($"Line {lineNumber}: unterminated flow sequence; multi-line flow collections are not supported.");
+                    throw new UnterminatedFlowException($"Line {lineNumber}: unterminated flow sequence.", ']');
                 }
 
                 if (text[pos] == ']')
@@ -665,13 +792,28 @@ public static class SkillFrontmatter
                     break;
                 }
 
+                if (text[pos] == ',')
+                {
+                    throw new FormatException($"Line {lineNumber}: unexpected ',' in flow sequence; every entry needs a value.");
+                }
+
                 result.Add(ParseFlowScalar(text, ref pos, lineNumber, ",]"));
                 pos = SkipSpaces(text, pos);
-                if (pos < text.Length && text[pos] == ',')
+                if (pos < text.Length && text[pos] == ':')
+                {
+                    throw new UnsupportedYamlException($"Line {lineNumber}: compact mappings inside flow sequences ('[key: value]') are not supported in frontmatter.");
+                }
+
+                if (pos >= text.Length)
+                {
+                    throw new UnterminatedFlowException($"Line {lineNumber}: unterminated flow sequence.", ']');
+                }
+
+                if (text[pos] == ',')
                 {
                     pos++;
                 }
-                else if (pos >= text.Length || text[pos] != ']')
+                else if (text[pos] != ']')
                 {
                     throw new FormatException($"Line {lineNumber}: expected ',' or ']' in flow sequence.");
                 }
@@ -694,13 +836,18 @@ public static class SkillFrontmatter
                 pos = SkipSpaces(text, pos);
                 if (pos >= text.Length)
                 {
-                    throw new FormatException($"Line {lineNumber}: unterminated flow mapping; multi-line flow collections are not supported.");
+                    throw new UnterminatedFlowException($"Line {lineNumber}: unterminated flow mapping.", '}');
                 }
 
                 if (text[pos] == '}')
                 {
                     pos++;
                     break;
+                }
+
+                if (text[pos] == ',')
+                {
+                    throw new FormatException($"Line {lineNumber}: unexpected ',' in flow mapping; every entry needs a key.");
                 }
 
                 JsonNode? keyNode;
@@ -724,7 +871,7 @@ public static class SkillFrontmatter
                     int colonAt = -1;
                     while (pos < text.Length && text[pos] is not (',' or '}'))
                     {
-                        if (text[pos] == ':' && (pos + 1 == text.Length || text[pos + 1] is ' ' or ',' or '}'))
+                        if (text[pos] == ':' && (pos + 1 == text.Length || text[pos + 1] is ' ' or '\t' or ',' or '}'))
                         {
                             colonAt = pos;
                             break;
@@ -744,16 +891,7 @@ public static class SkillFrontmatter
                         throw new UnsupportedYamlException($"Line {lineNumber}: nested flow collections are not supported in frontmatter.");
                     }
 
-                    if (rawKey.Length > 0 && rawKey[0] is '&' or '*' or '!')
-                    {
-                        throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
-                    }
-
-                    if (rawKey.Length > 0 && rawKey[0] is '@' or '`' or '%')
-                    {
-                        throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{rawKey[0]}', which YAML reserves. Quote the value.");
-                    }
-
+                    ThrowIfReservedPlainStart(rawKey, lineNumber);
                     keyNode = ResolvePlainScalar(rawKey, lineNumber);
                     hasValue = colonAt >= 0;
                     if (hasValue)
@@ -770,11 +908,16 @@ public static class SkillFrontmatter
 
                 result[key] = hasValue ? ParseFlowScalar(text, ref pos, lineNumber, ",}") : null;
                 pos = SkipSpaces(text, pos);
-                if (pos < text.Length && text[pos] == ',')
+                if (pos >= text.Length)
+                {
+                    throw new UnterminatedFlowException($"Line {lineNumber}: unterminated flow mapping.", '}');
+                }
+
+                if (text[pos] == ',')
                 {
                     pos++;
                 }
-                else if (pos >= text.Length || text[pos] != '}')
+                else if (text[pos] != '}')
                 {
                     throw new FormatException($"Line {lineNumber}: expected ',' or '}}' in flow mapping.");
                 }
@@ -826,16 +969,7 @@ public static class SkillFrontmatter
                 throw new UnsupportedYamlException($"Line {lineNumber}: compact mappings inside flow sequences ('[key: value]') are not supported in frontmatter.");
             }
 
-            if (plain.Length > 0 && plain[0] is '&' or '*' or '!')
-            {
-                throw new UnsupportedYamlException($"Line {lineNumber}: YAML anchors, aliases, and tags are not supported in frontmatter.");
-            }
-
-            if (plain.Length > 0 && plain[0] is '@' or '`' or '%')
-            {
-                throw new FormatException($"Line {lineNumber}: a plain scalar cannot start with '{plain[0]}', which YAML reserves. Quote the value.");
-            }
-
+            ThrowIfReservedPlainStart(plain, lineNumber);
             return ResolvePlainScalar(plain, lineNumber);
         }
 
@@ -1012,7 +1146,8 @@ public static class SkillFrontmatter
             // Integer: digits only.
             if (IsAll(body, 0, IsDigit))
             {
-                return JsonNode.Parse((negative ? "-" : string.Empty) + body.TrimStart('0').PadLeft(1, '0'));
+                string digits = body.TrimStart('0').PadLeft(1, '0');
+                return JsonNode.Parse(negative && digits != "0" ? "-" + digits : digits);
             }
 
             // Float: [digits][.digits][e[+-]digits], with at least one digit somewhere in the mantissa.
@@ -1071,7 +1206,8 @@ public static class SkillFrontmatter
                 throw new FormatException($"Line {lineNumber}: '{text}' cannot be represented as a JSON number.");
             }
 
-            return JsonValue.Create(negative ? -parsed : parsed);
+            // JSON has no negative zero worth preserving: reference parsers render -0 and -0.0 as 0.
+            return JsonValue.Create(negative && parsed != 0 ? -parsed : parsed);
         }
 
         private static bool IsDigit(char c) => c is >= '0' and <= '9';
@@ -1098,7 +1234,7 @@ public static class SkillFrontmatter
 
         private static int SkipSpaces(string text, int pos)
         {
-            while (pos < text.Length && text[pos] == ' ')
+            while (pos < text.Length && text[pos] is ' ' or '\t')
             {
                 pos++;
             }
@@ -1106,12 +1242,12 @@ public static class SkillFrontmatter
             return pos;
         }
 
-        /// <summary>Finds the ':' that separates a plain key from its value: the first ':' followed by a space or the end of the line.</summary>
+        /// <summary>Finds the ':' that separates a plain key from its value: the first ':' followed by white space or the end of the line.</summary>
         private static int FindKeySeparator(string content)
         {
             for (int i = 0; i < content.Length; i++)
             {
-                if (content[i] == ':' && (i + 1 == content.Length || content[i + 1] == ' '))
+                if (content[i] == ':' && (i + 1 == content.Length || content[i + 1] is ' ' or '\t'))
                 {
                     return i;
                 }

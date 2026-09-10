@@ -22,6 +22,7 @@
     <TrimmerRootAssembly Include="ModelContextProtocol" />
     <TrimmerRootAssembly Include="ModelContextProtocol.AspNetCore" />
     <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Apps" />
+    <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Skills" />
   </ItemGroup>
 
 </Project>

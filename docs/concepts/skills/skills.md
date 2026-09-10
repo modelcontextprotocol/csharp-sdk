@@ -41,6 +41,7 @@ lays them out, and point `WithSkillsFromDirectory` at the parent:
 
 ```csharp
 using ModelContextProtocol.Extensions.Skills;
+using ModelContextProtocol.Protocol;
 
 builder.Services
     .AddMcpServer()
@@ -95,8 +96,8 @@ host verifies a skill by parsing the fetched `SKILL.md` itself and comparing fie
 entry; a value that one side types as a number and the other as a string is a verification failure. Quote values
 such as version numbers that are meant to be strings.
 
-Anchors, aliases, tags, complex keys, nested flow collections, and multi-line quoted scalars are valid YAML the
-reader does not support; it rejects them with a <xref:System.FormatException> naming the construct. For such a
+Anchors, aliases, tags, complex keys, nested and multi-line flow collections, and multi-line quoted scalars are
+valid YAML the reader does not support; it rejects them with a <xref:System.FormatException> naming the construct. For such a
 file, the `Create` and `CreateFromDirectory` overloads that take an explicit `JsonObject` supply the frontmatter
 directly. That escape hatch covers only valid-but-unsupported YAML: a file with no frontmatter block, malformed
 YAML, or invalid UTF-8 is rejected regardless, since no host could parse it either. When the reader can parse the
@@ -217,7 +218,7 @@ Servers built with this package do not declare `directoryRead`, and hosts must n
 
 ### Samples
 
-- [SkillsServer](../../../samples/SkillsServer/README.md): a Streamable
+- [SkillsServer](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/SkillsServer): a Streamable
   HTTP server serving two skills from directories on disk.
-- [SkillsClient](../../../samples/SkillsClient/README.md): a client that
+- [SkillsClient](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/SkillsClient): a client that
   connects to it and discovers, retrieves, and verifies them.

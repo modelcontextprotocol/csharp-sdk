@@ -331,6 +331,58 @@ public class SkillFrontmatterTests
     }
 
     [Theory]
+    [InlineData("-0", "0")]
+    [InlineData("-00", "0")]
+    [InlineData("-0.0", "0")]
+    [InlineData("+0", "0")]
+    public void NegativeZeroIsZero(string yaml, string expectedJson)
+    {
+        // Reference parsers render -0 as 0 (JavaScript has no distinct -0 in JSON; Python's int has none at all).
+        Assert.Equal("{\"value\":" + expectedJson + "}", Parse("value: " + yaml).ToJsonString());
+        Assert.Equal("{\"" + expectedJson + "\":1}", Parse(yaml + ": 1").ToJsonString());
+    }
+
+    [Fact]
+    public void TabsSeparateValuesButDoNotIndent()
+    {
+        var frontmatter = Parse("a:\tone\nb:\n\t\nc: {d:\t2, \"e\"\t: 3}\nitems:\n  -\tx\nblock: |\n  \tindented by a tab\n  \t\ntail: 'a\tb'");
+
+        AssertJson("""{ "a": "one", "b": null, "c": { "d": 2, "e": 3 }, "items": ["x"], "block": "\tindented by a tab\n\t\n", "tail": "a\tb" }""", frontmatter);
+    }
+
+    [Fact]
+    public void BlockScalarsKeepWhiteSpaceOnLinesWiderThanTheirIndentation()
+    {
+        var frontmatter = Parse("lit: |\n  a\n    \n  b\n     \nfold: >\n  a\n    \n  b\n");
+
+        AssertJson("""{ "lit": "a\n  \nb\n   \n", "fold": "a\n  \nb\n" }""", frontmatter);
+    }
+
+    [Fact]
+    public void SequenceItemsMayBeMappingsWithQuotedKeys()
+    {
+        var frontmatter = Parse("items:\n  - \"k\": v\n    w: 1\n  - 'q': r\n  - \"plain\" # not a key\n");
+
+        AssertJson("""{ "items": [ { "k": "v", "w": 1 }, { "q": "r" }, "plain" ] }""", frontmatter);
+    }
+
+    [Fact]
+    public void KeysMayStartWithIndicatorsNotFollowedByWhiteSpace()
+    {
+        var frontmatter = Parse("?a: 1\n-a: 2\n-: 3\n:a: 4");
+
+        AssertJson("""{ "?a": 1, "-a": 2, "-": 3, ":a": 4 }""", frontmatter);
+    }
+
+    [Fact]
+    public void ACommentEndsAPlainScalarOnAnyOfItsLines()
+    {
+        var frontmatter = Parse("a: one\n  two # note\nb: 2");
+
+        AssertJson("""{ "a": "one two", "b": 2 }""", frontmatter);
+    }
+
+    [Theory]
     [InlineData("# no frontmatter\nname: x", "must begin")]
     [InlineData("---\nname: x\n", "not closed")]
     [InlineData("---\nname: x\nname: y\n---", "duplicate key")]
@@ -341,7 +393,40 @@ public class SkillFrontmatterTests
     [InlineData("---\n? complex\n: key\n---", "complex")]
     [InlineData("---\nname: \"unterminated\n---", "unterminated")]
     [InlineData("---\nname: [a, [b]]\n---", "nested flow")]
-    [InlineData("---\nname: [a,\n  b]\n---", "unterminated flow")]
+    [InlineData("---\nname: [a,\n  b]\n---", "multi-line flow collections")]
+    [InlineData("---\nname: {a: 1,\n  b: 2}\n---", "multi-line flow collections")]
+    [InlineData("---\nname: [a, b\nother: c\n---", "unterminated flow sequence")]
+    [InlineData("---\nname: {a: b\nother: c\n---", "unterminated flow mapping")]
+    [InlineData("---\nname: x\n\tother: y\n---", "tabs")]
+    [InlineData("---\nitems:\n  -\tk: v\n---", "tabs")]
+    [InlineData("---\nvalue: |\n  a\n\t\n  b\n---", "tabs")]
+    [InlineData("---\nvalue: a\n  b # comment\n  c\n---", "a comment ended that value")]
+    [InlineData("---\nvalue: ]x\n---", "flow indicator")]
+    [InlineData("---\nvalue: }x\n---", "flow indicator")]
+    [InlineData("---\nvalue: ,x\n---", "flow indicator")]
+    [InlineData("---\nvalue: ?\n---", "block indicator")]
+    [InlineData("---\nvalue: ? a\n---", "block indicator")]
+    [InlineData("---\n&a: x\n---", "anchors")]
+    [InlineData("---\n*a: x\n---", "anchors")]
+    [InlineData("---\n!t: x\n---", "anchors")]
+    [InlineData("---\n@a: x\n---", "reserves")]
+    [InlineData("---\n`a: x\n---", "reserves")]
+    [InlineData("---\n%a: x\n---", "reserves")]
+    [InlineData("---\n]a: x\n---", "flow indicator")]
+    [InlineData("---\n,a: x\n---", "flow indicator")]
+    [InlineData("---\n|: x\n---", "block scalar header")]
+    [InlineData("---\n[a]: x\n---", "flow collections are not supported as mapping keys")]
+    [InlineData("---\n{a: 1}: x\n---", "flow collections are not supported as mapping keys")]
+    [InlineData("---\nvalue: [,]\n---", "unexpected ','")]
+    [InlineData("---\nvalue: [a,,b]\n---", "unexpected ','")]
+    [InlineData("---\nvalue: [,a]\n---", "unexpected ','")]
+    [InlineData("---\nvalue: {,}\n---", "unexpected ','")]
+    [InlineData("---\nvalue: {a: 1,,b: 2}\n---", "unexpected ','")]
+    [InlineData("---\nvalue: [- b]\n---", "block indicator")]
+    [InlineData("---\nvalue: [}]\n---", "flow indicator")]
+    [InlineData("---\nvalue: {]: 1}\n---", "flow indicator")]
+    [InlineData("---\nvalue: [\"a\": b]\n---", "compact mappings inside flow sequences")]
+    [InlineData("---\nvalue: |\n    \n  a\n---", "leading empty line")]
     [InlineData("---\nvalue: .inf\n---", "cannot be represented")]
     [InlineData("---\nvalue: @handle\n---", "reserves")]
     [InlineData("---\nvalue: `tick\n---", "reserves")]

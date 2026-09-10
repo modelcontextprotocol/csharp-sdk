@@ -69,9 +69,10 @@ public static class McpSkillsBuilderExtensions
                 throw new ArgumentException("The skills must not contain null entries.", nameof(skills));
             }
 
-            entries.Add(skill.ProtocolSkill);
+            var protocolSkill = skill.ProtocolSkill;
+            entries.Add(protocolSkill);
 
-            var manifest = skill.ProtocolSkill.Resources.Resources!;
+            var manifest = protocolSkill.Resources.Resources!;
             for (int i = 0; i < manifest.Count; i++)
             {
                 var entry = manifest[i];

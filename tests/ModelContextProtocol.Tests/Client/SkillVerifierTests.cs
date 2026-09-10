@@ -76,6 +76,14 @@ public class SkillVerifierTests
     }
 
     [Fact]
+    public void Verify_Contents_RejectsMissingTextAsVerificationFailure()
+    {
+        var entry = Entry(Encoding.UTF8.GetBytes("x"));
+
+        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(entry, new TextResourceContents { Uri = Uri, Text = null! }));
+    }
+
+    [Fact]
     public void Verify_BlobContents_HashesDecodedBytes()
     {
         byte[] content = [0x00, 0xFF, 0x10, 0x80];

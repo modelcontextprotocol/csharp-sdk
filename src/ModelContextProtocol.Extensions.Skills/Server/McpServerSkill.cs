@@ -33,20 +33,25 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </remarks>
 public sealed class McpServerSkill
 {
-    private McpServerSkill(Skill protocolSkill, IReadOnlyList<McpServerResource> resources)
+    private readonly Skill _entry;
+
+    private McpServerSkill(Skill entry, IReadOnlyList<McpServerResource> resources)
     {
-        ProtocolSkill = protocolSkill;
+        // The entry may hold the caller's frontmatter object; keep a private copy so later changes to it do not
+        // reach the skill.
+        _entry = SkillValidation.Snapshot(entry);
         Resources = resources;
     }
 
     /// <summary>
-    /// Gets the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
+    /// Gets a copy of the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
     /// <remarks>
-    /// The catalog that <c>WithSkills</c> creates keeps its own copy of this entry, so changes made to this object
-    /// after registration do not affect what is served.
+    /// Each access returns a new copy. The entry was computed from the same bytes <see cref="Resources"/> serve,
+    /// and the skill keeps that entry itself, so changes made to a returned copy affect neither the skill nor
+    /// what <c>WithSkills</c> registers.
     /// </remarks>
-    public Skill ProtocolSkill { get; }
+    public Skill ProtocolSkill => SkillValidation.Snapshot(_entry);
 
     /// <summary>
     /// Gets the resources serving the skill's files, one per file, each addressable at the URI its manifest entry names.
@@ -263,6 +268,10 @@ public sealed class McpServerSkill
 
     private static McpServerSkill CreateCore(string? uri, string? uriPrefix, JsonObject? frontmatter, IEnumerable<McpServerSkillFile> files, string filesParamName)
     {
+        // A violation found in the entry is reported against the frontmatter argument when the caller supplied
+        // one, and against the files (or directory) it was read from otherwise.
+        string entryParamName = frontmatter is null ? filesParamName : nameof(frontmatter);
+
         // Normalize and order the files: SKILL.md first, then the rest by path, so the manifest is deterministic.
         var normalized = new List<(string Path, McpServerSkillFile File)>();
         var seenPaths = new HashSet<string>(StringComparer.Ordinal);
@@ -385,7 +394,7 @@ public sealed class McpServerSkill
             Resources = SkillResources.FromResources(manifest),
         };
 
-        SkillValidation.Validate(skill, nameof(frontmatter));
+        SkillValidation.Validate(skill, entryParamName);
 
         var resources = new McpServerResource[normalized.Count];
         for (int i = 0; i < normalized.Count; i++)
@@ -586,7 +595,11 @@ public sealed class McpServerSkill
     {
         try
         {
+#if NET
+            text = s_strictUtf8.GetString(bytes);
+#else
             text = s_strictUtf8.GetString(bytes.ToArray());
+#endif
             return true;
         }
         catch (DecoderFallbackException)

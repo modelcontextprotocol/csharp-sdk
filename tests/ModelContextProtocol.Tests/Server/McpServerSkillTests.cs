@@ -33,7 +33,8 @@ public class McpServerSkillTests
 
         var entry = skill.ProtocolSkill;
         Assert.Equal(SkillUri, entry.Uri);
-        Assert.Same(frontmatter, entry.Frontmatter);
+        Assert.True(JsonNode.DeepEquals(frontmatter, entry.Frontmatter));
+        Assert.NotSame(frontmatter, entry.Frontmatter);
         Assert.False(entry.Resources.IsDynamic);
 
         var manifest = entry.Resources.Resources!;
@@ -227,6 +228,13 @@ public class McpServerSkillTests
         var multiLine = McpServerSkill.Create(SkillUri, Frontmatter(),
             [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: \"Git\n  conventions\"\n---\n")]);
         Assert.Equal("Git conventions", multiLine.ProtocolSkill.Description);
+
+        // So is a flow collection that closes on a later line.
+        var explicitTools = Frontmatter();
+        explicitTools["allowed-tools"] = new JsonArray("Read", "Write");
+        var multiLineFlow = McpServerSkill.Create(SkillUri, explicitTools,
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: Git conventions\nallowed-tools: [Read,\n  Write]\n---\n")]);
+        Assert.Equal(2, multiLineFlow.ProtocolSkill.Frontmatter["allowed-tools"]!.AsArray().Count);
     }
 
     [Theory]
@@ -235,6 +243,8 @@ public class McpServerSkillTests
     [InlineData("---\nname: a: b\n---\n", "cannot contain")]
     [InlineData("---\n\tname: x\n---\n", "tabs")]
     [InlineData("---\nname: git-workflow\ndescription: \"never closed\n---\n", "unterminated")]
+    [InlineData("---\nname: git-workflow\ndescription: d\nallowed-tools: [Read, Write\n---\n", "unterminated flow")]
+    [InlineData("---\nname: git-workflow\ndescription: d\n  extra # comment\n    more\n---\n", "a comment ended that value")]
     public void Create_WithExplicitFrontmatter_StillRejectsMalformedSkillFile(string markdown, string messageFragment)
     {
         // Only valid-but-unsupported YAML may be bypassed. A file no host can parse must not be published.
@@ -324,17 +334,45 @@ public class McpServerSkillTests
     }
 
     [Fact]
-    public void Create_SnapshotsCallerOwnedContent()
+    public void Create_KeepsItsOwnCopyOfTheEntry()
     {
-        byte[] bytes = Encoding.UTF8.GetBytes(SkillMarkdown);
-        var skill = McpServerSkill.Create(SkillUri, Frontmatter(), [new McpServerSkillFile { Path = "SKILL.md", Content = bytes }]);
-        string digestBefore = skill.ProtocolSkill.Resources.Resources![0].Digest;
+        var frontmatter = Frontmatter();
+        var skill = McpServerSkill.Create(SkillUri, frontmatter, [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown)]);
+        var manifestEntry = skill.ProtocolSkill.Resources.Resources![0];
 
-        bytes[0] = (byte)'X';
+        // The caller goes on to edit the frontmatter object it passed in, and an entry it was handed back.
+        frontmatter["description"] = "changed";
+        var returned = skill.ProtocolSkill;
+        returned.Frontmatter["name"] = "changed";
+        returned.Resources.Resources![0].Digest = "sha256:" + new string('0', 64);
+        returned.Resources = SkillResources.Dynamic;
 
-        // The manifest was computed from the original bytes; the served bytes must be those same bytes. The
-        // end-to-end check that the served content still verifies lives in McpServerSkillsSnapshotTests.
-        Assert.Equal(SkillVerifier.ComputeDigest(Encoding.UTF8.GetBytes(SkillMarkdown)), digestBefore);
+        // None of that reaches the skill, so what WithSkills registers is what Create computed. (That the served
+        // bytes are likewise a copy of the caller's buffer is checked end to end in McpServerSkillsIntegrityTests.)
+        var fresh = skill.ProtocolSkill;
+        Assert.Equal("git-workflow", fresh.Name);
+        Assert.Equal("Git conventions", fresh.Description);
+        Assert.Equal(manifestEntry.Digest, fresh.Resources.Resources![0].Digest);
+        Assert.NotSame(returned, fresh);
+    }
+
+    [Fact]
+    public void Create_RequiresAStringNameToDeriveTheUri()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: 123\ndescription: d\n---\n")]));
+
+        Assert.Contains("must declare a string 'name'", exception.Message);
+    }
+
+    [Fact]
+    public void Create_RejectsNullFileEntries()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            McpServerSkill.Create(SkillUri, [McpServerSkillFile.FromText("SKILL.md", SkillMarkdown), null!]));
+
+        Assert.Contains("null entries", exception.Message);
+        Assert.Equal("files", exception.ParamName);
     }
 
 #if NET

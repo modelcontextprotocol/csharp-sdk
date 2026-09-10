@@ -116,6 +116,49 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
         }
     }
 
+    [Fact]
+    public void WithSkillsFromDirectory_RejectsAnInvalidSkillRatherThanSkippingIt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skills-invalid-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "good"));
+            File.WriteAllText(Path.Combine(root, "good", "SKILL.md"), "---\nname: good\ndescription: d\n---\n");
+            Directory.CreateDirectory(Path.Combine(root, "broken"));
+            File.WriteAllText(Path.Combine(root, "broken", "SKILL.md"), "---\nname: broken\n---\n");
+
+            var exception = Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkillsFromDirectory(root));
+            Assert.Contains("description", exception.Message);
+            Assert.Equal("directoryPath", exception.ParamName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WithSkillsFromDirectory_RejectsTwoDirectoriesDeclaringTheSameName()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mcp-skills-samename-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // The URI is derived from the frontmatter name, not the directory name, so these collide.
+            foreach (string directory in new[] { "first", "second" })
+            {
+                Directory.CreateDirectory(Path.Combine(root, directory));
+                File.WriteAllText(Path.Combine(root, directory, "SKILL.md"), "---\nname: same\ndescription: d\n---\n");
+            }
+
+            var exception = Assert.Throws<ArgumentException>(() => new ServiceCollection().AddMcpServer().WithSkillsFromDirectory(root));
+            Assert.Contains("skill://same/SKILL.md", exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
 #if NET
     [Fact]
     public void WithSkillsFromDirectory_RejectsSymbolicLinkSkillDirectories()

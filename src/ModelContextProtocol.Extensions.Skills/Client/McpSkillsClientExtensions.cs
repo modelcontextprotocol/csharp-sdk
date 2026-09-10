@@ -106,6 +106,10 @@ public static class McpSkillsClientExtensions
         JsonRpcResponse response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
         var result = response.Result?.Deserialize(McpSkillsJsonContext.Default.ListSkillsResult) ??
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsList}'.");
+        if (result.Skills is null)
+        {
+            throw new JsonException($"The response to '{SkillsProtocol.MethodSkillsList}' has no 'skills' array.");
+        }
 
         foreach (var skill in result.Skills)
         {
@@ -235,13 +239,6 @@ public static class McpSkillsClientExtensions
         if (skill is null) throw new ArgumentNullException(nameof(skill));
         if (uri is null) throw new ArgumentNullException(nameof(uri));
 #endif
-
-        if (skill.Resources is { IsDynamic: true })
-        {
-            throw new InvalidOperationException(
-                $"Skill '{skill.Uri}' declares dynamic resources, which carry no digests and cannot be verified. " +
-                $"Use {nameof(McpClient.ReadResourceAsync)} directly if unverifiable content is acceptable.");
-        }
 
         SkillVerifier.ThrowIfDynamic(skill);
         if (SkillVerifier.FindResource(skill, uri) is null)
