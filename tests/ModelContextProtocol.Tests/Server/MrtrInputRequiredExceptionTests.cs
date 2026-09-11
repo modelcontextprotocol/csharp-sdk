@@ -15,6 +15,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class MrtrInputRequiredExceptionTests : ClientServerTestBase
 {
     private readonly ServerMessageTracker _messageTracker = new();
+    private int _inputElicitCallCount;
 
     public MrtrInputRequiredExceptionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -40,7 +41,74 @@ public class MrtrInputRequiredExceptionTests : ClientServerTestBase
                     Name = "always-incomplete",
                     Description = "Tool that always throws InputRequiredException"
                 }),
-        ]);
+            McpServerTool.Create(
+                static string (McpServer server) =>
+                {
+                    throw new InputRequiredException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "always-incomplete",
+                                RequestedSchema = new(),
+                            }),
+                        },
+                        requestState: "should-not-work");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "always-incomplete-with-input",
+                    Description = "Tool that always requests input"
+                }),
+            McpServerTool.Create(
+                static string (McpServer server) =>
+                {
+                    throw new InputRequiredException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["first"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "first",
+                                RequestedSchema = new(),
+                            }),
+                            ["second"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                            {
+                                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "second" }] }],
+                                MaxTokens = 1,
+                            }),
+                        },
+                        requestState: "two-inputs");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "two-inputs",
+                    Description = "Tool that requests two inputs"
+                }),
+            McpServerTool.Create(
+                static string (McpServer server) =>
+                {
+                    throw new InputRequiredException(
+                        inputRequests: new Dictionary<string, InputRequest>
+                        {
+                            ["blocking-first"] = InputRequest.ForSampling(new CreateMessageRequestParams
+                            {
+                                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "blocking-first" }] }],
+                                MaxTokens = 1,
+                            }),
+                            ["failing-second"] = InputRequest.ForElicitation(new ElicitRequestParams
+                            {
+                                Message = "failing-second",
+                                RequestedSchema = new(),
+                            }),
+                        },
+                        requestState: "reversed-two-inputs");
+                },
+                new McpServerToolCreateOptions
+                {
+                    Name = "reversed-two-inputs",
+                    Description = "Tool that requests a blocking input before a failing input"
+                }),
+          ]);
     }
 
     [Fact]
@@ -58,7 +126,121 @@ public class MrtrInputRequiredExceptionTests : ClientServerTestBase
             client.CallToolAsync("always-incomplete",
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
-        Assert.Contains("more than", exception.Message);
+        Assert.Contains("retry", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10", exception.Message);
+    }
+
+    [Fact]
+    public async Task InputRequiredException_WithInputRequests_ExhaustsRetriesWithoutExtraResolution()
+    {
+        StartServer();
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities { Elicitation = new() },
+        };
+        clientOptions.Handlers.ElicitationHandler = (_, _) =>
+        {
+            Interlocked.Increment(ref _inputElicitCallCount);
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        await Assert.ThrowsAsync<McpException>(() =>
+            client.CallToolAsync(
+                "always-incomplete-with-input",
+                cancellationToken: TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal(10, _inputElicitCallCount);
+    }
+
+    [Fact]
+    public async Task InputRequiredException_InputHandlerFailureCancelsSiblingHandler()
+    {
+        StartServer();
+        var siblingCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Elicitation = new(),
+                Sampling = new(),
+            },
+        };
+        clientOptions.Handlers.ElicitationHandler = (_, _) =>
+            throw new InvalidOperationException("first-input-failed");
+        clientOptions.Handlers.SamplingHandler = async (_, _, cancellationToken) =>
+        {
+            try
+            {
+                await gate.Task.WaitAsync(cancellationToken);
+                return new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "unexpected" }],
+                    Model = "unexpected",
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                siblingCancelled.TrySetResult(true);
+                throw;
+            }
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.CallToolAsync(
+                "two-inputs",
+                cancellationToken: TestContext.Current.CancellationToken).AsTask()
+                .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        Assert.Equal("first-input-failed", exception.Message);
+        await siblingCancelled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task InputRequiredException_FailureAfterBlockingSiblingPreservesFailure()
+    {
+        StartServer();
+        var siblingCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Elicitation = new(),
+                Sampling = new(),
+            },
+        };
+        clientOptions.Handlers.ElicitationHandler = (_, _) =>
+            throw new InvalidOperationException("second-input-failed");
+        clientOptions.Handlers.SamplingHandler = async (_, _, cancellationToken) =>
+        {
+            try
+            {
+                await gate.Task.WaitAsync(cancellationToken);
+                return new CreateMessageResult
+                {
+                    Content = [new TextContentBlock { Text = "unexpected" }],
+                    Model = "unexpected",
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                siblingCancelled.TrySetResult(true);
+                throw;
+            }
+        };
+
+        await using var client = await CreateMcpClientForServer(clientOptions);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.CallToolAsync(
+                "reversed-two-inputs",
+                cancellationToken: TestContext.Current.CancellationToken).AsTask()
+                .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        Assert.Equal("second-input-failed", exception.Message);
+        await siblingCancelled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
     }
 }
 

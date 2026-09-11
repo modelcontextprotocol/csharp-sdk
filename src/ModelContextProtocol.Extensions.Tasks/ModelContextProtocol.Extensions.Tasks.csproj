@@ -24,6 +24,7 @@
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
     <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
+    <Compile Include="..\Common\InputRequiredRequestRunner.cs" Link="InputRequiredRequestRunner.cs" />
   </ItemGroup>
 
   <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs the ExperimentalAttribute polyfill. -->

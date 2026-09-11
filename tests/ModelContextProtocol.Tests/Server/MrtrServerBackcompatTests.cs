@@ -19,6 +19,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class MrtrServerBackcompatTests : ClientServerTestBase
 {
     private readonly List<string?> _observedRequestStates = [];
+    private readonly List<string[]> _observedInputResponseKeys = [];
     private int _attempt;
 
     public MrtrServerBackcompatTests(ITestOutputHelper testOutputHelper)
@@ -34,6 +35,8 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
                 {
                     var attempt = Interlocked.Increment(ref _attempt);
                     _observedRequestStates.Add(context.Params?.RequestState);
+                    _observedInputResponseKeys.Add(
+                        context.Params?.InputResponses?.Keys.OrderBy(static key => key).ToArray() ?? []);
 
                     return attempt switch
                     {
@@ -48,20 +51,22 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
                                 })
                             },
                             requestState: "round1"),
-                        // Round 2: deliberately clear the state by passing requestState: null while still
-                        // asking for another elicitation. This exercises the params clone path that
-                        // previously preserved the stale "round1" carry-over from round 1's deep clone.
-                        2 => throw new InputRequiredException(
+                        // Round 2: requestState-only. The retry must clear the prior inputResponses
+                        // while preserving this new continuation state.
+                        2 => throw new InputRequiredException(requestState: "round2"),
+                        // Round 3: request another input while clearing requestState. The retry must
+                        // carry only the new response and must not leak round2.
+                        3 => throw new InputRequiredException(
                             inputRequests: new Dictionary<string, InputRequest>
                             {
-                                ["confirm"] = InputRequest.ForElicitation(new ElicitRequestParams
+                                ["confirm2"] = InputRequest.ForElicitation(new ElicitRequestParams
                                 {
-                                    Message = "round2",
+                                    Message = "round3",
                                     RequestedSchema = new()
                                 })
                             },
                             requestState: null),
-                        // Round 3 (final): report what the handler observed so the test can assert it.
+                        // Round 4 (final): report what the handler observed so the test can assert it.
                         _ => $"final-state:{context.Params?.RequestState ?? "<null>"}",
                     };
                 },
@@ -74,7 +79,7 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task InputRequiredException_TransitioningRequestStateToNull_DoesNotLeakStaleState()
+    public async Task InputRequiredException_StateAndResponsesAreReplacedAcrossRounds()
     {
         StartServer();
 
@@ -100,13 +105,16 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
             "requeststate-transition",
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Three attempts: round 1 (no state) → round 2 (state="round1") → round 3 (state=null after fix).
-        // Without the fix, the third observed state would erroneously remain "round1" because the deep-clone
-        // of the prior request params carried it forward when InputRequiredException.RequestState was null.
-        Assert.Equal(3, _observedRequestStates.Count);
+        // Four attempts: initial input → state-only → new input with cleared state → final result.
+        Assert.Equal(4, _observedRequestStates.Count);
         Assert.Null(_observedRequestStates[0]);
         Assert.Equal("round1", _observedRequestStates[1]);
-        Assert.Null(_observedRequestStates[2]);
+        Assert.Equal("round2", _observedRequestStates[2]);
+        Assert.Null(_observedRequestStates[3]);
+        Assert.Empty(_observedInputResponseKeys[0]);
+        Assert.Equal(["confirm"], _observedInputResponseKeys[1]);
+        Assert.Empty(_observedInputResponseKeys[2]);
+        Assert.Equal(["confirm2"], _observedInputResponseKeys[3]);
 
         var content = Assert.Single(result.Content);
         var text = Assert.IsType<TextContentBlock>(content).Text;

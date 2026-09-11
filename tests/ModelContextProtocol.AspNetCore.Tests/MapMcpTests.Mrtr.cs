@@ -766,12 +766,20 @@ public abstract partial class MapMcpTests
     }
 
     [Fact]
-    public async Task Mrtr_Backcompat_EmptyInputRequests_FailsWithError()
+    public async Task Mrtr_Backcompat_EmptyInputRequestsWithState_RetriesWithoutResponses()
     {
         Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
+        int attempt = 0;
         ConfigureServer(
             [McpServerTool(Name = "mrtr-empty-inputs")] (RequestContext<CallToolRequestParams> context) =>
             {
+                Interlocked.Increment(ref attempt);
+                if (context.Params.RequestState is "empty")
+                {
+                    Assert.Null(context.Params.InputResponses);
+                    return "state-only-resolved";
+                }
+
                 throw new InputRequiredException(
                     inputRequests: new Dictionary<string, InputRequest>(),
                     requestState: "empty");
@@ -782,11 +790,35 @@ public abstract partial class MapMcpTests
         await using var client = await ConnectLegacyAsync();
         Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
 
+        var result = await client.CallToolAsync(
+            "mrtr-empty-inputs",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, attempt);
+        Assert.Equal(
+            "state-only-resolved",
+            Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task Mrtr_Backcompat_InputRequiredWithoutRequestsOrState_FailsWithError()
+    {
+        Assert.SkipWhen(Stateless, "Backcompat requires stateful server for legacy JSON-RPC.");
+        ConfigureServer(
+            [McpServerTool(Name = "mrtr-malformed-input-required")] static string () =>
+                throw new InputRequiredException(new InputRequiredResult()));
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var client = await ConnectLegacyAsync();
+
         var ex = await Assert.ThrowsAsync<McpProtocolException>(() =>
-            client.CallToolAsync("mrtr-empty-inputs",
+            client.CallToolAsync(
+                "mrtr-malformed-input-required",
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
         Assert.Contains("without input requests", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request state", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(McpErrorCode.InternalError, ex.ErrorCode);
     }
 
