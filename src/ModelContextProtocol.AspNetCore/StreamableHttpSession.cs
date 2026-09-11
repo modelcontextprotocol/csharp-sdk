@@ -100,6 +100,7 @@ internal sealed class StreamableHttpSession(
     }
 
     public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
+    public void EndGetRequest() => Volatile.Write(ref _getRequestStarted, 0);
     public bool HasSameUserId(ClaimsPrincipal user) => userId == StreamableHttpHandler.GetUserIdClaim(user);
 
     public async ValueTask DisposeAsync()
