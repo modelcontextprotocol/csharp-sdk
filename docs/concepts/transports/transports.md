@@ -188,6 +188,18 @@ app.Run();
 
 By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `SessionMode = HttpServerSessionMode.Stateful` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
 
+#### Integration testing an ASP.NET Core MCP server
+
+Use `Microsoft.AspNetCore.Mvc.Testing` to host the complete ASP.NET Core application in process and exercise its Streamable HTTP endpoint without opening a network port. When the server uses top-level statements, expose its generated entry point to the test project by adding `public partial class Program`:
+
+[!code-csharp[](samples/integration-testing/server/Program.cs?name=snippet_IntegrationTestServer)]
+
+Create an `HttpClient` from `WebApplicationFactory<TEntryPoint>` and pass that same client to <xref:ModelContextProtocol.Client.HttpClientTransport>. The factory client is backed by the in-memory test server; constructing `HttpClientTransport` without it would create a separate `HttpClient` that cannot reach the in-process application.
+
+[!code-csharp[](samples/integration-testing/tests/McpServerTests.cs?name=snippet_IntegrationTest)]
+
+The test project needs references to the server project and `ModelContextProtocol.Core`, plus the `Microsoft.AspNetCore.Mvc.Testing` package. Keep ownership of the factory-created `HttpClient` in the test, dispose the MCP client and transport asynchronously, and pass the test cancellation token to MCP operations so a failed connection cannot hang the test run.
+
 #### Host name validation
 
 For local HTTP servers, keep the set of accepted host names limited to loopback values. This helps protect against DNS rebinding, where a browser reaches a local server through an attacker-controlled DNS name while sending that DNS name in the HTTP `Host` header. ASP.NET Core's Kestrel server doesn't validate `Host` headers by default, so configure `AllowedHosts` with known host names rather than `"*"`. This also avoids reflecting untrusted host names through ASP.NET Core features such as absolute URL generation. See [Host filtering with ASP.NET Core Kestrel web server | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/host-filtering) and [URL generation concepts | Microsoft Learn](https://learn.microsoft.com/aspnet/core/fundamentals/routing#url-generation-concepts).
