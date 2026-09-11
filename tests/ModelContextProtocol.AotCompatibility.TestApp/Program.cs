@@ -11,6 +11,7 @@ var services = new ServiceCollection();
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
+    .WithResources<AotResources>()
     .WithMcpApps();
 
 await using var serviceProvider = services.BuildServiceProvider();
@@ -41,6 +42,15 @@ if (result is null || !result.ToString()!.Contains("Echo: Hello World"))
     throw new Exception($"Unexpected result: {result}");
 }
 
+var resources = await client.ListResourcesAsync();
+var resource = resources.FirstOrDefault(r => r.Uri == "ui://aot/echo");
+var resourceUi = resource?.ProtocolResource.Meta?["ui"]?.AsObject();
+if (resourceUi?["csp"]?["connectDomains"]?[0]?.GetValue<string>() != "https://api.example.com" ||
+    resourceUi["prefersBorder"]?.GetValue<bool>() != true)
+{
+    throw new Exception($"Unexpected app resource UI metadata: {resourceUi}");
+}
+
 Console.WriteLine("Success!");
 
 [McpServerToolType]
@@ -49,4 +59,12 @@ internal sealed class AotTools
     [McpServerTool(Name = "Echo")]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
+}
+
+[McpServerResourceType]
+internal sealed class AotResources
+{
+    [McpServerResource(UriTemplate = "ui://aot/echo", Name = "echo-ui", MimeType = McpApps.HtmlMimeType)]
+    [McpAppResource(ConnectDomains = ["https://api.example.com"], PrefersBorder = true)]
+    public static string EchoUi() => "<html></html>";
 }

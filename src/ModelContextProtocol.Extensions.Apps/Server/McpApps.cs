@@ -21,9 +21,11 @@ namespace ModelContextProtocol.Extensions.Apps;
 /// the connected client supports the MCP Apps extension.
 /// </para>
 /// <para>
-/// Use <see cref="SetAppUi"/> to set the <c>_meta.ui</c> metadata on a tool, or
+/// Use <see cref="SetAppUi"/> and <see cref="SetResourceUi"/> to set the <c>_meta.ui</c> metadata, or
 /// <see cref="ApplyAppUiAttributes(IEnumerable{McpServerTool})"/> to automatically process
-/// <see cref="McpAppUiAttribute"/> instances on tools created from methods.
+/// <see cref="McpAppUiAttribute"/> instances on tools created from methods. Use
+/// <see cref="ApplyAppResourceAttributes(IEnumerable{McpServerResource})"/> to process
+/// <see cref="McpAppResourceAttribute"/> instances on resources.
 /// </para>
 /// </remarks>
 [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
@@ -153,15 +155,15 @@ public static class McpApps
     }
 
     /// <summary>
-    /// Sets the MCP Apps UI metadata on a resource's <see cref="ResourceTemplate.Meta"/> property.
+    /// Sets the MCP Apps UI metadata on a resource's protocol metadata.
     /// </summary>
     /// <param name="resource">The resource to set the UI metadata on.</param>
     /// <param name="resourceUi">The UI metadata to apply.</param>
     /// <returns>The same <paramref name="resource"/> instance, for chaining.</returns>
     /// <remarks>
     /// <para>
-    /// This method sets the <c>ui</c> key in the resource's <see cref="ResourceTemplate.Meta"/> object.
-    /// If a <c>ui</c> key is already present in <see cref="ResourceTemplate.Meta"/>, it is not overwritten.
+    /// This method sets the <c>ui</c> key in the resource's <see cref="ResourceTemplate.Meta"/> object and,
+    /// for non-templated resources, its <see cref="Resource.Meta"/> object. Existing <c>ui</c> metadata is not overwritten.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="resource"/> or <paramref name="resourceUi"/> is <see langword="null"/>.</exception>
@@ -175,15 +177,102 @@ public static class McpApps
         if (resourceUi is null) throw new ArgumentNullException(nameof(resourceUi));
 #endif
 
-        var protocolResource = resource.ProtocolResourceTemplate;
-        protocolResource.Meta ??= new JsonObject();
+        var protocolResourceTemplate = resource.ProtocolResourceTemplate;
+        protocolResourceTemplate.Meta ??= new JsonObject();
+        var protocolResource = resource.ProtocolResource;
 
-        if (!protocolResource.Meta.ContainsKey("ui"))
+        if (!protocolResourceTemplate.Meta.ContainsKey("ui") && protocolResource?.Meta?.ContainsKey("ui") != true)
         {
             var uiNode = JsonSerializer.SerializeToNode(resourceUi, McpAppsJsonContext.Default.McpUiResourceMeta);
             if (uiNode is not null)
             {
-                protocolResource.Meta["ui"] = uiNode;
+                protocolResourceTemplate.Meta["ui"] = uiNode;
+            }
+        }
+
+        if (protocolResource is not null)
+        {
+            protocolResource.Meta ??= protocolResourceTemplate.Meta;
+            if (!protocolResource.Meta.ContainsKey("ui") && protocolResourceTemplate.Meta["ui"] is { } uiNode)
+            {
+                protocolResource.Meta["ui"] = uiNode.DeepClone();
+            }
+        }
+
+        return resource;
+    }
+
+    /// <summary>
+    /// Processes a collection of resources, applying <see cref="McpAppResourceAttribute"/> metadata to any
+    /// resource whose underlying method has the attribute.
+    /// </summary>
+    /// <param name="resources">The resources to process.</param>
+    /// <returns>The same <paramref name="resources"/> enumerable, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="resources"/> is <see langword="null"/>.</exception>
+    public static IEnumerable<McpServerResource> ApplyAppResourceAttributes(IEnumerable<McpServerResource> resources)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(resources);
+#else
+        if (resources is null) throw new ArgumentNullException(nameof(resources));
+#endif
+
+        foreach (var resource in resources)
+        {
+            ApplyAppResourceAttributes(resource);
+        }
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Processes a single resource, applying <see cref="McpAppResourceAttribute"/> metadata if the resource's
+    /// underlying method has the attribute.
+    /// </summary>
+    /// <param name="resource">The resource to process.</param>
+    /// <returns>The same <paramref name="resource"/> instance, for chaining.</returns>
+    /// <remarks>
+    /// Existing <c>_meta.ui</c> metadata is preserved and takes precedence over the attribute.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="resource"/> is <see langword="null"/>.</exception>
+    public static McpServerResource ApplyAppResourceAttributes(McpServerResource resource)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(resource);
+#else
+        if (resource is null) throw new ArgumentNullException(nameof(resource));
+#endif
+
+        foreach (var metadataItem in resource.Metadata)
+        {
+            if (metadataItem is McpAppResourceAttribute appResourceAttribute)
+            {
+                McpUiResourceCsp? csp = null;
+                if (appResourceAttribute.ConnectDomains is not null ||
+                    appResourceAttribute.ResourceDomains is not null ||
+                    appResourceAttribute.FrameDomains is not null ||
+                    appResourceAttribute.BaseUris is not null)
+                {
+                    csp = new McpUiResourceCsp
+                    {
+                        ConnectDomains = appResourceAttribute.ConnectDomains,
+                        ResourceDomains = appResourceAttribute.ResourceDomains,
+                        FrameDomains = appResourceAttribute.FrameDomains,
+                        BaseUris = appResourceAttribute.BaseUris,
+                    };
+                }
+
+                SetResourceUi(resource, new McpUiResourceMeta
+                {
+                    Csp = csp,
+                    Permissions = appResourceAttribute.Permissions is null ? null : new McpUiResourcePermissions
+                    {
+                        Allow = appResourceAttribute.Permissions,
+                    },
+                    Domain = appResourceAttribute.Domain,
+                    PrefersBorder = appResourceAttribute.PrefersBorderValue,
+                });
+                break;
             }
         }
 

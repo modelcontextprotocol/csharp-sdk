@@ -10,7 +10,7 @@ public sealed class WeatherResources
     private static readonly string UiDir = Path.Combine(AppContext.BaseDirectory, "ui");
 
     [McpServerResource(UriTemplate = "ui://weather-app/forecast", Name = "weather-forecast-ui", MimeType = McpApps.HtmlMimeType)]
-    [McpMeta("ui", """{"csp":{"connectDomains":["https://api.weather.gov"]},"prefersBorder":true}""")]
+    [McpAppResource(ConnectDomains = ["https://api.weather.gov"], PrefersBorder = true)]
     [Description("Interactive weather forecast UI with city picker")]
     public static string GetWeatherForecastUi() => File.ReadAllText(Path.Combine(UiDir, "weather-forecast.html"));
 

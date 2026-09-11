@@ -31,6 +31,7 @@ The key concepts are:
 - **UI capability negotiation** — Client and server declare support via `extensions["io.modelcontextprotocol/ui"]`
 - **UI resources** — HTML content served with the MIME type `text/html;profile=mcp-app`
 - **Tool UI metadata** — Tools declare their associated UI resource in `_meta.ui`
+- **Resource UI metadata** — Resources declare CSP, permissions, domain, and display preferences in `_meta.ui`
 
 ## Associating tools with UI resources
 
@@ -58,7 +59,7 @@ builder.Services.AddMcpServer()
     .WithMcpApps();
 ```
 
-The `WithMcpApps()` call registers a post-configuration step that processes all registered tools and applies `[McpAppUi]` attribute metadata to their `_meta.ui` field automatically.
+The `WithMcpApps()` call registers a post-configuration step that processes registered tools and resources, applying their MCP Apps attributes to the corresponding `_meta.ui` fields automatically.
 
 ### Using the attribute with manual processing
 
@@ -125,6 +126,34 @@ UI resources are HTML pages registered with the MCP server using the `ui://` URI
 - **Permissions** — Sandbox permissions (scripts, forms, popups, etc.)
 - **Domain** — Dedicated origin for OAuth flows and CORS
 - **PrefersBorder** — Whether the host should render a visual border
+
+Use `[McpAppResource]` to configure this metadata without writing raw JSON:
+
+```csharp
+[McpServerResourceType]
+public static class WeatherResources
+{
+    [McpServerResource(
+        UriTemplate = "ui://weather/view.html",
+        Name = "weather-ui",
+        MimeType = McpApps.HtmlMimeType)]
+    [McpAppResource(
+        ConnectDomains = ["https://api.weather.gov"],
+        Permissions = ["geolocation"],
+        PrefersBorder = true)]
+    public static string GetWeatherUi() => File.ReadAllText("weather.html");
+}
+```
+
+Register the resource before calling `WithMcpApps()`:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithResources<WeatherResources>()
+    .WithMcpApps();
+```
+
+For resources created manually, call `McpApps.ApplyAppResourceAttributes(resource)`, or set a typed `McpUiResourceMeta` directly with `McpApps.SetResourceUi(resource, metadata)`.
 
 ## App-only tools
 
