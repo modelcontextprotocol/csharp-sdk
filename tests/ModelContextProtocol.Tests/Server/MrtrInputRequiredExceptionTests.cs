@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -15,6 +16,7 @@ namespace ModelContextProtocol.Tests.Server;
 public class MrtrInputRequiredExceptionTests : ClientServerTestBase
 {
     private readonly ServerMessageTracker _messageTracker = new();
+    private JsonObject? _inputRequiredWireResult;
 
     public MrtrInputRequiredExceptionTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -27,6 +29,17 @@ public class MrtrInputRequiredExceptionTests : ClientServerTestBase
         {
             options.ProtocolVersion = "2026-07-28";
             _messageTracker.AddFilters(options.Filters.Message);
+            options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+            {
+                if (_inputRequiredWireResult is null &&
+                    context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                    result["resultType"]?.GetValue<string>() == "input_required")
+                {
+                    _inputRequiredWireResult = result.DeepClone().AsObject();
+                }
+
+                await next(context, cancellationToken);
+            });
         });
 
         mcpServerBuilder.WithTools([
@@ -59,6 +72,11 @@ public class MrtrInputRequiredExceptionTests : ClientServerTestBase
                 cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
         Assert.Contains("more than", exception.Message);
+        Assert.NotNull(_inputRequiredWireResult);
+        Assert.Equal("input_required", _inputRequiredWireResult!["resultType"]?.GetValue<string>());
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains("protocol-incompatible result field", StringComparison.Ordinal));
     }
 }
 
@@ -74,6 +92,7 @@ public class MrtrReturnedInputRequiredResultNativeTests : ClientServerTestBase
         (JsonTypeInfo<InputRequiredResult>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputRequiredResult));
 
     private int _attempt;
+    private JsonObject? _inputRequiredWireResult;
 
     public MrtrReturnedInputRequiredResultNativeTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
@@ -86,6 +105,17 @@ public class MrtrReturnedInputRequiredResultNativeTests : ClientServerTestBase
         services.Configure<McpServerOptions>(options =>
         {
             options.ProtocolVersion = "2026-07-28";
+            options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+            {
+                if (_inputRequiredWireResult is null &&
+                    context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                    result["resultType"]?.GetValue<string>() == "input_required")
+                {
+                    _inputRequiredWireResult = result.DeepClone().AsObject();
+                }
+
+                await next(context, cancellationToken);
+            });
 
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
             {
@@ -144,5 +174,12 @@ public class MrtrReturnedInputRequiredResultNativeTests : ClientServerTestBase
         Assert.Equal(2, _attempt);
         var content = Assert.Single(result.Content);
         Assert.Equal("resolved", Assert.IsType<TextContentBlock>(content).Text);
+        Assert.NotNull(_inputRequiredWireResult);
+        Assert.Equal("input_required", _inputRequiredWireResult!["resultType"]?.GetValue<string>());
+        Assert.Equal("round1", _inputRequiredWireResult["requestState"]?.GetValue<string>());
+        Assert.NotNull(_inputRequiredWireResult["inputRequests"]);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains("protocol-incompatible result field", StringComparison.Ordinal));
     }
 }

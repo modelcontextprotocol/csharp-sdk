@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
@@ -28,6 +29,20 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                    result.ContainsKey("content"))
+                {
+                    result["resultType"] = "filter-thrown-final";
+                }
+
+                await next(context, cancellationToken);
+            });
+        });
+
         mcpServerBuilder.WithTools([
             McpServerTool.Create(
                 (RequestContext<CallToolRequestParams> context) =>
@@ -111,6 +126,11 @@ public class MrtrServerBackcompatTests : ClientServerTestBase
         var content = Assert.Single(result.Content);
         var text = Assert.IsType<TextContentBlock>(content).Text;
         Assert.Equal("final-state:<null>", text);
+        Assert.Null(result.ResultType);
+        Assert.Contains(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains("protocol-incompatible result field", StringComparison.Ordinal) &&
+            message.Message.Contains("'resultType'", StringComparison.Ordinal));
     }
 }
 
@@ -127,7 +147,6 @@ public class MrtrReturnedInputRequiredResultBackcompatTests : ClientServerTestBa
         (JsonTypeInfo<InputRequiredResult>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(InputRequiredResult));
 
     private int _attempt;
-
     public MrtrReturnedInputRequiredResultBackcompatTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper, startServer: false)
     {
@@ -138,6 +157,17 @@ public class MrtrReturnedInputRequiredResultBackcompatTests : ClientServerTestBa
     {
         mcpServerBuilder.Services.Configure<McpServerOptions>(options =>
         {
+            options.Filters.Message.OutgoingFilters.Add(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcResponse { Result: JsonObject result } &&
+                    result.ContainsKey("content"))
+                {
+                    result["resultType"] = "filter-returned-final";
+                }
+
+                await next(context, cancellationToken);
+            });
+
             options.Handlers.CallToolWithAlternateHandler = (context, cancellationToken) =>
             {
                 Interlocked.Increment(ref _attempt);
@@ -147,6 +177,7 @@ public class MrtrReturnedInputRequiredResultBackcompatTests : ClientServerTestBa
                 {
                     return new ValueTask<ResultOrAlternate<CallToolResult>>(new CallToolResult
                     {
+                        ResultType = "resolved-by-application",
                         Content = [new TextContentBlock { Text = "resolved" }],
                     });
                 }
@@ -197,5 +228,10 @@ public class MrtrReturnedInputRequiredResultBackcompatTests : ClientServerTestBa
         Assert.Equal(2, _attempt);
         var content = Assert.Single(result.Content);
         Assert.Equal("resolved", Assert.IsType<TextContentBlock>(content).Text);
+        Assert.Null(result.ResultType);
+        Assert.Contains(MockLoggerProvider.LogMessages, message =>
+            message.LogLevel == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            message.Message.Contains("protocol-incompatible result field", StringComparison.Ordinal) &&
+            message.Message.Contains("'resultType'", StringComparison.Ordinal));
     }
 }
