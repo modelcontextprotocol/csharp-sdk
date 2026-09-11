@@ -193,6 +193,7 @@ public static partial class McpJsonUtilities
     // Other MCP Types
     [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
+    [JsonSerializable(typeof(List<object>))]
     [JsonSerializable(typeof(ProgressToken))]
     [JsonSerializable(typeof(JsonElement))]
     [JsonSerializable(typeof(Implementation))]
