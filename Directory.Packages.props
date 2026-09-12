@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <System8Version>8.0.29</System8Version>
     <System9Version>9.0.18</System9Version>
-    <System10Version>10.0.10</System10Version>
+    <System10Version>10.0.11</System10Version>
     <MicrosoftExtensionsVersion>10.8.3</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
