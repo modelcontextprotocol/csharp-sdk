@@ -58,7 +58,7 @@
 
   <!-- Build Infra & Packaging dependencies-->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.401" />
   </ItemGroup>
 
   <!-- Testing dependencies -->
