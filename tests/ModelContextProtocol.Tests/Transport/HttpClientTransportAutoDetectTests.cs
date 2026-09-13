@@ -53,7 +53,7 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
     [Fact]
     public async Task AutoDetectMode_WhenBothTransportsFail_PreservesStreamableHttpException()
     {
-        // Regression test: when Streamable HTTP POST fails (e.g. 403) and the SSE GET
+        // Regression test: when Streamable HTTP POST fails (e.g. 404) and the SSE GET
         // fallback also fails (e.g. 405), the original Streamable HTTP error should
         // be preserved. The SSE connection failure is available as its inner exception.
         var options = new HttpClientTransportOptions
@@ -71,11 +71,11 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         {
             if (request.Method == HttpMethod.Post)
             {
-                // Streamable HTTP POST fails with 403 (auth error)
+                // Streamable HTTP POST fails with 404 (an SSE-only server with no POST endpoint).
                 return Task.FromResult(new HttpResponseMessage
                 {
-                    StatusCode = HttpStatusCode.Forbidden,
-                    Content = new StringContent("Forbidden")
+                    StatusCode = HttpStatusCode.NotFound,
+                    Content = new StringContent("Streamable HTTP not supported")
                 });
             }
 
@@ -99,12 +99,12 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         var ex = await Assert.ThrowsAsync<HttpRequestException>(
             () => McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains("403", ex.Message);
+        Assert.Contains("404", ex.Message);
         Assert.IsType<HttpRequestException>(ex.InnerException);
         Assert.Contains("405", ex.InnerException.Message);
-        Assert.Equal(HttpStatusCode.Forbidden, ex.Data["ModelContextProtocol.HttpStatusCode"]);
+        Assert.Equal(HttpStatusCode.NotFound, ex.Data["ModelContextProtocol.HttpStatusCode"]);
 #if NET
-        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
 #endif
     }
 
@@ -278,11 +278,12 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
     }
 
     // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1526
-    // When Streamable HTTP returns 415 (e.g. wrong Content-Type) and the SSE fallback also fails
-    // (e.g. a Streamable-HTTP-only server returns 405 to the GET), the surfaced exception must
-    // preserve the original Streamable HTTP error rather than dropping it on the floor.
+    // When Streamable HTTP returns 404 (e.g. an SSE-only server with no POST endpoint) and the
+    // SSE fallback also fails (e.g. a Streamable-HTTP-only server returns 405 to the GET), the
+    // surfaced exception must preserve the original Streamable HTTP error rather than dropping
+    // it on the floor.
     [Fact]
-    public async Task AutoDetectMode_PreservesOriginalError_WhenStreamableHttpReturns415AndSseFallbackFails()
+    public async Task AutoDetectMode_PreservesOriginalError_WhenStreamableHttpReturns404AndSseFallbackFails()
     {
         var options = new HttpClientTransportOptions
         {
@@ -295,16 +296,16 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         using var httpClient = new HttpClient(mockHttpHandler);
         await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
 
-        const string streamableHttpBody = "Content-Type must be 'application/json'";
+        const string streamableHttpBody = "Streamable HTTP not supported";
 
         mockHttpHandler.RequestHandler = (request) =>
         {
             if (request.Method == HttpMethod.Post)
             {
-                // Streamable HTTP fails with 415 - this is the real server diagnostic the user needs to see.
+                // Streamable HTTP fails with 404 - this is the real server diagnostic the user needs to see.
                 return Task.FromResult(new HttpResponseMessage
                 {
-                    StatusCode = HttpStatusCode.UnsupportedMediaType,
+                    StatusCode = HttpStatusCode.NotFound,
                     Content = new StringContent(streamableHttpBody),
                 });
             }
@@ -312,7 +313,7 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
             if (request.Method == HttpMethod.Get)
             {
                 // Streamable-HTTP-only server: SSE GET is rejected with 405. Without the fix this is the
-                // ONLY error the user ever sees, masking the real 415 diagnostic above.
+                // ONLY error the user ever sees, masking the real 404 diagnostic above.
                 return Task.FromResult(new HttpResponseMessage
                 {
                     StatusCode = HttpStatusCode.MethodNotAllowed,
@@ -331,11 +332,11 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
                 new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
                 TestContext.Current.CancellationToken));
 
-        // Walk the exception chain and assert the original 415 (and its body) is somewhere in it.
+        // Walk the exception chain and assert the original 404 (and its body) is somewhere in it.
         // We don't pin the exact exception type so this stays robust to future error-shape tweaks,
         // but the underlying status code and server body must reach the caller.
         var combined = Flatten(ex);
-        Assert.Contains("415", combined);
+        Assert.Contains("404", combined);
         Assert.Contains(streamableHttpBody, combined);
 
         static string Flatten(Exception e)
@@ -378,7 +379,7 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         using var httpClient = new HttpClient(mockHttpHandler);
         await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
 
-        const string streamableHttpBody = "Content-Type must be 'application/json'";
+        const string streamableHttpBody = "Streamable HTTP not supported";
 
         mockHttpHandler.RequestHandler = (request) =>
         {
@@ -386,7 +387,7 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
             {
                 return Task.FromResult(new HttpResponseMessage
                 {
-                    StatusCode = HttpStatusCode.UnsupportedMediaType,
+                    StatusCode = HttpStatusCode.NotFound,
                     Content = new StringContent(streamableHttpBody),
                 });
             }
@@ -412,11 +413,11 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
 
         // The surfaced exception is the original Streamable HTTP error (the real server diagnostic), not the SSE 405.
         var httpEx = Assert.IsType<HttpRequestException>(ex);
-        Assert.Contains("415", httpEx.Message);
+        Assert.Contains("404", httpEx.Message);
         Assert.Contains(streamableHttpBody, httpEx.Message);
-        Assert.Equal(HttpStatusCode.UnsupportedMediaType, httpEx.Data["ModelContextProtocol.HttpStatusCode"]);
+        Assert.Equal(HttpStatusCode.NotFound, httpEx.Data["ModelContextProtocol.HttpStatusCode"]);
 #if NET
-        Assert.Equal(HttpStatusCode.UnsupportedMediaType, httpEx.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, httpEx.StatusCode);
 #endif
 
         // The SSE fallback failure (the 405 from the GET) is preserved as the inner exception, not dropped.
@@ -482,8 +483,8 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
             {
                 return Task.FromResult(new HttpResponseMessage
                 {
-                    StatusCode = HttpStatusCode.UnsupportedMediaType,
-                    Content = new StringContent("Content-Type must be 'application/json'"),
+                    StatusCode = HttpStatusCode.NotFound,
+                    Content = new StringContent("Streamable HTTP not supported"),
                 });
             }
 

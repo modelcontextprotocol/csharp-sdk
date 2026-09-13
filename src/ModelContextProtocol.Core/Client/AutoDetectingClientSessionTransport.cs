@@ -108,6 +108,13 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 // TryReadJsonRpcErrorAsync returns early on the content type, so there is no double read.
                 var streamableHttpError = await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
 
+                // Only the legacy initialize-handshake probe failures may fall back to SSE. Authentication,
+                // authorization, and server errors must retain their HTTP semantics without a deprecated GET.
+                if (!ShouldTrySseFallback(response.StatusCode))
+                {
+                    throw streamableHttpError;
+                }
+
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                 await InitializeSseTransportAsync(message, streamableHttpError, cancellationToken).ConfigureAwait(false);
             }
@@ -177,6 +184,14 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             _messageChannel.Writer.TryComplete();
         }
     }
+
+    /// <summary>
+    /// Determines whether an HTTP failure can indicate an older server that requires the initialize handshake.
+    /// </summary>
+    private static bool ShouldTrySseFallback(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.BadRequest
+            or HttpStatusCode.NotFound
+            or HttpStatusCode.MethodNotAllowed;
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} attempting to connect using Streamable HTTP transport.")]
     private partial void LogAttemptingStreamableHttp(string endpointName);
