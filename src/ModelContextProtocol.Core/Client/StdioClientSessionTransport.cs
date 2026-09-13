@@ -61,6 +61,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // so create an exception with details about that.
         error ??= await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
 
+        // Closing the server's stdin is the portable graceful-shutdown signal for stdio transports.
+        // Do this before waiting so a well-behaved server can finish its own cleanup and exit.
+        try
+        {
+            _process.StandardInput.Close();
+        }
+        catch { }
+
         // Ensure all pending ErrorDataReceived events are drained before detaching
         // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
         // true, but there is a narrow window on Linux where the process has closed
