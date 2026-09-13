@@ -413,8 +413,10 @@ public abstract partial class McpServer : McpSession
             Meta = options?.GetMetaForRequest(),
         };
 
-        ThrowIfElicitationUnsupported(request);
-
+        // The untyped overload runs the capability check itself, and skips it when an
+        // outgoing-request interceptor is installed because that channel delivers the
+        // request instead. Checking here would make this overload throw where the
+        // untyped one succeeds.
         var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!raw.IsAccepted || raw.Content is null)
