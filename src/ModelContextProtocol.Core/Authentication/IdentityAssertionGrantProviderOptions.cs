@@ -61,16 +61,29 @@ public sealed class IdentityAssertionGrantProviderOptions
     public string? IdpScope { get; set; }
 
     /// <summary>
-    /// Gets or sets the callback that supplies the OIDC ID token for the Cross-Application Access flow.
+    /// Gets or sets the RFC 8693 token type identifier for the subject token returned by
+    /// <see cref="IdTokenCallback"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default is <see cref="IdentityAssertionGrantSubjectTokenTypes.IdToken"/>. Set this to
+    /// <see cref="IdentityAssertionGrantSubjectTokenTypes.Saml2"/> when the callback returns a SAML 2.0 assertion.
+    /// Custom RFC 8693 subject token type identifiers are also supported.
+    /// </remarks>
+    public string SubjectTokenType { get; set; } = IdentityAssertionGrantSubjectTokenTypes.IdToken;
+
+    /// <summary>
+    /// Gets or sets the callback that supplies the subject token for the Cross-Application Access flow.
     /// </summary>
     /// <remarks>
     /// <para>
     /// This callback is invoked after the MCP resource and authorization server URLs have been discovered.
     /// It receives a <see cref="IdentityAssertionGrantContext"/> with these URLs and should return the
-    /// OIDC ID token string obtained from the enterprise Identity Provider (e.g., from an SSO login session).
+    /// subject token obtained from the enterprise Identity Provider (e.g., from an SSO login session).
+    /// By default this is an OIDC ID token. When <see cref="SubjectTokenType"/> is
+    /// <see cref="IdentityAssertionGrantSubjectTokenTypes.Saml2"/>, return a SAML 2.0 assertion instead.
     /// </para>
     /// <para>
-    /// The provider will use the returned ID token to internally perform the RFC 8693 token exchange at the
+    /// The provider will use the returned subject token to internally perform the RFC 8693 token exchange at the
     /// configured IdP, obtaining a JWT Authorization Grant, which is then exchanged for an access token at
     /// the MCP authorization server via RFC 7523.
     /// </para>

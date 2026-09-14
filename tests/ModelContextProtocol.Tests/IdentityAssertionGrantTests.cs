@@ -95,6 +95,79 @@ public sealed class IdentityAssertionGrantTests : IDisposable
         Assert.Equal(3600, tokens.ExpiresIn);
     }
 
+    [Theory]
+    [InlineData(null, IdentityAssertionGrantSubjectTokenTypes.IdToken)]
+    [InlineData(IdentityAssertionGrantSubjectTokenTypes.Saml2, IdentityAssertionGrantSubjectTokenTypes.Saml2)]
+    public async Task IdentityAssertionGrantProvider_SendsConfiguredSubjectTokenType(
+        string? configuredSubjectTokenType,
+        string expectedSubjectTokenType)
+    {
+        string? tokenExchangeBody = null;
+        _mockHandler.AsyncHandler = async request =>
+        {
+            var url = request.RequestUri!.ToString();
+
+            if (url.Contains(".well-known/openid-configuration"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["issuer"] = "https://auth.mcp-server.example.com",
+                    ["authorization_endpoint"] = "https://auth.mcp-server.example.com/authorize",
+                    ["token_endpoint"] = "https://auth.mcp-server.example.com/token",
+                });
+            }
+
+            if (url.Contains("idp.example.com/token"))
+            {
+                tokenExchangeBody = await request.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag-assertion",
+                    ["issued_token_type"] = "urn:ietf:params:oauth:token-type:id-jag",
+                    ["token_type"] = "N_A",
+                });
+            }
+
+            if (url.Contains("auth.mcp-server.example.com/token"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "final-access-token",
+                    ["token_type"] = "Bearer",
+                });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        };
+
+        var options = new IdentityAssertionGrantProviderOptions
+        {
+            ClientId = "mcp-client-id",
+            IdpTokenEndpoint = "https://idp.example.com/token",
+            IdpClientId = "idp-client-id",
+            IdTokenCallback = (_, _) => Task.FromResult("mock-subject-token"),
+        };
+
+        if (configuredSubjectTokenType is not null)
+        {
+            options.SubjectTokenType = configuredSubjectTokenType;
+        }
+
+        var provider = new IdentityAssertionGrantProvider(options, _httpClient);
+
+        await provider.GetAccessTokenAsync(
+            resourceUrl: new Uri("https://mcp-server.example.com"),
+            authorizationServerUrl: new Uri("https://auth.mcp-server.example.com"),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tokenExchangeBody);
+        Assert.Contains("subject_token=mock-subject-token", tokenExchangeBody, StringComparison.Ordinal);
+        Assert.Contains(
+            $"subject_token_type={Uri.EscapeDataString(expectedSubjectTokenType)}",
+            tokenExchangeBody,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public Task IdentityAssertionGrantProvider_DefaultsToPostRegardlessOfMetadataOrder() =>
         AssertMcpTokenEndpointAuthenticationAsync(
@@ -326,6 +399,24 @@ public sealed class IdentityAssertionGrantTests : IDisposable
                 IdpTokenEndpoint = "https://idp.example.com/token",
                 IdpClientId = "idp-client-id",
                 IdTokenCallback = null!,
+            },
+            _httpClient));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IdentityAssertionGrantProvider_MissingSubjectTokenType_ThrowsArgumentException(string? subjectTokenType)
+    {
+        Assert.Throws<ArgumentException>(() => new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("test"),
+                SubjectTokenType = subjectTokenType!,
             },
             _httpClient));
     }
