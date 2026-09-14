@@ -16,12 +16,14 @@ namespace ModelContextProtocol.Protocol;
 /// <see cref="CacheScope.Public"/>.
 /// </para>
 /// <para>
-/// This converter is applied per-property on the cacheable result types. The <see cref="CacheScope"/>
-/// enum itself retains a standard string converter for any standalone serialization.
+/// This converter is applied per-property on the cacheable result types, and is public so that extension
+/// packages defining their own <see cref="ICacheableResult"/> types can apply the same read-side leniency. The
+/// <see cref="CacheScope"/> enum itself retains a standard string converter for any standalone serialization.
 /// </para>
 /// </remarks>
-internal sealed class CacheScopeConverter : JsonConverter<CacheScope?>
+public sealed class CacheScopeConverter : JsonConverter<CacheScope?>
 {
+    /// <inheritdoc />
     public override CacheScope? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType is JsonTokenType.String)
@@ -52,6 +54,7 @@ internal sealed class CacheScopeConverter : JsonConverter<CacheScope?>
         return null;
     }
 
+    /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, CacheScope? value, JsonSerializerOptions options)
     {
         if (value is null)
