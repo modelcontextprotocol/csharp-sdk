@@ -379,7 +379,18 @@ internal sealed class StreamableHttpHandler(
                 // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
                 // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
                 // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
-                await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001, requestId);
+                //
+                // Sessions live in memory, so this is also what a request looks like when it reaches the wrong
+                // instance of a multi-instance deployment. Say so: the bare "Session not found" gave operators
+                // nothing to act on and made a load-balancing misconfiguration look like a client bug.
+                // See https://github.com/modelcontextprotocol/csharp-sdk/issues/1861.
+                await WriteJsonRpcErrorAsync(context,
+                    "Session not found: The server has no session for this Mcp-Session-Id. Sessions are held in memory by the instance " +
+                    "that created them, so a request for an existing session must reach that same instance; configure session affinity " +
+                    "(sticky sessions) when running more than one instance behind a load balancer. If your server doesn't need sessions, " +
+                    "enable stateless mode by setting HttpServerTransportOptions.SessionMode = HttpServerSessionMode.Stateless. " +
+                    "See https://csharp.sdk.modelcontextprotocol.io/concepts/stateless/stateless.html for more details.",
+                    StatusCodes.Status404NotFound, -32001, requestId);
                 return null;
             }
         }

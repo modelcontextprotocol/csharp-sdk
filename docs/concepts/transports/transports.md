@@ -186,7 +186,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `SessionMode = HttpServerSessionMode.Stateful` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `SessionMode = HttpServerSessionMode.Stateful` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation; sessions live in memory, so stateful mode also requires session affinity (sticky sessions) once you run more than one instance behind a load balancer. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
 
 #### Host name validation
 
