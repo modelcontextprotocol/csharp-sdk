@@ -185,19 +185,30 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         var rpcRequest = message as JsonRpcRequest;
         JsonRpcMessageWithId? rpcResponseOrError = null;
 
+        // Records why the response could not be correlated with its request. The body itself is only ever logged at
+        // Trace level (see LogTransportReceivedMessageSensitive), so without this the no-reply failure below is opaque.
+        var correlationTrace = new ResponseCorrelationTrace
+        {
+            ResponseMediaType = response.Content.Headers.ContentType?.MediaType,
+        };
+
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (responseContent.Length > 0)
             {
-                rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
+                rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, correlationTrace, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                correlationTrace.RecordEmptyBody();
             }
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
             var sseState = new SseStreamState();
             using var responseBodyStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            var sseResponse = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, sseState, cancellationToken).ConfigureAwait(false);
+            var sseResponse = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, sseState, correlationTrace, cancellationToken).ConfigureAwait(false);
             rpcResponseOrError = sseResponse.Response;
 
             // Resumability: If POST SSE stream ended without a response but we have a Last-Event-ID (from priming),
@@ -205,7 +216,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             // events from the event store, allowing us to receive the pending response.
             if (rpcResponseOrError is null && rpcRequest is not null && sseState.LastEventId is not null)
             {
-                rpcResponseOrError = await SendGetSseRequestWithRetriesAsync(rpcRequest, sseState, cancellationToken).ConfigureAwait(false);
+                rpcResponseOrError = await SendGetSseRequestWithRetriesAsync(rpcRequest, sseState, cancellationToken, correlationTrace).ConfigureAwait(false);
             }
         }
 
@@ -216,7 +227,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         if (rpcResponseOrError is null)
         {
-            throw new McpException($"Streamable HTTP POST response completed without a reply to request with ID: {rpcRequest.Id}");
+            throw new McpException(
+                $"Streamable HTTP POST response completed without a reply to request with ID: {rpcRequest.Id}. " +
+                correlationTrace.Describe());
         }
 
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse initResponse)
@@ -344,7 +357,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private async Task<JsonRpcMessageWithId?> SendGetSseRequestWithRetriesAsync(
         JsonRpcRequest? relatedRpcRequest,
         SseStreamState state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ResponseCorrelationTrace? correlationTrace = null)
     {
         // When LastEventId is null, the first attempt is the initial GET SSE connection (not a reconnection),
         // so we start at -1 to avoid counting it against MaxReconnectionAttempts.
@@ -416,7 +430,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 }
 
                 using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                var sseResponse = await ProcessSseResponseAsync(responseStream, relatedRpcRequest, state, cancellationToken).ConfigureAwait(false);
+                var sseResponse = await ProcessSseResponseAsync(responseStream, relatedRpcRequest, state, correlationTrace, cancellationToken).ConfigureAwait(false);
 
                 if (sseResponse.Response is { } rpcResponseOrError)
                 {
@@ -446,6 +460,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         Stream responseStream,
         JsonRpcRequest? relatedRpcRequest,
         SseStreamState state,
+        ResponseCorrelationTrace? correlationTrace,
         CancellationToken cancellationToken)
     {
         try
@@ -468,7 +483,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                     continue;
                 }
 
-                var rpcResponseOrError = await ProcessMessageAsync(sseEvent.Data, relatedRpcRequest, cancellationToken).ConfigureAwait(false);
+                var rpcResponseOrError = await ProcessMessageAsync(sseEvent.Data, relatedRpcRequest, correlationTrace, cancellationToken).ConfigureAwait(false);
                 if (rpcResponseOrError is not null)
                 {
                     return new() { Response = rpcResponseOrError };
@@ -477,6 +492,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         catch (Exception ex) when (ex is IOException or HttpRequestException)
         {
+            correlationTrace?.RecordNetworkError();
             state.StreamEndedTimestamp = Stopwatch.GetTimestamp();
             return new() { IsNetworkError = true };
         }
@@ -485,7 +501,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         return default;
     }
 
-    private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(string data, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
+    private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(
+        string data,
+        JsonRpcRequest? relatedRpcRequest,
+        ResponseCorrelationTrace? correlationTrace,
+        CancellationToken cancellationToken)
     {
         LogTransportReceivedMessageSensitive(Name, data);
 
@@ -495,19 +515,30 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             if (message is null)
             {
                 LogTransportMessageParseUnexpectedTypeSensitive(Name, data);
+                correlationTrace?.RecordNotAReply();
                 return null;
             }
 
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
             if (message is JsonRpcResponse or JsonRpcError &&
-                message is JsonRpcMessageWithId rpcResponseOrError &&
-                rpcResponseOrError.Id == relatedRpcRequest?.Id)
+                message is JsonRpcMessageWithId rpcResponseOrError)
             {
-                return rpcResponseOrError;
+                if (rpcResponseOrError.Id == relatedRpcRequest?.Id)
+                {
+                    return rpcResponseOrError;
+                }
+
+                // The message was still delivered to the session above; record the mismatch so a subsequent
+                // no-reply failure can name the ID the peer actually replied with.
+                correlationTrace?.RecordMismatchedResponseId(rpcResponseOrError.Id);
+                return null;
             }
+
+            correlationTrace?.RecordNotAReply();
         }
         catch (JsonException ex)
         {
+            correlationTrace?.RecordParseFailure();
             LogJsonException(ex, data);
         }
 
@@ -663,6 +694,58 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         public JsonRpcMessageWithId? Response { get; init; }
         public bool IsNetworkError { get; init; }
+    }
+
+    /// <summary>
+    /// Accumulates the facts needed to explain why an HTTP response could not be correlated with the request that
+    /// produced it. Only non-sensitive shape information is retained: the response media type, whether the body was
+    /// empty, and the outcome of deserializing and correlating the messages it contained. Message payloads are
+    /// deliberately excluded, since those are only logged through <c>LogTransportReceivedMessageSensitive</c>.
+    /// </summary>
+    private sealed class ResponseCorrelationTrace
+    {
+        private int _parseFailureCount;
+        private int _notAReplyCount;
+
+        public string? ResponseMediaType { get; set; }
+
+        public bool BodyWasEmpty { get; private set; }
+
+        public bool IsNetworkError { get; private set; }
+
+        public RequestId? MismatchedResponseId { get; private set; }
+
+        public void RecordEmptyBody() => BodyWasEmpty = true;
+
+        public void RecordNetworkError() => IsNetworkError = true;
+
+        public void RecordParseFailure() => _parseFailureCount++;
+
+        public void RecordNotAReply() => _notAReplyCount++;
+
+        public void RecordMismatchedResponseId(RequestId id) => MismatchedResponseId = id;
+
+        /// <summary>
+        /// Describes the most specific reason found for the missing reply, as a sentence suitable for appending to
+        /// the no-reply exception message.
+        /// </summary>
+        public string Describe()
+        {
+            string mediaTypeDescription = ResponseMediaType is { } mediaType
+                ? $"The response Content-Type was '{mediaType}'"
+                : "The response had no Content-Type";
+
+            string reason =
+                BodyWasEmpty ? "the response body was empty" :
+                _parseFailureCount > 0 ? $"{_parseFailureCount} JSON-RPC message(s) in the response failed to deserialize" :
+                MismatchedResponseId is { Id: null } ? "the response contained a JSON-RPC response or error with a null ID, which cannot be correlated with a request" :
+                MismatchedResponseId is { } mismatchedId ? $"the response contained a JSON-RPC response or error with ID '{mismatchedId}', which does not match the request ID" :
+                _notAReplyCount > 0 ? $"the response contained {_notAReplyCount} JSON-RPC message(s) that were not a response or error for this request" :
+                IsNetworkError ? "the event stream ended with a network error before a reply arrived" :
+                "no JSON-RPC response or error was present in the response";
+
+            return $"{mediaTypeDescription}, and {reason}.";
+        }
     }
 
     private static TimeSpan ElapsedSince(long stopwatchTimestamp)
