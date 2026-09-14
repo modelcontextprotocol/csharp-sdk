@@ -982,4 +982,49 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         using var aliceDeleteResponse = await HttpClient.SendAsync(aliceDelete, TestContext.Current.CancellationToken);
         Assert.True(aliceDeleteResponse.IsSuccessStatusCode);
     }
+
+    // A stateful server keeps sessions in memory, so a request for a session this instance does not have
+    // fails with 404. That is the normal outcome of running several instances without session affinity, or
+    // of losing sessions to a restart, and the error has to say so: "Session not found" on its own is
+    // indistinguishable from a client-side bug.
+    // See https://github.com/modelcontextprotocol/csharp-sdk/issues/1861.
+    [Fact]
+    public async Task Stateful_UnknownSessionId_Returns404WithSessionAffinityGuidance()
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // The session was created by a different instance, which is what a load balancer without sticky
+        // sessions produces: the client still holds a valid-looking Mcp-Session-Id, this instance does not.
+        const string listToolsRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+            """;
+        using var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(listToolsRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("Mcp-Session-Id", "session-created-by-another-instance");
+        request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var document = System.Text.Json.JsonDocument.Parse(body);
+        var error = document.RootElement.GetProperty("error");
+        Assert.Equal(-32001, error.GetProperty("code").GetInt32());
+
+        var message = error.GetProperty("message").GetString();
+        Assert.NotNull(message);
+        Assert.StartsWith("Session not found", message);
+        Assert.Contains("session affinity", message);
+        Assert.Contains("HttpServerSessionMode.Stateless", message);
+    }
 }
