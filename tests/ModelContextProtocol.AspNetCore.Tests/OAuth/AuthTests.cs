@@ -2507,6 +2507,32 @@ public class AuthTests : OAuthTestBase
         Assert.False(scopePresent);
     }
 
+    /// <summary>
+    /// An in-memory token cache that signals when tokens are first stored and can model an authorization
+    /// server that issues no refresh token by discarding it.
+    /// </summary>
+    private sealed class SignalingTokenCache(bool discardRefreshTokens = false) : ITokenCache
+    {
+        private TokenContainer? _tokens;
+
+        public TaskCompletionSource TokensStored { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask StoreTokensAsync(TokenContainer tokens, CancellationToken cancellationToken)
+        {
+            if (discardRefreshTokens)
+            {
+                tokens.RefreshToken = null;
+            }
+
+            Volatile.Write(ref _tokens, tokens);
+            TokensStored.TrySetResult();
+            return default;
+        }
+
+        public ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken) =>
+            new(Volatile.Read(ref _tokens));
+    }
+
     private HttpClientTransport CreateOAuthTransport(
         Func<AuthorizationCallbackContext, CancellationToken, Task<ModelContextProtocol.Authentication.AuthorizationResult?>>?
             authorizationCallbackHandler = null) =>
@@ -2548,5 +2574,518 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("mcp:tools", TestOAuthServer.LastRegistrationScope);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_SurvivesCancellationOfTriggeringRequest()
+    {
+        // A challenge raised while a previous challenge's interactive flow is still pending must
+        // join that flow rather than start a second one: the user is already completing the first
+        // flow's authorization URL in a browser, and a second flow's state and PKCE verifier could
+        // never match the redirect the user eventually completes. Canceling the request whose
+        // challenge started the flow must therefore not cancel the flow itself.
+        await using var app = await StartMcpServerAsync();
+
+        var handlerInvocations = 0;
+        var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeAuthorization = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            Interlocked.Increment(ref handlerInvocations);
+            handlerEntered.TrySetResult();
+
+            // Hold the flow open, like a user mid-login. Before the fix, canceling the first
+            // connect canceled this wait via cancellationToken, and the second connect re-invoked
+            // the handler for a fresh flow.
+            await completeAuthorization.Task.WaitAsync(cancellationToken);
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2025-06-18" };
+
+        using var firstConnectCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var firstConnect = McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: firstConnectCts.Token);
+
+        await handlerEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        firstConnectCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstConnect);
+
+        // The user now completes the original flow's authorization. The flow must still be alive
+        // to receive it, and the next connect must reuse its outcome (via the in-flight flow or
+        // the token it caches) instead of starting a second flow.
+        completeAuthorization.TrySetResult();
+
+        await using var client = await McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, handlerInvocations);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_SurvivesDiscoverProbeTimeout()
+    {
+        // End-to-end version of the dual-path connect scenario: the server/discover probe draws the
+        // 401 that starts the interactive flow, DiscoverProbeTimeout cancels the probe while the
+        // flow waits on the user, and the challenge raised by the initialize fallback must reuse the
+        // pending flow instead of starting a second one the user never sees.
+        //
+        // The user finishes the browser login only once the initialize fallback has reached the
+        // server unauthenticated, which can only happen after the probe was canceled. The flow the
+        // probe started is therefore still pending when the fallback is challenged, and the fallback
+        // must reuse it (by joining it, or by finding the token it caches) rather than start its own.
+        var initializeFallbackReachedServer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Registered ahead of the authentication and authorization middleware (added explicitly
+            // below instead of being auto-inserted at the front of the pipeline), which would
+            // otherwise challenge the unauthenticated request before it reached this observer.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post &&
+                    context.Request.Path == "/" &&
+                    context.Request.Headers.Authorization.Count == 0)
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest { Method: "initialize" })
+                    {
+                        initializeFallbackReachedServer.TrySetResult();
+                    }
+                }
+
+                await next(context);
+            });
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+        });
+
+        // Warm the server pipeline (JIT, auth handlers) so the probe's challenge reaches the handler
+        // well within the probe timeout; otherwise the probe would time out before any flow starts and
+        // the fallback would simply run the only flow, passing without exercising the scenario.
+        using (var warmup = await HttpClient.PostAsync(
+            McpServerUrl,
+            new StringContent("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", System.Text.Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, warmup.StatusCode);
+        }
+
+        var handlerInvocations = 0;
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            Interlocked.Increment(ref handlerInvocations);
+            await initializeFallbackReachedServer.Task.WaitAsync(cancellationToken);
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions { DiscoverProbeTimeout = TimeSpan.FromMilliseconds(500) },
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, handlerInvocations);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_PendingFlowIsNotReusedForChallengeRequiringMoreScopes()
+    {
+        // A pending flow may only be reused by a challenge whose scopes it requested. Here a canceled
+        // read-tool call leaves its "files:read" step-up pending while the user is still logging in;
+        // a write-tool call challenged for "files:write" must not reuse that flow, since its token
+        // could never satisfy the write. It must instead let the pending flow settle and then run its
+        // own step-up for the accumulated scopes, so the user still sees only one prompt at a time.
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "read-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Read tool executed.";
+                }),
+                McpServerTool.Create([McpServerTool(Name = "write-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Write tool executed.";
+                }),
+            ]);
+
+        var writeChallengeRaised = 0;
+        var writeChallengeBeingHandled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Fetching the protected resource metadata is the client's first step in handling a
+            // challenge, so the first fetch after the write challenge means it is being handled. The
+            // authentication handler serves that document itself, so this observer must sit ahead of
+            // the authentication middleware (added explicitly below rather than auto-inserted at the
+            // front of the pipeline), while the challenge middleware below it needs the authenticated user.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource") && Volatile.Read(ref writeChallengeRaised) == 1)
+                {
+                    writeChallengeBeingHandled.TrySetResult();
+                }
+
+                await next(context);
+            });
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        var scopeClaim = context.User.FindFirst("scope")?.Value ?? "";
+                        var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+
+                        var missingScope = toolCallParams?.Name switch
+                        {
+                            "read-tool" when !scopeSet.Contains("files:read") => "files:read",
+                            "write-tool" when !scopeSet.Contains("files:write") => "files:write",
+                            _ => null,
+                        };
+
+                        if (missingScope is not null)
+                        {
+                            if (missingScope == "files:write")
+                            {
+                                // Set before the response goes out so the observer above sees the flag
+                                // when the client's metadata fetch arrives.
+                                Volatile.Write(ref writeChallengeRaised, 1);
+                            }
+
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{missingScope}\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        List<string> requestedScopes = [];
+        var readStepUpEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeReadStepUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            int invocation;
+            lock (requestedScopes)
+            {
+                requestedScopes.Add(QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["scope"].ToString());
+                invocation = requestedScopes.Count;
+            }
+
+            if (invocation == 2)
+            {
+                // The read step-up: hold it open, like a user mid-login.
+                readStepUpEntered.TrySetResult();
+                await completeReadStepUp.Task.WaitAsync(cancellationToken);
+            }
+
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The read-tool call is canceled while its step-up waits on the user, leaving that flow pending.
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var readCall = client.CallToolAsync("read-tool", cancellationToken: readCts.Token).AsTask();
+        await readStepUpEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        readCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => readCall);
+
+        // The write-tool call is challenged for "files:write" and starts handling that challenge while
+        // the read step-up is still pending; only then does the user complete the read step-up.
+        var writeCall = client.CallToolAsync("write-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+        await writeChallengeBeingHandled.Task.WaitAsync(TestContext.Current.CancellationToken);
+        completeReadStepUp.TrySetResult();
+
+        var writeResult = await writeCall;
+        Assert.Equal("Write tool executed.", writeResult.Content[0].ToString());
+
+        // Three prompts in total: the initial connect, the read step-up, and a separate write step-up
+        // that carries the accumulated scopes instead of reusing the read step-up's token.
+        Assert.Equal(["mcp:tools", "files:read mcp:tools", "files:read files:write mcp:tools"], requestedScopes);
+
+        // The stepped-up token now covers the read tool as well, with no further prompt.
+        var readResult = await client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("Read tool executed.", readResult.Content[0].ToString());
+        Assert.Equal(3, requestedScopes.Count);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_RepeatedChallengeForSameScopes_JoinsPendingStepUp()
+    {
+        // A step-up abandoned by its caller (canceled while the user is mid-login) is still pending.
+        // Another request challenged for the same scopes must join that flow instead of being rejected
+        // as an unproductive repeated step-up: the pending flow is exactly what will satisfy it.
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "read-tool")]
+                (ClaimsPrincipal user) =>
+                {
+                    return "Read tool executed.";
+                }),
+            ]);
+
+        var readChallengesRaised = 0;
+        var secondChallengeBeingHandled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Fetching the protected resource metadata is the client's first step in handling a
+            // challenge. The authentication handler serves that document itself, so this observer must
+            // sit ahead of the authentication middleware (added explicitly below rather than
+            // auto-inserted at the front of the pipeline), while the challenge middleware below it
+            // needs the authenticated user.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource") && Volatile.Read(ref readChallengesRaised) == 2)
+                {
+                    secondChallengeBeingHandled.TrySetResult();
+                }
+
+                await next(context);
+            });
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == HttpMethods.Post && context.Request.Path == "/")
+                {
+                    context.Request.EnableBuffering();
+
+                    var message = await JsonSerializer.DeserializeAsync(
+                        context.Request.Body,
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)),
+                        context.RequestAborted) as JsonRpcMessage;
+
+                    context.Request.Body.Position = 0;
+
+                    if (message is JsonRpcRequest request && request.Method == "tools/call")
+                    {
+                        var toolCallParams = JsonSerializer.Deserialize(
+                            request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(CallToolRequestParams))) as CallToolRequestParams;
+
+                        var scopeClaim = context.User.FindFirst("scope")?.Value ?? "";
+                        var scopeSet = new HashSet<string>(scopeClaim.Split(' '));
+
+                        if (toolCallParams?.Name == "read-tool" && !scopeSet.Contains("files:read"))
+                        {
+                            // Counted before the response goes out so the observer above sees it when
+                            // the client's metadata fetch arrives.
+                            Interlocked.Increment(ref readChallengesRaised);
+
+                            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                            context.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"files:read\"";
+                            await context.Response.StartAsync(context.RequestAborted);
+                            await context.Response.Body.FlushAsync(context.RequestAborted);
+                            return;
+                        }
+                    }
+                }
+
+                await next(context);
+            });
+        });
+
+        List<string> requestedScopes = [];
+        var stepUpEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeStepUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            int invocation;
+            lock (requestedScopes)
+            {
+                requestedScopes.Add(QueryHelpers.ParseQuery(context.AuthorizationUri.Query)["scope"].ToString());
+                invocation = requestedScopes.Count;
+            }
+
+            if (invocation == 2)
+            {
+                // The step-up: hold it open, like a user mid-login.
+                stepUpEntered.TrySetResult();
+                await completeStepUp.Task.WaitAsync(cancellationToken);
+            }
+
+            return await HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The first read-tool call is canceled while its step-up waits on the user, leaving it pending.
+        using var firstCallCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var firstCall = client.CallToolAsync("read-tool", cancellationToken: firstCallCts.Token).AsTask();
+        await stepUpEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        firstCallCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstCall);
+
+        // The second call draws the same challenge and starts handling it while the step-up is still
+        // pending; only then does the user complete the step-up.
+        var secondCall = client.CallToolAsync("read-tool", cancellationToken: TestContext.Current.CancellationToken).AsTask();
+        await secondChallengeBeingHandled.Task.WaitAsync(TestContext.Current.CancellationToken);
+        completeStepUp.TrySetResult();
+
+        var result = await secondCall;
+        Assert.Equal("Read tool executed.", result.Content[0].ToString());
+
+        // Two prompts in total: the initial connect and the single step-up both calls shared.
+        Assert.Equal(["mcp:tools", "files:read mcp:tools"], requestedScopes);
+    }
+
+    [Fact]
+    public async Task InteractiveAuthorization_FlowCompletingDuringChallengeHandling_IsReusedNotRestarted()
+    {
+        // A detached flow can complete while a later challenge is already being handled, after that
+        // challenge re-checked the token cache on acquiring the lock but before it decides whether to
+        // join the flow. Its token must then be reused; starting a second flow would prompt the user
+        // again for a token that is already cached. With no refresh token available (the test
+        // authorization server always issues one, so the cache discards it), the cached access token
+        // is the only alternative to a second prompt.
+        var tokenCache = new SignalingTokenCache(discardRefreshTokens: true);
+        var handlerInvocations = 0;
+        var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeAuthorization = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondConnectStarted = 0;
+
+        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        {
+            // Fetching the protected resource metadata is the client's first step in handling a
+            // challenge. The authentication handler serves that document itself, so this observer must
+            // sit ahead of the authentication middleware (added explicitly below rather than
+            // auto-inserted at the front of the pipeline). Once the second connect's challenge fetches
+            // it, the user completes the first connect's flow, and the response is held back until that
+            // flow has stored its token, so the challenge finds the flow completed when it decides.
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource") && Volatile.Read(ref secondConnectStarted) == 1)
+                {
+                    completeAuthorization.TrySetResult();
+                    await tokenCache.TokensStored.Task.WaitAsync(TestConstants.DefaultTimeout, context.RequestAborted);
+                }
+
+                await next(context);
+            });
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+        });
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenCache = tokenCache,
+                AuthorizationCallbackHandler = async (context, cancellationToken) =>
+                {
+                    Interlocked.Increment(ref handlerInvocations);
+                    handlerEntered.TrySetResult();
+                    await completeAuthorization.Task.WaitAsync(cancellationToken);
+                    return await HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        var clientOptions = new McpClientOptions { ProtocolVersion = "2025-06-18" };
+
+        using var firstConnectCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var firstConnect = McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: firstConnectCts.Token);
+
+        await handlerEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        firstConnectCts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstConnect);
+
+        Volatile.Write(ref secondConnectStarted, 1);
+        await using var client = await McpClient.CreateAsync(
+            transport, clientOptions, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, handlerInvocations);
+    }
+
+    [Fact]
+    public async Task DisposingTransport_CancelsDetachedAuthorizationFlow()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var handlerCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var transport = CreateOAuthTransport(async (context, cancellationToken) =>
+        {
+            try
+            {
+                // Park the flow past the entire connect attempt, as if the user never finishes
+                // the browser login.
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                handlerCanceled.TrySetResult();
+                throw;
+            }
+
+            return null;
+        });
+
+        await Assert.ThrowsAsync<TimeoutException>(() => McpClient.CreateAsync(
+            transport,
+            new McpClientOptions
+            {
+                DiscoverProbeTimeout = TimeSpan.FromMilliseconds(100),
+                InitializationTimeout = TimeSpan.FromSeconds(1),
+            },
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        // The flow is detached from the canceled connect requests; only disposing the transport
+        // cancels it.
+        Assert.False(handlerCanceled.Task.IsCompleted);
+
+        await transport.DisposeAsync();
+
+        await handlerCanceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
     }
 }

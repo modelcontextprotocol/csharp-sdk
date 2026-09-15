@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A generic implementation of an OAuth authorization provider.
 /// </summary>
-internal sealed partial class ClientOAuthProvider : McpHttpClient
+internal sealed partial class ClientOAuthProvider : McpHttpClient, IDisposable
 {
     /// <summary>
     /// The Bearer authentication scheme.
@@ -72,6 +72,26 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     // them (invalid_scope). Accumulation is scoped per "resource and operation" combination (SEP-2350).
     private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
     private bool _hasAttemptedStepUp;
+
+    // The single in-flight authorization-code flow, if any, and the scopes it requested. Written only
+    // while holding _tokenAcquisitionLock. The flow is deliberately detached from the cancellation of
+    // the request whose challenge started it: the user may already be completing the authorization in
+    // a browser, and canceling one HTTP request — for example a server/discover probe canceled by
+    // McpClientOptions.DiscoverProbeTimeout during the dual-path connect — must not abort that flow.
+    // If it did, the next challenge would start a second flow with a fresh state and PKCE verifier
+    // that the redirect the user eventually completes can never satisfy. Instead, a later challenge
+    // whose scopes the flow already requested joins it and shares its result, while each caller
+    // observes its own cancellation via WaitAsync. A challenge that needs a scope the flow did not
+    // request cannot be satisfied by its token, so it waits for the flow to settle and then runs its
+    // own step-up; at most one interactive flow is ever presented to the user at a time. The flow
+    // itself is bounded by the authorization callback handler's own completion and canceled on
+    // provider disposal. Because it outlives the lock, it carries its own snapshot of the client
+    // credentials (see ClientCredentials) rather than reading the mutable fields a later challenge may
+    // rebind for another authorization server while it is pending.
+    private Task<string>? _inFlightAuthorizationCodeFlow;
+    private HashSet<string>? _inFlightAuthorizationCodeFlowScopes;
+    private readonly CancellationTokenSource _disposeCts = new();
+    private int _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -189,6 +209,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             State = queryParams["state"],
             Iss = queryParams["iss"],
         });
+    }
+
+    /// <summary>
+    /// Cancels any in-flight detached authorization-code flow (see <see cref="_inFlightAuthorizationCodeFlow"/>).
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
+        }
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -387,6 +419,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     return steppedUpToken.AccessToken;
                 }
 
+                // The step-up that already requested these scopes may still be pending (the request
+                // that started it was canceled while the user was completing it) or may have completed
+                // since the cache was read above. Either way its outcome is what satisfies this
+                // challenge, so reuse it rather than reject the challenge as repeated.
+                if (await TryReuseInFlightAuthorizationCodeFlowAsync(protectedResourceMetadata, usedAccessToken, cancellationToken).ConfigureAwait(false) is { } steppedUpAccessToken)
+                {
+                    return steppedUpAccessToken;
+                }
+
                 ThrowFailedToHandleUnauthorizedResponse(
                     "A repeated insufficient_scope challenge added no scope beyond those already requested, " +
                     "so step-up authorization cannot satisfy the request.");
@@ -480,8 +521,81 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
-        // Perform the OAuth flow
-        return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        // Perform the OAuth flow, unless the in-flight flow already satisfies this challenge: a caller
+        // that reaches this point while a previous caller's flow is still pending (that caller's
+        // request was canceled mid-flow, releasing the lock) joins it instead of starting a competing
+        // one, and a flow that completed during the metadata work above has cached the token this
+        // challenge needs. See the _inFlightAuthorizationCodeFlow comment.
+        if (await TryReuseInFlightAuthorizationCodeFlowAsync(protectedResourceMetadata, usedAccessToken, cancellationToken).ConfigureAwait(false) is { } reusedAccessToken)
+        {
+            return reusedAccessToken;
+        }
+
+        if (_inFlightAuthorizationCodeFlow is { IsCompleted: false } pendingFlow)
+        {
+            // The pending flow did not request a scope this challenge needs, so its token cannot
+            // satisfy it, but two interactive flows must never be presented at once: let it settle
+            // first. Its outcome, success or failure, is reported to the callers that joined it and
+            // is irrelevant here (Task.WhenAny never faults).
+            await Task.WhenAny(pendingFlow).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        var flow = _inFlightAuthorizationCodeFlow = StartAuthorizationCodeFlow(protectedResourceMetadata, authServerMetadata, _disposeCts.Token);
+        return await flow.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Satisfies the current challenge from the in-flight authorization-code flow when that flow requested
+    /// every scope the challenge needs: joins the flow while it is pending, or reuses the token it cached
+    /// if it completed after the caller last consulted the cache. Returns <see langword="null"/> when there
+    /// is no such flow or nothing usable came of it, in which case the caller runs a flow of its own.
+    /// </summary>
+    private async Task<string?> TryReuseInFlightAuthorizationCodeFlowAsync(ProtectedResourceMetadata protectedResourceMetadata, string? usedAccessToken, CancellationToken cancellationToken)
+    {
+        if (_inFlightAuthorizationCodeFlow is not { } flow || !InFlightAuthorizationCodeFlowCoversChallenge(protectedResourceMetadata))
+        {
+            return null;
+        }
+
+        if (!flow.IsCompleted)
+        {
+            return await flow.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // A flow that ran to completion stored its token, and a token other than the one this challenge
+        // rejected is worth retrying with. A flow that faulted or was canceled stored nothing, and a
+        // long-completed flow's token is the rejected one itself.
+        if (flow.Status == TaskStatus.RanToCompletion &&
+            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { IsExpired: false } cached &&
+            !string.Equals(cached.AccessToken, usedAccessToken, StringComparison.Ordinal))
+        {
+            return cached.AccessToken;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns whether the in-flight authorization-code flow requested every scope the current challenge
+    /// requires, so that joining it can satisfy the challenge. A challenge that names no concrete scope is
+    /// satisfied by whatever token the flow yields.
+    /// </summary>
+    private bool InFlightAuthorizationCodeFlowCoversChallenge(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (_inFlightAuthorizationCodeFlowScopes is not { } requestedScopes)
+        {
+            return false;
+        }
+
+        foreach (var scope in GetCurrentOperationScopes(protectedResourceMetadata))
+        {
+            if (!requestedScopes.Contains(scope))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void ApplyClientIdMetadataDocument(Uri metadataUri)
@@ -673,6 +787,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<string?> RefreshTokensAsync(string refreshToken, string? resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
+        var credentials = CaptureClientCredentials();
+
         Dictionary<string, string> formFields = new()
         {
             ["grant_type"] = "refresh_token",
@@ -684,7 +800,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             formFields["resource"] = resourceUri;
         }
 
-        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields, credentials);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -693,22 +809,46 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return null;
         }
 
-        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, credentials, cancellationToken).ConfigureAwait(false);
         LogOAuthTokenRefreshCompleted();
         return tokens.AccessToken;
     }
 
-    private async Task<string> InitiateAuthorizationCodeFlowAsync(
+    /// <summary>
+    /// Starts an authorization-code flow for the current challenge and records the scopes it requests in
+    /// <see cref="_inFlightAuthorizationCodeFlowScopes"/>. Callers must hold <c>_tokenAcquisitionLock</c>.
+    /// </summary>
+    private Task<string> StartAuthorizationCodeFlow(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
+        // The flow outlives this lock scope, so it works from a snapshot of the client credentials
+        // rather than the mutable fields; see the _inFlightAuthorizationCodeFlow comment.
+        var credentials = CaptureClientCredentials();
         var codeVerifier = GenerateRandomBase64UrlValue();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
         var state = GenerateRandomBase64UrlValue();
 
-        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge, state);
+        // Record the scopes this flow actually asks the authorization server for: the effective scope
+        // placed in the URL, which offline_access augmentation and any ScopeSelector can make differ
+        // from _accumulatedScopes.
+        var scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata);
+        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, credentials.ClientId, codeChallenge, state, scope);
+        _inFlightAuthorizationCodeFlowScopes = new HashSet<string>(scope is null ? [] : SplitScopes(scope), StringComparer.Ordinal);
 
+        return CompleteAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, credentials, authUrl, state, codeVerifier, cancellationToken);
+    }
+
+    private async Task<string> CompleteAuthorizationCodeFlowAsync(
+        ProtectedResourceMetadata protectedResourceMetadata,
+        AuthorizationServerMetadata authServerMetadata,
+        ClientCredentials credentials,
+        Uri authUrl,
+        string state,
+        string codeVerifier,
+        CancellationToken cancellationToken)
+    {
         var authResult = await _authorizationCallbackHandler(
             new AuthorizationCallbackContext
             {
@@ -740,6 +880,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return await ExchangeCodeForTokenAsync(
             protectedResourceMetadata,
             authServerMetadata,
+            credentials,
             authResult.Code!,
             codeVerifier,
             cancellationToken).ConfigureAwait(false);
@@ -748,14 +889,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private Uri BuildAuthorizationUrl(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
+        string clientId,
         string codeChallenge,
-        string state)
+        string state,
+        string? scope)
     {
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
         var queryParamsDictionary = new Dictionary<string, string>
         {
-            ["client_id"] = GetClientIdOrThrow(),
+            ["client_id"] = clientId,
             ["redirect_uri"] = _redirectUri.ToString(),
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
@@ -768,7 +911,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             queryParamsDictionary["resource"] = resourceUri;
         }
 
-        var scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata);
         if (!string.IsNullOrEmpty(scope))
         {
             queryParamsDictionary["scope"] = scope!;
@@ -797,6 +939,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private async Task<string> ExchangeCodeForTokenAsync(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
+        ClientCredentials credentials,
         string authorizationCode,
         string codeVerifier,
         CancellationToken cancellationToken)
@@ -816,33 +959,45 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             formFields["resource"] = resourceUri;
         }
 
-        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields);
+        using var request = CreateTokenRequest(authServerMetadata.TokenEndpoint, formFields, credentials);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
-        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, credentials, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
         return tokens.AccessToken;
     }
 
     /// <summary>
-    /// Creates an HTTP request to the token endpoint, applying the appropriate authentication
-    /// method based on <see cref="_tokenEndpointAuthMethod"/>.
+    /// The client registration a token request is made with and persisted alongside the tokens it yields.
+    /// Captured under <c>_tokenAcquisitionLock</c> via <see cref="CaptureClientCredentials"/> so that work
+    /// which outlives the lock, such as a detached authorization-code flow, is unaffected by a later
+    /// challenge rebinding the provider's mutable credential fields to another authorization server.
     /// </summary>
-    private HttpRequestMessage CreateTokenRequest(Uri tokenEndpoint, Dictionary<string, string> formFields)
+    private sealed record ClientCredentials(string ClientId, string? ClientSecret, string? TokenEndpointAuthMethod, string? AuthorizationServer);
+
+    /// <summary>Snapshots the current client registration. Callers must hold <c>_tokenAcquisitionLock</c>.</summary>
+    private ClientCredentials CaptureClientCredentials() =>
+        new(GetClientIdOrThrow(), _clientSecret, _tokenEndpointAuthMethod, _clientCredentialsAuthorizationServer);
+
+    /// <summary>
+    /// Creates an HTTP request to the token endpoint, applying the appropriate authentication
+    /// method based on <see cref="ClientCredentials.TokenEndpointAuthMethod"/>.
+    /// </summary>
+    private HttpRequestMessage CreateTokenRequest(Uri tokenEndpoint, Dictionary<string, string> formFields, ClientCredentials credentials)
     {
         HttpRequestMessage request = new(HttpMethod.Post, tokenEndpoint);
 
-        var clientId = GetClientIdOrThrow();
-        if (string.Equals(_tokenEndpointAuthMethod, "client_secret_basic", StringComparison.Ordinal))
+        var clientId = credentials.ClientId;
+        if (string.Equals(credentials.TokenEndpointAuthMethod, "client_secret_basic", StringComparison.Ordinal))
         {
             // Per RFC 6749 §2.3.1: send client_id:client_secret as HTTP Basic auth.
             request.Headers.Authorization = new(
                 "Basic",
-                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Uri.EscapeDataString(clientId)}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}")));
+                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Uri.EscapeDataString(clientId)}:{Uri.EscapeDataString(credentials.ClientSecret ?? string.Empty)}")));
         }
-        else if (string.Equals(_tokenEndpointAuthMethod, "none", StringComparison.Ordinal))
+        else if (string.Equals(credentials.TokenEndpointAuthMethod, "none", StringComparison.Ordinal))
         {
             // Public client: include client_id in the body but no secret.
             formFields["client_id"] = clientId;
@@ -851,14 +1006,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         {
             // Default to client_secret_post: include credentials in the body.
             formFields["client_id"] = clientId;
-            formFields["client_secret"] = _clientSecret ?? string.Empty;
+            formFields["client_secret"] = credentials.ClientSecret ?? string.Empty;
         }
 
         request.Content = new FormUrlEncodedContent(formFields);
         return request;
     }
 
-    private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, ClientCredentials credentials, CancellationToken cancellationToken)
     {
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenResponse, cancellationToken).ConfigureAwait(false);
@@ -883,10 +1038,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ObtainedAt = DateTimeOffset.UtcNow,
             // Persist the client registration alongside the tokens so a durable cache can use the
             // refresh token after a process restart without re-running dynamic client registration.
-            ClientId = _clientId,
-            ClientSecret = _clientSecret,
-            TokenEndpointAuthMethod = _tokenEndpointAuthMethod,
-            AuthorizationServer = _clientCredentialsAuthorizationServer,
+            ClientId = credentials.ClientId,
+            ClientSecret = credentials.ClientSecret,
+            TokenEndpointAuthMethod = credentials.TokenEndpointAuthMethod,
+            AuthorizationServer = credentials.AuthorizationServer,
         };
 
         await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);

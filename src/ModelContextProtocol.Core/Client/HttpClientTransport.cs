@@ -105,6 +105,8 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
+        // Cancels any authorization-code flow still running detached from a canceled request.
+        (_mcpHttpClient as IDisposable)?.Dispose();
         _ownedHttpClient?.Dispose();
         return default;
     }
