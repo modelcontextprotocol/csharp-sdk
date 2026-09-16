@@ -1,22 +1,25 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
-public class KestrelInMemoryTest : LoggedTest
+public abstract class KestrelInMemoryTest : LoggedTest
 {
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        // Use SlimBuilder instead of EmptyBuilder to avoid having to call UseRouting() and UseEndpoints(_ => { })
-        // or a helper that does the same every test. But clear out the existing socket transport to avoid potential port conflicts.
-        Builder = WebApplication.CreateSlimBuilder();
-        Builder.Services.RemoveAll<IConnectionListenerFactory>();
+        Builder = WebApplication.CreateEmptyBuilder(new());
         Builder.Services.AddSingleton<IConnectionListenerFactory>(KestrelInMemoryTransport);
+        Builder.WebHost.UseKestrelCore();
+        Builder.Services.AddRoutingCore();
+        Builder.Services.AddLogging();
+        Builder.Services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         Builder.Services.AddSingleton(XunitLoggerProvider);
+        Builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
         SocketsHttpHandler.ConnectCallback = (context, token) =>
         {
@@ -24,20 +27,23 @@ public class KestrelInMemoryTest : LoggedTest
             return new(connection.ClientStream);
         };
 
-        HttpClient = new HttpClient(SocketsHttpHandler)
-        {
-            BaseAddress = new Uri("http://localhost:5000/"),
-            Timeout = TimeSpan.FromSeconds(10),
-        };
+        HttpClient = new HttpClient(SocketsHttpHandler);
+        ConfigureHttpClient(HttpClient);
     }
 
     public WebApplicationBuilder Builder { get; }
 
-    public HttpClient HttpClient { get; }
+    public HttpClient HttpClient { get; set; }
 
     public SocketsHttpHandler SocketsHttpHandler { get; } = new();
 
     public KestrelInMemoryTransport KestrelInMemoryTransport { get; } = new();
+
+    protected static void ConfigureHttpClient(HttpClient httpClient)
+    {
+        httpClient.BaseAddress = new Uri("http://localhost:5000/");
+        httpClient.Timeout = TestConstants.HttpClientTimeout;
+    }
 
     public override void Dispose()
     {

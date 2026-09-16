@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -71,15 +71,17 @@ public class TestServerTransport : ITransport
 
     private async Task SamplingAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
+        // Return a normal sampling response
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new TextContentBlock { Text = "" }, Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
+            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = [new TextContentBlock { Text = "" }], Model = "model" }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 
     private async Task ElicitAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
+        // Return a normal elicitation response
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
@@ -88,6 +90,14 @@ public class TestServerTransport : ITransport
     }
 
     private async Task WriteMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    {
+        await _messageChannel.Writer.WriteAsync(message, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a message from the client to the server (simulating client-to-server communication).
+    /// </summary>
+    public async Task SendClientMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         await _messageChannel.Writer.WriteAsync(message, cancellationToken);
     }

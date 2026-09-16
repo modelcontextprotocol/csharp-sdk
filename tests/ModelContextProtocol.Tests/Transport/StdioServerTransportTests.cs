@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
@@ -23,11 +24,14 @@ public class StdioServerTransportTests : LoggedTest
         };
     }
 
-    [Fact(Skip="https://github.com/modelcontextprotocol/csharp-sdk/issues/143")]
+    [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
-        // Act
-        await using var transport = new StdioServerTransport(_serverOptions);
+        // Use StreamServerTransport with Stream.Null rather than StdioServerTransport.
+        // StdioServerTransport opens Console.OpenStandardInput() which permanently
+        // blocks a thread pool thread on the test host's stdin. StdioServerTransport
+        // should only be instantiated in a dedicated child process.
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, _serverOptions.ServerInfo?.Name);
 
         // Assert
         Assert.NotNull(transport);
@@ -192,5 +196,173 @@ public class StdioServerTransportTests : LoggedTest
 
         Assert.True(magnifyingGlassFound, "Magnifying glass emoji not found in result");
         Assert.True(rocketFound, "Rocket emoji not found in result");
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Should_Log_At_Trace_Level()
+    {
+        // Arrange
+        var mockLoggerProvider = new MockLoggerProvider();
+        using var traceLoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(XunitLoggerProvider);
+            builder.AddProvider(mockLoggerProvider);
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+
+        using var output = new MemoryStream();
+
+        await using var transport = new StreamServerTransport(
+            new Pipe().Reader.AsStream(),
+            output,
+            loggerFactory: traceLoggerFactory);
+
+        // Act
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+        await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+
+        // Assert
+        var traceLogMessages = mockLoggerProvider.LogMessages
+            .Where(x => x.LogLevel == LogLevel.Trace && x.Message.Contains("transport sending message"))
+            .ToList();
+
+        Assert.NotEmpty(traceLogMessages);
+        Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":44"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Should_Use_LF_Not_CRLF()
+    {
+        using var output = new MemoryStream();
+
+        await using var transport = new StreamServerTransport(
+            new Pipe().Reader.AsStream(),
+            output,
+            loggerFactory: LoggerFactory);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+
+        await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+
+        byte[] bytes = output.ToArray();
+
+        // The output should end with exactly \n (0x0A), not \r\n (0x0D 0x0A).
+        Assert.True(bytes.Length > 1, "Output should contain message data");
+        Assert.Equal((byte)'\n', bytes[^1]);
+        Assert.NotEqual((byte)'\r', bytes[^2]);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Accept_CRLF_Delimited_Messages()
+    {
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            Stream.Null,
+            loggerFactory: LoggerFactory);
+
+        // Write the message with \r\n line ending
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\r\n"), TestContext.Current.CancellationToken);
+
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(canRead, "Should be able to read a \\r\\n-delimited message");
+        Assert.True(transport.MessageReader.TryPeek(out var readMessage));
+        Assert.NotNull(readMessage);
+        Assert.IsType<JsonRpcRequest>(readMessage);
+        Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Respond_With_ParseError_For_Request_Exceeding_MaxDepth()
+    {
+        // Build a ping request whose params nest more deeply than System.Text.Json's default
+        // reader MaxDepth of 64, which is what makes full deserialization throw. The request still
+        // carries an id, so the transport should reply with a JSON-RPC parse error for that id rather
+        // than dropping the request and leaving the caller pending.
+        var nested = new StringBuilder();
+        const int depth = 100;
+        for (int i = 0; i < depth; i++)
+        {
+            nested.Append("{\"p").Append(i).Append("\":");
+        }
+        nested.Append("{\"leaf\":true}");
+        nested.Append('}', depth);
+
+        var requestLine = $"{{\"jsonrpc\":\"2.0\",\"id\":900100,\"method\":\"ping\",\"params\":{nested}}}";
+
+        Pipe inputPipe = new();
+        Pipe outputPipe = new();
+        using var input = inputPipe.Reader.AsStream();
+        using var output = outputPipe.Writer.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            output,
+            loggerFactory: LoggerFactory);
+
+        await inputPipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{requestLine}\n"), TestContext.Current.CancellationToken);
+
+        // Read the single response line the transport writes back to the output stream.
+        using var responseReader = new StreamReader(outputPipe.Reader.AsStream(), Encoding.UTF8);
+        var responseLine = await responseReader.ReadLineAsync(
+#if NET
+            TestContext.Current.CancellationToken
+#endif
+        );
+
+        Assert.NotNull(responseLine);
+
+        var response = JsonSerializer.Deserialize<JsonRpcMessage>(responseLine!, McpJsonUtilities.DefaultOptions);
+        var error = Assert.IsType<JsonRpcError>(response);
+        Assert.Equal("900100", error.Id.ToString());
+        Assert.Equal((int)McpErrorCode.ParseError, error.Error.Code);
+
+        // The transport should still be reading further messages after recovering from the bad one.
+        Assert.True(transport.IsConnected);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Log_Received_At_Trace_Level()
+    {
+        // Arrange
+        var mockLoggerProvider = new MockLoggerProvider();
+        using var traceLoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(XunitLoggerProvider);
+            builder.AddProvider(mockLoggerProvider);
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(99) };
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            Stream.Null,
+            loggerFactory: traceLoggerFactory);
+
+        // Act
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
+
+        // Wait for the message to be processed
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+        Assert.True(canRead, "Nothing to read here from transport message reader");
+
+        // Assert
+        var traceLogMessages = mockLoggerProvider.LogMessages
+            .Where(x => x.LogLevel == LogLevel.Trace && x.Message.Contains("transport received message"))
+            .ToList();
+
+        Assert.NotEmpty(traceLogMessages);
+        Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":99"));
     }
 }

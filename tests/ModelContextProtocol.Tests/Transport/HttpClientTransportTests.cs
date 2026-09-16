@@ -2,6 +2,7 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.Net;
+using System.Text;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -83,6 +84,32 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task ConnectAsync_Throws_HttpRequestException_With_ResponseBody_On_ErrorStatusCode()
+    {
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(_transportOptions, httpClient, LoggerFactory);
+
+        const string errorDetails = "Bad request: Invalid MCP protocol version";
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.BadRequest,
+                ReasonPhrase = "Bad Request",
+                Content = new StringContent(errorDetails)
+            });
+        };
+
+        var httpException = await Assert.ThrowsAsync<HttpRequestException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Contains(errorDetails, httpException.Message);
+        Assert.Contains("400", httpException.Message);
+#if NET
+        Assert.Equal(HttpStatusCode.BadRequest, httpException.StatusCode);
+#endif
+    }
+
+    [Fact]
     public async Task SendMessageAsync_Handles_Accepted_Response()
     {
         using var mockHttpHandler = new MockHttpHandler();
@@ -118,6 +145,87 @@ public class HttpClientTransportTests : LoggedTest
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
         await session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_NotificationWithEmptyAcceptedJsonResponse_DoesNotLogParseFailure()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("http://localhost:8080/mcp", request.RequestUri?.AbsoluteUri);
+
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Accepted,
+                Content = new StringContent("", Encoding.UTF8, "application/json"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcNotification { Method = "notifications/initialized" },
+            TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, log =>
+            log.Message.Contains("transport message parsing failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Throws_HttpRequestException_With_ResponseBody_On_ErrorStatusCode()
+    {
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(_transportOptions, httpClient, LoggerFactory);
+
+        var firstCall = true;
+        const string errorDetails = "Invalid JSON-RPC message format: missing 'id' field";
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsoluteUri == "http://localhost:8080/sseendpoint")
+            {
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.BadRequest,
+                    ReasonPhrase = "Bad Request",
+                    Content = new StringContent(errorDetails)
+                });
+            }
+            else
+            {
+                if (!firstCall)
+                    throw new IOException("Abort");
+                else
+                    firstCall = false;
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent("event: endpoint\r\ndata: /sseendpoint\r\n\r\n")
+                });
+            }
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        var httpException = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None));
+
+        Assert.Contains(errorDetails, httpException.Message);
+        Assert.Contains("400", httpException.Message);
+#if NET
+        Assert.Equal(HttpStatusCode.BadRequest, httpException.StatusCode);
+#endif
     }
 
     [Fact]
@@ -172,5 +280,310 @@ public class HttpClientTransportTests : LoggedTest
 
         var transportBase = Assert.IsAssignableFrom<TransportBase>(session);
         Assert.False(transportBase.IsConnected);
+    }
+
+    // Strict server mock used in Content-Type tests below.
+    // Returns 200 only for bare "application/json", otherwise 415.
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> StrictJsonContentTypeHandler =>
+        (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var contentType = request.Content?.Headers.ContentType;
+                if (contentType?.CharSet is not null)
+                {
+                    return Task.FromResult(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.UnsupportedMediaType,
+                        Content = new StringContent("Content-Type must be 'application/json'"),
+                    });
+                }
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"Test","version":"1.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                });
+            }
+
+            throw new IOException("Abort");
+        };
+
+    [Fact]
+    public async Task SendMessageAsync_StrictServer_Returns200_WhenContentTypeIsApplicationJson()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1527
+        // SDK must send bare "application/json" — no charset parameter.
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        mockHttpHandler.RequestHandler = StrictJsonContentTypeHandler;
+
+        // Succeeds only if the SDK sends Content-Type: application/json (no charset)
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_InitialGetSseConnection_DoesNotCountAgainstMaxReconnectionAttempts()
+    {
+        // Arrange: The initial GET SSE connection (with no Last-Event-ID) is the initial connection,
+        // not a reconnection. It should not count against MaxReconnectionAttempts.
+        // With MaxReconnectionAttempts=2, we expect 1 initial + 2 reconnection = 3 total GET requests.
+        const int MaxReconnectionAttempts = 2;
+
+        var getRequestCount = 0;
+        var allGetRequestsDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            MaxReconnectionAttempts = MaxReconnectionAttempts,
+            DefaultReconnectionInterval = TimeSpan.FromMilliseconds(1),
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                // Return a successful initialize response with a session-id header.
+                // This triggers ReceiveUnsolicitedMessagesAsync which starts the GET SSE stream.
+                var response = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"TestServer","version":"1.0.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                };
+                response.Headers.Add("Mcp-Session-Id", "test-session");
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                // Return 500 for all GET SSE requests to force the retry loop to exhaust all attempts.
+                var count = Interlocked.Increment(ref getRequestCount);
+                if (count == 1 + MaxReconnectionAttempts)
+                {
+                    allGetRequestsDone.TrySetResult(true);
+                }
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.InternalServerError,
+                });
+            }
+
+            if (request.Method == HttpMethod.Delete)
+            {
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                });
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method}");
+        };
+
+        // Act - Connect and send the initialize request, which starts the background GET SSE task.
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
+            TestContext.Current.CancellationToken);
+
+        // Wait for all expected GET requests to be made before disposing.
+        await allGetRequestsDone.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert - Total GET requests = 1 initial connection + MaxReconnectionAttempts reconnections.
+        Assert.Equal(1 + MaxReconnectionAttempts, getRequestCount);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_DisablingStandaloneGetStream_DoesNotOpenGetSseAfterInitialize()
+    {
+        var getRequestReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            EnableStandaloneGetStream = false,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"TestServer","version":"1.0.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                };
+                response.Headers.Add("Mcp-Session-Id", "test-session");
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                getRequestReceived.TrySetResult(true);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
+            TestContext.Current.CancellationToken);
+
+        Assert.False(getRequestReceived.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_DisablingStandaloneGetStream_DoesNotOpenGetSseForKnownSessionId()
+    {
+        var getRequestReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            KnownSessionId = "test-session",
+            EnableStandaloneGetStream = false,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                getRequestReceived.TrySetResult(true);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(getRequestReceived.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task AutoDetect_DisablingStandaloneGetStream_DisposeCompletesWithHttpDetails()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            EnableStandaloneGetStream = false,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        """{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"TestServer","version":"1.0.0"}}}""",
+                        Encoding.UTF8,
+                        "application/json"),
+                };
+                response.Headers.Add("Mcp-Session-Id", "test-session");
+                return Task.FromResult(response);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
+            TestContext.Current.CancellationToken).WaitAsync(
+                TestConstants.DefaultTimeout,
+                TestContext.Current.CancellationToken);
+        Assert.True(session.MessageReader.TryRead(out var initializeResponse));
+        Assert.IsType<JsonRpcResponse>(initializeResponse);
+
+        await session.DisposeAsync().AsTask().WaitAsync(
+            TestConstants.DefaultTimeout,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(session.MessageReader.Completion.IsCompleted);
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion);
+        Assert.IsType<HttpClientCompletionDetails>(exception.Details);
+    }
+
+    [Fact]
+    public async Task StreamableHttp_DisablingStandaloneGetStream_StillProcessesPostSseResponses()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            EnableStandaloneGetStream = false,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(
+                        "event: message\r\n" +
+                        """data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"TestServer","version":"1.0.0"}}}""" +
+                        "\r\n\r\n",
+                        Encoding.UTF8,
+                        "text/event-stream"),
+                };
+                response.Headers.Add("Mcp-Session-Id", "test-session");
+                return Task.FromResult(response);
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method}");
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(1) },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("test-session", session.SessionId);
     }
 }

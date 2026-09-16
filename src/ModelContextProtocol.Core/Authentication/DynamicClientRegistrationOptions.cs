@@ -9,7 +9,7 @@ public sealed class DynamicClientRegistrationOptions
     /// Gets or sets the client name to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// This is a human-readable name for the client that may be displayed to users during authorization.
+    /// This value is a human-readable name for the client that can be displayed to users during authorization.
     /// </remarks>
     public string? ClientName { get; set; }
 
@@ -17,7 +17,7 @@ public sealed class DynamicClientRegistrationOptions
     /// Gets or sets the client URI to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// This should be a URL pointing to the client's home page or information page.
+    /// This value should be a URL pointing to the client's home page or information page.
     /// </remarks>
     public Uri? ClientUri { get; set; }
 
@@ -29,10 +29,28 @@ public sealed class DynamicClientRegistrationOptions
     /// This token is used to authenticate the client during the registration process.
     /// </para>
     /// <para>
-    /// This is required if the authorization server does not allow anonymous client registration.
+    /// This token is required if the authorization server does not allow anonymous client registration.
     /// </para>
     /// </remarks>
     public string? InitialAccessToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets the OIDC <c>application_type</c> sent during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When <see langword="null"/>, the SDK infers the value from the configured
+    /// <see cref="ClientOAuthOptions.RedirectUri"/>: loopback hosts (<c>localhost</c>,
+    /// <c>127.0.0.1</c>, <c>[::1]</c>) and custom-scheme URIs map to <c>"native"</c>; remote
+    /// <c>http://</c> and <c>https://</c> URIs map to <c>"web"</c>.
+    /// </para>
+    /// <para>
+    /// When set explicitly, the value is sent without modification. Use this to account for
+    /// authorization-server-specific requirements or to retry a registration with an adjusted
+    /// application type.
+    /// </para>
+    /// </remarks>
+    public string? ApplicationType { get; set; }
 
     /// <summary>
     /// Gets or sets the delegate used for handling the dynamic client registration response.

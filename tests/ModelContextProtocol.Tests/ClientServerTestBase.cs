@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -12,33 +13,53 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
 {
     private readonly Pipe _clientToServerPipe = new();
     private readonly Pipe _serverToClientPipe = new();
-    private readonly IMcpServerBuilder _builder;
-    private readonly CancellationTokenSource _cts;
-    private readonly Task _serverTask;
+    private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+    private Task _serverTask = Task.CompletedTask;
 
-    public ClientServerTestBase(ITestOutputHelper testOutputHelper)
+    public ClientServerTestBase(ITestOutputHelper testOutputHelper, bool startServer = true)
         : base(testOutputHelper)
     {
-        ServiceCollection sc = new();
-        sc.AddLogging();
-        sc.AddSingleton(XunitLoggerProvider);
-        _builder = sc
+        ServiceCollection.AddLogging();
+        ServiceCollection.AddSingleton(XunitLoggerProvider);
+        ServiceCollection.AddSingleton<ILoggerProvider>(MockLoggerProvider);
+        McpServerBuilder = ServiceCollection
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
-        ConfigureServices(sc, _builder);
-        ServiceProvider = sc.BuildServiceProvider(validateScopes: true);
 
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        Server = ServiceProvider.GetRequiredService<McpServer>();
-        _serverTask = Server.RunAsync(_cts.Token);
+        ConfigureServices(ServiceCollection, McpServerBuilder);
+
+        if (startServer)
+        {
+            StartServer();
+        }
     }
 
-    protected McpServer Server { get; }
+    protected ServiceCollection ServiceCollection { get; } = [];
 
-    protected IServiceProvider ServiceProvider { get; }
+    protected IMcpServerBuilder McpServerBuilder { get; }
+
+    protected McpServer Server
+    {
+         get => field ?? throw new InvalidOperationException("You must call StartServer first.");
+         private set => field = value;
+    }
+
+    protected ServiceProvider ServiceProvider
+    {
+         get => field ?? throw new InvalidOperationException("You must call StartServer first.");
+         private set => field = value;
+    }
 
     protected virtual void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+    }
+
+    protected McpServer StartServer()
+    {
+        ServiceProvider = ServiceCollection.BuildServiceProvider(validateScopes: true);
+        Server = ServiceProvider.GetRequiredService<McpServer>();
+        _serverTask = Server.RunAsync(_cts.Token);
+        return Server;
     }
 
     public async ValueTask DisposeAsync()
@@ -65,6 +86,12 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
 
     protected async Task<McpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
     {
+        clientOptions ??= new McpClientOptions();
+
+        // Disable the server/discover probe timeout to avoid CI slowness spuriously tripping it (issue #1701).
+        // Tests that need a specific probe timeout should create their own client instead of using this helper.
+        clientOptions.DiscoverProbeTimeout = TestConstants.DefaultTimeout;
+
         return await McpClient.CreateAsync(
             new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),

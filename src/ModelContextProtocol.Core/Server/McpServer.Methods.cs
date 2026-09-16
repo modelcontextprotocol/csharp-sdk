@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
@@ -14,9 +14,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) server that connects to and communicates with an MCP client.
 /// </summary>
-#pragma warning disable CS0618 // Type or member is obsolete
-public abstract partial class McpServer : McpSession, IMcpServer
-#pragma warning restore CS0618 // Type or member is obsolete
+public abstract partial class McpServer : McpSession
 {
     /// <summary>
     /// Caches request schemas for elicitation requests based on the type and serializer options.
@@ -25,16 +23,40 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
     private static Dictionary<string, HashSet<string>>? s_elicitAllowedProperties = null;
 
+    internal virtual Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => null;
+
+    internal virtual bool SupportsServerToClientRequests => true;
+
+    /// <summary>
+    /// Creates a non-mutating server facade that redirects server-initiated requests through an interceptor.
+    /// </summary>
+    /// <param name="interceptor">
+    /// The interceptor invoked for each outgoing request. It receives the request method, the
+    /// pre-serialized request parameters (or <see langword="null"/>), and a cancellation token, and
+    /// returns the serialized result (or <see langword="null"/> to indicate no result).
+    /// </param>
+    /// <returns>A server facade that uses <paramref name="interceptor"/> for outgoing requests.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="interceptor"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// On the returned facade, redirected methods skip their client-capability checks,
+    /// because the alternate channel is responsible for delivering the request to the client.
+    /// </remarks>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public McpServer WithOutgoingRequestInterceptor(Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
+    {
+        Throw.IfNull(interceptor);
+        return new OutgoingRequestInterceptingMcpServer(this, interceptor);
+    }
+
     /// <summary>
     /// Creates a new instance of an <see cref="McpServer"/>.
     /// </summary>
-    /// <param name="transport">Transport to use for the server representing an already-established MCP session.</param>
+    /// <param name="transport">The transport to use for the server representing an already-established MCP session.</param>
     /// <param name="serverOptions">Configuration options for this server, including capabilities. </param>
     /// <param name="loggerFactory">Logger factory to use for logging. If null, logging will be disabled.</param>
     /// <param name="serviceProvider">Optional service provider to create new instances of tools and other dependencies.</param>
     /// <returns>An <see cref="McpServer"/> instance that should be disposed when no longer needed.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="transport"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="transport"/> or <paramref name="serverOptions"/> is <see langword="null"/>.</exception>
     public static McpServer Create(
         ITransport transport,
         McpServerOptions serverOptions,
@@ -50,18 +72,45 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
     /// </summary>
-    /// <param name="request">The parameters for the sampling request.</param>
+    /// <param name="requestParams">The parameters for the sampling request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the sampling result from the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ValueTask<CreateMessageResult> SampleAsync(
-        CreateMessageRequestParams request, CancellationToken cancellationToken = default)
+        CreateMessageRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(requestParams);
+
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect sampling through it. Capability checks (ThrowIfSamplingUnsupported) are
+        // intentionally skipped because the interceptor's alternate channel is responsible for
+        // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
+        if (OutgoingRequestInterceptor is { } interceptor)
+        {
+            return SendRequestViaInterceptorAsync(interceptor, RequestMethods.SamplingCreateMessage, requestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageResult,
+                cancellationToken);
+        }
+
         ThrowIfSamplingUnsupported();
 
         return SendRequestAsync(
             RequestMethods.SamplingCreateMessage,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageResult,
             cancellationToken: cancellationToken);
@@ -71,19 +120,24 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// Requests to sample an LLM via the client using the provided chat messages and options.
     /// </summary>
     /// <param name="messages">The messages to send as part of the request.</param>
-    /// <param name="options">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="chatOptions">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public async Task<ChatResponse> SampleAsync(
-        IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
+        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(messages);
 
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+
         StringBuilder? systemPrompt = null;
 
-        if (options?.Instructions is { } instructions)
+        if (chatOptions?.Instructions is { } instructions)
         {
             (systemPrompt ??= new()).Append(instructions);
         }
@@ -106,106 +160,164 @@ public abstract partial class McpServer : McpSession, IMcpServer
                 continue;
             }
 
-            if (message.Role == ChatRole.User || message.Role == ChatRole.Assistant)
+            Role role = message.Role == ChatRole.Assistant ? Role.Assistant : Role.User;
+
+            // Group all content blocks from this message into a single SamplingMessage
+            List<ContentBlock> contentBlocks = [];
+            foreach (var content in message.Contents)
             {
-                Role role = message.Role == ChatRole.User ? Role.User : Role.Assistant;
-
-                foreach (var content in message.Contents)
+                if (content.ToContentBlock() is { } contentBlock)
                 {
-                    switch (content)
-                    {
-                        case TextContent textContent:
-                            samplingMessages.Add(new()
-                            {
-                                Role = role,
-                                Content = new TextContentBlock { Text = textContent.Text },
-                            });
-                            break;
-
-                        case DataContent dataContent when dataContent.HasTopLevelMediaType("image") || dataContent.HasTopLevelMediaType("audio"):
-                            samplingMessages.Add(new()
-                            {
-                                Role = role,
-                                Content = dataContent.HasTopLevelMediaType("image") ?
-                                    new ImageContentBlock
-                                    {
-                                        MimeType = dataContent.MediaType,
-                                        Data = dataContent.Base64Data.ToString(),
-                                    } :
-                                    new AudioContentBlock
-                                    {
-                                        MimeType = dataContent.MediaType,
-                                        Data = dataContent.Base64Data.ToString(),
-                                    },
-                            });
-                            break;
-                    }
+                    contentBlocks.Add(contentBlock);
                 }
+            }
+
+            if (contentBlocks.Count > 0)
+            {
+                samplingMessages.Add(new()
+                {
+                    Role = role,
+                    Content = contentBlocks,
+                });
             }
         }
 
         ModelPreferences? modelPreferences = null;
-        if (options?.ModelId is { } modelId)
+        if (chatOptions?.ModelId is { } modelId)
         {
             modelPreferences = new() { Hints = [new() { Name = modelId }] };
         }
 
-        var result = await SampleAsync(new()
+        IList<Tool>? tools = null;
+        if (chatOptions?.Tools is { Count: > 0 })
         {
+            foreach (var tool in chatOptions.Tools)
+            {
+                if (tool is AIFunctionDeclaration af)
+                {
+                    (tools ??= []).Add(new()
+                    {
+                        Name = af.Name,
+                        Description = af.Description,
+                        InputSchema = af.JsonSchema,
+                        Meta = af.AdditionalProperties.ToJsonObject(serializerOptions),
+                    });
+                }
+            }
+        }
+
+        ToolChoice? toolChoice = chatOptions?.ToolMode switch
+        {
+            NoneChatToolMode => new() { Mode = ToolChoice.ModeNone },
+            AutoChatToolMode => new() { Mode = ToolChoice.ModeAuto },
+            RequiredChatToolMode => new() { Mode = ToolChoice.ModeRequired },
+            _ => null,
+        };
+
+        var result = await SampleAsync(new CreateMessageRequestParams
+        {
+            MaxTokens = chatOptions?.MaxOutputTokens ?? ServerOptions.MaxSamplingOutputTokens,
             Messages = samplingMessages,
-            MaxTokens = options?.MaxOutputTokens ?? ServerOptions.MaxSamplingOutputTokens,
-            StopSequences = options?.StopSequences?.ToArray(),
-            SystemPrompt = systemPrompt?.ToString(),
-            Temperature = options?.Temperature,
             ModelPreferences = modelPreferences,
+            StopSequences = chatOptions?.StopSequences?.ToArray(),
+            SystemPrompt = systemPrompt?.ToString(),
+            Temperature = chatOptions?.Temperature,
+            ToolChoice = toolChoice,
+            Tools = tools,
+            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(serializerOptions),
         }, cancellationToken).ConfigureAwait(false);
 
-        AIContent? responseContent = result.Content.ToAIContent();
-
-        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContent is not null ? [responseContent] : []))
+        List<AIContent> responseContents = [];
+        foreach (var block in result.Content)
         {
-            ModelId = result.Model,
+            if (block.ToAIContent(serializerOptions) is { } content)
+            {
+                responseContents.Add(content);
+            }
+        }
+
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContents))
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
             FinishReason = result.StopReason switch
             {
-                "maxTokens" => ChatFinishReason.Length,
-                "endTurn" or "stopSequence" or _ => ChatFinishReason.Stop,
-            }
+                CreateMessageResult.StopReasonEndTurn => ChatFinishReason.Stop,
+                CreateMessageResult.StopReasonMaxTokens => ChatFinishReason.Length,
+                CreateMessageResult.StopReasonStopSequence => ChatFinishReason.Stop,
+                CreateMessageResult.StopReasonToolUse => ChatFinishReason.ToolCalls,
+                _ => null,
+            },
+            ModelId = result.Model,
         };
     }
 
     /// <summary>
     /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
     /// </summary>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    public IChatClient AsSamplingChatClient()
+    /// <remarks>
+    /// When the server is using the Streamable HTTP transport, prefer obtaining this chat client from the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes sampling requests through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
+    public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
-        return new SamplingChatClient(this);
+
+        return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
-    /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
-    public ILoggerProvider AsClientLoggerProvider()
-    {
-        return new ClientLoggerProvider(this);
-    }
+    /// <returns>An <see cref="ILogger"/> that can be used to log to the client.</returns>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
+    public ILoggerProvider AsClientLoggerProvider() => 
+        new ClientLoggerProvider(this);
 
     /// <summary>
     /// Requests the client to list the roots it exposes.
     /// </summary>
-    /// <param name="request">The parameters for the list roots request.</param>
+    /// <param name="requestParams">The parameters for the list roots request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the list of roots exposed by the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedRoots_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public ValueTask<ListRootsResult> RequestRootsAsync(
-        ListRootsRequestParams request, CancellationToken cancellationToken = default)
+        ListRootsRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(requestParams);
+
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect through it. Capability checks (ThrowIfRootsUnsupported) are intentionally skipped
+        // because the interceptor's alternate channel is responsible for delivering the request to
+        // the client. See SendRequestViaInterceptorAsync remarks.
+        if (OutgoingRequestInterceptor is { } interceptor)
+        {
+            return SendRequestViaInterceptorAsync(interceptor, RequestMethods.RootsList, requestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsResult,
+                cancellationToken);
+        }
+
         ThrowIfRootsUnsupported();
 
         return SendRequestAsync(
             RequestMethods.RootsList,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsResult,
             cancellationToken: cancellationToken);
@@ -214,21 +326,48 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// <summary>
     /// Requests additional information from the user via the client, allowing the server to elicit structured data.
     /// </summary>
-    /// <param name="request">The parameters for the elicitation request.</param>
+    /// <param name="requestParams">The parameters for the elicitation request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the elicitation result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
-    public ValueTask<ElicitResult> ElicitAsync(
-        ElicitRequestParams request, CancellationToken cancellationToken = default)
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// When the server is using the Streamable HTTP transport, prefer calling this method on the
+    /// <see cref="McpServer"/> instance available via <c>RequestContext</c> from inside a tool, prompt,
+    /// or resource handler. That routes the request through the originating POST response stream via
+    /// <see cref="JsonRpcMessageContext.RelatedTransport"/>, which is always open for the duration of
+    /// the request, rather than relying on the optional standalone GET SSE stream.
+    /// </para>
+    /// </remarks>
+    public async ValueTask<ElicitResult> ElicitAsync(
+        ElicitRequestParams requestParams, 
+        CancellationToken cancellationToken = default)
     {
-        ThrowIfElicitationUnsupported();
+        Throw.IfNull(requestParams);
 
-        return SendRequestAsync(
+        // If an outgoing-request interceptor is installed (e.g., during background task execution),
+        // redirect elicitation through it. Capability checks (ThrowIfElicitationUnsupported) are
+        // intentionally skipped because the interceptor's alternate channel is responsible for
+        // delivering the request to the client. See SendRequestViaInterceptorAsync remarks.
+        if (OutgoingRequestInterceptor is { } interceptor)
+        {
+            var paramsNode = JsonSerializer.SerializeToNode(requestParams, McpJsonUtilities.JsonContext.Default.ElicitRequestParams);
+            var resultNode = await interceptor(RequestMethods.ElicitationCreate, paramsNode, cancellationToken).ConfigureAwait(false);
+            return resultNode?.Deserialize(McpJsonUtilities.JsonContext.Default.ElicitResult) ?? new ElicitResult { Action = "cancel" };
+        }
+
+        ThrowIfElicitationUnsupported(requestParams);
+
+        var result = await SendRequestAsync(
             RequestMethods.ElicitationCreate,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return ElicitResult.WithDefaults(requestParams, result);
     }
 
     /// <summary>
@@ -237,36 +376,44 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// </summary>
     /// <typeparam name="T">The type describing the expected input shape. Only primitive members are supported (string, number, boolean, enum).</typeparam>
     /// <param name="message">The message to present to the user.</param>
-    /// <param name="serializerOptions">Serializer options that influence property naming and deserialization.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>An <see cref="ElicitResult{T}"/> with the user's response, if accepted.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     /// <remarks>
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
     /// </remarks>
     public async ValueTask<ElicitResult<T>> ElicitAsync<T>(
         string message,
-        JsonSerializerOptions? serializerOptions = null,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        ThrowIfElicitationUnsupported();
+        Throw.IfNullOrWhiteSpace(message);
 
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
 
+        var schema = dict.GetOrAdd(typeof(T),
 #if NET
-        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchema(t, s), serializerOptions);
+            static (t, s) => BuildRequestSchema(t, s), serializerOptions);
 #else
-        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
+            type => BuildRequestSchema(type, serializerOptions));
 #endif
 
         var request = new ElicitRequestParams
         {
             Message = message,
             RequestedSchema = schema,
+            Meta = options?.GetMetaForRequest(),
         };
+
+        ThrowIfElicitationUnsupported(request);
 
         var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -275,7 +422,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
             return new ElicitResult<T> { Action = raw.Action, Content = default };
         }
 
-        var obj = new JsonObject();
+        JsonObject obj = [];
         foreach (var kvp in raw.Content)
         {
             obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());
@@ -319,7 +466,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// <param name="type">The type to create the schema for.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The created primitive schema definition.</returns>
-    /// <exception cref="McpProtocolException">Thrown when the type is not supported.</exception>
+    /// <exception cref="McpProtocolException">The type is not supported.</exception>
     private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
@@ -410,57 +557,123 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
     private void ThrowIfSamplingUnsupported()
     {
+        if (!SupportsServerToClientRequests)
+        {
+            throw new InvalidOperationException("Sampling is not supported in stateless mode.");
+        }
+
         if (ClientCapabilities?.Sampling is null)
         {
-            if (ClientCapabilities is null)
-            {
-                throw new InvalidOperationException("Sampling is not supported in stateless mode.");
-            }
-
             throw new InvalidOperationException("Client does not support sampling.");
         }
     }
 
     private void ThrowIfRootsUnsupported()
     {
+        if (!SupportsServerToClientRequests)
+        {
+            throw new InvalidOperationException("Roots are not supported in stateless mode.");
+        }
+
         if (ClientCapabilities?.Roots is null)
         {
-            if (ClientCapabilities is null)
-            {
-                throw new InvalidOperationException("Roots are not supported in stateless mode.");
-            }
-
             throw new InvalidOperationException("Client does not support roots.");
         }
     }
 
-    private void ThrowIfElicitationUnsupported()
+    /// <summary>
+    /// Sends a server-initiated request through the installed outgoing-request interceptor, then awaits the response.
+    /// </summary>
+    /// <remarks>
+    /// When an interceptor is installed, capability negotiation checks (such as
+    /// <see cref="ThrowIfSamplingUnsupported"/>, <see cref="ThrowIfRootsUnsupported"/>, and
+    /// <see cref="ThrowIfElicitationUnsupported"/>) are intentionally skipped by the callers
+    /// of this helper. The interceptor's alternate channel is the negotiated capability and is
+    /// responsible for delivering the request to the client or rejecting it.
+    /// </remarks>
+    private async ValueTask<TResponse> SendRequestViaInterceptorAsync<TRequest, TResponse>(
+        Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor,
+        string method,
+        TRequest request,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo,
+        CancellationToken cancellationToken)
     {
-        if (ClientCapabilities?.Elicitation is null)
+        var paramsNode = JsonSerializer.SerializeToNode(request, requestTypeInfo);
+        var resultNode = await interceptor(method, paramsNode, cancellationToken).ConfigureAwait(false);
+        if (resultNode is null)
         {
-            if (ClientCapabilities is null)
+            // A null result cannot be deserialized into a concrete TResponse (e.g. SampleAsync's
+            // CreateMessageResult or RequestRootsAsync's ListRootsResult). Returning default! here
+            // would hand callers a null response typed as non-null, deferring the failure to a
+            // confusing NullReferenceException at the use site. Fail fast with a clear message.
+            // Callers that can tolerate no result (such as ElicitAsync) do not route through this
+            // helper and handle null themselves.
+            throw new McpException($"The outgoing-request interceptor returned no result for the '{method}' request.");
+        }
+
+        return resultNode.Deserialize(responseTypeInfo)!;
+    }
+
+    private void ThrowIfElicitationUnsupported(ElicitRequestParams request)
+    {
+        if (!SupportsServerToClientRequests)
+        {
+            throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+        }
+
+        var elicitationCapability = ClientCapabilities?.Elicitation;
+        if (elicitationCapability is null)
+        {
+            throw new InvalidOperationException("Client does not support elicitation requests.");
+        }
+
+        if (string.Equals(request.Mode, "form", StringComparison.Ordinal))
+        {
+            if (request.RequestedSchema is null)
             {
-                throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+                throw new ArgumentException("Form mode elicitation requests require a requested schema.");
             }
 
-            throw new InvalidOperationException("Client does not support elicitation requests.");
+            if (elicitationCapability.Form is null)
+            {
+                throw new InvalidOperationException("Client does not support form mode elicitation requests.");
+            }
+        }
+        else if (string.Equals(request.Mode, "url", StringComparison.Ordinal))
+        {
+            if (request.Url is null)
+            {
+                throw new ArgumentException("URL mode elicitation requests require a URL.");
+            }
+
+            if (request.ElicitationId is null)
+            {
+                throw new ArgumentException("URL mode elicitation requests require an elicitation ID.");
+            }
+
+            if (elicitationCapability.Url is null)
+            {
+                throw new InvalidOperationException("Client does not support URL mode elicitation requests.");
+            }
         }
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient(McpServer server) : IChatClient
+    private sealed class SamplingChatClient(McpServer server, JsonSerializerOptions serializerOptions) : IChatClient
     {
         private readonly McpServer _server = server;
+        private readonly JsonSerializerOptions _serializerOptions = serializerOptions;
 
         /// <inheritdoc/>
-        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, options, cancellationToken);
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = null, CancellationToken cancellationToken = default) =>
+            _server.SampleAsync(messages, chatOptions, _serializerOptions, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(
-            IEnumerable<ChatMessage> messages, ChatOptions? options, [EnumeratorCancellation] CancellationToken cancellationToken)
+            IEnumerable<ChatMessage> messages, ChatOptions? chatOptions, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+            var response = await GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
             foreach (var update in response.ToChatResponseUpdates())
             {
                 yield return update;

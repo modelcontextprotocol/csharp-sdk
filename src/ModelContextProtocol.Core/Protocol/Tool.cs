@@ -1,18 +1,20 @@
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
 /// Represents a tool that the server is capable of calling.
 /// </summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Tool : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    public required string Name { get; set; }
 
     /// <inheritdoc />
     [JsonPropertyName("title")]
@@ -28,7 +30,15 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// <para>
     /// The description is typically presented to AI models to help them determine when
-    /// and how to use the tool based on user requests.
+    /// and how to use the tool based on user requests. A well-written description significantly
+    /// reduces incorrect tool invocations. Include information about what the tool does, any
+    /// constraints or prerequisites, and what it returns.
+    /// </para>
+    /// <para>
+    /// Similarly, individual parameter descriptions (provided via <see cref="System.ComponentModel.DescriptionAttribute"/>
+    /// on tool method parameters) are important for guiding the model to supply correct argument values.
+    /// Descriptions should document expected formats, valid value ranges, and any other constraints
+    /// the model should be aware of.
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
@@ -37,6 +47,7 @@ public sealed class Tool : IBaseMetadata
     /// <summary>
     /// Gets or sets a JSON Schema object defining the expected parameters for the tool.
     /// </summary>
+    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
     /// <remarks>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".
@@ -53,6 +64,7 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("inputSchema")]
+    [JsonRequired]
     public JsonElement InputSchema
     {
         get => field;
@@ -69,16 +81,24 @@ public sealed class Tool : IBaseMetadata
     } = McpJsonUtilities.DefaultMcpToolSchema;
 
     /// <summary>
-    /// Gets or sets a JSON Schema object defining the expected structured outputs for the tool.
+    /// Gets or sets a JSON Schema document describing the shape of the tool's structured output.
     /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The value is not a valid JSON Schema 2020-12 document — i.e., not a JSON object or a
+    /// JSON boolean.
+    /// </exception>
     /// <remarks>
     /// <para>
-    /// The schema must be a valid JSON Schema object with the "type" property set to "object".
-    /// This is enforced by validation in the setter which will throw an <see cref="ArgumentException"/>
-    /// if an invalid schema is provided.
+    /// Per SEP-2106 ("Allow valid JSON Schemas in <c>outputSchema</c>"), the schema may describe
+    /// any JSON value — object, array, string, number, boolean, or <see langword="null"/> — to
+    /// support tools whose structured output is not an object. The setter only checks that the
+    /// supplied value is a structurally valid JSON Schema 2020-12 document (a JSON object, or
+    /// the boolean schemas <c>true</c>/<c>false</c> per §4.3); deeper keyword-level validation
+    /// is intentionally not performed.
     /// </para>
     /// <para>
-    /// The schema should describe the shape of the data as returned in <see cref="CallToolResult.StructuredContent"/>.
+    /// The schema describes the shape of the value placed in <see cref="CallToolResult.StructuredContent"/>.
+    /// Unlike <see cref="InputSchema"/>, the top-level <c>type</c> is not required to be <c>"object"</c>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("outputSchema")]
@@ -87,9 +107,9 @@ public sealed class Tool : IBaseMetadata
         get => field;
         set
         {
-            if (value is not null && !McpJsonUtilities.IsValidMcpToolSchema(value.Value))
+            if (value is not null && !McpJsonUtilities.IsValidToolOutputSchema(value.Value))
             {
-                throw new ArgumentException("The specified document is not a valid MCP tool output JSON schema.", nameof(OutputSchema));
+                throw new ArgumentException("The specified document is not a valid JSON Schema 2020-12 document (must be a JSON object or a JSON boolean).", nameof(OutputSchema));
             }
 
             field = value;
@@ -125,9 +145,13 @@ public sealed class Tool : IBaseMetadata
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
 
-    /// <summary>
-    /// Gets or sets the callable server tool corresponding to this metadata if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerTool? McpServerTool { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string desc = Description is not null ? $", Description = \"{Description}\"" : "";
+            return $"Name = {Name}{desc}";
+        }
+    }
 }

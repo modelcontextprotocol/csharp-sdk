@@ -5,6 +5,7 @@ namespace ModelContextProtocol.TestOAuthServer;
 [JsonSerializable(typeof(OAuthServerMetadata))]
 [JsonSerializable(typeof(AuthorizationServerMetadata))]
 [JsonSerializable(typeof(TokenResponse))]
+[JsonSerializable(typeof(JagTokenExchangeResponse))]
 [JsonSerializable(typeof(JsonWebKeySet))]
 [JsonSerializable(typeof(JsonWebKey))]
 [JsonSerializable(typeof(TokenIntrospectionResponse))]

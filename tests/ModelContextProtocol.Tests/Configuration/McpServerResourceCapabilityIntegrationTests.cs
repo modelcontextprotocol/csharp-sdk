@@ -41,7 +41,7 @@ public class McpServerResourceCapabilityIntegrationTests : ClientServerTestBase
         Assert.True(client.ServerCapabilities.Resources.Subscribe, "Server should advertise Subscribe capability when manually set");
 
         // The resources should be exposed and listable
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEmpty(resources);
         Assert.Contains(resources, r => r.Name == "test_resource");
     }
@@ -56,7 +56,7 @@ public class McpServerResourceCapabilityIntegrationTests : ClientServerTestBase
         Assert.NotNull(client.ServerCapabilities.Resources);
 
         // The resources should be exposed and listable
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEmpty(resources);
     }
 
@@ -106,9 +106,9 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
                 };
             })
             .WithResources<LiveResources>()
-            .WithStdioServerTransport();
+            .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Verify capabilities are preserved
@@ -122,15 +122,15 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
     }
 
     [Fact]
-    public void ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
+    public async Task ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
     {
         // Test that ResourcesCapability is created even without handlers or manual setting
         var services = new ServiceCollection();
         var builder = services.AddMcpServer()
             .WithResources<LiveResources>()
-            .WithStdioServerTransport();
+            .WithStreamServerTransport(Stream.Null, Stream.Null);
 
-        var serviceProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services.BuildServiceProvider();
         var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         // Resources are registered

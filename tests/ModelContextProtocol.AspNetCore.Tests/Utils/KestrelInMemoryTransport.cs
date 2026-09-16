@@ -7,13 +7,18 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public sealed class KestrelInMemoryTransport : IConnectionListenerFactory
 {
-    // socket accept queues keyed by listen port.
+    // Socket accept queues keyed by listen port.
     private readonly ConcurrentDictionary<int, Channel<ConnectionContext>> _acceptQueues = [];
 
     public KestrelInMemoryConnection CreateConnection(EndPoint endpoint)
     {
+        if (!_acceptQueues.TryGetValue(GetEndpointPort(endpoint), out var acceptQueue))
+        {
+            throw new IOException($"No listener is bound to endpoint '{endpoint}'.");
+        }
+
         var connection = new KestrelInMemoryConnection();
-        if (!GetAcceptQueue(endpoint).Writer.TryWrite(connection))
+        if (!acceptQueue.Writer.TryWrite(connection))
         {
             throw new IOException("The KestrelInMemoryTransport has been shut down.");
         };
@@ -21,11 +26,11 @@ public sealed class KestrelInMemoryTransport : IConnectionListenerFactory
         return connection;
     }
 
-    public ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default) =>
-        new(new KestrelInMemoryListener(endpoint, GetAcceptQueue(endpoint)));
-
-    private Channel<ConnectionContext> GetAcceptQueue(EndPoint endpoint) =>
-        _acceptQueues.GetOrAdd(GetEndpointPort(endpoint), _ => Channel.CreateUnbounded<ConnectionContext>());
+    public ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default)
+    {
+        var acceptQueue = _acceptQueues.GetOrAdd(GetEndpointPort(endpoint), _ => Channel.CreateUnbounded<ConnectionContext>());
+        return new(new KestrelInMemoryListener(endpoint, acceptQueue));
+    }
 
     private static int GetEndpointPort(EndPoint endpoint) =>
         endpoint switch

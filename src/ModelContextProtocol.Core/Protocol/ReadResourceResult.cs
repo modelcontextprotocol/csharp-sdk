@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public sealed class ReadResourceResult : Result
+public sealed class ReadResourceResult : Result, ICacheableResult
 {
     /// <summary>
     /// Gets or sets a list of <see cref="ResourceContents"/> objects that this resource contains.
@@ -20,4 +20,14 @@ public sealed class ReadResourceResult : Result
     /// </remarks>
     [JsonPropertyName("contents")]
     public IList<ResourceContents> Contents { get; set; } = [];
+
+    /// <inheritdoc />
+    [JsonPropertyName("ttlMs")]
+    [JsonConverter(typeof(TimeSpanMillisecondsConverter))]
+    public TimeSpan? TimeToLive { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("cacheScope")]
+    [JsonConverter(typeof(CacheScopeConverter))]
+    public CacheScope? CacheScope { get; set; }
 }

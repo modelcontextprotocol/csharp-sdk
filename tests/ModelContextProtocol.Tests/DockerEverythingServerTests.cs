@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Client;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 
@@ -81,7 +81,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
                     {
                         Model = "test-model",
                         Role = Role.Assistant,
-                        Content = new TextContentBlock { Text = "Test response" },
+                        Content = [new TextContentBlock { Text = "Test response" }],
                     };
                 }
             }
@@ -93,8 +93,8 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Call the server's sampleLLM tool which should trigger our sampling handler
-        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>
+        // Call the server's trigger-sampling-request tool which should trigger our sampling handler
+        var result = await client.CallToolAsync("trigger-sampling-request", new Dictionary<string, object?>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100

@@ -1,0 +1,14 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..'))" />
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <!-- Suppress the experimental extensions warning in test projects -->
+    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Suppress the obsolete SSE warning in test projects that need to test legacy SSE -->
+    <NoWarn>$(NoWarn);MCP9004</NoWarn>
+    <!-- Suppress the Roots, Sampling, and Logging obsoletion warning (SEP-2577) in test projects
+         that need to verify the deprecated features continue to work. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
+  </PropertyGroup>
+</Project>

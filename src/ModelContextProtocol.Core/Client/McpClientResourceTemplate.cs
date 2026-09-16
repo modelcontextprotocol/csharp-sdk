@@ -9,8 +9,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource template defined on an MCP server. It allows
 /// retrieving the resource template's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourceTemplatesAsync"/>
-/// or <see cref="McpClient.EnumerateResourceTemplatesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResourceTemplate
@@ -25,17 +24,16 @@ public sealed class McpClientResourceTemplate
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached resource template definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync"/> on every reconnect. This is particularly useful 
+    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/> on every reconnect. This is particularly useful
     /// in scenarios where resource template definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
-    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server 
-    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the 
+    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server
+    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the
     /// server will result in an <see cref="McpException"/>.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
     public McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
     {
         Throw.IfNull(client);
@@ -52,7 +50,7 @@ public sealed class McpClientResourceTemplate
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResourceTemplate"/> directly.
     /// </para>
     /// </remarks>
@@ -67,10 +65,10 @@ public sealed class McpClientResourceTemplate
     /// <summary>Gets the title of the resource template.</summary>
     public string? Title => ProtocolResourceTemplate.Title;
 
-    /// <summary>Gets a description of the resource template.</summary>
+    /// <summary>Gets the description of the resource template.</summary>
     public string? Description => ProtocolResourceTemplate.Description;
 
-    /// <summary>Gets a media (MIME) type of the resource template.</summary>
+    /// <summary>Gets the media (MIME) type of the resource template.</summary>
     public string? MimeType => ProtocolResourceTemplate.MimeType;
 
     /// <summary>
@@ -80,10 +78,13 @@ public sealed class McpClientResourceTemplate
     /// <param name="arguments">A dictionary of arguments to pass to the tool. Each key represents a parameter name,
     /// and its associated value represents the argument value.
     /// </param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource template's result with content and messages.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(UriTemplate, arguments, cancellationToken);
+        _client.ReadResourceAsync(UriTemplate, arguments, options, cancellationToken);
 }

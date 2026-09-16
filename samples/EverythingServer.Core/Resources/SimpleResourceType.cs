@@ -1,13 +1,14 @@
 ﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text;
 
 namespace EverythingServer.Core.Resources;
 
 [McpServerResourceType]
 public class SimpleResourceType
 {
-    [McpServerResource(UriTemplate = "test://direct/text/resource", Name = "Direct Text Resource", MimeType = "text/plain")]
+    [McpServerResource(UriTemplate = "test://direct/text/resource", Name = "Direct Text Resource", MimeType = "text/plain", IconSource = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/62ecdc0d7ca5c6df32148c169556bc8d3782fca4/assets/Memo/Flat/memo_flat.svg")]
     [Description("A direct text resource")]
     public static string DirectTextResource() => "This is a direct resource";
 
@@ -18,7 +19,7 @@ public class SimpleResourceType
         int index = id - 1;
         if ((uint)index >= ResourceGenerator.Resources.Count)
         {
-            throw new NotSupportedException($"Unknown resource: {requestContext.Params?.Uri}");
+            throw new NotSupportedException($"Unknown resource: {requestContext.Params.Uri}");
         }
 
         var resource = ResourceGenerator.Resources[index];
@@ -31,7 +32,7 @@ public class SimpleResourceType
             } :
             new BlobResourceContents
             {
-                Blob = resource.Description!,
+                Blob = Encoding.UTF8.GetBytes(resource.Description!),
                 MimeType = resource.MimeType,
                 Uri = resource.Uri,
             };

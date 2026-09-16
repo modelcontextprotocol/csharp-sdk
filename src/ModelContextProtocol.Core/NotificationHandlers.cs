@@ -94,7 +94,7 @@ internal sealed class NotificationHandlers
     /// </summary>
     /// <param name="method">The notification method name to invoke handlers for.</param>
     /// <param name="notification">The notification object to pass to each handler.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <remarks>
     /// Handlers are invoked in reverse order of registration (newest first).
     /// If any handler throws an exception, all handlers will still be invoked, and an <see cref="AggregateException"/> 
@@ -152,7 +152,7 @@ internal sealed class NotificationHandlers
         /// by that handler are no longer in use and may be cleaned up. If <see cref="DisposeAsync"/> were to be invoked
         /// and its task awaited from within the invocation of the handler, however, that would result in deadlock, since
         /// the task wouldn't complete until the invocation completed, and the invocation wouldn't complete until the task
-        /// completed. To circument that, we track via an <see cref="AsyncLocal{Int32}"/> in-flight invocations. If
+        /// completed. To circumvent that, we track via an <see cref="AsyncLocal{Int32}"/> in-flight invocations. If
         /// <see cref="DisposeAsync"/> detects it's being invoked from within an invocation, it will avoid waiting. For
         /// simplicity, we don't require that it's the same handler.
         /// </remarks>

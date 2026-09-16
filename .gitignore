@@ -1,6 +1,9 @@
 # Cake tools
 /[Tt]ools/
 
+# Language server cache
+*.lscache
+
 # Build output
 [Bb]uildArtifacts/
 # Build results
@@ -33,6 +36,9 @@ _ReSharper*/
 *.snupkg
 **/packages/*
 !**/packages/build/
+
+# npm
+node_modules/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/

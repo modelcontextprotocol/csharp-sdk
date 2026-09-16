@@ -22,10 +22,13 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+// Sampling support type: only used to express model selection preferences on sampling (createMessage)
+// requests, so it is deprecated together with sampling per SEP-2577.
+[Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class ModelPreferences
 {
     /// <summary>
-    /// Gets or sets how much to prioritize cost when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize cost when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means cost is not important, while a value of 1 means cost is the most important factor.
@@ -40,7 +43,7 @@ public sealed class ModelPreferences
     public IList<ModelHint>? Hints { get; set; }
 
     /// <summary>
-    /// Gets or sets how much to prioritize sampling speed (latency) when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize sampling speed (latency) when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means speed is not important, while a value of 1 means speed is the most important factor.
@@ -49,7 +52,7 @@ public sealed class ModelPreferences
     public float? SpeedPriority { get; set; }
 
     /// <summary>
-    /// Gets or sets how much to prioritize intelligence and capabilities when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize intelligence and capabilities when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means intelligence is not important, while a value of 1 means intelligence is the most important factor.

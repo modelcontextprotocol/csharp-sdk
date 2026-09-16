@@ -1,16 +1,17 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Used to indicate that a method should be considered an <see cref="McpServerTool"/>.
+/// Indicates that a method should be considered an <see cref="McpServerTool"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This attribute is applied to methods that should be exposed as tools in the Model Context Protocol. When a class 
+/// This attribute is applied to methods that should be exposed as tools in the Model Context Protocol. When a class
 /// containing methods marked with this attribute is registered with McpServerBuilderExtensions,
 /// these methods become available as tools that can be called by MCP clients.
 /// </para>
@@ -47,22 +48,22 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///       <see cref="IProgress{ProgressNotificationValue}"/> parameters accepting <see cref="ProgressNotificationValue"/> values
 ///       are not included in the JSON schema and are bound to an <see cref="IProgress{ProgressNotificationValue}"/> instance manufactured
-///       to forward progress notifications from the tool to the client. If the client included a <see cref="ProgressToken"/> in their request, 
+///       to forward progress notifications from the tool to the client. If the client included a <see cref="ProgressToken"/> in their request,
 ///       progress reports issued to this instance will propagate to the client as <see cref="NotificationMethods.ProgressNotification"/> notifications with
 ///       that token. If the client did not include a <see cref="ProgressToken"/>, the instance will ignore any progress reports issued to it.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerToolCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved 
-///       from the <see cref="IServiceProvider"/> provided to when the tool is invoked rather than from the argument collection.
+///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved
+///       from the <see cref="IServiceProvider"/> provided when the tool is invoked rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided when the tool is invoked rather than from the argument
 ///       collection, and will not be included in the generated JSON schema.
 ///     </description>
@@ -70,15 +71,35 @@ namespace ModelContextProtocol.Server;
 /// </list>
 /// </para>
 /// <para>
-/// All other parameters are deserialized from the <see cref="JsonElement"/>s in the <see cref="CallToolRequestParams.Arguments"/> dictionary, 
-/// using the <see cref="JsonSerializerOptions"/> supplied in <see cref="McpServerToolCreateOptions.SerializerOptions"/>, or if none was provided, 
+/// All other parameters are deserialized from the <see cref="JsonElement"/>s in the <see cref="CallToolRequestParams.Arguments"/> dictionary,
+/// using the <see cref="JsonSerializerOptions"/> supplied in <see cref="McpServerToolCreateOptions.SerializerOptions"/>, or if none was provided,
 /// using <see cref="McpJsonUtilities.DefaultOptions"/>.
 /// </para>
 /// <para>
 /// In general, the data supplied via the <see cref="CallToolRequestParams.Arguments"/>'s dictionary is passed along from the caller and
-/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the tool, consider having 
+/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the tool, consider having
 /// the tool be an instance method, referring to data stored in the instance, or using an instance or parameters resolved from the <see cref="IServiceProvider"/>
 /// to provide data to the method.
+/// </para>
+/// <para>
+/// The tool method is responsible for validating its own input arguments (e.g., checking required fields, value ranges, string lengths, or
+/// any other business rules). Data annotations such as <c>RequiredAttribute</c> and
+/// <c>MaxLengthAttribute</c> on parameter types influence the generated JSON schema exposed
+/// to clients, but they are not enforced at runtime by the SDK. Validation should be performed explicitly within the tool method.
+/// </para>
+/// <para>
+/// To signal an error (including validation failures) back to the client, either throw an <see cref="McpException"/>
+/// or return a <see cref="CallToolResult"/> with <see cref="CallToolResult.IsError"/> set to <see langword="true"/>.
+/// When a tool throws an <see cref="McpException"/>, its <see cref="Exception.Message"/> is included in the error result
+/// sent to the client. Throwing any other exception type also results in an error <see cref="CallToolResult"/>, but with
+/// a generic error message (to avoid leaking sensitive information). Alternatively, a tool can declare a return type of
+/// <see cref="CallToolResult"/> to have full control over both success and error responses.
+/// </para>
+/// <para>
+/// It is important to provide clear <see cref="System.ComponentModel.DescriptionAttribute"/> values on tool methods and their parameters.
+/// These descriptions are surfaced to AI models and help them determine when and how to use the tool, what values to pass for each parameter,
+/// and what constraints the parameters have. Well-written descriptions reduce incorrect tool invocations and improve the quality of
+/// model interactions.
 /// </para>
 /// <para>
 /// Return values from a method are used to create the <see cref="CallToolResult"/> that is sent back to the client:
@@ -90,7 +111,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="AIContent"/></term>
-///     <description>Converted to a single <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
+///     <description>Converted to a single <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContentBlock(AIContent, JsonSerializerOptions)"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="string"/></term>
@@ -106,7 +127,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
-///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
+///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContentBlock(AIContent, JsonSerializerOptions)"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{Content}"/> of <see cref="ContentBlock"/></term>
@@ -145,7 +166,7 @@ public sealed class McpServerToolAttribute : Attribute
     }
 
     /// <summary>Gets the name of the tool.</summary>
-    /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
+    /// <remarks>If <see langword="null"/>, the method name is used.</remarks>
     public string? Name { get; set; }
 
     /// <summary>
@@ -165,102 +186,111 @@ public sealed class McpServerToolAttribute : Attribute
     public string? Title { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the tool may perform destructive updates to its environment.
+    /// Gets or sets a value that indicates whether the tool might perform destructive updates to its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may perform destructive updates to its environment.
-    /// If <see langword="false"/>, the tool performs only additive updates.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if the tool might perform destructive updates to its environment.
+    /// <see langword="false"/> if the tool performs only additive updates.
     /// The default is <see langword="true"/>.
-    /// </para>
+    /// </value>
+    /// <remarks>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
-    public bool Destructive 
+    public bool Destructive
     {
-        get => _destructive ?? DestructiveDefault; 
-        set => _destructive = value; 
+        get => _destructive ?? DestructiveDefault;
+        set => _destructive = value;
     }
 
     /// <summary>
-    /// Gets or sets whether calling the tool repeatedly with the same arguments 
-    /// will have no additional effect on its environment.
+    /// Gets or sets a value that indicates whether calling the tool repeatedly with the same arguments
+    /// has no additional effect on its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if calling the tool repeatedly with the same arguments
+    /// has no additional effect on the environment; <see langword="false"/> if it does.
     /// The default is <see langword="false"/>.
-    /// </para>
+    /// </value>
+    /// <remarks>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
-    public bool Idempotent  
+    public bool Idempotent
     {
         get => _idempotent ?? IdempotentDefault;
-        set => _idempotent = value; 
+        set => _idempotent = value;
     }
 
     /// <summary>
-    /// Gets or sets whether this tool may interact with an "open world" of external entities.
+    /// Gets or sets a value that indicates whether this tool can interact with an "open world" of external entities.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may interact with an unpredictable or dynamic set of entities (like web search).
-    /// If <see langword="false"/>, the tool's domain of interaction is closed and well-defined (like memory access).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if the tool can interact with an unpredictable or dynamic set of entities (like web search).
+    /// <see langword="false"/> if the tool's domain of interaction is closed and well-defined (like memory access).
     /// The default is <see langword="true"/>.
-    /// </para>
-    /// </remarks>
+    /// </value>
     public bool OpenWorld
     {
-        get => _openWorld ?? OpenWorldDefault; 
-        set => _openWorld = value; 
+        get => _openWorld ?? OpenWorldDefault;
+        set => _openWorld = value;
     }
 
     /// <summary>
-    /// Gets or sets whether this tool does not modify its environment.
+    /// Gets or sets a value that indicates whether this tool does not modify its environment.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the tool only performs read operations without changing state.
+    /// <see langword="false"/> if the tool might make modifications to its environment.
+    /// The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool only performs read operations without changing state.
-    /// If <see langword="false"/>, the tool may make modifications to its environment.
-    /// </para>
-    /// <para>
     /// Read-only tools do not have side effects beyond computational resource usage.
     /// They don't create, update, or delete data in any system.
-    /// </para>
-    /// <para>
-    /// The default is <see langword="false"/>.
-    /// </para>
     /// </remarks>
-    public bool ReadOnly  
+    public bool ReadOnly
     {
-        get => _readOnly ?? ReadOnlyDefault; 
-        set => _readOnly = value; 
+        get => _readOnly ?? ReadOnlyDefault;
+        set => _readOnly = value;
     }
 
     /// <summary>
-    /// Gets or sets whether the tool should report an output schema for structured content.
+    /// Gets or sets a value that indicates whether the tool should report an output schema for structured content.
     /// </summary>
+    /// <value>
+    /// The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
-    /// </para>
-    /// <para>
-    /// The default is <see langword="false"/>.
-    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets a <see cref="Type"/> from which to generate the tool's output schema.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the output schema is inferred from the return type.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set, a JSON schema is generated from the specified <see cref="Type"/> and used as the
+    /// <see cref="Tool.OutputSchema"/> instead of the schema inferred from the tool method's return type.
+    /// This is particularly useful when a tool method returns <see cref="CallToolResult"/> directly
+    /// (to control properties like <see cref="Result.Meta"/>, <see cref="CallToolResult.IsError"/>,
+    /// or <see cref="CallToolResult.StructuredContent"/>) but still needs to advertise a meaningful output
+    /// schema to clients.
+    /// </para>
+    /// <para>
+    /// <see cref="UseStructuredContent"/> must also be set to <see langword="true"/> for this property to take effect.
+    /// </para>
+    /// </remarks>
+    public Type? OutputSchemaType { get; set; }
 
     /// <summary>
     /// Gets or sets the source URI for the tool's icon.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
+    /// This value can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
     /// When specified, a single icon will be added to the tool.
     /// </para>
     /// <para>

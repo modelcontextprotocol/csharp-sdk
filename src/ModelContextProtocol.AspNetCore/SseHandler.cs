@@ -56,7 +56,9 @@ internal sealed class SseHandler(
                 await using var mcpServer = McpServer.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
                 context.Features.Set(mcpServer);
 
+#pragma warning disable MCPEXP002 // RunSessionHandler is experimental
                 var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? StreamableHttpHandler.RunSessionAsync;
+#pragma warning restore MCPEXP002
                 await runSessionAsync(context, mcpServer, cancellationToken);
             }
             finally

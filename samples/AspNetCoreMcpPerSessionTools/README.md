@@ -65,6 +65,9 @@ The key technique is using `ConfigureSessionOptions` to modify the tool collecti
 ```csharp
 .WithHttpTransport(options =>
 {
+    // Set SessionMode = HttpServerSessionMode.Stateful since per-session
+    // tool filtering requires sessions.
+    options.SessionMode = HttpServerSessionMode.Stateful;
     options.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>
     {
         var toolCategory = GetToolCategoryFromRoute(httpContext);

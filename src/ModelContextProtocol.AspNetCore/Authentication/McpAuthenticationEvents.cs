@@ -6,7 +6,7 @@
 public class McpAuthenticationEvents
 {
     /// <summary>
-    /// Gets or sets the function that is invoked when resource metadata is requested.
+    /// Gets or sets the function that's invoked when resource metadata is requested.
     /// </summary>
     /// <remarks>
     /// This function is called when a resource metadata request is made to the protected resource metadata endpoint.

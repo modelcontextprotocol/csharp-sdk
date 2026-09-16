@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -11,6 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[DebuggerDisplay("Name = {Name}, Uri = {Uri}")]
 public sealed class Resource : IBaseMetadata
 {
     /// <inheritdoc />
@@ -57,7 +58,7 @@ public sealed class Resource : IBaseMetadata
     /// "image/png" for PNG images, and "application/json" for JSON data.
     /// </para>
     /// <para>
-    /// This property may be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
+    /// This property can be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
@@ -99,10 +100,4 @@ public sealed class Resource : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
-
-    /// <summary>
-    /// Gets or sets the callable server resource corresponding to this metadata if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerResource? McpServerResource { get; set; }
 }

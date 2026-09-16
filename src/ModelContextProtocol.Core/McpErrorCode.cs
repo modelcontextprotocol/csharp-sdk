@@ -6,12 +6,83 @@ namespace ModelContextProtocol;
 public enum McpErrorCode
 {
     /// <summary>
-    /// Indicates that the JSON received could not be parsed.
+    /// Indicates that HTTP headers do not match the corresponding values in the request body,
+    /// or that required headers are missing or malformed.
     /// </summary>
     /// <remarks>
-    /// This error occurs when the input contains malformed JSON or incorrect syntax.
+    /// <para>
+    /// This error is returned when a Streamable HTTP request fails header validation. Validation failures include:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>A required standard header (<c>Mcp-Method</c>, <c>Mcp-Name</c>) is missing.</description></item>
+    /// <item><description>A header value does not match the corresponding request body value.</description></item>
+    /// <item><description>A Base64-encoded header value cannot be decoded.</description></item>
+    /// <item><description>A header value contains invalid characters.</description></item>
+    /// </list>
+    /// <para>
+    /// This error code is in the JSON-RPC implementation-defined server error range (<c>-32000</c> to <c>-32099</c>).
+    /// </para>
     /// </remarks>
-    ParseError = -32700,
+    HeaderMismatch = -32020,
+
+    /// <summary>
+    /// Indicates that the requested resource could not be found.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Legacy error code for unresolvable resource URIs. Newer protocol versions report this
+    /// condition with the standard JSON-RPC <see cref="InvalidParams"/> (-32602) instead. The SDK
+    /// selects between the two automatically based on the negotiated protocol version, so older
+    /// clients still see <see cref="ResourceNotFound"/> (-32002) and newer ones see
+    /// <see cref="InvalidParams"/>.
+    /// </para>
+    /// <para>
+    /// New user code throwing <see cref="McpProtocolException"/> directly for unknown-resource conditions
+    /// should prefer <see cref="InvalidParams"/>; the SDK will pass the value through unchanged.
+    /// </para>
+    /// </remarks>
+    ResourceNotFound = -32002,
+
+    /// <summary>
+    /// Indicates that a request requires a client capability that was not declared in the request's
+    /// <c>_meta/io.modelcontextprotocol/clientCapabilities</c> field.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). The error data MUST include a
+    /// <c>requiredCapabilities</c> object describing the capabilities the server requires from the client
+    /// to process the request. For HTTP, the response status code is <c>400 Bad Request</c>.
+    /// </para>
+    /// </remarks>
+    MissingRequiredClientCapability = -32021,
+
+    /// <summary>
+    /// Indicates that the request's declared protocol version is not supported by the server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Introduced by the 2026-07-28 protocol revision (SEP-2575). The error data MUST include a
+    /// <c>supported</c> array of protocol version strings the server supports and the original
+    /// <c>requested</c> protocol version. For HTTP, the response status code is <c>400 Bad Request</c>.
+    /// </para>
+    /// </remarks>
+    UnsupportedProtocolVersion = -32022,
+
+    /// <summary>
+    /// Indicates that URL-mode elicitation is required to complete the requested operation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This error is returned when a server operation requires additional user input through URL-mode elicitation
+    /// before it can proceed. The error data must include the `data.elicitations` payload describing the pending
+    /// elicitation(s) for the client to present to the user.
+    /// </para>
+    /// <para>
+    /// Common scenarios include OAuth authorization and other out-of-band flows that cannot be completed inside
+    /// the MCP client.
+    /// </para>
+    /// </remarks>
+    UrlElicitationRequired = -32042,
 
     /// <summary>
     /// Indicates that the JSON payload does not conform to the expected Request object structure.
@@ -22,20 +93,44 @@ public enum McpErrorCode
     InvalidRequest = -32600,
 
     /// <summary>
-    /// Indicates that the requested method does not exist or is not available on the server.
+    /// Indicates that the requested method does not exist or is not available.
     /// </summary>
     /// <remarks>
-    /// This error is returned when the method name specified in the request cannot be found.
+    /// <para>
+    /// In MCP, this error is returned when a request is made for a method that requires a capability
+    /// that has not been declared. This can occur in either direction:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>A server returning this error when the client requests a capability it doesn't support
+    /// (for example, requesting completions when the <c>completions</c> capability was not advertised).</description></item>
+    /// <item><description>A client returning this error when the server requests a capability it doesn't support
+    /// (for example, requesting roots when the client did not declare the <c>roots</c> capability).</description></item>
+    /// </list>
     /// </remarks>
     MethodNotFound = -32601,
 
     /// <summary>
-    /// Indicates that one or more parameters provided in the request are invalid.
+    /// Indicates that the request parameters are invalid at the protocol level.
     /// </summary>
     /// <remarks>
-    /// This error is returned when the parameters do not match the expected method signature or constraints.
-    /// This includes cases where required parameters are missing or not understood, such as when a name for
-    /// a tool or prompt is not recognized.
+    /// <para>
+    /// In MCP, this error is returned for protocol-level parameter validation failures in various contexts:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>Tools</b>: Unknown tool name or invalid protocol-level tool arguments.</description></item>
+    /// <item><description><b>Prompts</b>: Unknown prompt name or missing required protocol-level arguments.</description></item>
+    /// <item><description><b>Resources</b>: Unknown or unresolvable resource URI.</description></item>
+    /// <item><description><b>Pagination</b>: Invalid or expired cursor values.</description></item>
+    /// <item><description><b>Logging</b>: Invalid log level.</description></item>
+    /// <item><description><b>Tasks</b>: Invalid or nonexistent task ID or invalid cursor.</description></item>
+    /// <item><description><b>Elicitation</b>: Server requests an elicitation mode not declared in client capabilities.</description></item>
+    /// <item><description><b>Sampling</b>: Missing tool result or tool results mixed with other content.</description></item>
+    /// </list>
+    /// <para>
+    /// Note: Application-layer validation errors within tool/prompt/resource arguments should be reported as execution errors
+    /// (for example, via <see cref="Protocol.CallToolResult.IsError"/>) rather than as protocol errors, allowing language
+    /// models to receive error feedback and self-correct.
+    /// </para>
     /// </remarks>
     InvalidParams = -32602,
 
@@ -46,4 +141,12 @@ public enum McpErrorCode
     /// This error is used when the endpoint encounters an unexpected condition that prevents it from fulfilling the request.
     /// </remarks>
     InternalError = -32603,
+
+    /// <summary>
+    /// Indicates that the JSON received could not be parsed.
+    /// </summary>
+    /// <remarks>
+    /// This error occurs when the input contains malformed JSON or incorrect syntax.
+    /// </remarks>
+    ParseError = -32700,
 }

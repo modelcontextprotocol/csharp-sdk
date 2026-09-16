@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -36,14 +37,63 @@ public sealed class McpServerHandlers
     /// </remarks>
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler { get; set; }
 
+#pragma warning disable MCPEXP002 // CallToolHandler and CallToolWithAlternateHandler reference the experimental ResultOrAlternate seam
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
     /// </summary>
     /// <remarks>
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
+    /// Use <see cref="CallToolWithAlternateHandler"/> instead if the tool may return an alternate result
+    /// for the caller to handle.
     /// </remarks>
-    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler { get; set; }
+    /// <exception cref="InvalidOperationException"><see cref="CallToolWithAlternateHandler"/> is already set.</exception>
+    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
+    {
+        get;
+        set
+        {
+            if (value is not null && CallToolWithAlternateHandler is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot set {nameof(CallToolHandler)} when {nameof(CallToolWithAlternateHandler)} is already set. Only one call tool handler may be configured.");
+            }
+
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests with alternate result support.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is invoked when a client makes a call to a tool, allowing the tool to return either
+    /// a <see cref="CallToolResult"/> for immediate results or an alternate <see cref="Result"/> subtype.
+    /// </para>
+    /// <para>
+    /// This is a low-level full replacement for the ordinary tool-call pipeline. It cannot be set if
+    /// <see cref="CallToolHandler"/> is already set, and it cannot be composed with ordinary
+    /// <see cref="McpRequestFilters.CallToolFilters"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"><see cref="CallToolHandler"/> is already set.</exception>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>>? CallToolWithAlternateHandler
+    {
+        get;
+        set
+        {
+            if (value is not null && CallToolHandler is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot set {nameof(CallToolWithAlternateHandler)} when {nameof(CallToolHandler)} is already set. Only one call tool handler may be configured.");
+            }
+
+            field = value;
+        }
+    }
+#pragma warning restore MCPEXP002
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.
@@ -142,6 +192,60 @@ public sealed class McpServerHandlers
     public McpRequestHandler<UnsubscribeRequestParams, EmptyResult>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.SubscriptionsListen"/> requests (SEP-2575).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>subscriptions/listen</c> is a long-lived request introduced by the 2026-07-28 protocol revision. The
+    /// held-open response is a solicited server-to-client stream: the server first acknowledges which
+    /// subscriptions it will honor and then streams matching notifications until the request is cancelled.
+    /// Setting this handler lets a server author own that stream directly to implement custom subscription
+    /// kinds, application-driven <c>resources/updated</c> delivery, or subscriptions backed by their own event
+    /// source. It is especially useful for stateless Streamable HTTP, where unsolicited notifications are
+    /// dropped (there is no session-wide channel) but the listen request's response stream can still carry
+    /// notifications for the duration of the request.
+    /// </para>
+    /// <para>
+    /// This is a <b>full replacement</b> for the built-in <c>subscriptions/listen</c> handler. When set, the
+    /// SDK does not track the subscription, does not send the acknowledgement, and does not perform any
+    /// automatic <c>*/list_changed</c> fan-out for the request; the handler is solely responsible for the
+    /// entire lifetime of the stream. The SDK still enforces protocol-version gating: the handler is only
+    /// reached when the negotiated protocol revision is 2026-07-28 or later, and is otherwise rejected with
+    /// <see cref="McpErrorCode.MethodNotFound"/>.
+    /// </para>
+    /// <para>
+    /// An implementation of this handler is responsible for:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// Sending exactly one <see cref="NotificationMethods.SubscriptionsAcknowledgedNotification"/> before any
+    /// subscription events, reporting only the filters it actually honors. Advertised server capabilities must
+    /// match what the handler will actually deliver.
+    /// </description></item>
+    /// <item><description>
+    /// Tagging every streamed notification with the listen request id under
+    /// <c>_meta[<see cref="MetaKeys.SubscriptionId"/>]</c> so clients sharing a channel can demultiplex it.
+    /// </description></item>
+    /// <item><description>
+    /// Remaining active for the subscription lifetime and cleaning up when the supplied
+    /// <see cref="CancellationToken"/> is cancelled (client disconnect on HTTP, or
+    /// <c>notifications/cancelled</c> on stdio).
+    /// </description></item>
+    /// <item><description>
+    /// Returning <see cref="EmptyResult"/> when it deliberately completes the stream.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Notifications are sent through the request's server (for example <c>request.Server.SendMessageAsync</c>),
+    /// which routes them over the request's own response stream. For extension filters not represented by
+    /// <see cref="SubscriptionsListenRequestParams"/>, the handler can inspect
+    /// <c>request.JsonRpcRequest.Params</c>. Application services and event buses can be resolved from
+    /// <c>request.Services</c> or captured by the handler delegate.
+    /// </para>
+    /// </remarks>
+    public McpRequestHandler<SubscriptionsListenRequestParams, EmptyResult>? SubscriptionsListenHandler { get; set; }
+
+    /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.LoggingSetLevel"/> requests.
     /// </summary>
     /// <remarks>
@@ -154,12 +258,13 @@ public sealed class McpServerHandlers
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 
     /// <summary>Gets or sets notification handlers to register with the server.</summary>
     /// <remarks>
     /// <para>
-    /// When constructed, the server will enumerate these handlers once, which may contain multiple handlers per notification method key.
+    /// When constructed, the server will enumerate these handlers, which may contain multiple handlers per notification method key, once.
     /// The server will not re-enumerate the sequence after initialization.
     /// </para>
     /// <para>
@@ -169,7 +274,7 @@ public sealed class McpServerHandlers
     /// </para>
     /// <para>
     /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
-    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
     /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>

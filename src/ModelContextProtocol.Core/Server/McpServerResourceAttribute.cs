@@ -5,11 +5,11 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Used to indicate that a method or property should be considered an <see cref="McpServerResource"/>.
+/// Indicates that a method or property should be considered an <see cref="McpServerResource"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This attribute is applied to methods or properties that should be exposed as resources in the Model Context Protocol. When a class 
+/// This attribute is applied to methods or properties that should be exposed as resources in the Model Context Protocol. When a class
 /// containing methods marked with this attribute is registered with McpServerBuilderExtensions,
 /// these methods or properties become available as resources that can be called by MCP clients.
 /// </para>
@@ -50,15 +50,15 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerResourceCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the
 ///       resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to the resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
@@ -105,6 +105,11 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Other returned types will result in an <see cref="InvalidOperationException"/> being thrown.
 /// </para>
+/// <para>
+/// Parameters of type <see cref="string"/> that are decorated with <c>AllowedValuesAttribute</c>
+/// will automatically have their allowed values surfaced as completions in response to <c>completion/complete</c> requests from clients,
+/// without requiring a custom <see cref="McpServerHandlers.CompleteHandler"/> to be configured.
+/// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class McpServerResourceAttribute : Attribute
@@ -119,15 +124,15 @@ public sealed class McpServerResourceAttribute : Attribute
     /// <summary>Gets or sets the URI template of the resource.</summary>
     /// <remarks>
     /// If <see langword="null"/>, a URI will be derived from <see cref="Name"/> and the method's parameter names.
-    /// This template may, but doesn't have to, include parameters; if it does, this <see cref="McpServerResource"/>
-    /// will be considered a "resource template", and if it doesn't, it will be considered a "direct resource".
+    /// This template can, but doesn't have to, include parameters; if it does, this <see cref="McpServerResource"/>
+    /// is considered a "resource template", and if it doesn't, it is considered a "direct resource".
     /// The former will be listed with <see cref="RequestMethods.ResourcesTemplatesList"/> requests and the latter
     /// with <see cref="RequestMethods.ResourcesList"/> requests.
     /// </remarks>
     public string? UriTemplate { get; set; }
 
     /// <summary>Gets or sets the name of the resource.</summary>
-    /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
+    /// <remarks>If <see langword="null"/>, the method name is used.</remarks>
     public string? Name { get; set; }
 
     /// <summary>Gets or sets the title of the resource.</summary>

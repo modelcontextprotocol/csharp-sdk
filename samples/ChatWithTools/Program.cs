@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using OpenAI;
 using OpenTelemetry;
@@ -38,6 +39,8 @@ var mcpClient = await McpClient.CreateAsync(
         Command = "npx",
         Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
         Name = "Everything",
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = StdioClientTransportOptions.GetDefaultEnvironmentVariables(),
     }),
     clientOptions: new()
     {

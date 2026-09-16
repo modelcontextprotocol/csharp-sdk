@@ -1,11 +1,15 @@
 using HttpContext.Tools;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        options.SessionMode = HttpServerSessionMode.Stateless;
+    })
     .WithTools<ContextTools>();
 
 // <snippet_AddHttpContextAccessor>

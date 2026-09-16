@@ -13,6 +13,7 @@ public abstract class DelegatingMcpServerPrompt : McpServerPrompt
 
     /// <summary>Initializes a new instance of the <see cref="DelegatingMcpServerPrompt"/> class around the specified <paramref name="innerPrompt"/>.</summary>
     /// <param name="innerPrompt">The inner prompt wrapped by this delegating prompt.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="innerPrompt"/> is <see langword="null"/>.</exception>
     protected DelegatingMcpServerPrompt(McpServerPrompt innerPrompt)
     {
         Throw.IfNull(innerPrompt);
@@ -21,6 +22,9 @@ public abstract class DelegatingMcpServerPrompt : McpServerPrompt
 
     /// <inheritdoc />
     public override Prompt ProtocolPrompt => _innerPrompt.ProtocolPrompt;
+
+    /// <inheritdoc />
+    public override IReadOnlyList<object> Metadata => _innerPrompt.Metadata;
 
     /// <inheritdoc />
     public override ValueTask<GetPromptResult> GetAsync(

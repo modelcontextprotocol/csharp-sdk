@@ -14,6 +14,7 @@ public static class ImplementationTests
             Name = "test-server",
             Title = "Test MCP Server",
             Version = "1.0.0",
+            Description = "A test MCP server implementation for demonstration purposes",
             Icons =
             [
                 new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = ["48x48"] },
@@ -33,6 +34,7 @@ public static class ImplementationTests
         Assert.Equal(original.Name, deserialized.Name);
         Assert.Equal(original.Title, deserialized.Title);
         Assert.Equal(original.Version, deserialized.Version);
+        Assert.Equal(original.Description, deserialized.Description);
         Assert.Equal(original.WebsiteUrl, deserialized.WebsiteUrl);
         Assert.NotNull(deserialized.Icons);
         Assert.Equal(original.Icons.Count, deserialized.Icons.Count);
@@ -66,6 +68,7 @@ public static class ImplementationTests
         Assert.Equal(original.Name, deserialized.Name);
         Assert.Equal(original.Title, deserialized.Title);
         Assert.Equal(original.Version, deserialized.Version);
+        Assert.Equal(original.Description, deserialized.Description);
         Assert.Equal(original.Icons, deserialized.Icons);
         Assert.Equal(original.WebsiteUrl, deserialized.WebsiteUrl);
     }
@@ -78,6 +81,7 @@ public static class ImplementationTests
             Name = "test-server",
             Title = "Test Server",
             Version = "1.0.0",
+            Description = "Test description",
             Icons = [new() { Source = "https://example.com/icon.png" }],
             WebsiteUrl = "https://example.com"
         };
@@ -87,6 +91,7 @@ public static class ImplementationTests
         Assert.Contains("\"name\":", json);
         Assert.Contains("\"title\":", json);
         Assert.Contains("\"version\":", json);
+        Assert.Contains("\"description\":", json);
         Assert.Contains("\"icons\":", json);
         Assert.Contains("\"websiteUrl\":", json);
     }

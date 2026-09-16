@@ -13,19 +13,29 @@ public sealed class Program
 {
     private const int _port = 7029;
     private static readonly string _url = $"https://localhost:{_port}";
+    private static readonly string _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
-    private static readonly string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
+    // Per MCP spec, URIs should not have trailing slashes unless semantically significant
+    public string[] ValidResources { get; set; } = [
+        "http://localhost:5000",
+        "http://localhost:5000/mcp",
+        "http://localhost:7071"
+    ];
 
     private readonly ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
     private readonly ConcurrentDictionary<string, TokenInfo> _tokens = new();
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
+
+    private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationCodeTokenRequestCount;
 
     private readonly RSA _rsa;
     private readonly string _keyId;
 
     private readonly ILoggerProvider? _loggerProvider;
     private readonly IConnectionListenerFactory? _kestrelTransport;
+    private readonly TaskCompletionSource _serverStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Program"/> class with logging and transport parameters.
@@ -40,9 +50,102 @@ public sealed class Program
         _kestrelTransport = kestrelTransport;
     }
 
+    /// <summary>
+    /// Gets a task that completes when the server has started and is ready to accept connections.
+    /// </summary>
+    public Task ServerStarted => _serverStarted.Task;
+
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
-    public bool HasIssuedExpiredToken { get; set; }
-    public bool HasIssuedRefreshToken { get; set; }
+    public bool HasRefreshedToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the server supports the Enterprise Managed
+    /// Authorization (SEP-990) flow, including the IdP token-exchange endpoint and the
+    /// JWT-bearer grant type at the token endpoint.
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c>, the server registers enterprise test clients and activates the
+    /// <c>/idp/token</c> endpoint (RFC 8693 token exchange) and the
+    /// <c>urn:ietf:params:oauth:grant-type:jwt-bearer</c> grant type (RFC 7523).
+    /// </remarks>
+    public bool EnterpriseSupportEnabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server
+    /// advertises support for client ID metadata documents in its discovery
+    /// document. This is used by tests to toggle CIMD support.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>true</c>.
+    /// </remarks>
+    public bool ClientIdMetadataDocumentSupported { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server expects a resource parameter.
+    /// When <c>true</c>, the resource parameter must be present and match a valid resource.
+    /// When <c>false</c>, the resource parameter must be absent to simulate legacy servers that
+    /// do not support RFC 8707 resource indicators.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>true</c>.
+    /// </remarks>
+    public bool ExpectResource { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server advertises support for
+    /// <c>offline_access</c> in its <c>scopes_supported</c> metadata. This simulates an OIDC-flavored
+    /// authorization server that issues refresh tokens when the client requests the <c>offline_access</c> scope.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>false</c>.
+    /// </remarks>
+    public bool IncludeOfflineAccessInMetadata { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether authorization server metadata includes an issuer.
+    /// </summary>
+    public bool IncludeIssuerInMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets an issuer value that overrides the authorization server's metadata issuer.
+    /// </summary>
+    public string? MetadataIssuerOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server advertises RFC 9207 support.
+    /// </summary>
+    public bool AuthorizationResponseIssParameterSupported { get; set; }
+
+    /// <summary>
+    /// Gets or sets the issuer included in authorization responses, or <see langword="null"/> to omit it.
+    /// </summary>
+    public string? AuthorizationResponseIssuer { get; set; }
+
+    /// <summary>
+    /// Gets or sets the code challenge methods advertised by metadata endpoints.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>["S256"]</c>.
+    /// </remarks>
+    public List<string>? CodeChallengeMethodsSupported { get; set; } = ["S256"];
+
+    /// <summary>
+    /// Gets the set of metadata paths that should omit <c>code_challenge_methods_supported</c> from their
+    /// response, simulating a server whose discovery endpoints advertise differing PKCE support.
+    /// </summary>
+    public HashSet<string> MetadataPathsWithoutPkceSupport { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the number of authorization-code token exchange requests received.</summary>
+    public int AuthorizationCodeTokenRequestCount => Volatile.Read(ref _authorizationCodeTokenRequestCount);
+
+    /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastRegistrationScope { get; private set; }
+
+    /// <summary>Gets the <c>application_type</c> field from the most recent Dynamic Client Registration request.</summary>
+    public string? LastApplicationType { get; private set; }
 
     /// <summary>
     /// Entry point for the application.
@@ -96,63 +199,111 @@ public sealed class Program
 
         var app = builder.Build();
 
-        app.UseRouting();
-        app.UseEndpoints(_ => { });
-
-        // Set up the demo client
         var clientId = "demo-client";
         var clientSecret = "demo-secret";
+
         _clients[clientId] = new ClientInfo
         {
             ClientId = clientId,
             ClientSecret = clientSecret,
+
+            RequiresClientSecret = true,
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
-        // When this client ID is used, the first token issued will already be expired to make
-        // testing the refresh flow easier.
-        _clients["test-refresh-client"] = new ClientInfo
+        // This client is pre-registered to support testing Client ID Metadata Documents (CIMD).
+        // A non-test OAuth server implementation would fetch the metadata document from the client-specified
+        // URL during authorization, but we just register the client here to keep the test implementation simple.
+        // We also set 'RequiresClientSecret' to 'false' here because client secrets are disallowed when using CIMD.
+        // See https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-4.1
+        _clients[_clientMetadataDocumentUrl] = new ClientInfo
         {
-            ClientId = "test-refresh-client",
-            ClientSecret = "test-refresh-secret",
+            ClientId = _clientMetadataDocumentUrl,
+
+            RequiresClientSecret = false,
             RedirectUris = ["http://localhost:1179/callback"],
+        };
+
+        // Enterprise Auth (SEP-990) clients.
+        // The IdP client is used to authenticate calls to /idp/token (token exchange).
+        // The MCP client is used to authenticate calls to /token (jwt-bearer grant).
+        // Neither needs redirect URIs because neither uses the authorization code flow.
+        _clients["enterprise-idp-client"] = new ClientInfo
+        {
+            ClientId = "enterprise-idp-client",
+            ClientSecret = "enterprise-idp-secret",
+            RequiresClientSecret = true,
+            RedirectUris = [],
+        };
+        _clients["enterprise-mcp-client"] = new ClientInfo
+        {
+            ClientId = "enterprise-mcp-client",
+            ClientSecret = "enterprise-mcp-secret",
+            RequiresClientSecret = true,
+            RedirectUris = [],
         };
 
         // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
-        // /.well-known/openid-configuration by default. To make things easier, we support both with the same response
-        // which seems to be common. Ex. https://github.com/keycloak/keycloak/pull/29628
+        // /.well-known/openid-configuration by default.
         //
         // The requirements for these endpoints are at https://www.rfc-editor.org/rfc/rfc8414 and
         // https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata respectively.
         // They do differ, but it's close enough at least for our current testing to use the same response for both.
         // See https://gist.github.com/localden/26d8bcf641703c08a5d8741aa9c3336c
-        string[] metadataEndpoints = ["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"];
-        foreach (var metadataEndpoint in metadataEndpoints)
+        IResult HandleMetadataRequest(HttpContext context, string? issuerPath = null)
         {
-            // OAuth 2.0 Authorization Server Metadata (RFC 8414)
-            app.MapGet(metadataEndpoint, () =>
-            {
-                var metadata = new OAuthServerMetadata
-                {
-                    Issuer = _url,
-                    AuthorizationEndpoint = $"{_url}/authorize",
-                    TokenEndpoint = $"{_url}/token",
-                    JwksUri = $"{_url}/.well-known/jwks.json",
-                    ResponseTypesSupported = ["code"],
-                    SubjectTypesSupported = ["public"],
-                    IdTokenSigningAlgValuesSupported = ["RS256"],
-                    ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
-                    TokenEndpointAuthMethodsSupported = ["client_secret_post"],
-                    ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
-                    CodeChallengeMethodsSupported = ["S256"],
-                    GrantTypesSupported = ["authorization_code", "refresh_token"],
-                    IntrospectionEndpoint = $"{_url}/introspect",
-                    RegistrationEndpoint = $"{_url}/register"
-                };
+            _metadataRequests.Enqueue(context.Request.Path);
 
-                return Results.Ok(metadata);
-            });
+            if (DisabledMetadataPaths.Contains(context.Request.Path))
+            {
+                return Results.NotFound();
+            }
+
+            if (!string.IsNullOrEmpty(issuerPath))
+            {
+                issuerPath = $"/{issuerPath}";
+            }
+
+            var metadata = new OAuthServerMetadata
+            {
+                Issuer = IncludeIssuerInMetadata ? MetadataIssuerOverride ?? $"{_url}{issuerPath}" : null,
+                AuthorizationEndpoint = $"{_url}/authorize",
+                TokenEndpoint = $"{_url}/token",
+                JwksUri = $"{_url}/.well-known/jwks.json",
+                ResponseTypesSupported = ["code"],
+                SubjectTypesSupported = ["public"],
+                IdTokenSigningAlgValuesSupported = ["RS256"],
+                ScopesSupported = IncludeOfflineAccessInMetadata
+                    ? ["openid", "profile", "email", "mcp:tools", "offline_access"]
+                    : ["openid", "profile", "email", "mcp:tools"],
+                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+                ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
+                CodeChallengeMethodsSupported = MetadataPathsWithoutPkceSupport.Contains(context.Request.Path)
+                    ? null
+                    : CodeChallengeMethodsSupported,
+                GrantTypesSupported = ["authorization_code", "refresh_token"],
+                IntrospectionEndpoint = $"{_url}/introspect",
+                RegistrationEndpoint = $"{_url}/register",
+                ClientIdMetadataDocumentSupported = ClientIdMetadataDocumentSupported,
+                AuthorizationResponseIssParameterSupported = AuthorizationResponseIssParameterSupported ? true : null,
+            };
+
+            return Results.Ok(metadata);
         }
+
+        app.MapGet("/.well-known/oauth-authorization-server", HandleMetadataRequest);
+        app.MapGet("/.well-known/openid-configuration", HandleMetadataRequest);
+        app.MapGet("/.well-known/oauth-authorization-server/{**issuerPath}", HandleMetadataRequest);
+        app.MapGet("/.well-known/openid-configuration/{**issuerPath}", HandleMetadataRequest);
+        app.MapGet("/{**fullPath}", (HttpContext context, string fullPath) =>
+        {
+            if (fullPath.EndsWith("/.well-known/openid-configuration", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleMetadataRequest(context, fullPath[..^"/.well-known/openid-configuration".Length]);
+            }
+
+            return Results.NotFound();
+        });
 
         // JWKS endpoint to expose the public key
         app.MapGet("/.well-known/jwks.json", () =>
@@ -239,8 +390,9 @@ public sealed class Program
                 return Results.Redirect($"{redirect_uri}?error=invalid_request&error_description=Only+S256+code_challenge_method+is+supported&state={state}");
             }
 
-            // Validate resource in accordance with RFC 8707
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            // Validate resource in accordance with RFC 8707.
+            // When ExpectResource is false, the resource parameter must be absent (legacy mode).
+            if (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -265,6 +417,10 @@ public sealed class Program
             {
                 redirectUrl += $"&state={Uri.EscapeDataString(state)}";
             }
+            if (!string.IsNullOrEmpty(AuthorizationResponseIssuer))
+            {
+                redirectUrl += $"&iss={Uri.EscapeDataString(AuthorizationResponseIssuer)}";
+            }
 
             return Results.Redirect(redirectUrl);
         });
@@ -286,9 +442,18 @@ public sealed class Program
                     type: "https://tools.ietf.org/html/rfc6749#section-5.2");
             }
 
-            // Validate resource in accordance with RFC 8707
+            // Read grant type early so we can skip resource validation for grant types that
+            // don't use the resource parameter (e.g. jwt-bearer where the resource is embedded
+            // inside the JWT assertion itself).
+            var grant_type = form["grant_type"].ToString();
+
+            // Validate resource in accordance with RFC 8707.
+            // When ExpectResource is false, the resource parameter must be absent (legacy mode).
+            // RFC 7523 JWT-bearer assertions carry the target resource inside the JWT itself,
+            // so we skip the form-level resource check for that grant type.
             var resource = form["resource"].ToString();
-            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            if (grant_type != "urn:ietf:params:oauth:grant-type:jwt-bearer" &&
+                (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource)))
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {
@@ -297,9 +462,9 @@ public sealed class Program
                 });
             }
 
-            var grant_type = form["grant_type"].ToString();
             if (grant_type == "authorization_code")
             {
+                Interlocked.Increment(ref _authorizationCodeTokenRequestCount);
                 var code = form["code"].ToString();
                 var code_verifier = form["code_verifier"].ToString();
                 var redirect_uri = form["redirect_uri"].ToString();
@@ -371,7 +536,46 @@ public sealed class Program
                     _tokens.TryRemove(refresh_token, out _);
                 }
 
-                HasIssuedRefreshToken = true;
+                HasRefreshedToken = true;
+                return Results.Ok(response);
+            }
+            else if (grant_type == "urn:ietf:params:oauth:grant-type:jwt-bearer")
+            {
+                if (!EnterpriseSupportEnabled)
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "unsupported_grant_type",
+                        ErrorDescription = "JWT bearer grant is not enabled on this server."
+                    });
+                }
+
+                var assertion = form["assertion"].ToString();
+                if (string.IsNullOrEmpty(assertion))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_request",
+                        ErrorDescription = "assertion is required for jwt-bearer grant"
+                    });
+                }
+
+                // Extract the target resource from the JAG payload (set during /idp/token).
+                // Fall back to ValidResources[0] so the token is still usable in tests even
+                // if the resource claim is absent.
+                var jagResource = ExtractJwtClaim(assertion, "resource");
+                if (string.IsNullOrEmpty(jagResource) || !ValidResources.Contains(jagResource))
+                {
+                    jagResource = ValidResources.Length > 0 ? ValidResources[0] : null;
+                }
+
+                var resourceUri = jagResource is not null ? new Uri(jagResource) : null;
+                var scope = form["scope"].ToString();
+                var scopes = string.IsNullOrEmpty(scope)
+                    ? ["mcp:tools"]
+                    : scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri);
                 return Results.Ok(response);
             }
             else
@@ -382,6 +586,77 @@ public sealed class Program
                     ErrorDescription = "Unsupported grant type"
                 });
             }
+        });
+
+        // IdP token-exchange endpoint (RFC 8693) for Enterprise Managed Authorization (SEP-990).
+        // Exchanges an enterprise ID token (from SSO) for a JWT Authorization Grant (JAG)
+        // that can subsequently be used at the /token endpoint via the jwt-bearer grant.
+        app.MapPost("/idp/token", async (HttpContext context) =>
+        {
+            if (!EnterpriseSupportEnabled)
+            {
+                return Results.NotFound();
+            }
+
+            var form = await context.Request.ReadFormAsync();
+
+            // Authenticate the IdP client.
+            var client = AuthenticateClient(context, form);
+            if (client == null)
+            {
+                context.Response.StatusCode = 401;
+                return Results.Problem(
+                    statusCode: 401,
+                    title: "Unauthorized",
+                    detail: "Invalid client credentials",
+                    type: "https://tools.ietf.org/html/rfc6749#section-5.2");
+            }
+
+            var grantType = form["grant_type"].ToString();
+            if (grantType != "urn:ietf:params:oauth:grant-type:token-exchange")
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "unsupported_grant_type",
+                    ErrorDescription = "Only urn:ietf:params:oauth:grant-type:token-exchange is supported on this endpoint."
+                });
+            }
+
+            var subjectToken = form["subject_token"].ToString();
+            if (string.IsNullOrEmpty(subjectToken))
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "subject_token is required."
+                });
+            }
+
+            var requestedTokenType = form["requested_token_type"].ToString();
+            if (requestedTokenType != "urn:ietf:params:oauth:token-type:id-jag")
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "requested_token_type must be urn:ietf:params:oauth:token-type:id-jag."
+                });
+            }
+
+            var audience = form["audience"].ToString();
+            var resourceParam = form["resource"].ToString();
+
+            // Generate a JAG JWT signed with the server's RSA key.
+            // The JAG encodes the intended audience (MCP AS) and resource (MCP server) so
+            // the /token endpoint can later issue a correctly-scoped access token.
+            var jag = GenerateJagJwt(audience, resourceParam);
+
+            return Results.Ok(new JagTokenExchangeResponse
+            {
+                AccessToken = jag,
+                IssuedTokenType = "urn:ietf:params:oauth:token-type:id-jag",
+                TokenType = "N_A",
+                ExpiresIn = 300,
+            });
         });
 
         // Introspection endpoint
@@ -438,6 +713,9 @@ public sealed class Program
                 });
             }
 
+            LastRegistrationScope = registrationRequest.Scope;
+            LastApplicationType = registrationRequest.ApplicationType;
+
             // Validate redirect URIs are provided
             if (registrationRequest.RedirectUris.Count == 0)
             {
@@ -471,6 +749,7 @@ public sealed class Program
             _clients[clientId] = new ClientInfo
             {
                 ClientId = clientId,
+                RequiresClientSecret = true,
                 ClientSecret = clientSecret,
                 RedirectUris = registrationRequest.RedirectUris,
             };
@@ -497,7 +776,20 @@ public sealed class Program
         Console.WriteLine($"Demo Client ID: {clientId}");
         Console.WriteLine($"Demo Client Secret: {clientSecret}");
 
-        await app.RunAsync(cancellationToken);
+        await app.StartAsync(cancellationToken);
+        _serverStarted.TrySetResult();
+
+        // Wait until cancellation is requested
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancellation is requested
+        }
+
+        await app.StopAsync();
     }
 
     /// <summary>
@@ -511,17 +803,17 @@ public sealed class Program
         var clientId = form["client_id"].ToString();
         var clientSecret = form["client_secret"].ToString();
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        if (string.IsNullOrEmpty(clientId) || !_clients.TryGetValue(clientId, out var client))
         {
             return null;
         }
 
-        if (_clients.TryGetValue(clientId, out var client) && client.ClientSecret == clientSecret)
+        if (client.RequiresClientSecret && client.ClientSecret != clientSecret)
         {
-            return client;
+            return null;
         }
 
-        return null;
+        return client;
     }
 
     /// <summary>
@@ -535,14 +827,6 @@ public sealed class Program
     {
         var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
-
-        // For test-refresh-client, make the first token expired to test refresh functionality.
-        if (clientId == "test-refresh-client" && !HasIssuedExpiredToken)
-        {
-            HasIssuedExpiredToken = true;
-            expiresIn = TimeSpan.FromHours(-1);
-        }
-
         var expiresAt = issuedAt.Add(expiresIn);
         var jwtId = Guid.NewGuid().ToString();
 
@@ -551,7 +835,7 @@ public sealed class Program
         {
             { "alg", "RS256" },
             { "typ", "JWT" },
-            { "kid", _keyId }
+            { "kid", _keyId },
         };
 
         var payload = new Dictionary<string, string>
@@ -564,7 +848,7 @@ public sealed class Program
             { "jti", jwtId },
             { "iat", issuedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) },
             { "exp", expiresAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) },
-            { "scope", string.Join(" ", scopes) }
+            { "scope", string.Join(" ", scopes) },
         };
 
         // Create JWT token
@@ -604,6 +888,70 @@ public sealed class Program
             ExpiresIn = (int)expiresIn.TotalSeconds,
             Scope = string.Join(" ", scopes)
         };
+    }
+
+    /// <summary>
+    /// Generates a JWT Authorization Grant (JAG) signed with the server's RSA key.
+    /// The JAG encodes the target audience (MCP AS URL) and the resource (MCP server URL).
+    /// </summary>
+    private string GenerateJagJwt(string audience, string resource)
+    {
+        var expiresIn = TimeSpan.FromMinutes(5);
+        var issuedAt = DateTimeOffset.UtcNow;
+        var expiresAt = issuedAt.Add(expiresIn);
+
+        var header = new Dictionary<string, string>
+        {
+            { "alg", "RS256" },
+            { "typ", "JWT" },
+            { "kid", _keyId },
+        };
+
+        var payload = new Dictionary<string, string>
+        {
+            { "iss", _url },
+            { "sub", "enterprise-user" },
+            { "aud", audience },
+            { "resource", resource },  // carried through so /token can issue the right audience
+            { "jti", Guid.NewGuid().ToString() },
+            { "iat", issuedAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            { "exp", expiresAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        };
+
+        var headerJson = System.Text.Json.JsonSerializer.Serialize(header, OAuthJsonContext.Default.DictionaryStringString);
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload, OAuthJsonContext.Default.DictionaryStringString);
+
+        var headerBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+        var payloadBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
+
+        var dataToSign = $"{headerBase64}.{payloadBase64}";
+        var signature = _rsa.SignData(Encoding.UTF8.GetBytes(dataToSign), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+        return $"{headerBase64}.{payloadBase64}.{WebEncoders.Base64UrlEncode(signature)}";
+    }
+
+    /// <summary>
+    /// Decodes a JWT payload (without signature verification) and returns the value of
+    /// <paramref name="claimName"/>, or <c>null</c> if the claim is absent or the JWT is malformed.
+    /// </summary>
+    private static string? ExtractJwtClaim(string jwt, string claimName)
+    {
+        var parts = jwt.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payloadJson = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(parts[1]));
+            var payload = System.Text.Json.JsonSerializer.Deserialize(payloadJson, OAuthJsonContext.Default.DictionaryStringString);
+            return payload?.TryGetValue(claimName, out var value) == true ? value : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

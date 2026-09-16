@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -61,7 +62,7 @@ public abstract class ResourceContents
     /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public class Converter : JsonConverter<ResourceContents>
+    public sealed class Converter : JsonConverter<ResourceContents>
     {
         /// <inheritdoc/>
         public override ResourceContents? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -78,7 +79,8 @@ public abstract class ResourceContents
 
             string? uri = null;
             string? mimeType = null;
-            string? blob = null;
+            ReadOnlyMemory<byte>? blob = null;
+            ReadOnlyMemory<byte>? decodedBlob = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -104,7 +106,14 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.GetString();
+                        if (!reader.ValueIsEscaped)
+                        {
+                            blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+                        }
+                        else
+                        {
+                            decodedBlob = reader.GetBytesFromBase64();
+                        }
                         break;
 
                     case "text":
@@ -116,8 +125,16 @@ public abstract class ResourceContents
                         break;
 
                     default:
+                        reader.Skip();
                         break;
                 }
+            }
+
+            if (decodedBlob is not null)
+            {
+                var blobResource = BlobResourceContents.FromBytes(decodedBlob.Value, uri ?? string.Empty, mimeType);
+                blobResource.Meta = meta;
+                return blobResource;
             }
 
             if (blob is not null)
@@ -126,7 +143,7 @@ public abstract class ResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob,
+                    Blob = blob.Value,
                     Meta = meta,
                 };
             }
@@ -156,12 +173,15 @@ public abstract class ResourceContents
 
             writer.WriteStartObject();
             writer.WriteString("uri", value.Uri);
-            writer.WriteString("mimeType", value.MimeType);
+            if (value.MimeType is not null)
+            {
+                writer.WriteString("mimeType", value.MimeType);
+            }
 
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                writer.WriteString("blob", blobResource.Blob);
+                writer.WriteString("blob", blobResource.Blob.Span);
             }
             else if (value is TextResourceContents textResource)
             {

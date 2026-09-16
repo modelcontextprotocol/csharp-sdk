@@ -1,78 +1,250 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
-/// Configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>.
-/// which implements the Streaming HTTP transport for the Model Context Protocol.
-/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http"/>
+/// Represents configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>,
+/// which implements the Streamable HTTP transport for the Model Context Protocol.
+/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http"/>
 /// </summary>
+/// <remarks>
+/// For details on the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">protocol specification</see>.
+/// </remarks>
 public class HttpServerTransportOptions
 {
     /// <summary>
     /// Gets or sets an optional asynchronous callback to configure per-session <see cref="McpServerOptions"/>
     /// with access to the <see cref="HttpContext"/> of the request that initiated the session.
     /// </summary>
+    /// <remarks>
+    /// In stateful mode, this callback is invoked once per session when the client sends the
+    /// <c>initialize</c> request. In <see cref="HttpServerSessionMode.Stateless"/> mode, it is invoked on
+    /// <b>every HTTP request</b> because each request creates a fresh server context. In
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> mode, both apply: once per session for
+    /// <c>initialize</c>-handshake clients and once per request for <c>2026-07-28</c> and later clients.
+    /// </remarks>
     public Func<HttpContext, McpServerOptions, CancellationToken, Task>? ConfigureSessionOptions { get; set; }
 
     /// <summary>
     /// Gets or sets an optional asynchronous callback for running new MCP sessions manually.
-    /// This is useful for running logic before a sessions starts and after it completes.
     /// </summary>
+    /// <remarks>
+    /// This callback is useful for running logic before a session starts and after it completes.
+    /// <para>
+    /// The <see cref="HttpContext"/> parameter comes from the request that initiated the session (e.g., the
+    /// initialize request) and may not be usable after <see cref="McpServer.RunAsync"/> starts, since that
+    /// request will have already completed.
+    /// </para>
+    /// <para>
+    /// Consider using <see cref="ConfigureSessionOptions"/> instead, which provides access to the
+    /// <see cref="HttpContext"/> of the initializing request with fewer known issues.
+    /// </para>
+    /// <para>
+    /// In <see cref="HttpServerSessionMode.Stateful"/> mode, this callback is invoked once per session. In
+    /// <see cref="HttpServerSessionMode.Stateless"/> mode, it is invoked once per HTTP request. In
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> mode, both apply: once per session for
+    /// <c>initialize</c>-handshake clients and once per request for <c>2026-07-28</c> and later clients.
+    /// </para>
+    /// <para>
+    /// This API is experimental and may be removed or change signatures in a future release.
+    /// </para>
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(Experimentals.RunSessionHandler_DiagnosticId, UrlFormat = Experimentals.RunSessionHandler_Url)]
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the server should run in a stateless mode which does not track state between requests
-    /// allowing for load balancing without session affinity.
+    /// Gets or sets a value that indicates how the server tracks state between requests.
     /// </summary>
+    /// <value>
+    /// One of the <see cref="HttpServerSessionMode"/> values. The default is
+    /// <see cref="HttpServerSessionMode.Stateless"/> as of the <c>2026-07-28</c> protocol revision (SEP-2567).
+    /// </value>
     /// <remarks>
-    /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
-    /// the <see cref="RunSessionHandler"/> will be called once for for each request, and the "/sse" endpoint will be disabled.
-    /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
-    /// may arrive at another ASP.NET Core application process.
-    /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
-    /// Defaults to <see langword="false"/>.
+    /// <para>
+    /// <see cref="HttpServerSessionMode.Stateless"/> doesn't track state between requests, allowing for load
+    /// balancing without session affinity. <see cref="McpSession.SessionId"/> will be null, the
+    /// "MCP-Session-Id" header will not be used, the <see cref="RunSessionHandler"/> will be called once for
+    /// each request, and the GET, DELETE, and "/sse" endpoints will be disabled. Unsolicited server-to-client
+    /// messages and all server-to-client requests are also unsupported, because any responses might arrive at
+    /// another ASP.NET Core application process. Client sampling, elicitation, and roots capabilities are also
+    /// disabled, because the server cannot make requests.
+    /// </para>
+    /// <para>
+    /// <see cref="HttpServerSessionMode.Stateful"/> tracks a session for every client, which requires session
+    /// affinity. Starting with the <c>2026-07-28</c> protocol revision, Streamable HTTP no longer supports
+    /// sessions: the revision removed <c>Mcp-Session-Id</c> (SEP-2567), so such a request is refused with a
+    /// <c>-32022 UnsupportedProtocolVersion</c> error, and a dual-path client downgrades to the
+    /// <c>initialize</c> handshake and obtains the session the server was configured to provide.
+    /// </para>
+    /// <para>
+    /// <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> avoids that downgrade by serving
+    /// <c>2026-07-28</c> and later requests statelessly on the same endpoint while <c>initialize</c>-handshake
+    /// clients still get full sessions. Session-only features remain unavailable to the stateless half of the
+    /// endpoint; use <see href="https://csharp.sdk.modelcontextprotocol.io/concepts/mrtr">MRTR</see> for
+    /// elicitation there.
+    /// </para>
+    /// <para>
+    /// A request that carries an <c>Mcp-Session-Id</c> on the <c>2026-07-28</c> and later revisions is ignored
+    /// in every mode; the server must not mint or echo session IDs for those revisions.
+    /// </para>
     /// </remarks>
-    public bool Stateless { get; set; }
+    public HttpServerSessionMode SessionMode { get; set; } = HttpServerSessionMode.Stateless;
 
     /// <summary>
-    /// Gets or sets whether the server should use a single execution context for the entire session.
-    /// If <see langword="false"/>, handlers like tools get called with the <see cref="ExecutionContext"/>
-    /// belonging to the corresponding HTTP request which can change throughout the MCP session.
-    /// If <see langword="true"/>, handlers will get called with the same <see cref="ExecutionContext"/>
-    /// used to call <see cref="ConfigureSessionOptions" /> and <see cref="RunSessionHandler"/>.
+    /// Gets or sets a value that indicates whether the server runs in a stateless mode that doesn't track state between requests,
+    /// allowing for load balancing without session affinity.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the server runs in a stateless mode; <see langword="false"/> if the server tracks state between requests.
+    /// The default is <see langword="true"/> as of the <c>2026-07-28</c> protocol revision (SEP-2567);
+    /// set to <see langword="false"/> only when you need to support legacy clients that rely on session affinity.
+    /// </value>
+    /// <remarks>
+    /// This property is a convenience proxy over <see cref="SessionMode"/>. Reading it returns
+    /// <see langword="true"/> only when <see cref="SessionMode"/> is <see cref="HttpServerSessionMode.Stateless"/>,
+    /// so <see cref="HttpServerSessionMode.StatefulForInitializeClients"/> reads as <see langword="false"/>.
+    /// Assigning <see langword="true"/> selects <see cref="HttpServerSessionMode.Stateless"/> and assigning
+    /// <see langword="false"/> selects <see cref="HttpServerSessionMode.Stateful"/>. Because both properties
+    /// update the same underlying value, the last assignment wins when both are configured.
+    /// </remarks>
+    public bool Stateless
+    {
+        get => SessionMode is HttpServerSessionMode.Stateless;
+        set => SessionMode = value ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
+    }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether the server maps legacy SSE endpoints (<c>/sse</c> and <c>/message</c>)
+    /// for backward compatibility with clients that do not support the Streamable HTTP transport.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to map the legacy SSE endpoints; <see langword="false"/> to disable them. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// The legacy SSE transport separates request and response channels: clients POST JSON-RPC messages
+    /// to <c>/message</c> and receive responses through a long-lived GET SSE stream on <c>/sse</c>.
+    /// Because the POST endpoint returns <c>202 Accepted</c> immediately, there is no HTTP-level
+    /// backpressure on handler concurrency — unlike Streamable HTTP, where each POST is held open
+    /// until the handler responds.
+    /// </para>
+    /// <para>
+    /// Use Streamable HTTP instead whenever possible. If you must support legacy SSE clients,
+    /// enable this property only for completely trusted clients in isolated processes, and apply
+    /// HTTP rate-limiting middleware and reverse proxy limits to compensate for the lack of
+    /// built-in backpressure.
+    /// </para>
+    /// <para>
+    /// Setting this to <see langword="true"/> while <see cref="SessionMode"/> is
+    /// <see cref="HttpServerSessionMode.Stateless"/> throws an <see cref="InvalidOperationException"/> at
+    /// startup, because SSE requires in-memory session state.
+    /// </para>
+    /// <para>
+    /// This property can also be enabled via the <c>ModelContextProtocol.AspNetCore.EnableLegacySse</c>
+    /// <see cref="AppContext"/> switch.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.EnableLegacySse_Message, DiagnosticId = Obsoletions.EnableLegacySse_DiagnosticId, UrlFormat = Obsoletions.EnableLegacySse_Url)]
+    public bool EnableLegacySse { get; set; } =
+        AppContext.TryGetSwitch("ModelContextProtocol.AspNetCore.EnableLegacySse", out var enabled) && enabled;
+
+    /// <summary>
+    /// Gets or sets the event store for resumability support.
+    /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>
     /// <remarks>
+    /// When configured, the server will:
+    /// <list type="bullet">
+    /// <item><description>Generate unique event IDs for each SSE message</description></item>
+    /// <item><description>Store events for later replay</description></item>
+    /// <item><description>Replay missed events when a client reconnects with a Last-Event-ID header</description></item>
+    /// <item><description>Send priming events to establish resumability before any actual messages</description></item>
+    /// </list>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISseEventStreamStore"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISseEventStreamStore"/> from DI.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
+    public ISseEventStreamStore? EventStreamStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets the session migration handler for cross-instance session migration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When configured, the server will support session migration between instances.
+    /// If a request arrives with a session ID that is not found locally, the handler
+    /// is consulted to determine if the session can be migrated from another instance.
+    /// </para>
+    /// <para>
+    /// This can be set directly, or an <see cref="ISessionMigrationHandler"/> can be registered in DI.
+    /// If this property is not set, the server will attempt to resolve an <see cref="ISessionMigrationHandler"/> from DI.
+    /// </para>
+    /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
+    public ISessionMigrationHandler? SessionMigrationHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether the server uses a single execution context for the entire session.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the server uses a single execution context for the entire session; otherwise, <see langword="false"/>. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// If <see langword="false"/>, handlers like tools get called with the <see cref="ExecutionContext"/>
+    /// belonging to the corresponding HTTP request, which can change throughout the MCP session.
+    /// If <see langword="true"/>, handlers will get called with the same <see cref="ExecutionContext"/>
+    /// used to call <see cref="ConfigureSessionOptions" /> and <see cref="RunSessionHandler"/>.
     /// Enabling a per-session <see cref="ExecutionContext"/> can be useful for setting <see cref="AsyncLocal{T}"/> variables
     /// that persist for the entire session, but it prevents you from using IHttpContextAccessor in handlers.
-    /// Defaults to <see langword="false"/>.
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public bool PerSessionExecutionContext { get; set; }
 
     /// <summary>
     /// Gets or sets the duration of time the server will wait between any active requests before timing out an MCP session.
     /// </summary>
+    /// <value>
+    /// The amount of time the server waits between any active requests before timing out an MCP session. The default is 2 hours.
+    /// </value>
     /// <remarks>
-    /// This is checked in background every 5 seconds. A client trying to resume a session will receive a 404 status code
+    /// <para>
+    /// This value is checked in the background every 5 seconds. A client trying to resume a session will receive a 404 status code
     /// and should restart their session. A client can keep their session open by keeping a GET request open.
-    /// Defaults to 2 hours.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are not subject to this timeout — their lifetime is
+    /// tied to the open GET <c>/sse</c> request, and they are removed immediately when the client disconnects.
+    /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
 
     /// <summary>
-    /// Gets or sets maximum number of idle sessions to track in memory. This is used to limit the number of sessions that can be idle at once.
+    /// Gets or sets the maximum number of idle sessions to track in memory. This value is used to limit the number of sessions that can be idle at once.
     /// </summary>
+    /// <value>
+    /// The maximum number of idle sessions to track in memory. The default is 10,000 sessions.
+    /// </value>
     /// <remarks>
-    /// Past this limit, the server will log a critical error and terminate the oldest idle sessions even if they have not reached
-    /// their <see cref="IdleTimeout"/> until the idle session count is below this limit. Clients that keep their session open by
-    /// keeping a GET request open will not count towards this limit.
-    /// Defaults to 10,000 sessions.
+    /// <para>
+    /// Past this limit, the server logs a critical error and terminates the oldest idle sessions, even if they have not reached
+    /// their <see cref="IdleTimeout"/>, until the idle session count is below this limit. Sessions with any active HTTP request
+    /// are not considered idle and don't count towards this limit.
+    /// </para>
+    /// <para>
+    /// Legacy SSE sessions (when <see cref="EnableLegacySse"/> is enabled) are never considered idle because their lifetime is
+    /// tied to the open GET <c>/sse</c> request. They are not subject to <see cref="IdleTimeout"/> or this limit — they exist
+    /// exactly as long as the SSE connection is open.
+    /// </para>
     /// </remarks>
+    [Obsolete(Obsoletions.LegacyStatefulHttp_Message, DiagnosticId = Obsoletions.LegacyStatefulHttp_DiagnosticId, UrlFormat = Obsoletions.LegacyStatefulHttp_Url)]
     public int MaxIdleSessionCount { get; set; } = 10_000;
 
     /// <summary>
-    /// Used for testing the <see cref="IdleTimeout"/>.
+    /// Gets or sets the time provider that's used for testing the <see cref="IdleTimeout"/>.
     /// </summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 }

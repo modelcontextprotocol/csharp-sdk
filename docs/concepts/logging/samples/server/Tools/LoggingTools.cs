@@ -13,10 +13,10 @@ public class LoggingTools
         int duration = 10,
         int steps = 10)
     {
-        var progressToken = context.Params?.ProgressToken;
+        var progressToken = context.Params.ProgressToken;
         var stepDuration = duration / steps;
 
-        // <snippet_LoggingConfiguration >
+        // <snippet_LoggingConfiguration>
         ILoggerProvider loggerProvider = context.Server.AsClientLoggerProvider();
         ILogger logger = loggerProvider.CreateLogger("LoggingTools");
         // </snippet_LoggingConfiguration>

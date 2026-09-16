@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using System.Text.Json.Serialization;
 
@@ -9,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// A <see cref="PromptMessage"/> encapsulates content sent to or received from AI models in the Model Context Protocol.
-/// Each message has a specific role (<see cref="Role.User"/> or <see cref="Role.Assistant"/>) and contains content which can be
+/// Each message has a specific role (<see cref="Role.User"/> or <see cref="Role.Assistant"/>) and contains content, which can be
 /// text, images, audio, or embedded resources.
 /// </para>
 /// <para>
@@ -17,15 +18,16 @@ namespace ModelContextProtocol.Protocol;
 /// It serves as a core data structure in the MCP message exchange flow, particularly in prompt formation and model responses.
 /// </para>
 /// <para>
-/// <see cref="PromptMessage"/> objects are typically used in collections within <see cref="GetPromptResult"/> 
+/// <see cref="PromptMessage"/> objects are typically used in collections within <see cref="GetPromptResult"/>
 /// to represent complete conversations or prompt sequences. They can be converted to and from <see cref="ChatMessage"/>
-/// objects using the extension methods <see cref="AIContentExtensions.ToChatMessage(PromptMessage)"/> and
+/// objects using the extension methods <see cref="AIContentExtensions.ToChatMessage(PromptMessage, System.Text.Json.JsonSerializerOptions?)"/> and
 /// <see cref="AIContentExtensions.ToPromptMessages(ChatMessage)"/>.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class PromptMessage
 {
     /// <summary>
@@ -49,4 +51,19 @@ public sealed class PromptMessage
     /// </remarks>
     [JsonPropertyName("role")]
     public required Role Role { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            // Show actual text content if it's a TextContentBlock
+            if (Content is TextContentBlock textBlock)
+            {
+                return $"Role = {Role}, Text = \"{textBlock.Text}\"";
+            }
+
+            return $"Role = {Role}, ContentType = {Content.Type}";
+        }
+    }
 }

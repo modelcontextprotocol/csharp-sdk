@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// The <see cref="ITransport"/> interface is the core abstraction for bidirectional communication.
-/// It provides methods for sending and receiving messages, abstracting away the underlying transport mechanism
+/// It provides methods for sending and receiving messages, abstracting away the underlying transport mechanism,
 /// and allowing protocol implementations to be decoupled from communication details.
 /// </para>
 /// <para>
@@ -27,8 +27,8 @@ public interface ITransport : IAsyncDisposable
 {
     /// <summary>Gets an identifier associated with the current MCP session.</summary>
     /// <remarks>
-    /// Typically populated in transports supporting multiple sessions such as Streamable HTTP or SSE.
-    /// Can return <see langword="null"/> if the session hasn't initialized or if the transport doesn't
+    /// The identifier is typically populated in transports supporting multiple sessions, such as Streamable HTTP or SSE.
+    /// This property can return <see langword="null"/> if the session hasn't initialized or if the transport doesn't
     /// support multiple sessions (as is the case with STDIO).
     /// </remarks>
     string? SessionId { get; }
@@ -39,7 +39,7 @@ public interface ITransport : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// The <see cref="MessageReader"/> provides access to incoming JSON-RPC messages received by the transport.
-    /// It returns a <see cref="ChannelReader{T}"/> which allows consuming messages in a thread-safe manner.
+    /// It returns a <see cref="ChannelReader{T}"/> which allows messages to be consumed in a thread-safe manner.
     /// </para>
     /// <para>
     /// The reader will continue to provide messages as long as the transport is connected. When the transport

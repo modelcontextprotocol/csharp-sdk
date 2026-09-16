@@ -46,7 +46,7 @@ public class StdioServerIntegrationTests(ITestOutputHelper testOutputHelper) : L
         // https://github.com/dotnet/runtime/issues/109432, https://github.com/dotnet/runtime/issues/44944
         Assert.Equal(0, kill(process.Id, SIGINT));
 
-        await process.WaitForExitAsync(TimeSpan.FromSeconds(10));
+        await process.WaitForExitAsync(TestConstants.DefaultTimeout);
 
         Assert.True(process.HasExited);
         Assert.Equal(0, process.ExitCode);

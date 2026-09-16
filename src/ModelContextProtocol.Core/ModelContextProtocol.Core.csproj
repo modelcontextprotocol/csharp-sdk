@@ -7,21 +7,42 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CompatibilitySuppressionFilePath>$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml</CompatibilitySuppressionFilePath>
+    <!-- Suppress the experimental extensions warning -->
+    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
+         The deprecated types remain in the source-generated JsonSerializerContext and are used throughout
+         the implementation, so the obsolete-usage diagnostic is suppressed project-wide here while staying
+         active for external consumers of the package. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\EncodingUtilities.cs" Link="EncodingUtilities.cs" />
+    <Compile Include="..\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
+    <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
+    <Compile Include="..\Common\HttpResponseMessageExtensions.cs" Link="HttpResponseMessageExtensions.cs" />
+    <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
   </ItemGroup>
 
   <!-- Dependencies only needed by netstandard2.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
+    <PackageReference Include="System.Collections.Immutable" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" />
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="System.Threading.Channels" />
@@ -43,8 +64,25 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <!-- Reference analyzers -->
   <ItemGroup>
-    <None Include="README.md" pack="true" PackagePath="\" />
+    <ProjectReference Include="..\ModelContextProtocol.Analyzers\ModelContextProtocol.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Package the analyzer/source generator assembly in the NuGet package -->
+  <ItemGroup>
+    <!-- Include the analyzer DLL directly in the package. The ProjectReference with OutputItemType="Analyzer" ensures it's built before packing. -->
+    <None Include="$(ArtifactsBinDir)ModelContextProtocol.Analyzers\$(Configuration)\netstandard2.0\ModelContextProtocol.Analyzers.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\PACKAGE.md" Pack="true" PackagePath="\README.md" />
   </ItemGroup>
 
 </Project>

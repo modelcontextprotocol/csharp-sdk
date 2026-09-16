@@ -1,0 +1,75 @@
+@HostAddress = http://localhost:3001
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "ping"
+}
+
+###
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "initialize",
+    "params": {
+        "clientInfo": {
+            "name": "RestClient",
+            "version": "0.1.0"
+        },
+        "capabilities": {},
+        "protocolVersion": "2025-11-25"
+    }
+}
+
+###
+
+@SessionId = XxIXkrK210aKVnZxD8Iu_g
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-11-25
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/list"
+}
+
+###
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-11-25
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "resources/list"
+}
+
+###
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-11-25
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "prompts/list"
+}

@@ -58,6 +58,8 @@ internal sealed class StreamableHttpSession(
                     {
                         sessionManager.DecrementIdleSessionCount();
                     }
+                    // Update LastActivityTicks when acquiring reference in Started state to prevent timeout during active usage
+                    LastActivityTicks = sessionManager.TimeProvider.GetTimestamp();
                     break;
                 case SessionState.Disposed:
                     throw new ObjectDisposedException(nameof(StreamableHttpSession));
@@ -70,6 +72,31 @@ internal sealed class StreamableHttpSession(
         }
 
         return new UnreferenceDisposable(this);
+    }
+
+    /// <summary>
+    /// Ensures the session is registered with the session manager without acquiring a reference.
+    /// No-ops if the session is already started.
+    /// </summary>
+    public async ValueTask EnsureStartedAsync(CancellationToken cancellationToken)
+    {
+        bool needsStart;
+        lock (_stateLock)
+        {
+            needsStart = _state == SessionState.Uninitialized;
+            if (needsStart)
+            {
+                _state = SessionState.Started;
+            }
+        }
+
+        if (needsStart)
+        {
+            await sessionManager.StartNewSessionAsync(this, cancellationToken);
+
+            // Session is registered with 0 references (idle), so reflect that in the idle count.
+            sessionManager.IncrementIdleSessionCount();
+        }
     }
 
     public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;

@@ -60,4 +60,10 @@ internal sealed class AuthorizationServerMetadata
     /// </summary>
     [JsonPropertyName("scopes_supported")]
     public List<string>? ScopesSupported { get; init; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether CIMD client IDs are supported.
+    /// </summary>
+    [JsonPropertyName("client_id_metadata_document_supported")]
+    public bool ClientIdMetadataDocumentSupported { get; init; }
 }

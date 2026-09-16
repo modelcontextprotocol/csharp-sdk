@@ -13,9 +13,14 @@ internal sealed class ClientInfo
     public required string ClientId { get; init; }
 
     /// <summary>
+    /// Gets or sets whether a client secret is required.
+    /// </summary>
+    public required bool RequiresClientSecret { get; init; }
+
+    /// <summary>
     /// Gets or sets the client secret.
     /// </summary>
-    public required string ClientSecret { get; init; }
+    public string? ClientSecret { get; init; }
 
     /// <summary>
     /// Gets or sets the list of redirect URIs allowed for this client.

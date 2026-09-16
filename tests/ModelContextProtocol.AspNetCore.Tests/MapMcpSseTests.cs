@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -8,12 +10,18 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     protected override bool UseStreamableHttp => false;
     protected override bool Stateless => false;
 
+    protected override void ConfigureStateless(HttpServerTransportOptions options)
+    {
+        base.ConfigureStateless(options);
+        options.EnableLegacySse = true;
+    }
+
     [Theory]
     [InlineData("/mcp")]
     [InlineData("/mcp/secondary")]
     public async Task Allows_Customizing_Route(string pattern)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
 
         app.MapMcp(pattern);
@@ -45,7 +53,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
                 Name = "TestCustomRouteServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport();
+        }).WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
         await using var app = Builder.Build();
 
         app.MapMcp(routePattern);
@@ -55,5 +63,38 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
         await using var mcpClient = await ConnectAsync(requestPath);
 
         Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
+    }
+
+    [Fact]
+    public async Task EnablePollingAsync_ThrowsInvalidOperationException_InSseMode()
+    {
+        InvalidOperationException? capturedException = null;
+        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
+        {
+            try
+            {
+                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
+            }
+            catch (InvalidOperationException ex)
+            {
+                capturedException = ex;
+            }
+
+            return "Complete";
+        }, options: new() { Name = "polling_tool" });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; }).WithTools([pollingTool]);
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var mcpClient = await ConnectAsync();
+
+        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedException);
+        Assert.Contains("Streamable HTTP", capturedException.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

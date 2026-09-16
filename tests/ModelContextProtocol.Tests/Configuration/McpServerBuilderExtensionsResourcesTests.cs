@@ -1,5 +1,6 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -24,7 +25,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         mcpServerBuilder
                 .WithListResourcesHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -66,7 +67,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     })
                 .WithListResourceTemplatesHandler(async (request, cancellationToken) =>
                     {
-                        var cursor = request.Params?.Cursor;
+                        var cursor = request.Params.Cursor;
                         switch (cursor)
                         {
                             case null:
@@ -95,7 +96,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     })
         .WithReadResourceHandler(async (request, cancellationToken) =>
         {
-            switch (request.Params?.Uri)
+            switch (request.Params.Uri)
             {
                 case "test://Resource1":
                 case "test://Resource2":
@@ -104,11 +105,11 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://ResourceTemplate2":
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)", Uri = request.Params?.Uri ?? "(null)" }]
+                        Contents = [new TextResourceContents { Text = request.Params.Uri ?? "(null)", Uri = request.Params.Uri ?? "(null)" }]
                     };
             }
 
-            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}");
+            throw new McpProtocolException($"Resource not found: {request.Params.Uri}", McpErrorCode.InvalidParams);
         })
         .WithResources<SimpleResources>();
     }
@@ -129,8 +130,8 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.NotNull(client.ServerCapabilities.Resources);
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(5, resources.Count);
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(7, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_direct_resource");
         Assert.Equal("Some neat direct resource", resource.Description);
@@ -146,7 +147,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var resources = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(3, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_templated_resource");
@@ -161,10 +162,17 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_Be_Notified_Of_Resource_Changes()
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream (covered by SubscriptionsListenTests). This test pins the
+        // initialize-handshake revision to keep coverage of the session-wide broadcast that older clients still rely on.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(5, resources.Count);
+
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(7, resources.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -184,8 +192,8 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             serverResources.Add(newResource);
             await notificationRead;
 
-            resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(6, resources.Count);
+            resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(8, resources.Count);
             Assert.Contains(resources, t => t.Name == "NewResource");
 
             notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -194,9 +202,53 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             await notificationRead;
         }
 
-        resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(5, resources.Count);
+        resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(7, resources.Count);
         Assert.DoesNotContain(resources, t => t.Name == "NewResource");
+    }
+
+    [Fact]
+    public async Task DeferChangedEvents_BatchAddResources_EmitsExactlyOneNotification()
+    {
+        // Under the 2026-07-28 protocol, list-changed notifications are delivered only over a
+        // subscriptions/listen stream. Pin the legacy revision to test the session-wide broadcast.
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        });
+
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverResources = serverOptions.ResourceCollection;
+        Assert.NotNull(serverResources);
+
+        int notificationCount = 0;
+        var firstNotification = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (client.RegisterNotificationHandler(NotificationMethods.ResourceListChangedNotification, (notification, cancellationToken) =>
+            {
+                if (Interlocked.Increment(ref notificationCount) == 1)
+                {
+                    firstNotification.TrySetResult(true);
+                }
+                return default;
+            }))
+        {
+            using (serverResources.DeferChangedEvents())
+            {
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource1", UriTemplate = "test://batch1")] () => "1"));
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource2", UriTemplate = "test://batch2")] () => "2"));
+                serverResources.Add(McpServerResource.Create([McpServerResource(Name = "BatchResource3", UriTemplate = "test://batch3")] () => "3"));
+            }
+
+            await firstNotification.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+            // Do a round-trip so that any second (erroneous) notification has time to arrive.
+            var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Contains(resources, t => t.Name == "BatchResource1");
+            Assert.Contains(resources, t => t.Name == "BatchResource2");
+            Assert.Contains(resources, t => t.Name == "BatchResource3");
+
+            Assert.Equal(1, notificationCount);
+        }
     }
 
     [Fact]
@@ -240,6 +292,73 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     }
 
     [Fact]
+    public async Task Logs_Resource_Uri_On_Successful_Read()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ReadResourceAsync(
+            "resource://mcp/some_neat_direct_resource",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        var infoLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ReadResource \"resource://mcp/some_neat_direct_resource\" completed.");
+        Assert.Equal(LogLevel.Information, infoLog.LogLevel);
+    }
+
+    [Fact]
+    public async Task Logs_Resource_Uri_When_Resource_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
+            "resource://mcp/throws_exception",
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal("ReadResource \"resource://mcp/throws_exception\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<InvalidOperationException>(errorLog.Exception);
+    }
+
+    [Fact]
+    public async Task Logs_Resource_Error_When_Resource_Throws_OperationCanceledException()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
+            "resource://mcp/throws_operation_canceled_exception",
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Error &&
+            m.Message == "ReadResource \"resource://mcp/throws_operation_canceled_exception\" threw an unhandled exception." &&
+            m.Exception is OperationCanceledException);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Warning &&
+            m.Message.Contains("request handler failed"));
+    }
+
+    [Fact]
+    public async Task Logs_Resource_Error_When_Resource_Throws_McpProtocolException()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
+            "resource://mcp/throws_mcp_protocol_exception",
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Error &&
+            m.Message == "ReadResource \"resource://mcp/throws_mcp_protocol_exception\" threw an unhandled exception." &&
+            m.Exception is McpProtocolException);
+
+        Assert.Contains(MockLoggerProvider.LogMessages, m =>
+            m.LogLevel == LogLevel.Warning &&
+            m.Message.Contains("request handler failed"));
+    }
+
+    [Fact]
     public async Task Throws_Exception_On_Unknown_Resource()
     {
         await using McpClient client = await CreateMcpClientForServer();
@@ -249,6 +368,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource not found", e.Message);
+        Assert.Equal(McpErrorCode.InvalidParams, e.ErrorCode);
     }
 
     [Fact]
@@ -276,13 +396,10 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResources(target);
 
         McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
-        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }, new()
         {
-            Params = new()
-            {
-                Uri = "returns://string"
-            }
-        }, TestContext.Current.CancellationToken);
+            Uri = "returns://string"
+        }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString(), (result?.Contents[0] as TextResourceContents)?.Text);
     }
@@ -360,6 +477,12 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         [McpServerResource]
         public static string ThrowsException() => throw new InvalidOperationException("uh oh");
+
+        [McpServerResource]
+        public static string ThrowsOperationCanceledException() => throw new OperationCanceledException("Resource was canceled");
+
+        [McpServerResource]
+        public static string ThrowsMcpProtocolException() => throw new McpProtocolException("Resource protocol error", McpErrorCode.InvalidParams);
     }
 
     [McpServerResourceType]

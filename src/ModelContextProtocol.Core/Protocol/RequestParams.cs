@@ -11,8 +11,8 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class RequestParams
 {
-    /// <summary>Prevent external derivations.</summary>
-    private protected RequestParams()
+    /// <summary>Initializes the base request parameter type.</summary>
+    protected RequestParams()
     {
     }
 
@@ -26,7 +26,33 @@ public abstract class RequestParams
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets an opaque token that will be attached to any subsequent progress notifications.
+    /// Gets or sets the responses to server-initiated input requests from a previous <see cref="InputRequiredResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>.
+    /// Each key corresponds to a key from the <see cref="InputRequiredResult.InputRequests"/> map, and
+    /// the value is the client's response to that input request.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("inputResponses")]
+    public IDictionary<string, InputResponse>? InputResponses { get; set; }
+
+    /// <summary>
+    /// Gets or sets opaque request state echoed back from a previous <see cref="InputRequiredResult"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is populated when retrying a request after receiving an <see cref="InputRequiredResult"/>
+    /// that included a <see cref="InputRequiredResult.RequestState"/> value. The client must echo back the
+    /// exact value without modification.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("requestState")]
+    public string? RequestState { get; set; }
+
+    /// <summary>
+    /// Gets the opaque token that will be attached to any subsequent progress notifications.
     /// </summary>
     [JsonIgnore]
     public ProgressToken? ProgressToken
@@ -47,22 +73,6 @@ public abstract class RequestParams
             }
 
             return null;
-        }
-        set
-        {
-            if (value is null)
-            {
-                Meta?.Remove("progressToken");
-            }
-            else
-            {
-                (Meta ??= [])["progressToken"] = value.Value.Token switch
-                {
-                    string s => JsonValue.Create(s),
-                    long l => JsonValue.Create(l),
-                    _ => throw new InvalidOperationException("ProgressToken must be a string or a long.")
-                };
-            }
         }
     }
 }

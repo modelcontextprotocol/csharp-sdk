@@ -29,7 +29,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
     /// </remarks>
     public void Set<TParams, TResult>(
         string method,
-        Func<TParams?, JsonRpcRequest, CancellationToken, ValueTask<TResult>> handler,
+        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<TResult>> handler,
         JsonTypeInfo<TParams> requestTypeInfo,
         JsonTypeInfo<TResult> responseTypeInfo)
     {
@@ -40,9 +40,41 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
         this[method] = async (request, cancellationToken) =>
         {
-            TParams? typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo);
+            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
             object? result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToNode(result, responseTypeInfo);
         };
     }
+
+#pragma warning disable MCPEXP002 // SetWithAlternate consumes the experimental ResultOrAlternate seam
+    /// <summary>
+    /// Registers a handler that may return either a standard result or an alternate <see cref="Result"/>
+    /// subtype for scenarios like task-augmented execution.
+    /// </summary>
+    public void SetWithAlternate<TParams, TResult>(
+        string method,
+        Func<TParams, JsonRpcRequest, CancellationToken, ValueTask<ResultOrAlternate<TResult>>> handler,
+        JsonTypeInfo<TParams> requestTypeInfo,
+        JsonTypeInfo<TResult> responseTypeInfo)
+        where TResult : Result
+    {
+        Throw.IfNull(method);
+        Throw.IfNull(handler);
+        Throw.IfNull(requestTypeInfo);
+        Throw.IfNull(responseTypeInfo);
+
+        this[method] = async (request, cancellationToken) =>
+        {
+            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
+            var augmented = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
+
+            if (augmented.IsAlternate)
+            {
+                return JsonSerializer.SerializeToNode(augmented.Alternate!, augmented.AlternateTypeInfo!);
+            }
+
+            return JsonSerializer.SerializeToNode(augmented.Result!, responseTypeInfo);
+        };
+    }
+#pragma warning restore MCPEXP002
 }

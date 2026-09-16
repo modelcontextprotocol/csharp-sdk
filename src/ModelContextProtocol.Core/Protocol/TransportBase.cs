@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Protocol;
@@ -89,9 +90,13 @@ public abstract partial class TransportBase : ITransport
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     protected async Task WriteMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected.");
+            // Transport disconnected concurrently. Silently drop rather than throw,
+            // to avoid surfacing spurious errors during shutdown races.
+            return;
         }
 
         if (_logger.IsEnabled(LogLevel.Debug))
@@ -137,7 +142,7 @@ public abstract partial class TransportBase : ITransport
     /// <summary>
     /// Sets the transport to a disconnected state.
     /// </summary>
-    /// <param name="error">Optional error information associated with the transport disconnecting. Should be <see langwor="null"/> if the disconnect was graceful and expected.</param>
+    /// <param name="error">Optional error information associated with the transport disconnecting. Should be <see langword="null"/> if the disconnect was graceful and expected.</param>
     protected void SetDisconnected(Exception? error = null)
     {
         int state = _state;
@@ -163,6 +168,21 @@ public abstract partial class TransportBase : ITransport
 
     [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} transport send failed for message ID '{MessageId}'.")]
     private protected partial void LogTransportSendFailed(string endpointName, string messageId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport sending message. Message: '{Message}'.")]
+    private protected partial void LogTransportSendingMessageSensitive(string endpointName, string message);
+
+    /// <summary>
+    /// Logs a sending message at Trace level if trace logging is enabled.
+    /// </summary>
+    /// <param name="message">The JSON-RPC message to log.</param>
+    private protected void LogTransportSendingMessageSensitive(JsonRpcMessage message)
+    {
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportSendingMessageSensitive(Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+        }
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport reading messages.")]
     private protected partial void LogTransportEnteringReadMessagesLoop(string endpointName);

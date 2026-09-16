@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -76,7 +75,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// Gets or sets an optional list of icons for this resource template.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the resource template's icon in a user interface.
+    /// This value can be used by clients to display the resource template's icon in a user interface.
     /// </remarks>
     [JsonPropertyName("icons")]
     public IList<Icon>? Icons { get; set; }
@@ -90,15 +89,9 @@ public sealed class ResourceTemplate : IBaseMetadata
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
 
-    /// <summary>Gets whether <see cref="UriTemplate"/> contains any template expressions.</summary>
+    /// <summary>Gets a value that indicates whether <see cref="UriTemplate"/> contains any template expressions.</summary>
     [JsonIgnore]
     public bool IsTemplated => UriTemplate.Contains('{');
-
-    /// <summary>
-    /// Gets or sets the callable server resource corresponding to this metadata if any.
-    /// </summary>
-    [JsonIgnore]
-    public McpServerResource? McpServerResource { get; set; }
 
     /// <summary>Converts the <see cref="ResourceTemplate"/> into a <see cref="Resource"/>.</summary>
     /// <returns>A <see cref="Resource"/> if <see cref="IsTemplated"/> is <see langword="false"/>; otherwise, <see langword="null"/>.</returns>
@@ -119,7 +112,6 @@ public sealed class ResourceTemplate : IBaseMetadata
             Annotations = Annotations,
             Icons = Icons,
             Meta = Meta,
-            McpServerResource = McpServerResource,
         };
     }
 }

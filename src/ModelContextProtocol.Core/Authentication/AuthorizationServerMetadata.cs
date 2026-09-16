@@ -66,4 +66,17 @@ internal sealed class AuthorizationServerMetadata
     /// </summary>
     [JsonPropertyName("scopes_supported")]
     public List<string>? ScopesSupported { get; set; }
+
+    /// <summary>
+    /// Indicates if the server supports OAuth Client ID Metadata Documents.
+    /// </summary>
+    [JsonPropertyName("client_id_metadata_document_supported")]
+    public bool ClientIdMetadataDocumentSupported { get; set; }
+
+    /// <summary>
+    /// Indicates whether the authorization server includes the <c>iss</c> parameter in authorization responses
+    /// as defined in <see href="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</see>.
+    /// </summary>
+    [JsonPropertyName("authorization_response_iss_parameter_supported")]
+    public bool AuthorizationResponseIssParameterSupported { get; set; }
 }

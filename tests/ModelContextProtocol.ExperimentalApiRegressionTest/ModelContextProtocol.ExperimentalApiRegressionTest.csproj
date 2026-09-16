@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net9.0;net8.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      This project validates that MCPEXP001 diagnostics are NOT emitted by the
+      System.Text.Json source generator for types with experimental properties.
+      tests/Directory.Build.props suppresses MCPEXP001 globally for all test projects,
+      but this project must NOT suppress it: its successful compilation IS the test.
+    -->
+    <NoWarn>$(NoWarn.Replace('MCPEXP001',''))</NoWarn>
+
+    <!--
+      [JsonInclude] internal members trigger this warning only because the MCP C# SDK
+      is a project reference here. NuGet consumers won't see it since Roslyn doesn't import
+      internal members from metadata.
+    -->
+    <NoWarn>$(NoWarn);SYSLIB1038</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
+  </ItemGroup>
+
+</Project>

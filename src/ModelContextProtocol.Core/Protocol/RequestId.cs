@@ -13,6 +13,7 @@ public readonly struct RequestId : IEquatable<RequestId>
 {
     /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
     /// <param name="value">The required ID value.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>.</exception>
     public RequestId(string value)
     {
         Throw.IfNull(value);
@@ -27,8 +28,8 @@ public readonly struct RequestId : IEquatable<RequestId>
         Id = value;
     }
 
-    /// <summary>Gets the underlying object for this id.</summary>
-    /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
+    /// <summary>Gets the underlying object for this ID.</summary>
+    /// <remarks>This object will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
     public object? Id { get; }
 
     /// <inheritdoc />
@@ -65,7 +66,8 @@ public readonly struct RequestId : IEquatable<RequestId>
             {
                 JsonTokenType.String => new(reader.GetString()!),
                 JsonTokenType.Number => new(reader.GetInt64()),
-                _ => throw new JsonException("requestId must be a string or an integer"),
+                JsonTokenType.Null => default,
+                _ => throw new JsonException("requestId must be a string, integer, or null"),
             };
         }
 
@@ -85,7 +87,11 @@ public readonly struct RequestId : IEquatable<RequestId>
                     return;
 
                 case null:
-                    writer.WriteStringValue(string.Empty);
+                    // A null Id represents a JSON-RPC error response whose request id could not be
+                    // determined (JSON-RPC 2.0 §5; the MCP base protocol permits an error response to a
+                    // malformed request to carry a null id). Emit JSON null — not "" — so the wire form
+                    // is spec-conformant and round-trips losslessly with the Null-accepting Read above.
+                    writer.WriteNullValue();
                     return;
             }
         }

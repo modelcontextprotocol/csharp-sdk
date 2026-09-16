@@ -1,4 +1,5 @@
 using Elicitation.Tools;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,8 +7,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
-        options.IdleTimeout = Timeout.InfiniteTimeSpan // Never timeout
-    )
+    {
+        // Elicitation requires stateful mode because it sends server-to-client requests.
+        // Set SessionMode = HttpServerSessionMode.Stateful since it's required.
+        options.SessionMode = HttpServerSessionMode.Stateful;
+    })
     .WithTools<InteractiveTools>();
 
 builder.Logging.AddConsole(options =>

@@ -21,6 +21,7 @@ public partial class ElicitationTests : ClientServerTestBase
             var result = await request.Server.ElicitAsync(
                 new()
                 {
+                    Mode = "form",
                     Message = "Please provide more information.",
                     RequestedSchema = new()
                     {
@@ -44,10 +45,14 @@ public partial class ElicitationTests : ClientServerTestBase
                                 Description = "description4",
                                 Default = true,
                             },
-                            ["prop4"] = new ElicitRequestParams.EnumSchema
+                            ["prop4"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
                             {
-                                Enum = ["option1", "option2", "option3"],
-                                EnumNames = ["Name1", "Name2", "Name3"],
+                                OneOf =
+                                [
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option1", Title = "Name1" },
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option2", Title = "Name2" },
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option3", Title = "Name3" },
+                                ]
                             },
                         },
                     },
@@ -73,7 +78,9 @@ public partial class ElicitationTests : ClientServerTestBase
                 ElicitationHandler = async (request, cancellationtoken) =>
                 {
                     Assert.NotNull(request);
+                    Assert.Equal("form", request.Mode);
                     Assert.Equal("Please provide more information.", request.Message);
+                    Assert.NotNull(request.RequestedSchema);
                     Assert.Equal(4, request.RequestedSchema.Properties.Count);
 
                     foreach (var entry in request.RequestedSchema.Properties)
@@ -102,9 +109,9 @@ public partial class ElicitationTests : ClientServerTestBase
                                 break;
 
                             case "prop4":
-                                var primitiveEnum = Assert.IsType<ElicitRequestParams.EnumSchema>(entry.Value);
-                                Assert.Equal(["option1", "option2", "option3"], primitiveEnum.Enum);
-                                Assert.Equal(["Name1", "Name2", "Name3"], primitiveEnum.EnumNames);
+                                var primitiveEnum = Assert.IsType<ElicitRequestParams.TitledSingleSelectEnumSchema>(entry.Value);
+                                Assert.Equal(["option1", "option2", "option3"], primitiveEnum.OneOf.Select(e => e.Const));
+                                Assert.Equal(["Name1", "Name2", "Name3"], primitiveEnum.OneOf.Select(e => e.Title));
                                 break;
 
                             default:
@@ -118,18 +125,18 @@ public partial class ElicitationTests : ClientServerTestBase
                         Action = "accept",
                         Content = new Dictionary<string, JsonElement>
                         {
-                            ["prop1"] = (JsonElement)JsonSerializer.Deserialize("""
+                            ["prop1"] = JsonElement.Parse("""
                                 "string result"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop2"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop2"] = JsonElement.Parse("""
                                 42
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop3"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop3"] = JsonElement.Parse("""
                                 true
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop4"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop4"] = JsonElement.Parse("""
                                 "option2"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                """),
                         },
                     };
                 }

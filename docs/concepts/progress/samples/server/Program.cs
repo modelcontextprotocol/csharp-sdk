@@ -1,3 +1,4 @@
+using ModelContextProtocol.AspNetCore;
 using Progress.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -5,7 +6,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options =>
+    {
+        options.SessionMode = HttpServerSessionMode.Stateless;
+    })
     .WithTools<LongRunningTools>();
 
 builder.Logging.AddConsole(options =>

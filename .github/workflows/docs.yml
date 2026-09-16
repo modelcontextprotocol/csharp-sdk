@@ -1,9 +1,28 @@
 name: Publish Docs
 
+# Publishes the versioned docs site to GitHub Pages.
+#
+# Discovers the versions to publish from the repository's GitHub releases (the
+# latest release, by date, for each major >= 1), builds each release tag into
+# its own sub-path (e.g. /v1/ and /v2/) with make generate-docs, injects a
+# version-picker widget into each page, adds a root redirect to the default
+# version, and deploys the combined site. A manual dispatch can build every
+# major-version path from release tags or current source branches.
+# Triggers on release publish and manual dispatch.
+
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      docs_source:
+        description: Source for every published major-version path
+        required: true
+        default: release-tags
+        type: choice
+        options:
+        - release-tags
+        - latest-branches
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -11,11 +30,12 @@ permissions:
   pages: write
   id-token: write # Required for actions/deploy-pages
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment. Cancel any in-progress run when a newer one
+# starts: every run rediscovers the current releases and rebuilds the whole site from
+# scratch, so a newer run fully supersedes the work of the one it cancels.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish-docs:
@@ -26,24 +46,123 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+    - name: Checkout docs orchestration
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # A release event otherwise checks out the released tag. Keep the
+        # orchestration scripts and picker assets current with main.
+        ref: main
+        # Full history + tags so we can add a worktree for each version's release tag.
+        fetch-depth: 0
 
     - name: .NET Setup
-      uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         dotnet-version: |
           10.0.x
           9.0.x
 
-    - name: Generate documentation
-      run: make generate-docs
+    - name: Discover versions from GitHub releases
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      # For every major version >= 1, take the most recently published (by date)
+      # non-draft release tagged v{major}.*. The vN prefix becomes the URL slug;
+      # the site root redirects to the newest release, including prereleases.
+      run: |
+        set -euo pipefail
+        gh release list --repo "${{ github.repository }}" --limit 200 \
+          --json tagName,isPrerelease,isDraft,publishedAt \
+          --jq '
+            [ .[]
+              | select((.isDraft | not) and (.tagName | test("^v[1-9][0-9]*\\.")))
+              | { slug: (.tagName | match("^v[0-9]+").string),
+                  ref: .tagName, label: .tagName,
+                  prerelease: .isPrerelease, published: .publishedAt }
+            ]
+            | group_by(.slug)
+            | map(max_by(.published))
+            | sort_by(.published) | reverse
+            | { default: .[0].slug,
+                versions: map({ slug, ref, label, prerelease }) }
+          ' | tee "$RUNNER_TEMP/docs-versions.json"
+
+    - name: Build all versions
+      shell: bash
+      env:
+        USE_SOURCE_BRANCHES: ${{ inputs.docs_source == 'latest-branches' }}
+      run: |
+        set -euo pipefail
+        ROOT="$PWD"
+        COMBINED="$ROOT/combined"
+        rm -rf "$COMBINED"
+        mkdir -p "$COMBINED"
+
+        # Orchestration (discovered docs-versions.json, scripts, picker assets)
+        # always comes from THIS branch. Normally each version's HTML is produced
+        # by its release tag. A manual dispatch can instead build every major from
+        # its current source branch.
+        git fetch --tags --force --prune origin "+refs/heads/*:refs/remotes/origin/*"
+        USE_SOURCE_BRANCHES="${USE_SOURCE_BRANCHES:-false}"
+
+        MAIN_SLUG=""
+        if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
+          MAIN_PROPS="$(mktemp)"
+          git show refs/remotes/origin/main:src/Directory.Build.props > "$MAIN_PROPS"
+          MAIN_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$MAIN_PROPS")"
+          rm -f "$MAIN_PROPS"
+          echo "Refreshing all published docs from source branches (main serves $MAIN_SLUG)"
+        else
+          echo "Refreshing all published docs from release tags"
+        fi
+
+        while IFS=$'\t' read -r slug ref; do
+          if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
+            source_branch="release/${slug#v}.x"
+            if ! git show-ref --verify --quiet "refs/remotes/origin/$source_branch"; then
+              if [[ "$slug" == "$MAIN_SLUG" ]]; then
+                source_branch="main"
+              else
+                echo "::error::No source branch found for $slug. Expected release/${slug#v}.x, or main with VersionPrefix for $slug."
+                exit 1
+              fi
+            fi
+
+            echo "::group::Build $slug (from branch $source_branch)"
+            wt="$ROOT/../work-$slug"
+            git worktree add --force --detach "$wt" "refs/remotes/origin/$source_branch"
+            source_slug="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$wt/src/Directory.Build.props")"
+            if [[ "$source_slug" != "$slug" ]]; then
+              git worktree remove --force "$wt"
+              echo "::error::Source branch '$source_branch' has major '$source_slug', not '$slug'."
+              exit 1
+            fi
+          else
+            echo "::group::Build $slug (from tag $ref)"
+            wt="$ROOT/../work-$slug"
+            git worktree add --force --detach "$wt" "refs/tags/$ref"
+          fi
+
+          make -C "$wt" generate-docs
+
+          mkdir -p "$COMBINED/$slug"
+          cp -a "$wt/artifacts/_site/." "$COMBINED/$slug/"
+          node "$ROOT/scripts/inject-version-picker.mjs" "$COMBINED/$slug" "$slug" --base /
+
+          git worktree remove --force "$wt"
+          echo "::endgroup::"
+        done < <(node "$ROOT/scripts/list-versions.mjs")
+
+        node "$ROOT/scripts/finalize-docs-site.mjs" "$COMBINED"
+
+        echo "Combined site contents:"
+        ls -la "$COMBINED"
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
       with:
-        path: 'artifacts/_site'
+        path: 'combined'
 
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+      uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

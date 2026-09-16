@@ -21,7 +21,7 @@ public sealed class Argument
     /// Gets or sets the current partial text value for which completion suggestions are requested.
     /// </summary>
     /// <remarks>
-    /// This represents the text that has been entered so far and for which completion
+    /// This property represents the text that has been entered so far and for which completion
     /// options should be generated.
     /// </remarks>
     [JsonPropertyName("value")]

@@ -78,16 +78,16 @@ async ValueTask<ElicitResult> HandleElicitationAsync(ElicitRequestParams? reques
             // Try standard boolean parsing first
             if (bool.TryParse(clientInput, out parsedBool))
             {
-                content[property.Key] = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(parsedBool));
+                content[property.Key] = JsonElement.Parse(JsonSerializer.Serialize(parsedBool));
             }
             // Also accept "yes"/"no" as valid boolean inputs
             else if (string.Equals(clientInput?.Trim(), "yes", StringComparison.OrdinalIgnoreCase))
             {
-                content[property.Key] = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(true));
+                content[property.Key] = JsonElement.Parse(JsonSerializer.Serialize(true));
             }
             else if (string.Equals(clientInput?.Trim(), "no", StringComparison.OrdinalIgnoreCase))
             {
-                content[property.Key] = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(false));
+                content[property.Key] = JsonElement.Parse(JsonSerializer.Serialize(false));
             }
         }
         else if (property.Value is ElicitRequestParams.NumberSchema numberSchema)
@@ -97,14 +97,14 @@ async ValueTask<ElicitResult> HandleElicitationAsync(ElicitRequestParams? reques
             double parsedNumber;
             if (double.TryParse(clientInput, out parsedNumber))
             {
-                content[property.Key] = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(parsedNumber));
+                content[property.Key] = JsonElement.Parse(JsonSerializer.Serialize(parsedNumber));
             }
         }
         else if (property.Value is ElicitRequestParams.StringSchema stringSchema)
         {
             Console.Write($"{stringSchema.Description}: ");
             var clientInput = Console.ReadLine();
-            content[property.Key] = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(clientInput));
+            content[property.Key] = JsonElement.Parse(JsonSerializer.Serialize(clientInput));
         }
     }
 

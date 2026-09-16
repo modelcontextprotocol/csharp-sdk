@@ -1,0 +1,274 @@
+---
+name: publish-release
+description: Publish a GitHub release for the C# MCP SDK after a prepare-release PR has been merged. Refreshes release notes to include any PRs merged since preparation, warns about version or breaking change impacts from late-arriving PRs, and creates a draft GitHub release. Use when asked to publish a release, finalize a release, create release notes, or complete a release after the prepare-release PR has been merged.
+compatibility: Requires gh CLI with repo access and GitHub API access for PR details, timeline events, and commit trailers.
+---
+
+# Publish Release
+
+Create a GitHub release for the `modelcontextprotocol/csharp-sdk` repository after a **prepare-release** PR has been merged. This skill refreshes the release notes to include any PRs merged between the preparation branch point and the merge, warns about changes that affect the version or breaking change assessment, and creates a **draft** GitHub release.
+
+Use the shared [release branch reference](../shared-resources/release-branches.md) for branch roles, previous-release lookup rules, and release work-branch naming.
+
+> **Safety: This skill only creates and updates draft releases. It must never publish a release.** If the user asks to publish, decline and instruct them to publish manually through the GitHub UI.
+
+## Process
+
+Work through each step sequentially. Present findings at each step and get user confirmation before proceeding.
+
+### Step 0: Sync With Upstream
+
+This skill reads the merged release PR, the commit range since the previous release, and the
+previous release tag. All three come from local refs that may be stale — most importantly, the
+merge commit for the release PR will not exist locally until you fetch.
+
+1. Identify the remote pointing at `modelcontextprotocol/csharp-sdk` (`git remote -v`) — do not
+   assume it is `origin`.
+2. `git fetch {upstream} --prune --prune-tags --tags`
+3. Confirm the merged release PR's merge commit resolves locally.
+
+Report anything the fetch changed before continuing.
+
+### Step 1: Identify the Prepare-Release PR
+
+The user may provide:
+- **A PR number or URL** — use directly
+- **A version number** (e.g., `1.1.0`, `2.0.0-preview.1`) — search for a merged PR titled `Release v{version}`. Prerelease versions are used verbatim, for example `Release v2.0.0-preview.1`
+- **No context** — list recently merged PRs with `Release v` in the title and ask the user to select
+
+Verify the PR is merged. Extract:
+- The release version from the PR title and branch name
+- The merge commit SHA
+- The PR description (which contains draft release notes, ApiCompat, and ApiDiff from the **prepare-release** skill)
+
+### Step 2: Determine Version and Commit Range
+
+1. Read `src/Directory.Build.props` at the merge commit to confirm `<VersionPrefix>` and `<VersionSuffix>`. The tag is `v{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present; for example, `<VersionPrefix>2.0.0</VersionPrefix>` + `<VersionSuffix>preview.1</VersionSuffix>` → `v2.0.0-preview.1`.
+2. Determine the previous release tag from `gh release list` — the **highest semver** among published releases that are ancestors of the merge commit (exclude drafts with `--exclude-drafts`). Do not order by publication date. When the merge commit is on a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, there is no MAJOR filter. See [release-branches.md](../shared-resources/release-branches.md#previous-release-tag-lookup).
+3. Identify the full commit range: previous release tag → merge commit.
+
+### Step 3: Check for Additional PRs
+
+Compare the PRs included in the original prepare-release PR description with the full set of PRs now merged in the commit range. Use the [SemVer assessment guide](../bump-version/references/semver-assessment.md) (owned by the **bump-version** skill) to evaluate the impact of any new PRs against the version that was committed during preparation, including its prerelease and branch-context computation rules. This is not a policy change; only the version computation and previous-release lookup change.
+
+1. Extract the PR list from the prepare-release PR description (all `#NNN` references in release notes sections).
+2. Get the full set of PRs merged between the previous release tag and the merge commit.
+3. Identify any **new PRs** — PRs present in the full range but not referenced in the prepare-release description.
+
+If new PRs exist, **warn the user** with details for each new PR:
+
+> ⚠️ **New PRs merged since release preparation:**
+>
+> * #NNN — Title (@author) — [impact assessment]
+
+For each new PR, assess and flag impacts:
+
+- **Breaking changes** — Does this PR introduce breaking changes not covered by the original audit? If yes, **warn** that the semantic version may need to be re-assessed. This is a **critical warning** — the release version may be incorrect.
+- **API surface changes** — Does this PR add new public APIs? If yes, warn that the ApiCompat and ApiDiff results in the prepare-release PR are stale and should not be relied upon.
+- **Version impact** — Does this PR change the SemVer level (e.g., what was assessed as PATCH now warrants MINOR, or MINOR now warrants MAJOR)?
+
+If any new PRs have version-level or breaking change impacts, **strongly recommend** that the user either:
+1. **Abort** and re-run the **prepare-release** skill to produce an updated release PR with correct version, ApiCompat, and ApiDiff results
+2. **Acknowledge** the impacts and proceed with the current version, documenting the decision in the release notes
+
+The user must explicitly choose an option before proceeding.
+
+### Step 4: Refresh Release Notes
+
+Re-categorize all PRs in the commit range (including any new ones from Step 3). See the [categorization guide](../prepare-release/references/categorization.md) for detailed guidance.
+
+1. **Re-run the breaking change audit** using the **breaking-changes** skill if new PRs were found that may introduce breaks. Otherwise, carry forward the results from the prepare-release PR.
+2. **Re-categorize** all PRs into sections (What's Changed, Documentation, Tests, Infrastructure).
+3. **Re-attribute** co-authors for any new PRs by harvesting `Co-authored-by` trailers from all commits in each PR.
+4. **Update acknowledgements** to include contributors from new PRs, excluding maintainers as issue reporters (see prepare-release Step 10 item 7).
+5. **Carry forward the prepare-release categorization decisions.** If the user recategorized a PR or removed an acknowledgement during preparation, honor that. Re-deriving categories from scratch will silently reintroduce the exact corrections they already made.
+6. **Review with the user** using the categorization table and acknowledgements roster from prepare-release Step 10b — at minimum for PRs new since preparation, and for any entry whose section you changed. Do not fold this into the Step 9 draft-creation gate.
+
+### Step 5: Review README and Validate Code Samples
+
+Re-run the README content checklist from [../prepare-release/references/readme-content.md](../prepare-release/references/readme-content.md) and validate code samples against the current SDK at the merge commit. Produce final suggestions before the release is created.
+
+1. **Content checklist** -- Open `src/PACKAGE.md` and verify:
+   - **Package-list closure**: every shipping SDK package is listed. If a new package was introduced after prepare-release ran, it may be missing.
+   - **Badge strategy**: all badges use `nuget/vpre` for a prerelease or `nuget/v` for a stable release. Verify the badge style is correct for this release type.
+   - **Release-notes link**: the link points to `https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v{version}` for the tag being created. The tag is about to exist -- verify the URL is correct.
+   - **Root README.md sync**: confirm the root `README.md` package list is aligned.
+2. **Snippet validation** -- Extract `csharp`-fenced code blocks from `src/PACKAGE.md` and `README.md`, build the temporary test project, and report results. Follow [../prepare-release/references/readme-snippets.md](../prepare-release/references/readme-snippets.md) for the full procedure.
+3. **Delete** the temporary project after validation.
+
+If issues are found, present them to the user with proposed fixes.
+
+**Applying them is not a local commit.** The release PR is already merged, so its branch is gone;
+fixes belong on the base branch this release ships from (`main` or `release/{MAJOR}.x`), which is
+protected. Open a small PR for them, let CI run, and merge it — do not push to the base branch
+directly, and do not amend or re-tag anything already reviewed.
+
+Then **re-target the draft release**, which is pinned to the previously approved merge commit and
+therefore does not contain the fix:
+
+```sh
+gh release edit v{version} --target {new-merge-commit-sha}
+```
+
+Regenerate the release notes afterward so the commit range covers the new PR, and re-run the Step 6
+section review for anything that changed. If the user prefers not to take the fix in this release,
+that is a valid choice — leave the draft pinned where it is and note the deferred item, rather than
+carrying a fix that the tag will not include.
+
+**Edge Cases:**
+- **Stale package closure** -- A package introduced between prepare-release and now may not be listed. Add it to `src/PACKAGE.md` and `README.md`.
+- **Wrong badge style for the release type** -- Switch all badges together from `nuget/vpre` to `nuget/v` (or vice versa) if the prepare-release step used the wrong style.
+- **Missing or incorrect release-notes link** -- Correct the link to target the exact tag being created, including any prerelease suffix.
+
+### Step 6: Review Sections
+
+Present each section for user review:
+1. **Breaking Changes** — sorted most → least impactful
+2. **What's Changed** — chronological
+3. **Documentation Updates** — chronological
+4. **Test Improvements** — chronological
+5. **Repository Infrastructure Updates** — chronological
+6. **Acknowledgements**
+
+Highlight any changes from the prepare-release draft (new entries, reordered entries, updated descriptions) so the user can see what's different.
+
+### Step 7: Preamble
+
+Every release **must** have a preamble — a short paragraph summarizing the release theme that appears before the first `##` heading. The preamble is not optional. The preamble may mention the presence of breaking changes as part of the theme summary, but the versioning documentation link belongs under the Breaking Changes heading (see template), not in the preamble. That link must use the `v{MAJOR}` slug for the version being released.
+
+Extract the draft preamble from the prepare-release PR description and present it alongside a freshly drafted alternative (accounting for any new PRs).
+
+Present both options and let the user choose one, edit one, or enter their own text or markdown.
+
+### Step 8: Final Assembly
+
+1. Combine the confirmed preamble with all sections from previous steps.
+2. **Notable callouts** — only if something is extraordinarily noteworthy.
+3. Present the **complete release notes** for user approval.
+
+Follow [references/formatting.md](references/formatting.md) when composing and updating the release body.
+
+### Step 9: Create Draft Release
+
+Display release metadata for user review:
+- **Title / Tag**: the confirmed tag, including any prerelease suffix (e.g. `v1.3.1`, `v2.0.0-preview.1`)
+- **Target**: merge commit SHA, its message, the merge commit's branch (the prepare-release PR base), and the prepare-release PR link
+
+After confirmation:
+- Create with `gh release create --draft {tag} --target {merge-commit-sha}` (always `--draft`), using the prerelease tag verbatim when present
+- **Target the full commit SHA, never a branch name.** A draft sits unpublished until a human
+  reviews and publishes it, which can be hours. `--target` is resolved when the tag is created --
+  at publish time, not now -- so a branch name silently re-resolves to whatever landed on that
+  branch in the meantime. The tag would then be cut at a commit nobody reviewed, and the release
+  notes would describe a different commit than the one shipped. The SHA you displayed above is the
+  commit the user approved; pass that exact SHA.
+- **Never publish.** If the user asks to publish, decline and instruct them to publish manually.
+
+Pinning the SHA costs nothing, because a draft release does not create the git tag. GitHub stores
+the target and creates the tag only when the release is published, so the tag remains uncreated and
+the draft fully editable while it waits.
+
+That is also what makes a late-arriving commit easy to absorb. If the user decides to include work
+that merged after the draft was created, do not delete and recreate the release: repoint it with
+`gh release edit {tag} --target {new-commit-sha}`, then regenerate the release notes for the new
+range and present them for approval again. Never move the target without revising the notes to
+match -- a target change silently alters what shipped.
+
+Then hand off to the user with the publishing checklist:
+
+> The draft release is ready at {release URL}. Before publishing:
+>
+> 1. Review the release notes line by line — this is the last review before they are public.
+> 2. Check **Set as a pre-release** if this is a prerelease.
+> 3. Once you have signed off on the notes, **remove the AI-generated disclosure note** from the
+>    bottom of the body. It is there because the draft was AI-drafted; after your thorough review
+>    and sign-off, the published notes stand as your reviewed work.
+> 4. Click **Publish release**.
+
+The disclosure is removed by the **user**, as part of their sign-off — never remove it yourself, and
+never remove it from a pull request description, an issue, or a comment. If the user asks you to
+edit the draft body after they have removed it, do not reintroduce it.
+
+When the user requests revisions after the initial creation, always rewrite the complete body as a file — never perform in-place string replacements. See [references/formatting.md](references/formatting.md).
+
+### Step 10: Watch for Publication
+
+Do not end the skill by asking the user to report back when they have published. Poll the release
+until it is no longer a draft:
+
+```sh
+gh release view v{version} --json isDraft,publishedAt,tagName,isPrerelease
+```
+
+Poll at a modest interval — this gate is human-paced and may span hours or a session boundary. Say
+that you are watching rather than going silent.
+
+When `isDraft` becomes `false`:
+
+1. Record the publication time from `publishedAt`, not from when the poll noticed.
+2. Confirm the tag that was actually created and whether the release was marked as a prerelease.
+   Both were the user's to set and cannot be inferred.
+3. **Hand off to the verify-release skill immediately.** Publishing starts the Release and Publish
+   Docs workflows in parallel at that moment; verification that begins late misses them mid-flight.
+
+If the user reports publishing but the API still shows a draft, trust the API and say so — an
+unsaved draft looks identical to a published release from the browser.
+
+## Edge Cases
+
+- **No new PRs since preparation**: proceed normally — the prepare-release notes are used as the foundation with no warnings
+- **New PR introduces breaking changes**: strongly recommend aborting and re-running prepare-release; if user chooses to proceed, document the decision and update the breaking changes section
+- **New PR changes version level**: warn that the release tag may not match the expected SemVer level; recommend re-running prepare-release
+- **Prepare-release PR description is malformed**: fall back to gathering all data fresh from the commit range
+- **PR not found**: if the prepare-release PR cannot be identified, offer to proceed manually by specifying a version and target commit
+- **Draft already exists**: if a draft release with the same tag already exists, offer to update it
+- **PR spans categories**: categorize by primary intent
+- **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
+- **No breaking changes**: omit the Breaking Changes section entirely
+- **Versioning link carried over from the prepare-release draft**: the draft may contain an unslugged or wrong-MAJOR versioning link. Correct it to the `v{MAJOR}` slug of the version being released before the draft release is created.
+- **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path is created by the Publish Docs workflow when the release is published. It is expected to 404 until then; use the slugged form regardless.
+- **Single breaking change**: use the same numbered format as multiple
+- **Draft edited but not published**: the user is still reviewing, and may be removing the AI disclosure. Take no action and do not reintroduce anything they removed
+- **Draft disappears without a published release**: it may have been deleted, or published under a different tag. Check for a published release before assuming it was abandoned, then ask
+- **Published tag differs from the prepared version**: stop and confirm with the user before verifying. Verifying the wrong version is worse than not verifying
+
+## Release Notes Template
+
+Omit empty sections. The preamble is **always required** — it is not inside a section heading. Tags may include prerelease suffixes, such as `v2.0.0-preview.1`, and Full Changelog compare links should use the exact tag. The versioning link uses the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
+
+```markdown
+[Preamble — REQUIRED. Summarize the release theme.]
+
+## Breaking Changes
+
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
+
+1. **Description #PR**
+   * Detail of the break
+   * Migration guidance
+
+## What's Changed
+
+* Description #PR by @author (co-authored by @user1 @Copilot)
+
+## Documentation Updates
+
+* Description #PR by @author (co-authored by @user1 @Copilot)
+
+## Test Improvements
+
+* Description #PR by @author (co-authored by @user1 @Copilot)
+
+## Repository Infrastructure Updates
+
+* Description #PR by @author (co-authored by @user1 @Copilot)
+
+## Acknowledgements
+
+* @user made their first contribution in #PR
+* @user submitted issue #1234 (resolved by #5678)
+* @user1 @user2 @user3 reviewed pull requests
+
+**Full Changelog**: https://github.com/modelcontextprotocol/csharp-sdk/compare/{previous-tag}...v{version}
+<!-- Example: https://github.com/modelcontextprotocol/csharp-sdk/compare/v1.3.0...v2.0.0-preview.1 -->
+```

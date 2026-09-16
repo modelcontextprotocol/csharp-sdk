@@ -1,4 +1,7 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
+
+#pragma warning disable MCPEXP001, MCPEXP002
 
 namespace ModelContextProtocol.Server;
 
@@ -11,7 +14,8 @@ public sealed class McpServerOptions
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
     /// <remarks>
-    /// This information is sent to the client during initialization to identify the server.
+    /// This information is sent in the initialization result on handshake-based protocol revisions and in
+    /// every successful result's metadata on per-request-metadata revisions.
     /// It's displayed in client logs and can be used for debugging and compatibility checks.
     /// </remarks>
     public Implementation? ServerInfo { get; set; }
@@ -21,7 +25,7 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// These determine which features will be available when a client connects.
-    /// Capabilities can include "tools", "prompts", "resources", "logging", and other 
+    /// Capabilities can include "tools", "prompts", "resources", "logging", and other
     /// protocol-specific functionality.
     /// </remarks>
     public ServerCapabilities? Capabilities { get; set; }
@@ -30,11 +34,23 @@ public sealed class McpServerOptions
     /// Gets or sets the protocol version supported by this server, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
-    /// The protocol version defines which features and message formats this server supports.
-    /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
-    /// If <see langword="null"/>, the server will advertize to the client the version requested
-    /// by the client if that version is known to be supported, and otherwise will advertize the latest
-    /// version supported by the server.
+    /// <para>
+    /// The protocol version defines which features and message formats this server supports. Supported
+    /// values are <c>2024-11-05</c>, <c>2025-03-26</c>, <c>2025-06-18</c>, <c>2025-11-25</c>, and
+    /// <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/>, the server supports all of the versions listed above. For clients using
+    /// the <c>initialize</c> handshake, the server returns the requested initialize-capable version when it
+    /// is supported and otherwise returns <c>2025-11-25</c>. For clients using <c>server/discover</c> and
+    /// per-request metadata, the server advertises the supported per-request metadata versions; currently
+    /// this is <c>2026-07-28</c>.
+    /// </para>
+    /// <para>
+    /// Set this property to a specific supported value to pin the server to that version. Setting it to
+    /// <c>2026-07-28</c> makes the server reject <c>initialize</c> handshakes; setting it to an earlier
+    /// value makes the server reject <c>2026-07-28</c> per-request metadata.
+    /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -53,52 +69,75 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// These instructions are sent to clients during the initialization handshake and provide
-    /// guidance on how to effectively use the server's capabilities. They can include details
-    /// about available tools, expected input formats, limitations, or other helpful information.
+    /// guidance on how to effectively use the server's capabilities. They should focus on
+    /// information that helps models use the server effectively and should not duplicate
+    /// tool, prompt, or resource descriptions already exposed elsewhere.
     /// Client applications typically use these instructions as system messages for LLM interactions
     /// to provide context about available functionality.
     /// </remarks>
     public string? ServerInstructions { get; set; }
 
     /// <summary>
-    /// Gets or sets whether to create a new service provider scope for each handled request.
+    /// Gets or sets a value that indicates whether to create a new service provider scope for each handled request.
     /// </summary>
-    /// <remarks>
-    /// The default is <see langword="true"/>. When <see langword="true"/>, each invocation of a request
-    /// handler will be invoked within a new service scope.
-    /// </remarks>
+    /// <value>
+    /// <see langword="true"/> if each invocation of a request handler is invoked within a new service scope.
+    /// The default is <see langword="true"/>.
+    /// </value>
     public bool ScopeRequests { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets preexisting knowledge about the client including its name and version to help support
-    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
+    /// Gets or sets preexisting knowledge about the client including its name and version.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientCapabilities"/>.
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
 
     /// <summary>
-    /// Gets the filter collections for MCP server handlers.
+    /// Gets or sets preexisting knowledge about the client's capabilities to support session migration
+    /// scenarios where the client will not re-send the initialize request.
     /// </summary>
     /// <remarks>
-    /// This property provides access to filter collections that can be used to modify the behavior 
-    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter 
-    /// added will be the outermost (first to execute).
+    /// <para>
+    /// When not specified, this information is sourced from the client's <c>initialize</c> request or,
+    /// for protocol versions that use per-request metadata, from the current request's <c>_meta</c> field.
+    /// This is typically set during session migration in conjunction with <see cref="KnownClientInfo"/>.
+    /// </para>
     /// </remarks>
-    public McpServerFilters Filters { get; } = new();
+    public ClientCapabilities? KnownClientCapabilities { get; set; }
 
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
-    public McpServerHandlers Handlers 
-    { 
+    public McpServerHandlers Handlers
+    {
         get => field ??= new();
         set
-        { 
-            Throw.IfNull(value); 
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the filter collections for MCP server handlers.
+    /// </summary>
+    /// <remarks>
+    /// This property provides access to filter collections that can be used to modify the behavior
+    /// of various MCP server handlers. The first filter added is the outermost (first to execute),
+    /// and each subsequent filter wraps closer to the handler.
+    /// </remarks>
+    public McpServerFilters Filters
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
             field = value;
         }
     }
@@ -143,7 +182,7 @@ public sealed class McpServerOptions
     /// when those are provided:
     /// </para>
     /// <para>
-    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection 
+    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection
     ///   plus any additional prompts provided by the <see cref="McpServerHandlers.ListPromptsHandler"/> if it's set.
     /// </para>
     /// <para>
@@ -156,14 +195,29 @@ public sealed class McpServerOptions
     /// <summary>
     /// Gets or sets the default maximum number of tokens to use for sampling requests when not explicitly specified.
     /// </summary>
+    /// <value>
+    /// The default maximum number of tokens to use for sampling requests. The default value is 1000 tokens.
+    /// </value>
+    /// <remarks>
+    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, System.Text.Json.JsonSerializerOptions?, CancellationToken)"/>
+    /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
+    /// </remarks>
+    [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
+    public int MaxSamplingOutputTokens { get; set; } = 1000;
+
+    /// <summary>
+    /// Gets or sets custom request handlers to register with the server.
+    /// </summary>
     /// <remarks>
     /// <para>
-    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, CancellationToken)"/>
-    /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
+    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
+    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// The default value is 1000 tokens.
+    /// Handlers registered here take precedence over built-in handlers for the same method.
     /// </para>
     /// </remarks>
-    public int MaxSamplingOutputTokens { get; set; } = 1000;
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
 }

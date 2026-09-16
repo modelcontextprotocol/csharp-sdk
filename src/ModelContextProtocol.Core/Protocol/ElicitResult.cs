@@ -34,10 +34,10 @@ public sealed class ElicitResult : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
-    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// Gets a value that indicates whether the elicitation was accepted by the user.
     /// </summary>
     /// <remarks>
-    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// If <see langword="true"/>, it indicates that the elicitation request completed successfully and the value of <see cref="Content"/> has been populated with a value.
     /// </remarks>
     [JsonIgnore]
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
@@ -47,15 +47,45 @@ public sealed class ElicitResult : Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is typically omitted if the action is "cancel" or "decline".
+    /// This value is typically omitted if the action is "cancel" or "decline".
     /// </para>
     /// <para>
     /// Values in the dictionary should be of types <see cref="JsonValueKind.String"/>, <see cref="JsonValueKind.Number"/>,
-    /// <see cref="JsonValueKind.True"/>, or <see cref="JsonValueKind.False"/>.
+    /// <see cref="JsonValueKind.True"/>, <see cref="JsonValueKind.False"/>, or <see cref="JsonValueKind.Array"/> (for multi-select enums).
     /// </para>
     /// </remarks>
     [JsonPropertyName("content")]
     public IDictionary<string, JsonElement>? Content { get; set; }
+
+    /// <summary>
+    /// Applies default values from the elicitation request schema to any missing fields in the result content.
+    /// </summary>
+    internal static ElicitResult WithDefaults(ElicitRequestParams? requestParams, ElicitResult result)
+    {
+        if (result.IsAccepted && requestParams?.RequestedSchema?.Properties is { } properties)
+        {
+            Dictionary<string, JsonElement>? newContent = null;
+
+            foreach (KeyValuePair<string, ElicitRequestParams.PrimitiveSchemaDefinition> kvp in properties)
+            {
+                if ((result.Content is null || !result.Content.ContainsKey(kvp.Key)) &&
+                    kvp.Value.GetDefaultAsJsonElement() is { } element)
+                {
+                    newContent ??= result.Content is not null ?
+                        new Dictionary<string, JsonElement>(result.Content) :
+                        [];
+                    newContent[kvp.Key] = element;
+                }
+            }
+
+            if (newContent is not null)
+            {
+                return new ElicitResult { Action = result.Action, Content = newContent, Meta = result.Meta };
+            }
+        }
+
+        return result;
+    }
 }
 
 /// <summary>
@@ -89,10 +119,10 @@ public sealed class ElicitResult<T> : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
-    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// Gets a value that indicates whether the elicitation was accepted by the user.
     /// </summary>
     /// <remarks>
-    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// If <see langword="true"/>, it indicates that the elicitation request completed successfully and the value of <see cref="Content"/> has been populated with a value.
     /// </remarks>
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
 

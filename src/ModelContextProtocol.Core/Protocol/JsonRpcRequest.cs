@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// A request message in the JSON-RPC protocol.
+/// Represents a request message in the JSON-RPC protocol.
 /// </summary>
 /// <remarks>
 /// Requests are messages that require a response from the receiver. Each request includes a unique ID
@@ -17,13 +17,13 @@ namespace ModelContextProtocol.Protocol;
 public sealed class JsonRpcRequest : JsonRpcMessageWithId
 {
     /// <summary>
-    /// Name of the method to invoke.
+    /// Gets or sets the name of the method to invoke.
     /// </summary>
     [JsonPropertyName("method")]
     public required string Method { get; set; }
 
     /// <summary>
-    /// Optional parameters for the method.
+    /// Gets or sets optional parameters for the method.
     /// </summary>
     [JsonPropertyName("params")]
     public JsonNode? Params { get; set; }

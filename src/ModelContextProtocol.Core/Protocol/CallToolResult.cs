@@ -1,4 +1,5 @@
-using System.Text.Json.Nodes;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -8,13 +9,21 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Any errors that originate from the tool should be reported inside the result
-/// object, with <see cref="IsError"/> set to true, rather than as a <see cref="JsonRpcError"/>.
+/// Tool execution errors (including input validation errors, API failures, and business logic errors)
+/// should be reported inside the result object with <see cref="IsError"/> set to <see langword="true"/>,
+/// rather than as a <see cref="JsonRpcError"/>. This allows language models to see error details
+/// and potentially self-correct in subsequent requests.
 /// </para>
 /// <para>
-/// However, any errors in finding the tool, an error indicating that the
-/// server does not support tool calls, or any other exceptional conditions,
-/// should be reported as an MCP error response.
+/// To return a validation or business-logic error from a tool method, either throw an <see cref="McpException"/>
+/// (whose <see cref="Exception.Message"/> will be included in the error result), or declare the tool's return type
+/// as <see cref="CallToolResult"/> so it can be returned directly with <see cref="IsError"/> set to <see langword="true"/>
+/// and details in <see cref="Content"/>. Using <see cref="CallToolResult"/> as the return type gives the tool full control
+/// over both success and error responses.
+/// </para>
+/// <para>
+/// Protocol-level errors (such as unknown tool names, malformed requests that fail schema validation,
+/// or server errors) should be reported as MCP protocol error responses using <see cref="McpErrorCode"/>.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
@@ -32,16 +41,26 @@ public sealed class CallToolResult : Result
     /// Gets or sets an optional JSON object representing the structured result of the tool call.
     /// </summary>
     [JsonPropertyName("structuredContent")]
-    public JsonNode? StructuredContent { get; set; }
+    public JsonElement? StructuredContent { get; set; }
 
     /// <summary>
-    /// Gets or sets an indication of whether the tool call was unsuccessful.
+    /// Gets or sets a value that indicates whether the tool call was unsuccessful.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> to signify that the tool execution failed; <see langword="false"/> if it was successful.
+    /// </value>
     /// <remarks>
-    /// When set to <see langword="true"/>, it signifies that the tool execution failed.
-    /// Tool errors are reported with this property set to <see langword="true"/> and details in the <see cref="Content"/>
-    /// property, rather than as protocol-level errors. This allows LLMs to see that an error occurred
-    /// and potentially self-correct in subsequent requests.
+    /// <para>
+    /// Tool execution errors (including input validation errors, API failures, and business logic errors)
+    /// are reported with this property set to <see langword="true"/> and details in the <see cref="Content"/>
+    /// property, rather than as protocol-level errors.
+    /// </para>
+    /// <para>
+    /// This design allows language models to receive detailed error feedback and potentially self-correct
+    /// in subsequent requests. For example, if a date parameter is in the wrong format or out of range,
+    /// the error message in <see cref="Content"/> can explain the issue, enabling the model to retry
+    /// with corrected parameters.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }

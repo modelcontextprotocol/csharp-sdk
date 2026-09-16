@@ -14,17 +14,11 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// This class is intentionally empty as the Model Context Protocol specification does not
-/// currently define additional properties for sampling capabilities. Future versions of the
+/// currently define additional properties for logging capabilities. Future versions of the
 /// specification may extend this capability with additional configuration options.
 /// </para>
 /// </remarks>
+[Obsolete(Obsoletions.DeprecatedLogging_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
 public sealed class LoggingCapability
 {
-    /// <summary>
-    /// Gets or sets the handler for set logging level requests from clients.
-    /// </summary>
-    [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SetLoggingLevelHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
@@ -16,7 +16,7 @@ public static partial class McpJsonUtilities
     /// </summary>
     /// <remarks>
     /// <para>
-    /// For Native AOT or applications disabling <see cref="JsonSerializer.IsReflectionEnabledByDefault"/>, this instance 
+    /// For Native AOT or applications disabling <see cref="JsonSerializer.IsReflectionEnabledByDefault"/>, this instance
     /// includes source generated contracts for all common exchange types contained in the ModelContextProtocol library.
     /// </para>
     /// <para>
@@ -47,14 +47,20 @@ public static partial class McpJsonUtilities
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)
         {
-            options.Converters.Add(new CustomizableJsonStringEnumConverter());
+            options.Converters.Add(new JsonStringEnumConverter());
         }
 
         options.MakeReadOnly();
         return options;
     }
 
-    internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
+    /// <summary>
+    /// Gets the resolved <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/> from the specified options.
+    /// </summary>
+    /// <typeparam name="T">The type whose serialization metadata should be resolved.</typeparam>
+    /// <param name="options">The serializer options providing the type-info resolver chain.</param>
+    /// <returns>The resolved <see cref="JsonTypeInfo{T}"/>.</returns>
+    public static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
@@ -84,11 +90,22 @@ public static partial class McpJsonUtilities
         return false; // No type keyword found.
     }
 
+    // Per SEP-2106, a tool's outputSchema may be any valid JSON Schema document — not just
+    // schemas with type:"object". Validation is therefore reduced to a structural check
+    // matching JSON Schema 2020-12: a schema may be either a JSON object (the usual form
+    // with keywords like "type", "properties", etc.) or a boolean (`true` matches anything,
+    // `false` matches nothing). Stricter keyword-level validation is intentionally not
+    // performed. Pre-2026-07-28 clients still receive the legacy wrapped wire shape — that
+    // wiring lives in AIFunctionMcpServerTool.CreateStructuredResponse and McpServerImpl's
+    // listToolsHandler.
+    internal static bool IsValidToolOutputSchema(JsonElement element) =>
+        element.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False;
+
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
-    
+
     // JSON-RPC
     [JsonSerializable(typeof(JsonRpcMessage))]
     [JsonSerializable(typeof(JsonRpcMessage[]))]
@@ -96,11 +113,13 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
+    [JsonSerializable(typeof(JsonRpcErrorDetail))]
 
     // MCP Notification Params
     [JsonSerializable(typeof(CancelledNotificationParams))]
     [JsonSerializable(typeof(InitializedNotificationParams))]
     [JsonSerializable(typeof(LoggingMessageNotificationParams))]
+    [JsonSerializable(typeof(ElicitationCompleteNotificationParams))]
     [JsonSerializable(typeof(ProgressNotificationParams))]
     [JsonSerializable(typeof(PromptListChangedNotificationParams))]
     [JsonSerializable(typeof(ResourceListChangedNotificationParams))]
@@ -115,8 +134,15 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
     [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(DiscoverRequestParams))]
+    [JsonSerializable(typeof(DiscoverResult))]
     [JsonSerializable(typeof(ElicitRequestParams))]
     [JsonSerializable(typeof(ElicitResult))]
+    [JsonSerializable(typeof(MissingRequiredClientCapabilityErrorData))]
+    [JsonSerializable(typeof(SubscriptionsListenRequestParams))]
+    [JsonSerializable(typeof(SubscriptionsAcknowledgedNotificationParams))]
+    [JsonSerializable(typeof(UnsupportedProtocolVersionErrorData))]
+    [JsonSerializable(typeof(UrlElicitationRequiredErrorData))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
     [JsonSerializable(typeof(GetPromptResult))]
@@ -132,12 +158,21 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListRootsResult))]
     [JsonSerializable(typeof(ListToolsRequestParams))]
     [JsonSerializable(typeof(ListToolsResult))]
+    [JsonSerializable(typeof(PingRequestParams))]
     [JsonSerializable(typeof(PingResult))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
+    [JsonSerializable(typeof(CacheScope))]
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    // MCP MRTR (Multi Round-Trip Requests)
+    [JsonSerializable(typeof(InputRequiredResult))]
+    [JsonSerializable(typeof(InputRequest))]
+    [JsonSerializable(typeof(InputResponse))]
+    [JsonSerializable(typeof(IDictionary<string, InputRequest>))]
+    [JsonSerializable(typeof(IDictionary<string, InputResponse>))]
 
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]
@@ -146,21 +181,36 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(AudioContentBlock))]
     [JsonSerializable(typeof(EmbeddedResourceBlock))]
     [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(ContentBlock[]))]
     [JsonSerializable(typeof(IEnumerable<ContentBlock>))]
+    [JsonSerializable(typeof(PromptMessage))]
+    [JsonSerializable(typeof(IEnumerable<PromptMessage>))]
     [JsonSerializable(typeof(PromptReference))]
     [JsonSerializable(typeof(ResourceTemplateReference))]
     [JsonSerializable(typeof(BlobResourceContents))]
     [JsonSerializable(typeof(TextResourceContents))]
 
     // Other MCP Types
+    [JsonSerializable(typeof(IDictionary<string, object>))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
+    [JsonSerializable(typeof(JsonElement))]
+    [JsonSerializable(typeof(Implementation))]
+    [JsonSerializable(typeof(ClientCapabilities))]
+    [JsonSerializable(typeof(ServerCapabilities))]
+    [JsonSerializable(typeof(LoggingLevel))]
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
-    [JsonSerializable(typeof(TokenContainer))]
+    [JsonSerializable(typeof(TokenResponse))]
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
+
+    // For Enterprise Managed Authorization flow as specified at
+    // https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx
+    [JsonSerializable(typeof(JagTokenExchangeResponse))]
+    [JsonSerializable(typeof(JwtBearerAccessTokenResponse))]
+    [JsonSerializable(typeof(OAuthErrorResponse))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]
