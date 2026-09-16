@@ -25,7 +25,7 @@ public class InMemoryMcpTaskStoreTests
     {
         var store = new InMemoryMcpTaskStore();
 
-        var result = await store.CreateTaskAsync(CT);
+        var result = await store.CreateTaskAsync(cancellationToken: CT);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.TaskId);
@@ -39,8 +39,8 @@ public class InMemoryMcpTaskStoreTests
     {
         var store = new InMemoryMcpTaskStore();
 
-        var task1 = await store.CreateTaskAsync(CT);
-        var task2 = await store.CreateTaskAsync(CT);
+        var task1 = await store.CreateTaskAsync(cancellationToken: CT);
+        var task2 = await store.CreateTaskAsync(cancellationToken: CT);
 
         Assert.NotEqual(task1.TaskId, task2.TaskId);
     }
@@ -50,7 +50,7 @@ public class InMemoryMcpTaskStoreTests
     {
         var store = new InMemoryMcpTaskStore { DefaultPollIntervalMs = 500 };
 
-        var result = await store.CreateTaskAsync(CT);
+        var result = await store.CreateTaskAsync(cancellationToken: CT);
 
         Assert.Equal(500, result.PollIntervalMs);
     }
@@ -60,16 +60,59 @@ public class InMemoryMcpTaskStoreTests
     {
         var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromSeconds(30) };
 
-        var result = await store.CreateTaskAsync(CT);
+        var result = await store.CreateTaskAsync(cancellationToken: CT);
 
         Assert.Equal(TimeSpan.FromSeconds(30), result.TimeToLive);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_PersistsExecutionIntent()
+    {
+        var store = new InMemoryMcpTaskStore();
+        var intent = JsonSerializer.SerializeToElement(
+            new { queue = "mcp-tasks", tool = "long-running-tool" },
+            McpJsonUtilities.DefaultOptions);
+
+        var created = await store.CreateTaskAsync(intent, CT);
+        var retrieved = await store.GetTaskAsync(created.TaskId, CT);
+
+        Assert.NotNull(retrieved);
+        Assert.NotNull(retrieved.ExecutionIntent);
+        Assert.Equal(intent.GetRawText(), retrieved.ExecutionIntent.Value.GetRawText());
+        Assert.Equal(intent.GetRawText(), created.ExecutionIntent!.Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_WithoutExecutionIntent_LeavesIntentNull()
+    {
+        var store = new InMemoryMcpTaskStore();
+
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
+
+        Assert.Null(created.ExecutionIntent);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_CopiesExecutionIntentElement()
+    {
+        const string IntentJson = """{ "queue": "mcp-tasks" }""";
+        var store = new InMemoryMcpTaskStore();
+        using var document = JsonDocument.Parse(IntentJson);
+
+        var created = await store.CreateTaskAsync(document.RootElement, CT);
+        document.Dispose();
+
+        // The store must not retain a reference to the executor's original backing document.
+        var retrieved = await store.GetTaskAsync(created.TaskId, CT);
+        Assert.NotNull(retrieved);
+        Assert.Equal(IntentJson, retrieved.ExecutionIntent!.Value.GetRawText());
     }
 
     [Fact]
     public async Task GetTaskAsync_ReturnsWorkingTask()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var result = await store.GetTaskAsync(created.TaskId, CT);
 
@@ -92,7 +135,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task GetTaskAsync_WithinTimeToLive_ReturnsTask()
     {
         var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromMinutes(10) };
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var result = await store.GetTaskAsync(created.TaskId, CT);
 
@@ -104,7 +147,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task GetTaskAsync_AfterTimeToLiveElapsed_ReturnsNull()
     {
         var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.FromMilliseconds(100) };
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await Task.Delay(TimeSpan.FromMilliseconds(500), CT);
 
@@ -117,7 +160,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task GetTaskAsync_WithoutTimeToLive_DoesNotExpire()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await Task.Delay(TimeSpan.FromMilliseconds(200), CT);
 
@@ -131,7 +174,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task GetTaskAsync_WithZeroTimeToLive_DoesNotExpire()
     {
         var store = new InMemoryMcpTaskStore { DefaultTimeToLive = TimeSpan.Zero };
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await Task.Delay(TimeSpan.FromMilliseconds(200), CT);
 
@@ -145,7 +188,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetCompletedAsync_TransitionsToCompleted()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
         var resultPayload = JsonDocument.Parse("""{"answer":42}""").RootElement.Clone();
 
         await store.SetCompletedAsync(created.TaskId, resultPayload, CT);
@@ -160,7 +203,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetFailedAsync_TransitionsToFailed()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
         var errorPayload = JsonDocument.Parse("""{"message":"boom"}""").RootElement.Clone();
 
         await store.SetFailedAsync(created.TaskId, errorPayload, CT);
@@ -175,7 +218,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetCancelledAsync_TransitionsToCancelled()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var cancelled = await store.SetCancelledAsync(created.TaskId, CT);
 
@@ -189,7 +232,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetCancelledAsync_ReturnsFalseForTerminalTask()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
         await store.SetCompletedAsync(created.TaskId, JsonSerializer.SerializeToElement("done", McpJsonUtilities.DefaultOptions), CT);
 
         var cancelled = await store.SetCancelledAsync(created.TaskId, CT);
@@ -214,7 +257,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetInputRequestsAsync_TransitionsToInputRequired()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var requests = new Dictionary<string, InputRequest>
         {
@@ -238,7 +281,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetInputRequestsAsync_MergesMultipleRequests()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
@@ -262,7 +305,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ResolveInputRequestsAsync_RemovesMatchedRequests()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
@@ -287,7 +330,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ResolveInputRequestsAsync_TransitionsToWorkingWhenAllSatisfied()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
@@ -317,7 +360,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ConcurrentUpdates_DoNotLoseData()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var tasks = Enumerable.Range(0, 50).Select(i =>
             store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
@@ -338,7 +381,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ResolveInputRequestsAsync_ForExtraKeys_DoesNotThrow()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.ResolveInputRequestsAsync(created.TaskId, new Dictionary<string, InputResponse>
         {
@@ -356,7 +399,7 @@ public class InMemoryMcpTaskStoreTests
         // SEP-2663: "Each entry key SHOULD be unique across the lifetime of a given task" and
         // servers should tolerate clients re-sending an inputResponse for an already-resolved key.
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
         await store.SetInputRequestsAsync(created.TaskId, new Dictionary<string, InputRequest>
         {
             ["a"] = MakeRequest("ask-a"),
@@ -407,7 +450,7 @@ public class InMemoryMcpTaskStoreTests
         // Verifies the optimistic-concurrency loop in InMemoryMcpTaskStore handles parallel
         // tasks/update calls that each resolve a distinct subset of pending input requests.
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var seed = Enumerable.Range(0, 20).ToDictionary(
             i => $"req{i}",
@@ -432,7 +475,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetCompletedAsync_DoesNotOverwriteCancelledTask()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var cancelled = await store.SetCancelledAsync(created.TaskId, CT);
         Assert.True(cancelled);
@@ -453,7 +496,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetFailedAsync_DoesNotOverwriteCancelledTask()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetCancelledAsync(created.TaskId, CT);
 
@@ -472,7 +515,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetCompletedAsync_DoesNotOverwriteCompletedTask()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         var first = JsonSerializer.SerializeToElement("first", McpJsonUtilities.DefaultOptions);
         await store.SetCompletedAsync(created.TaskId, first, CT);
@@ -491,7 +534,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ResolveInputRequestsAsync_OnTerminalTask_DoesNotResurrect()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetCompletedAsync(
             created.TaskId,
@@ -513,7 +556,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task ResolveInputRequestsAsync_OnTerminalTask_DoesNotFireEvent()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetCancelledAsync(created.TaskId, CT);
 
@@ -532,7 +575,7 @@ public class InMemoryMcpTaskStoreTests
     public async Task SetInputRequestsAsync_OnTerminalTask_NoOps()
     {
         var store = new InMemoryMcpTaskStore();
-        var created = await store.CreateTaskAsync(CT);
+        var created = await store.CreateTaskAsync(cancellationToken: CT);
 
         await store.SetCancelledAsync(created.TaskId, CT);
 
