@@ -19,6 +19,7 @@ builder.Services
     .WithHttpTransport(options =>
     {
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends
+        #pragma warning disable MCPEXP002 // RunSessionHandler is experimental
         options.RunSessionHandler = async (httpContext, mcpServer, token) =>
         {
             if (mcpServer.SessionId == null)
@@ -44,6 +45,7 @@ builder.Services
                 subscriptions.TryRemove(mcpServer.SessionId, out _);
             }
         };
+        #pragma warning restore MCPEXP002
     })
     .AddEverythingMcpHandlers(subscriptions);
 

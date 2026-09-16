@@ -4,6 +4,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- This sample demonstrates the Sampling feature, which SEP-2577 deprecates (MCP9005) but
+     which continues to work. Suppress the deprecation warning for this project only. -->
+    <NoWarn>$(NoWarn);MCP9005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
