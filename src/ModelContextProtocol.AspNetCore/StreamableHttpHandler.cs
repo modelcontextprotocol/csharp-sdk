@@ -187,7 +187,24 @@ internal sealed class StreamableHttpHandler(
         }
 
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, onResponseStarting, context.RequestAborted);
+
+        bool wroteResponse;
+        try
+        {
+            wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, onResponseStarting, context.RequestAborted);
+        }
+        catch (JsonException) when (!context.Response.HasStarted)
+        {
+            // The initialize handshake eagerly deserializes its params inside the transport, before the
+            // message reaches the session's JSON-RPC error handling. A structurally valid envelope whose
+            // params are invalid (e.g. a missing required field like clientInfo.version) would otherwise
+            // bubble up as an opaque 500. Surface a conformant JSON-RPC error that echoes the request id.
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: The request parameters were invalid.",
+                StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidParams, requestId);
+            return;
+        }
+
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.

@@ -319,6 +319,24 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task PostInitializeWithMissingRequiredParam_Returns400_InvalidParams_EchoesRequestId()
+    {
+        await StartAsync();
+
+        // A well-formed JSON-RPC envelope whose initialize params omit a required field
+        // (here clientInfo.version) must not surface as an opaque 500. The server should
+        // reject it with a conformant JSON-RPC error (InvalidParams) and echo the request id.
+        using var response = await HttpClient.PostAsync("",
+            JsonContent("""{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"IntegrationTestClient"}}}"""),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(7, doc.RootElement.GetProperty("id").GetInt64());
+        Assert.Equal((int)McpErrorCode.InvalidParams, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Fact]
     public async Task PostRequestWithExplicitNullId_Returns400_InvalidRequest_WithNullId()
     {
         await StartAsync();
