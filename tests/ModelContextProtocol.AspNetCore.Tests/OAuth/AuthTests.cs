@@ -524,6 +524,60 @@ public class AuthTests : OAuthTestBase
     [Fact]
     public async Task CanAuthenticate_WithTokenRefresh()
     {
+        await using var app = await StartMcpServerThatForcesTokenRefreshAsync();
+        await using var transport = CreateOAuthTransport();
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(TestOAuthServer.HasRefreshedToken);
+
+        // Conformant authorization servers only see the spec-required refresh request that includes the resource.
+        Assert.Equal([McpServerUrl], TestOAuthServer.RefreshTokenRequestResources);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithTokenRefresh_WhenAuthServerRejectsResourceOnRefresh()
+    {
+        // Simulates Microsoft Entra ID v2.0, which rejects the RFC 8707 resource parameter on refresh_token grants (AADSTS9010010).
+        TestOAuthServer.RejectRefreshWithResourceError = "invalid_target";
+
+        await using var app = await StartMcpServerThatForcesTokenRefreshAsync();
+        await using var transport = CreateOAuthTransport();
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The rejected refresh is retried once without the resource instead of forcing interactive re-authorization.
+        Assert.True(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal([McpServerUrl, null], TestOAuthServer.RefreshTokenRequestResources);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
+    public async Task TokenRefresh_RejectedWithInvalidGrant_IsNotRetriedWithoutResource()
+    {
+        // invalid_grant means the refresh token itself is dead, so dropping the resource can't help.
+        TestOAuthServer.RejectRefreshWithResourceError = "invalid_grant";
+
+        await using var app = await StartMcpServerThatForcesTokenRefreshAsync();
+        await using var transport = CreateOAuthTransport();
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The client falls back to a new authorization-code flow instead.
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal([McpServerUrl], TestOAuthServer.RefreshTokenRequestResources);
+        Assert.Equal(2, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    private async Task<WebApplication> StartMcpServerThatForcesTokenRefreshAsync()
+    {
         var hasForcedRefresh = false;
 
         Builder.Services.AddMcpServer(options =>
@@ -531,7 +585,7 @@ public class AuthTests : OAuthTestBase
             options.ToolCollection = new();
         });
 
-        await using var app = await StartMcpServerAsync(configureMiddleware: app =>
+        return await StartMcpServerAsync(configureMiddleware: app =>
         {
             // Add middleware to intercept list tools requests and force a token refresh on the first call
             app.Use(async (context, next) =>
@@ -566,25 +620,6 @@ public class AuthTests : OAuthTestBase
                 await next(context);
             });
         });
-
-        await using var transport = new HttpClientTransport(new()
-        {
-            Endpoint = new(McpServerUrl),
-            OAuth = new()
-            {
-                ClientId = "demo-client",
-                ClientSecret = "demo-secret",
-                RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
-            },
-        }, HttpClient, LoggerFactory);
-
-        await using var client = await McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-
-        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.True(TestOAuthServer.HasRefreshedToken);
     }
 
     [Fact]
