@@ -608,3 +608,38 @@ Within filters, you have access to:
 - `context.User` - The current user's `ClaimsPrincipal`.
 - `context.Services` - The request's service provider for resolving authorization services.
 - `context.MatchedPrimitive` - The matched tool/prompt/resource with its metadata including authorization attributes via `context.MatchedPrimitive.Metadata`.
+
+## Client tool-call filters
+
+Hosts can also filter the tool calls their own client sends, for example to enforce a policy based on
+tool annotations before a model-selected tool reaches the server. Add filters to
+`McpClientOptions.Filters.Request.CallToolFilters`. They wrap every `CallToolAsync` overload as well as
+`McpClientTool.CallAsync` and `McpClientTool` invocations made through an `IChatClient`, so no call path
+bypasses the policy. These APIs are experimental (`MCPEXP002`).
+
+```csharp
+var options = new McpClientOptions();
+options.Filters.Request.CallToolFilters.Add(next => async (context, cancellationToken) =>
+{
+    // context.Tool is the definition cached by ListToolsAsync or AddKnownTools, or null if unknown.
+    // Fail closed: treat an unknown tool the same as a destructive one.
+    if (context.Tool?.Annotations?.DestructiveHint is not false)
+    {
+        return new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = $"'{context.Params.Name}' requires user confirmation." }],
+            IsError = true
+        };
+    }
+
+    return await next(context, cancellationToken);
+});
+
+await using var client = await McpClient.CreateAsync(transport, options);
+```
+
+Prefer returning a `CallToolResult` with `IsError = true` over throwing when blocking a call: the result's
+content is returned to the model, while a thrown exception's message is typically hidden from it.
+Filters run in registration order (the first filter is the outermost), can rewrite `context.Params` before
+calling `next` (for example, to redact arguments), and can post-process the result. Tool annotations are
+hints supplied by the server, so only rely on them for servers you trust.
