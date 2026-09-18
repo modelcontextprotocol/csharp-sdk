@@ -6,8 +6,8 @@ name: Publish Docs
 # latest release, by date, for each major >= 1), builds each release tag into
 # its own sub-path (e.g. /v1/ and /v2/) with make generate-docs, injects a
 # version-picker widget into each page, adds a root redirect to the default
-# version, and deploys the combined site. A manual dispatch can also rebuild
-# the matching major-version path from a specified branch, tag, or commit.
+# version, and deploys the combined site. A manual dispatch can build every
+# major-version path from release tags or current source branches.
 # Triggers on release publish and manual dispatch.
 
 on:
@@ -15,10 +15,14 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      docs_ref:
-        description: Branch, tag, or commit whose docs should refresh its matching major version
-        required: false
-        type: string
+      docs_source:
+        description: Source for every published major-version path
+        required: true
+        default: release-tags
+        type: choice
+        options:
+        - release-tags
+        - latest-branches
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -86,7 +90,7 @@ jobs:
     - name: Build all versions
       shell: bash
       env:
-        CONTENT_REF: ${{ inputs.docs_ref }}
+        USE_SOURCE_BRANCHES: ${{ inputs.docs_source == 'latest-branches' }}
       run: |
         set -euo pipefail
         ROOT="$PWD"
@@ -96,28 +100,43 @@ jobs:
 
         # Orchestration (discovered docs-versions.json, scripts, picker assets)
         # always comes from THIS branch. Normally each version's HTML is produced
-        # by its release tag. A manual docs_ref replaces the matching major's
-        # HTML with content built from that ref, allowing content-only refreshes
-        # without minting a product release.
-        git fetch --tags --force origin
-        CONTENT_REF="${CONTENT_REF:-}"
-        CONTENT_WORKTREE=""
-        CONTENT_SLUG=""
-        if [[ -n "$CONTENT_REF" ]]; then
-          CONTENT_WORKTREE="$ROOT/../work-content"
-          git worktree add --force --detach "$CONTENT_WORKTREE" "$CONTENT_REF"
-          CONTENT_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$CONTENT_WORKTREE/src/Directory.Build.props")"
-          if ! node "$ROOT/scripts/list-versions.mjs" | cut -f1 | grep -Fxq "$CONTENT_SLUG"; then
-            echo "::error::The docs ref '$CONTENT_REF' has major '$CONTENT_SLUG', which has no published release."
-            exit 1
-          fi
-          echo "Refreshing $CONTENT_SLUG docs from $CONTENT_REF"
+        # by its release tag. A manual dispatch can instead build every major from
+        # its current source branch.
+        git fetch --tags --force --prune origin "+refs/heads/*:refs/remotes/origin/*"
+        USE_SOURCE_BRANCHES="${USE_SOURCE_BRANCHES:-false}"
+
+        MAIN_SLUG=""
+        if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
+          MAIN_PROPS="$(mktemp)"
+          git show refs/remotes/origin/main:src/Directory.Build.props > "$MAIN_PROPS"
+          MAIN_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$MAIN_PROPS")"
+          rm -f "$MAIN_PROPS"
+          echo "Refreshing all published docs from source branches (main serves $MAIN_SLUG)"
+        else
+          echo "Refreshing all published docs from release tags"
         fi
 
         while IFS=$'\t' read -r slug ref; do
-          if [[ "$slug" == "$CONTENT_SLUG" ]]; then
-            echo "::group::Build $slug (from ref $CONTENT_REF)"
-            wt="$CONTENT_WORKTREE"
+          if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
+            source_branch="release/${slug#v}.x"
+            if ! git show-ref --verify --quiet "refs/remotes/origin/$source_branch"; then
+              if [[ "$slug" == "$MAIN_SLUG" ]]; then
+                source_branch="main"
+              else
+                echo "::error::No source branch found for $slug. Expected release/${slug#v}.x, or main with VersionPrefix for $slug."
+                exit 1
+              fi
+            fi
+
+            echo "::group::Build $slug (from branch $source_branch)"
+            wt="$ROOT/../work-$slug"
+            git worktree add --force --detach "$wt" "refs/remotes/origin/$source_branch"
+            source_slug="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$wt/src/Directory.Build.props")"
+            if [[ "$source_slug" != "$slug" ]]; then
+              git worktree remove --force "$wt"
+              echo "::error::Source branch '$source_branch' has major '$source_slug', not '$slug'."
+              exit 1
+            fi
           else
             echo "::group::Build $slug (from tag $ref)"
             wt="$ROOT/../work-$slug"
@@ -130,15 +149,9 @@ jobs:
           cp -a "$wt/artifacts/_site/." "$COMBINED/$slug/"
           node "$ROOT/scripts/inject-version-picker.mjs" "$COMBINED/$slug" "$slug" --base /
 
-          if [[ "$wt" != "$CONTENT_WORKTREE" ]]; then
-            git worktree remove --force "$wt"
-          fi
+          git worktree remove --force "$wt"
           echo "::endgroup::"
         done < <(node "$ROOT/scripts/list-versions.mjs")
-
-        if [[ -n "$CONTENT_WORKTREE" ]]; then
-          git worktree remove --force "$CONTENT_WORKTREE"
-        fi
 
         node "$ROOT/scripts/finalize-docs-site.mjs" "$COMBINED"
 
