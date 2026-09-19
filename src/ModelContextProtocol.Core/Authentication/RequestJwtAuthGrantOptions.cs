@@ -21,9 +21,14 @@ internal sealed class RequestJwtAuthGrantOptions
     public required string Resource { get; set; }
 
     /// <summary>
-    /// Gets or sets the OIDC ID token to exchange.
+    /// Gets or sets the subject token to exchange.
     /// </summary>
-    public required string IdToken { get; set; }
+    public required string SubjectToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets the RFC 8693 subject token type identifier.
+    /// </summary>
+    public required string SubjectTokenType { get; set; }
 
     /// <summary>
     /// Gets or sets the client ID for authentication with the IDP.

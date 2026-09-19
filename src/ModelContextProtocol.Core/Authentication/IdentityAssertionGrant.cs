@@ -21,10 +21,10 @@ internal static class IdentityAssertionGrant
     public const string GrantTypeJwtBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
     /// <summary>Token type URN for OpenID Connect ID Tokens (RFC 8693).</summary>
-    public const string TokenTypeIdToken = "urn:ietf:params:oauth:token-type:id_token";
+    public const string TokenTypeIdToken = IdentityAssertionGrantSubjectTokenTypes.IdToken;
 
     /// <summary>Token type URN for SAML 2.0 assertions (RFC 8693).</summary>
-    public const string TokenTypeSaml2 = "urn:ietf:params:oauth:token-type:saml2";
+    public const string TokenTypeSaml2 = IdentityAssertionGrantSubjectTokenTypes.Saml2;
 
     /// <summary>
     /// Token type URN for Identity Assertion JWT Authorization Grants.
@@ -56,15 +56,16 @@ internal static class IdentityAssertionGrant
         Throw.IfNullOrWhiteSpace(options.TokenEndpoint);
         Throw.IfNullOrWhiteSpace(options.Audience);
         Throw.IfNullOrWhiteSpace(options.Resource);
-        Throw.IfNullOrWhiteSpace(options.IdToken);
+        Throw.IfNullOrWhiteSpace(options.SubjectToken);
+        Throw.IfNullOrWhiteSpace(options.SubjectTokenType);
         Throw.IfNullOrWhiteSpace(options.ClientId);
 
         var formData = new Dictionary<string, string>
         {
             ["grant_type"] = GrantTypeTokenExchange,
             ["requested_token_type"] = TokenTypeIdJag,
-            ["subject_token"] = options.IdToken,
-            ["subject_token_type"] = TokenTypeIdToken,
+            ["subject_token"] = options.SubjectToken,
+            ["subject_token_type"] = options.SubjectTokenType,
             ["audience"] = options.Audience,
             ["resource"] = options.Resource,
             ["client_id"] = options.ClientId,
