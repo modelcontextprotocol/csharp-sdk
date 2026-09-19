@@ -10,7 +10,13 @@ using System.Security.Claims;
 var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
-var inMemoryOAuthServerUrl = "https://localhost:7029";
+// The bundled TestOAuthServer hosts over HTTPS by default, which is what the MCP authorization
+// security requirements and RFC 8414 ask for. Clients whose HTTP stack does not use the operating
+// system trust store (VS Code, for one) cannot fetch metadata from the developer certificate; for
+// those, start the authorization server with `--http` and point this sample at it by setting
+// `OAuth:ServerUrl` (for example `dotnet run -- --OAuth:ServerUrl=http://localhost:7029`).
+var inMemoryOAuthServerUrl = builder.Configuration["OAuth:ServerUrl"] ?? "https://localhost:7029";
+var oauthServerUsesHttps = inMemoryOAuthServerUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
 
 // This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
@@ -41,6 +47,11 @@ builder.Services.AddAuthentication(options =>
 {
     // Configure to validate tokens from our in-memory OAuth server
     options.Authority = inMemoryOAuthServerUrl;
+    // Stays at its default of true for the HTTPS authority above. It only relaxes when the sample has
+    // been pointed at a plain-HTTP loopback authority on purpose, because metadata and signing keys
+    // would otherwise be fetched over an unprotected connection. Never relax it for an authority you
+    // do not fully control on the local machine.
+    options.RequireHttpsMetadata = oauthServerUsesHttps;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -115,6 +126,10 @@ app.MapMcp().RequireAuthorization().RequireCors("McpBrowserClient");
 
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
 Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");
+if (oauthServerUsesHttps)
+{
+    Console.WriteLine("Clients that do not use the operating system trust store (VS Code, for one) cannot fetch metadata from the developer certificate. For those, start TestOAuthServer with `--http` and run this sample with `--OAuth:ServerUrl=http://localhost:7029`; see Step 1 of the README.");
+}
 Console.WriteLine($"Protected Resource Metadata URL: {serverUrl}.well-known/oauth-protected-resource");
 Console.WriteLine("Press Ctrl+C to stop the server");
 
