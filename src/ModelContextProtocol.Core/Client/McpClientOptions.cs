@@ -70,6 +70,10 @@ public sealed class McpClientOptions
     /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
     /// or retry the connection with a different value.
     /// </para>
+    /// <para>
+    /// HTTP+SSE connections use the <c>initialize</c> handshake by default.
+    /// An explicit protocol version is attempted when <see cref="HttpTransportMode.Sse"/> is selected.
+    /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -84,6 +88,11 @@ public sealed class McpClientOptions
     /// This timeout determines how long the client will wait for the server to respond during
     /// the initialization protocol handshake. If the server doesn't respond within this timeframe,
     /// an exception is thrown.
+    /// </para>
+    /// <para>
+    /// This timeout includes OAuth token acquisition performed during the handshake. Neither this timeout nor
+    /// caller cancellation is suspended while authenticating. Transport connection establishment that precedes
+    /// the handshake, such as an explicitly selected SSE connection, retains its transport-specific timeout.
     /// </para>
     /// <para>
     /// Setting an appropriate timeout prevents the client from hanging indefinitely when
@@ -120,6 +129,12 @@ public sealed class McpClientOptions
     /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// <para>
+    /// SDK OAuth token acquisition, including metadata discovery, registration, interactive authorization,
+    /// and token refresh or exchange, is excluded from the probe timeout. After token acquisition, the
+    /// HTTP request gets a fresh full probe budget, covering both response headers and body processing.
+    /// <see cref="InitializationTimeout"/> and caller cancellation continue to apply during authentication.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">

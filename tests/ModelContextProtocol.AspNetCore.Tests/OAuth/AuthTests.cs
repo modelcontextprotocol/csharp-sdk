@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
+using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -1506,8 +1507,11 @@ public class AuthTests : OAuthTestBase
     {
         const string resourcePath = "/mcp";
         List<string> wellKnownRequests = [];
+        var metadataGate = new AsyncGate();
+        var probeBudget = TimeSpan.FromMilliseconds(500);
 
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+        Builder.Services.Configure<HttpServerTransportOptions>(options => options.Stateless = true);
         await using var app = Builder.Build();
 
         var metadata = new ProtectedResourceMetadata
@@ -1523,6 +1527,7 @@ public class AuthTests : OAuthTestBase
                 wellKnownRequests.Add(context.Request.Path);
                 if (remaining.HasValue)
                 {
+                    await metadataGate.WaitAsync(context.RequestAborted);
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 }
@@ -1552,9 +1557,14 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var connecting = McpClient.CreateAsync(
+            transport, new() { DiscoverProbeTimeout = probeBudget }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await metadataGate.AssertStillWaitingAsync(probeBudget * 2);
+        metadataGate.Release.SetResult();
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
         Assert.Equal(
             [
                 $"/.well-known/oauth-protected-resource{resourcePath}",
