@@ -742,10 +742,10 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         var annotations = tool.ProtocolTool.Annotations;
         Assert.NotNull(annotations);
         Assert.Null(annotations.Title);
-        Assert.Null(annotations.DestructiveHint);
+        Assert.True(annotations.DestructiveHint);
         Assert.False(annotations.IdempotentHint);
-        Assert.Null(annotations.OpenWorldHint);
-        Assert.Null(annotations.ReadOnlyHint);
+        Assert.True(annotations.OpenWorldHint);
+        Assert.False(annotations.ReadOnlyHint);
     }
 
     [Fact]
