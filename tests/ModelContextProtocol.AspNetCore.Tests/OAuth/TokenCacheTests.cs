@@ -379,6 +379,7 @@ public class TokenCacheTests : OAuthTestBase
             OAuth = new()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -404,6 +405,8 @@ public class TokenCacheTests : OAuthTestBase
         Assert.False(
             string.IsNullOrEmpty(tokenCache.LastStoredToken.ClientId),
             "The dynamically registered client ID should be persisted alongside the tokens");
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastRegistrationTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_post", tokenCache.LastStoredToken.TokenEndpointAuthMethod);
         Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
 
         // Simulate a cold start: the access token is no longer valid, but the refresh token persists.
@@ -418,6 +421,7 @@ public class TokenCacheTests : OAuthTestBase
             OAuth = new()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -437,11 +441,14 @@ public class TokenCacheTests : OAuthTestBase
         Assert.False(authDelegateCalledAgain, "Authorization callback should not be called when the persisted refresh token can be used");
         Assert.True(TestOAuthServer.HasRefreshedToken, "Token should have been refreshed using the persisted client credentials");
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
+        Assert.Equal("client_secret_post", TestOAuthServer.LastTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_post", tokenCache.LastStoredToken.TokenEndpointAuthMethod);
     }
 
     [Fact]
     public async Task GetTokenAsync_ColdStartWithCredentialsFromDifferentAuthorizationServer_Reregisters()
     {
+        TestOAuthServer.DynamicRegistrationTokenEndpointAuthMethod = null;
         await using var app = await StartMcpServerAsync();
 
         var tokenCache = new TestTokenCache();
@@ -451,6 +458,7 @@ public class TokenCacheTests : OAuthTestBase
             OAuth = new()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
                 DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
                 AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
                 TokenCache = tokenCache,
@@ -465,6 +473,7 @@ public class TokenCacheTests : OAuthTestBase
         }
 
         Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.Equal("client_secret_basic", tokenCache.LastStoredToken.TokenEndpointAuthMethod);
         tokenCache.LastStoredToken.AccessToken = "invalid-token";
         tokenCache.LastStoredToken.AuthorizationServer = "https://different-authorization-server.example.com";
         var authorizationCallbackCalled = false;
@@ -475,6 +484,7 @@ public class TokenCacheTests : OAuthTestBase
             OAuth = new()
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
+                TokenEndpointAuthMethod = "client_secret_basic",
                 DynamicClientRegistration = new() { ClientName = "Test MCP Client" },
                 AuthorizationCallbackHandler = (context, ct) =>
                 {
@@ -492,6 +502,9 @@ public class TokenCacheTests : OAuthTestBase
 
         Assert.True(authorizationCallbackCalled);
         Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastRegistrationTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_basic", TestOAuthServer.LastTokenEndpointAuthMethod);
+        Assert.Equal("client_secret_basic", tokenCache.LastStoredToken.TokenEndpointAuthMethod);
         Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
     }
 
