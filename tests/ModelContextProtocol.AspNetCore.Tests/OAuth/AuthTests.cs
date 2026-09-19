@@ -780,6 +780,114 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromChallengeHeader_WhenScopeIsAQuotedComma()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1088.
+        // ParseWwwAuthenticateParameters used to split the header on every comma, including ones
+        // inside a quoted value. When a quoted value was exactly a comma, that produced a bare `"`
+        // fragment that the old code then tried to unquote, throwing ArgumentOutOfRangeException
+        // instead of authenticating.
+        await using var app = Builder.Build();
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                await next(context);
+
+                if (context.Response.StatusCode != 401)
+                {
+                    return;
+                }
+
+                context.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\",\"";
+            };
+        });
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(",", requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromChallengeHeader_WithCommaAndEscapedQuoteInValue()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1088: a comma
+        // or an escaped double-quote inside a quoted auth-param value must not be mistaken for the end
+        // of the value or a new parameter boundary.
+        const string expectedScope = "read,write\"admin\"";
+
+        await using var app = Builder.Build();
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                await next(context);
+
+                if (context.Response.StatusCode != 401)
+                {
+                    return;
+                }
+
+                context.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"read,write\\\"admin\\\"\"";
+            };
+        });
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(context.AuthorizationUri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedScope, requestedScope);
+    }
+
+    [Fact]
     public async Task AuthorizationFlow_UsesScopeFromForbiddenHeader()
     {
         var adminScopes = "admin:read admin:write";
