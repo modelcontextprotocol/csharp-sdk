@@ -326,6 +326,67 @@ public class McpAppsTests
 
     #endregion
 
+    #region McpAppResourceAttribute via ApplyAppResourceAttributes
+
+    [Fact]
+    public void ApplyAppResourceAttributes_PopulatesStructuredUiObject()
+    {
+        var method = typeof(TestResourcesWithAppUi).GetMethod(nameof(TestResourcesWithAppUi.WeatherUi))!;
+        var resource = McpServerResource.Create(method, target: null);
+
+        McpApps.ApplyAppResourceAttributes(resource);
+
+        var uiNode = resource.ProtocolResourceTemplate.Meta?["ui"]?.AsObject();
+        Assert.NotNull(uiNode);
+        Assert.Equal("https://app.example.com", uiNode["domain"]?.GetValue<string>());
+        Assert.True(uiNode["prefersBorder"]?.GetValue<bool>());
+
+        var cspNode = uiNode["csp"]?.AsObject();
+        Assert.NotNull(cspNode);
+        Assert.Equal("https://api.weather.gov", cspNode["connectDomains"]?[0]?.GetValue<string>());
+        Assert.Equal("https://cdn.example.com", cspNode["resourceDomains"]?[0]?.GetValue<string>());
+        Assert.Equal("https://embed.example.com", cspNode["frameDomains"]?[0]?.GetValue<string>());
+        Assert.Equal("https://app.example.com", cspNode["baseUris"]?[0]?.GetValue<string>());
+
+        var permissionsNode = uiNode["permissions"]?["allow"]?.AsArray();
+        Assert.NotNull(permissionsNode);
+        Assert.Equal("geolocation", permissionsNode[0]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void ApplyAppResourceAttributes_OmittedPrefersBorder_RemainsOmitted()
+    {
+        var method = typeof(TestResourcesWithAppUi).GetMethod(nameof(TestResourcesWithAppUi.ResourceWithoutBorderPreference))!;
+        var resource = McpServerResource.Create(method, target: null);
+
+        McpApps.ApplyAppResourceAttributes(resource);
+
+        var uiNode = resource.ProtocolResourceTemplate.Meta?["ui"]?.AsObject();
+        Assert.NotNull(uiNode);
+        Assert.False(uiNode.ContainsKey("prefersBorder"));
+    }
+
+    [Fact]
+    public void ApplyAppResourceAttributes_ExplicitMeta_TakesPrecedence()
+    {
+        var method = typeof(TestResourcesWithAppUi).GetMethod(nameof(TestResourcesWithAppUi.WeatherUi))!;
+        var resource = McpServerResource.Create(method, target: null, new McpServerResourceCreateOptions
+        {
+            Meta = new JsonObject
+            {
+                ["ui"] = new JsonObject { ["domain"] = "https://explicit.example.com" },
+            },
+        });
+
+        McpApps.ApplyAppResourceAttributes(resource);
+
+        var uiNode = resource.ProtocolResourceTemplate.Meta?["ui"]?.AsObject();
+        Assert.Equal("https://explicit.example.com", uiNode?["domain"]?.GetValue<string>());
+        Assert.Single(uiNode!);
+    }
+
+    #endregion
+
     #region F7: SetAppUi
 
     [Fact]
@@ -440,6 +501,31 @@ public class McpAppsTests
     }
 
     [Fact]
+    public void WithMcpApps_AppliesAppResourceAttributes_ViaOptions()
+    {
+        var sc = new ServiceCollection();
+        sc.AddMcpServer()
+            .WithResources([typeof(TestResourcesWithAppUi)])
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var options = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.NotNull(options.ResourceCollection);
+        var weatherResource = options.ResourceCollection.Single(resource =>
+            resource.ProtocolResourceTemplate.UriTemplate == "ui://weather/view.html");
+        var uiNode = weatherResource.ProtocolResourceTemplate.Meta?["ui"]?.AsObject();
+
+        Assert.NotNull(uiNode);
+        Assert.Equal("https://api.weather.gov", uiNode["csp"]?["connectDomains"]?[0]?.GetValue<string>());
+        Assert.True(uiNode["prefersBorder"]?.GetValue<bool>());
+
+        var listedResourceUi = weatherResource.ProtocolResource?.Meta?["ui"]?.AsObject();
+        Assert.NotNull(listedResourceUi);
+        Assert.Equal("https://api.weather.gov", listedResourceUi["csp"]?["connectDomains"]?[0]?.GetValue<string>());
+    }
+
+    [Fact]
     public void WithMcpApps_EmptyToolCollection_DoesNotThrow()
     {
         var sc = new ServiceCollection();
@@ -483,6 +569,25 @@ public class McpAppsTests
         [McpServerTool]
         [McpAppUi(ResourceUri = "ui://model-only/view.html", Visibility = [McpUiToolVisibility.Model])]
         public static string ModelOnlyTool(string location) => $"Model only for {location}";
+    }
+
+    [McpServerResourceType]
+    private static class TestResourcesWithAppUi
+    {
+        [McpServerResource(UriTemplate = "ui://weather/view.html", Name = "weather_ui", MimeType = McpApps.HtmlMimeType)]
+        [McpAppResource(
+            ConnectDomains = ["https://api.weather.gov"],
+            ResourceDomains = ["https://cdn.example.com"],
+            FrameDomains = ["https://embed.example.com"],
+            BaseUris = ["https://app.example.com"],
+            Permissions = ["geolocation"],
+            Domain = "https://app.example.com",
+            PrefersBorder = true)]
+        public static string WeatherUi() => "<html></html>";
+
+        [McpServerResource(UriTemplate = "ui://weather/no-border.html", Name = "weather_ui_no_border", MimeType = McpApps.HtmlMimeType)]
+        [McpAppResource(Domain = "https://app.example.com")]
+        public static string ResourceWithoutBorderPreference() => "<html></html>";
     }
 
     #endregion
