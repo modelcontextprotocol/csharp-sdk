@@ -617,10 +617,10 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
         await ssePipe.Writer.CompleteAsync();
     }
 
-    // The skip is scoped to the two statuses ConnectAsync acts on. Any other failure on the discover probe
-    // keeps the original fallback, because it is not evidence that an initialize retry is coming.
+    // 415 is outside the spec's 400/404/405 SSE-fallback allowlist, so AutoDetect must surface it
+    // without a deprecated GET — including when the failing request happens to be server/discover.
     [Fact]
-    public async Task AutoDetectMode_FallsBackToSse_WhenDiscoverProbeFailsWithUnrelatedStatus()
+    public async Task AutoDetectMode_SkipsSseFallback_WhenDiscoverProbeFailsWithNonAllowlistedStatus()
     {
         var options = new HttpClientTransportOptions
         {
@@ -650,11 +650,15 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
 
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             session.SendMessageAsync(
                 new JsonRpcRequest { Method = RequestMethods.ServerDiscover, Id = new RequestId(1) },
                 TestContext.Current.CancellationToken));
 
-        Assert.Equal(1, getCount);
+        Assert.Equal(0, getCount);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, ex.Data["ModelContextProtocol.HttpStatusCode"]);
+        Assert.DoesNotContain(
+            MockLoggerProvider.LogMessages,
+            m => m.Message.Contains("falling back to SSE transport"));
     }
 }
