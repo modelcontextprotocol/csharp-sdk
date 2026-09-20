@@ -220,7 +220,10 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         // A server predating SEP-2575 can reject the session-less server/discover probe at the HTTP layer
         // rather than with a JSON-RPC error: 404 when it requires Mcp-Session-Id on every non-initialize
         // POST, or a plain/empty 400 when it cannot parse the request. Both are initialize-handshake
-        // servers, so the connect must fall back instead of failing.
+        // servers, so the connect must fall back instead of failing. (405 is deliberately excluded: the
+        // POST endpoint rejecting the request method does not mean initialize will succeed over the same
+        // transport, and the spec routes 405 to the AutoDetect transport's SSE fallback — see
+        // Client_On405FromProbe_DoesNotFallBackTo_Initialize.)
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
 
@@ -240,17 +243,20 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Theory]
-    [InlineData(HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpTransportMode.AutoDetect)]
-    public async Task Client_OnStructuredInvalidRequestFromHttpProbe_FallsBackTo_Initialize(
-        HttpTransportMode transportMode)
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.BadRequest, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.NotFound, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnStructuredFallbackHttpStatusFromProbe_FallsBackTo_Initialize(
+        HttpStatusCode status, HttpTransportMode transportMode)
     {
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        mockHttpHandler.RequestHandler = CreateStructuredInvalidRequestProbeServer(
+        mockHttpHandler.RequestHandler = CreateStructuredProbeRejectingServer(
+            status,
             () => initializeReceived = true);
 
         await using var transport = CreateTransport(httpClient, transportMode);
@@ -262,22 +268,97 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
-    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
-    public async Task Client_OnOtherHttpErrorFromProbe_Surfaces_NoFallback(
-        HttpStatusCode status, HttpTransportMode transportMode)
+    [InlineData(HttpTransportMode.StreamableHttp, false)]
+    [InlineData(HttpTransportMode.AutoDetect, true)]
+    public async Task Client_On405FromProbe_DoesNotFallBackTo_Initialize(
+        HttpTransportMode transportMode, bool expectSseAttempt)
     {
-        // Only 400 and 404 are read as "this server needs the initialize handshake". Any other HTTP failure
-        // is a genuine transport error and must surface, so callers are not handed a misleading downstream
-        // error. Guards the deliberate narrowing of the status filter.
+        // 405 means the POST endpoint rejected the request method, so retrying initialize over the same
+        // transport is not useful. The spec routes 405 to the AutoDetect transport's SSE fallback: in
+        // Streamable HTTP mode the 405 surfaces directly (no GET), and in AutoDetect mode the client
+        // attempts the deprecated SSE GET. Assert GET/no-GET explicitly; do not treat "no initialize"
+        // as a general invariant after a successful SSE selection (revised #1719 will handshake then).
         var ct = TestContext.Current.CancellationToken;
         var initializeReceived = false;
+        var sseRequested = false;
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
         mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
-            status, "nope", () => initializeReceived = true);
+            HttpStatusCode.MethodNotAllowed, "Invalid session ID",
+            () => initializeReceived = true, () => sseRequested = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.Equal(expectSseAttempt, sseRequested);
+        if (transportMode == HttpTransportMode.StreamableHttp)
+        {
+            // Explicit Streamable HTTP has no SSE path, so initialize must not be used to recover a 405.
+            Assert.False(initializeReceived);
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp, false)]
+    [InlineData(HttpTransportMode.AutoDetect, true)]
+    public async Task Client_OnStructured405FromProbe_TriesSseOnlyInAutoDetect(
+        HttpTransportMode transportMode, bool expectSseAttempt)
+    {
+        // An unrecognized JSON-RPC error on 405 is not a recognized modern signal, so AutoDetect must
+        // classify the full response and try SSE. Explicit Streamable HTTP surfaces the 405 with no GET.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+        var sseRequested = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateStructuredProbeRejectingServer(
+            HttpStatusCode.MethodNotAllowed,
+            () => initializeReceived = true,
+            () => sseRequested = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.Equal(expectSseAttempt, sseRequested);
+        if (transportMode == HttpTransportMode.StreamableHttp)
+        {
+            Assert.False(initializeReceived);
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Unauthorized, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnOtherHttpErrorFromProbe_Surfaces_NoFallback(
+        HttpStatusCode status, HttpTransportMode transportMode)
+    {
+        // Non-allowlisted statuses (401/403/5xx/415/…) must surface directly for both structured and
+        // unstructured bodies — no initialize handshake and no deprecated SSE GET.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+        var sseRequested = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateProbeRejectingServer(
+            status, "nope", () => initializeReceived = true, () => sseRequested = true);
 
         await using var transport = CreateTransport(httpClient, transportMode);
 
@@ -288,6 +369,40 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         });
 
         Assert.False(initializeReceived);
+        Assert.False(sseRequested);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Unauthorized, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.AutoDetect)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, HttpTransportMode.AutoDetect)]
+    public async Task Client_OnStructuredOtherHttpErrorFromProbe_Surfaces_NoGet(
+        HttpStatusCode status, HttpTransportMode transportMode)
+    {
+        // Same non-allowlist coverage for unrecognized JSON-RPC-bodied responses: no SSE GET.
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+        var sseRequested = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateStructuredProbeRejectingServer(
+            status, () => initializeReceived = true, () => sseRequested = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+                loggerFactory: LoggerFactory, cancellationToken: ct);
+        });
+
+        Assert.False(initializeReceived);
+        Assert.False(sseRequested);
     }
 
     private HttpClientTransport CreateTransport(HttpClient httpClient, HttpTransportMode transportMode)
@@ -303,13 +418,17 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     /// and, if the client falls back, completes an <c>initialize</c> handshake at 2025-11-25.
     /// </summary>
     private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateProbeRejectingServer(
-        HttpStatusCode probeStatus, string probeBody, Action onInitialize)
+        HttpStatusCode probeStatus, string probeBody, Action onInitialize, Action? onSseRequest = null)
         => async request =>
         {
             // The server offers no standalone SSE stream, which the spec permits.
             // net472 does not populate a default Content, so every response sets one explicitly.
             if (request.Method == HttpMethod.Get)
+            {
+                // Track accidental AutoDetect fallback for non-allowlisted HTTP failures.
+                onSseRequest?.Invoke();
                 return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+            }
 
             var body = await request.Content!.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(body);
@@ -339,12 +458,15 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             }
         };
 
-    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateStructuredInvalidRequestProbeServer(
-        Action onInitialize)
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateStructuredProbeRejectingServer(
+        HttpStatusCode probeStatus, Action onInitialize, Action? onSseRequest = null)
         => async request =>
         {
             if (request.Method == HttpMethod.Get)
+            {
+                onSseRequest?.Invoke();
                 return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+            }
 
             var body = await request.Content!.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(body);
@@ -356,7 +478,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                 var id = doc.RootElement.GetProperty("id").GetRawText();
                 var error = "{\"jsonrpc\":\"2.0\",\"id\":" + id
                     + ",\"error\":{\"code\":-32600,\"message\":\"Mcp-Session-Id header is required\"}}";
-                return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                return new HttpResponseMessage(probeStatus)
                 {
                     Content = new StringContent(error, Encoding.UTF8, "application/json"),
                 };
