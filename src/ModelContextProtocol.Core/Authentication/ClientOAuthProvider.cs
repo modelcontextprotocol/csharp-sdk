@@ -494,6 +494,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         _clientId = metadataUri.AbsoluteUri;
 
+        // A CIMD client is a public client (it has no client secret, and its identifier is a URL),
+        // so it authenticates at the token endpoint with "none" and proves possession via PKCE.
+        // Without this, GetAccessTokenAsync falls through to the first method the authorization
+        // server advertises (e.g. client_secret_basic on Auth0), which fails with 401 access_denied.
+        // See https://github.com/modelcontextprotocol/csharp-sdk/issues/1612.
+        _tokenEndpointAuthMethod = "none";
+
         // See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-3
         static bool IsValidClientMetadataDocumentUri(Uri uri)
             => uri.IsAbsoluteUri
