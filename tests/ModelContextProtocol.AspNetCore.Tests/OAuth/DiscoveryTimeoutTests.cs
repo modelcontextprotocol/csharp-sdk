@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
@@ -12,7 +13,8 @@ namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBase(outputHelper)
 {
-    private static readonly TimeSpan ProbeBudget = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan ProbeBudget = TimeSpan.FromSeconds(5);
+    private readonly FakeTimeProvider _timeProvider = new();
     private readonly ConcurrentQueue<string> _methods = new();
     private readonly AsyncGate _authorization = new();
     private int _callbackCount;
@@ -26,7 +28,9 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         await using var transport = CreateTransport(cache);
         _authorization.Release.SetResult();
         var connecting = McpClient.CreateAsync(transport, Options(), LoggerFactory, TestContext.Current.CancellationToken);
-        await cache.Gate.AssertStillWaitingAsync(ProbeBudget * 2);
+        await cache.Gate.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget * 2);
+        Assert.False(cache.Gate.Token.IsCancellationRequested);
         Assert.Empty(_methods);
         cache.Gate.Release.SetResult();
 
@@ -48,16 +52,17 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         var options = Options();
         options.InitializationTimeout = initializationTimeout ? ProbeBudget * 4 : TestConstants.DefaultTimeout;
         var connecting = McpClient.CreateAsync(transport, options, LoggerFactory, caller.Token);
-        await _authorization.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _authorization.WaitUntilEnteredAsync(connecting);
         if (initializationTimeout)
         {
+            _timeProvider.Advance(options.InitializationTimeout);
             var error = await Assert.ThrowsAsync<TimeoutException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
             Assert.Equal("Initialization timed out", error.Message);
         }
         else
         {
             caller.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
         }
         await _authorization.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(1, _callbackCount);
@@ -85,14 +90,15 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         });
         await using var transport = CreateTransport();
         var first = McpClient.CreateAsync(transport, Options(), LoggerFactory, TestContext.Current.CancellationToken);
-        await _authorization.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _authorization.WaitUntilEnteredAsync(first);
         var secondOptions = Options(pinned: true);
         secondOptions.DiscoverProbeTimeout = ProbeBudget * 2;
         var second = McpClient.CreateAsync(transport, secondOptions, LoggerFactory, TestContext.Current.CancellationToken);
-        await secondPost.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await secondPost.WaitUntilEnteredAsync(second);
         // The second probe expiring proves the first authorization survived more than its own budget.
-        await Assert.ThrowsAsync<McpException>(() => second.WaitAsync(ProbeBudget * 8, TestContext.Current.CancellationToken));
-        Assert.False(_authorization.Canceled.Task.IsCompleted);
+        _timeProvider.Advance(secondOptions.DiscoverProbeTimeout);
+        await Assert.ThrowsAsync<McpException>(() => second.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.False(_authorization.Token.IsCancellationRequested);
         _authorization.Release.SetResult();
         await using var client = await first.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
@@ -121,13 +127,16 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         });
         await using var transport = CreateTransport();
         var options = Options(pinned: true);
-        options.DiscoverProbeTimeout = TimeSpan.FromSeconds(2);
         var connecting = McpClient.CreateAsync(transport, options, LoggerFactory, TestContext.Current.CancellationToken);
-        await initialHeaders.AssertStillWaitingAsync(options.DiscoverProbeTimeout * 0.6);
+        await initialHeaders.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget * 0.6);
         initialHeaders.Release.SetResult();
-        await _authorization.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _authorization.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget * 2);
+        Assert.False(_authorization.Token.IsCancellationRequested);
         _authorization.Release.SetResult();
-        await retryHeaders.AssertStillWaitingAsync(options.DiscoverProbeTimeout * 0.6);
+        await retryHeaders.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget * 0.6);
         retryHeaders.Release.SetResult();
 
         await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
@@ -152,9 +161,10 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         await using var transport = CreateTransport();
         _authorization.Release.SetResult();
         var connecting = McpClient.CreateAsync(transport, Options(pinned: true), LoggerFactory, TestContext.Current.CancellationToken);
-        await headers.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        await headers.Canceled.Task.WaitAsync(ProbeBudget * 8, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<McpException>(() => connecting);
+        await headers.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget);
+        await headers.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(1, _callbackCount);
     }
 
@@ -180,9 +190,10 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         await using var transport = CreateTransport();
         _authorization.Release.SetResult();
         var connecting = McpClient.CreateAsync(transport, Options(pinned: true), LoggerFactory, TestContext.Current.CancellationToken);
-        await handler.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        await handler.Canceled.Task.WaitAsync(ProbeBudget * 4, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<McpException>(() => connecting);
+        await handler.WaitUntilEnteredAsync(connecting);
+        _timeProvider.Advance(ProbeBudget);
+        await handler.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(1, _callbackCount);
         Assert.Equal([RequestMethods.ServerDiscover], _methods);
     }
@@ -223,8 +234,9 @@ public class DiscoveryTimeoutTests(ITestOutputHelper outputHelper) : OAuthTestBa
         },
     }, HttpClient, LoggerFactory);
 
-    private static McpClientOptions Options(bool pinned = false) => new()
+    private McpClientOptions Options(bool pinned = false) => new()
     {
+        TimeProvider = _timeProvider,
         DiscoverProbeTimeout = ProbeBudget,
         ProtocolVersion = pinned ? McpProtocolVersions.July2026ProtocolVersion : null,
     };

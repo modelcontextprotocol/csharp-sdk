@@ -286,8 +286,9 @@ internal sealed partial class McpClientImpl : McpClient
             _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
 
             // Perform initialization sequence
-            using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            initializationCts.CancelAfter(_options.InitializationTimeout);
+            var timeProvider = _options.TimeProvider;
+            using var initializationTimeout = new RequestTimeout(_options.InitializationTimeout, timeProvider, cancellationToken);
+            var initializationToken = initializationTimeout.Token;
 
             try
             {
@@ -315,9 +316,9 @@ internal sealed partial class McpClientImpl : McpClient
                     var probeTimeout = _options.DiscoverProbeTimeout;
                     using var probeTimeoutController = !fallbackToInitialize && probeTimeout != Timeout.InfiniteTimeSpan &&
                         (_options.InitializationTimeout == Timeout.InfiniteTimeSpan || probeTimeout < _options.InitializationTimeout)
-                            ? new RequestTimeout(probeTimeout, initializationCts.Token)
+                            ? new RequestTimeout(probeTimeout, timeProvider, initializationToken)
                             : null;
-                    var probeToken = probeTimeoutController?.Token ?? initializationCts.Token;
+                    var probeToken = probeTimeoutController?.Token ?? initializationToken;
 
                     try
                     {
@@ -399,7 +400,7 @@ internal sealed partial class McpClientImpl : McpClient
                         // server, so fall back. Other statuses stay uncaught and surface to the caller.
                         fallbackToInitialize = true;
                     }
-                    catch (OperationCanceledException) when (probeToken.IsCancellationRequested && !initializationCts.IsCancellationRequested)
+                    catch (OperationCanceledException) when (probeToken.IsCancellationRequested && !initializationToken.IsCancellationRequested)
                     {
                         // Probe timeout elapsed without a response. Per stdio.mdx fallback rules, no
                         // response within a reasonable timeout means the server requires initialize. Fall back.
@@ -441,7 +442,7 @@ internal sealed partial class McpClientImpl : McpClient
                                     : $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}."));
                         }
 
-                        await PerformInitializeHandshakeAsync(fallbackVersion, initializationCts.Token).ConfigureAwait(false);
+                        await PerformInitializeHandshakeAsync(fallbackVersion, initializationToken).ConfigureAwait(false);
                     }
                     else
                     {
@@ -483,10 +484,10 @@ internal sealed partial class McpClientImpl : McpClient
                     // ProtocolVersion that still supports Streamable HTTP sessions (opting out of the default), so
                     // _options.ProtocolVersion is non-null here.
                     string requestProtocol = _options.ProtocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
-                    await PerformInitializeHandshakeAsync(requestProtocol, initializationCts.Token).ConfigureAwait(false);
+                    await PerformInitializeHandshakeAsync(requestProtocol, initializationToken).ConfigureAwait(false);
                 }
             }
-            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException oce) when (initializationToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 LogClientInitializationTimeout(_endpointName);
                 throw new TimeoutException("Initialization timed out", oce);

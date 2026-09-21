@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
@@ -14,7 +15,7 @@ namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(outputHelper)
 {
-    private static readonly TimeSpan ProbeBudget = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan ProbeBudget = TimeSpan.FromSeconds(5);
 
     [Theory]
     [InlineData(HttpTransportMode.AutoDetect, null)]
@@ -26,7 +27,9 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
     public async Task Sse_DefaultsToInitialize_AndHonorsExplicitTransportAndVersion(HttpTransportMode mode, string? version)
     {
         var methods = new ConcurrentQueue<string>();
-        ConfigureSse(methods);
+        var initialized = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConfigureSse(methods, initialized);
+        var timeProvider = new FakeTimeProvider();
         var authorization = new AsyncGate();
         var initialEndpointMethods = new ConcurrentQueue<string>();
         await using var app = await StartMcpServerAsync(configureMiddleware: app => app.Use(async (context, next) =>
@@ -43,6 +46,7 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
         await using var transport = CreateTransport(mode, authorization);
         var connecting = McpClient.CreateAsync(transport, new()
         {
+            TimeProvider = timeProvider,
             DiscoverProbeTimeout = ProbeBudget,
             ProtocolVersion = version,
             InitializationTimeout = mode == HttpTransportMode.Sse && version is null ? ProbeBudget : TestConstants.DefaultTimeout,
@@ -50,13 +54,15 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
         if (version is null)
         {
             // AutoDetect excludes GET establishment from the probe; explicit SSE precedes initialization.
-            await authorization.AssertStillWaitingAsync(ProbeBudget * 2);
+            await authorization.WaitUntilEnteredAsync(connecting);
+            timeProvider.Advance(ProbeBudget * 2);
+            Assert.False(authorization.Token.IsCancellationRequested);
         }
         authorization.Release.SetResult();
         bool modern = version == McpProtocolVersions.July2026ProtocolVersion;
         if (modern && mode == HttpTransportMode.AutoDetect)
         {
-            await Assert.ThrowsAsync<McpException>(() => connecting);
+            await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
             Assert.Empty(methods);
         }
         else
@@ -64,9 +70,13 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
             await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
             Assert.Equal(version ?? McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
             Assert.Empty(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            if (!modern)
+            {
+                await initialized.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+            }
             Assert.Equal(modern
                 ? [RequestMethods.ServerDiscover, RequestMethods.ToolsList]
-                : new[] { RequestMethods.Initialize, NotificationMethods.InitializedNotification, RequestMethods.ToolsList }, methods);
+                : new[] { RequestMethods.Initialize, RequestMethods.ToolsList }, methods);
         }
         Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
         Assert.Equal(mode == HttpTransportMode.Sse ? [] :
@@ -78,13 +88,14 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
     public async Task ExplicitModernSse_SilentDiscoveryTimesOutWithoutInitialize()
     {
         var methods = new ConcurrentQueue<string>();
-        var discoveryReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timeProvider = new FakeTimeProvider();
+        var discoveryReceived = new AsyncGate();
         ConfigureSse(methods);
         Builder.Services.AddMcpServer().WithMessageFilters(filters => filters.AddIncomingFilter(next => async (context, cancellationToken) =>
         {
             if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ServerDiscover })
             {
-                discoveryReceived.TrySetResult();
+                await discoveryReceived.WaitAsync(cancellationToken);
             }
             else
             {
@@ -97,11 +108,13 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
         await using var transport = CreateTransport(HttpTransportMode.Sse, authorization);
         var connecting = McpClient.CreateAsync(transport, new()
         {
+            TimeProvider = timeProvider,
             ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
             DiscoverProbeTimeout = ProbeBudget,
         }, LoggerFactory, TestContext.Current.CancellationToken);
-        await discoveryReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(ProbeBudget * 8, TestContext.Current.CancellationToken));
+        await discoveryReceived.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(ProbeBudget);
+        await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
         Assert.Contains(RequestMethods.ServerDiscover, methods);
         Assert.DoesNotContain(RequestMethods.Initialize, methods);
     }
@@ -113,37 +126,47 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
     public async Task SseGetAuthorization_PreservesExistingDeadlines(string deadline)
     {
         ConfigureSse(new());
+        var timeProvider = new FakeTimeProvider();
         var authorization = new AsyncGate();
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateTransport(HttpTransportMode.AutoDetect, authorization,
-            deadline == "connection" ? ProbeBudget * 4 : null);
+            deadline == "connection" ? TimeSpan.FromSeconds(2) : null);
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var connecting = McpClient.CreateAsync(transport, new()
         {
+            TimeProvider = timeProvider,
             DiscoverProbeTimeout = ProbeBudget,
             InitializationTimeout = deadline == "initialization" ? ProbeBudget * 4 : TestConstants.DefaultTimeout,
         }, LoggerFactory, caller.Token);
-        await authorization.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        if (deadline != "connection")
+        {
+            await authorization.WaitUntilEnteredAsync(connecting);
+        }
         if (deadline == "caller")
         {
             caller.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
         }
         else if (deadline == "initialization")
         {
-            var error = await Assert.ThrowsAsync<TimeoutException>(() => connecting);
+            timeProvider.Advance(ProbeBudget * 4);
+            var error = await Assert.ThrowsAsync<TimeoutException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
             Assert.Equal("Initialization timed out", error.Message);
         }
         else
         {
-            var error = await Assert.ThrowsAsync<HttpRequestException>(() => connecting);
+            // ConnectionTimeout uses real time and may expire before authorization starts.
+            var error = await Assert.ThrowsAsync<HttpRequestException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
             Assert.IsType<TimeoutException>(error.InnerException);
         }
-        await authorization.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        if (authorization.Entered.Task.IsCompleted)
+        {
+            await authorization.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        }
         Assert.Equal(0, TestOAuthServer.AuthorizationCodeTokenRequestCount);
     }
 
-    private void ConfigureSse(ConcurrentQueue<string> methods)
+    private void ConfigureSse(ConcurrentQueue<string> methods, TaskCompletionSource? initialized = null)
     {
         TestOAuthServer.ValidResources = [.. TestOAuthServer.ValidResources, $"{McpServerUrl}/sse"];
         Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme,
@@ -158,9 +181,9 @@ public class SseDiscoveryTests(ITestOutputHelper outputHelper) : OAuthTestBase(o
                 {
                     methods.Enqueue(request.Method);
                 }
-                else if (context.JsonRpcMessage is JsonRpcNotification notification)
+                else if (context.JsonRpcMessage is JsonRpcNotification { Method: NotificationMethods.InitializedNotification })
                 {
-                    methods.Enqueue(notification.Method);
+                    initialized?.TrySetResult();
                 }
                 await next(context, cancellationToken);
             }));

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
@@ -1508,7 +1509,8 @@ public class AuthTests : OAuthTestBase
         const string resourcePath = "/mcp";
         List<string> wellKnownRequests = [];
         var metadataGate = new AsyncGate();
-        var probeBudget = TimeSpan.FromMilliseconds(500);
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
 
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
         Builder.Services.Configure<HttpServerTransportOptions>(options => options.Stateless = true);
@@ -1558,8 +1560,10 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         var connecting = McpClient.CreateAsync(
-            transport, new() { DiscoverProbeTimeout = probeBudget }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-        await metadataGate.AssertStillWaitingAsync(probeBudget * 2);
+            transport, new() { TimeProvider = timeProvider, DiscoverProbeTimeout = probeBudget }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await metadataGate.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(probeBudget * 2);
+        Assert.False(metadataGate.Token.IsCancellationRequested);
         metadataGate.Release.SetResult();
         await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 

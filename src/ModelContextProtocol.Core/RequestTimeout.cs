@@ -2,26 +2,45 @@ namespace ModelContextProtocol;
 
 /// <summary>A request-local timer that can be suspended without suspending linked cancellation.</summary>
 /// <remarks>
-/// Owned by one awaited discovery request, linked to the enclosing initialization scope.
+/// Owned by one awaited initialization or discovery operation, linked to its caller's cancellation.
 /// Suspension scopes must be sequential and disposed before their owner.
 /// Cancellation may race with suspension, but an expired timer cannot be restarted.
 /// </remarks>
 internal sealed class RequestTimeout : IDisposable
 {
     private readonly CancellationTokenSource _source;
+    private readonly ITimer _timer;
     private readonly TimeSpan _timeout;
 
-    public RequestTimeout(TimeSpan timeout, CancellationToken cancellationToken)
+    public RequestTimeout(TimeSpan timeout, TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         _timeout = timeout;
         _source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Token = _source.Token;
-        _source.CancelAfter(timeout);
+        try
+        {
+            _timer = timeProvider.CreateTimer(static state =>
+            {
+                try
+                {
+                    ((CancellationTokenSource)state!).Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // A timer callback already queued when Dispose ran can outlive the source.
+                }
+            }, _source, timeout, Timeout.InfiniteTimeSpan);
+        }
+        catch
+        {
+            _source.Dispose();
+            throw;
+        }
     }
 
     public CancellationToken Token { get; }
 
-    public void Stop() => _source.CancelAfter(Timeout.InfiniteTimeSpan);
+    public void Stop() => _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     public Suspension Suspend()
     {
@@ -29,7 +48,11 @@ internal sealed class RequestTimeout : IDisposable
         return new Suspension(this);
     }
 
-    public void Dispose() => _source.Dispose();
+    public void Dispose()
+    {
+        _timer.Dispose();
+        _source.Dispose();
+    }
 
     public readonly struct Suspension(RequestTimeout owner) : IDisposable
     {
@@ -37,7 +60,7 @@ internal sealed class RequestTimeout : IDisposable
         {
             if (!owner.Token.IsCancellationRequested)
             {
-                owner._source.CancelAfter(owner._timeout);
+                owner._timer.Change(owner._timeout, Timeout.InfiniteTimeSpan);
             }
         }
     }

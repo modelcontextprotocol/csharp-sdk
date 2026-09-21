@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -85,7 +86,8 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
     [InlineData("application/json", 400)]
     public async Task SilentDiscoverHeadersOrBody_UseProbeBudget(string? contentType, int statusCode)
     {
-        var probeBudget = TimeSpan.FromMilliseconds(500);
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
         var stalled = new AsyncGate();
         var methods = new List<string>();
         await StartServerAsync(async context =>
@@ -123,9 +125,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), context.RequestAborted);
         });
         await using var transport = new HttpClientTransport(new() { Endpoint = new("http://localhost:5000/mcp") }, HttpClient, LoggerFactory);
-        var connecting = McpClient.CreateAsync(transport, new() { DiscoverProbeTimeout = probeBudget }, LoggerFactory, TestContext.Current.CancellationToken);
-        await stalled.Entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-        await using var client = await connecting.WaitAsync(probeBudget * 8, TestContext.Current.CancellationToken);
+        var connecting = McpClient.CreateAsync(transport, new() { TimeProvider = timeProvider, DiscoverProbeTimeout = probeBudget }, LoggerFactory, TestContext.Current.CancellationToken);
+        await stalled.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(probeBudget);
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
         Assert.Equal([RequestMethods.ServerDiscover, RequestMethods.Initialize], methods);
     }

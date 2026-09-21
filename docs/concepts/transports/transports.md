@@ -145,6 +145,21 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### Controlling client timeout timers in tests
+
+<xref:ModelContextProtocol.Client.McpClientOptions.TimeProvider> controls
+<xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and
+<xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout>. It defaults to
+`TimeProvider.System`. Tests can set it to a `FakeTimeProvider` from the
+`Microsoft.Extensions.TimeProvider.Testing` package and advance time explicitly instead
+of waiting for real deadlines.
+
+Use synchronization signals to wait until the request or authorization phase being tested
+has started before advancing the clock. Fake time does not control HTTP processing or
+task scheduling, so keep a real-time outer test deadline as a safety bound. The client
+time provider does not change `HttpClient.Timeout`, OAuth token expiration, or
+<xref:ModelContextProtocol.Client.HttpClientTransportOptions.ConnectionTimeout>.
+
 #### Resuming sessions
 
 Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:

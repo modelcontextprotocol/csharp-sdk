@@ -102,6 +102,25 @@ public sealed class McpClientOptions
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// Gets or sets the time provider used for <see cref="InitializationTimeout"/> and <see cref="DiscoverProbeTimeout"/>.
+    /// </summary>
+    /// <value>The time provider. The default is <see cref="TimeProvider.System"/>.</value>
+    /// <remarks>
+    /// This provider does not control HTTP client timeouts, OAuth token expiration, or transport-specific
+    /// deadlines such as <see cref="HttpClientTransportOptions.ConnectionTimeout"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
+    public TimeProvider TimeProvider
+    {
+        get;
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    } = TimeProvider.System;
+
+    /// <summary>
     /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
     /// before falling back to the <c>initialize</c> handshake.
     /// </summary>

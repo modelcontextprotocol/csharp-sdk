@@ -1,7 +1,7 @@
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
-using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -168,24 +168,28 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
             serverNegotiatedVersion: McpProtocolVersions.November2025ProtocolVersion,
             silentDiscoverProbe: true);
 
-        var stopwatch = Stopwatch.StartNew();
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
         // Default options (ProtocolVersion = null) prefer 2026-07-28 but allow automatic fallback.
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        var connecting = McpClient.CreateAsync(transport, new McpClientOptions
         {
-            DiscoverProbeTimeout = TimeSpan.FromMilliseconds(250),
+            TimeProvider = timeProvider,
+            DiscoverProbeTimeout = probeBudget,
             InitializationTimeout = infiniteInitialization ? Timeout.InfiniteTimeSpan : TestConstants.DefaultTimeout,
         }, loggerFactory: LoggerFactory, cancellationToken: ct);
-        stopwatch.Stop();
+        await transport.DiscoverReceived.Task.WaitAsync(ct);
+        timeProvider.Advance(probeBudget - TimeSpan.FromMilliseconds(1));
+        Assert.False(connecting.IsCompleted);
+        Assert.False(transport.InitializeReceived);
+        timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+        await using var client = await connecting.WaitAsync(ct);
 
         Assert.True(transport.ServerDiscoverProbed);
         Assert.True(transport.InitializeReceived);
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, transport.InitializeProtocolVersion);
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
 
-        // The fallback was driven by the short probe timeout, not the 60s InitializationTimeout.
-        Assert.True(
-            stopwatch.Elapsed < TimeSpan.FromSeconds(30),
-            $"Fallback should have happened shortly after the {nameof(McpClientOptions.DiscoverProbeTimeout)}, but took {stopwatch.Elapsed}.");
+        Assert.False(ct.IsCancellationRequested);
     }
 
     [Theory]
@@ -198,12 +202,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         deadline.CancelAfter(TestConstants.DefaultTimeout);
         await using var transport = new InitializeHandshakeServerTestTransport(
             McpProtocolVersions.November2025ProtocolVersion, silentDiscoverProbe: true);
-
-        var exception = await Assert.ThrowsAsync<TimeoutException>(() => McpClient.CreateAsync(transport, new McpClientOptions
+        var timeProvider = new FakeTimeProvider();
+        var connecting = McpClient.CreateAsync(transport, new McpClientOptions
         {
+            TimeProvider = timeProvider,
             DiscoverProbeTimeout = TimeSpan.FromMilliseconds(probeMilliseconds),
             InitializationTimeout = TimeSpan.FromMilliseconds(initializationMilliseconds),
-        }, LoggerFactory, deadline.Token));
+        }, LoggerFactory, deadline.Token);
+        await transport.DiscoverReceived.Task.WaitAsync(deadline.Token);
+        timeProvider.Advance(TimeSpan.FromMilliseconds(initializationMilliseconds));
+        var exception = await Assert.ThrowsAsync<TimeoutException>(() => connecting.WaitAsync(deadline.Token));
 
         Assert.Equal("Initialization timed out", exception.Message);
         Assert.True(transport.ServerDiscoverProbed);
@@ -219,12 +227,16 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         await using var transport = new InitializeHandshakeServerTestTransport(
             McpProtocolVersions.November2025ProtocolVersion, silentDiscoverProbe: true);
+        var timeProvider = new FakeTimeProvider();
         var connecting = McpClient.CreateAsync(transport, new McpClientOptions
         {
+            TimeProvider = timeProvider,
             DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
             InitializationTimeout = Timeout.InfiniteTimeSpan,
         }, LoggerFactory, caller.Token);
         await transport.DiscoverReceived.Task.WaitAsync(deadline.Token);
+        timeProvider.Advance(TimeSpan.FromDays(1));
+        Assert.False(connecting.IsCompleted);
         caller.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connecting);
         Assert.False(transport.InitializeReceived);
@@ -237,12 +249,18 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         deadline.CancelAfter(TestConstants.DefaultTimeout);
         await using var transport = new InitializeHandshakeServerTestTransport(
             McpProtocolVersions.November2025ProtocolVersion, silentDiscoverProbe: true);
-        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(transport, new McpClientOptions
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
+        var connecting = McpClient.CreateAsync(transport, new McpClientOptions
         {
+            TimeProvider = timeProvider,
             ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-            DiscoverProbeTimeout = TimeSpan.FromMilliseconds(250),
+            DiscoverProbeTimeout = probeBudget,
             InitializationTimeout = Timeout.InfiniteTimeSpan,
-        }, LoggerFactory, deadline.Token));
+        }, LoggerFactory, deadline.Token);
+        await transport.DiscoverReceived.Task.WaitAsync(deadline.Token);
+        timeProvider.Advance(probeBudget);
+        await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(deadline.Token));
         Assert.True(transport.ServerDiscoverProbed);
         Assert.False(transport.InitializeReceived);
     }
@@ -284,6 +302,54 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         // Timeout.InfiniteTimeSpan disables the separate probe timeout (bounded by InitializationTimeout only).
         options.DiscoverProbeTimeout = Timeout.InfiniteTimeSpan;
         Assert.Equal(Timeout.InfiniteTimeSpan, options.DiscoverProbeTimeout);
+    }
+
+    [Fact]
+    public void TimeProvider_DefaultsToSystem_AndRejectsNull()
+    {
+        var options = new McpClientOptions();
+        Assert.Same(TimeProvider.System, options.TimeProvider);
+        Assert.Throws<ArgumentNullException>(() => options.TimeProvider = null!);
+    }
+
+    [Fact]
+    public async Task Client_LegacyInitialization_UsesTimeProvider()
+    {
+        var timeProvider = new FakeTimeProvider();
+        var timeout = TimeSpan.FromSeconds(10);
+        await using var transport = new InitializeHandshakeServerTestTransport(
+            McpProtocolVersions.November2025ProtocolVersion, silentInitialize: true);
+        var connecting = McpClient.CreateAsync(transport, new()
+        {
+            TimeProvider = timeProvider,
+            ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+            InitializationTimeout = timeout,
+        }, LoggerFactory, TestContext.Current.CancellationToken);
+        await transport.InitializeRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        timeProvider.Advance(timeout - TimeSpan.FromMilliseconds(1));
+        Assert.False(connecting.IsCompleted);
+        timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal("Initialization timed out", error.Message);
+        Assert.False(transport.ServerDiscoverProbed);
+    }
+
+    [Fact]
+    public async Task Client_CompletedInitialization_IsNotCanceledByAdvancingTime()
+    {
+        var timeProvider = new FakeTimeProvider();
+        await using var transport = new InitializeHandshakeServerTestTransport(McpProtocolVersions.November2025ProtocolVersion);
+        await using var client = await McpClient.CreateAsync(transport, new()
+        {
+            TimeProvider = timeProvider,
+        }, LoggerFactory, TestContext.Current.CancellationToken);
+
+        timeProvider.Advance(TimeSpan.FromDays(1));
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken).AsTask()
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.False(client.Completion.IsCompleted);
     }
 
     [Theory]
@@ -469,7 +535,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     private sealed class InitializeHandshakeServerTestTransport(
         string serverNegotiatedVersion,
         int probeErrorCode = (int)McpErrorCode.MethodNotFound,
-        bool silentDiscoverProbe = false) : IClientTransport
+        bool silentDiscoverProbe = false,
+        bool silentInitialize = false) : IClientTransport
     {
         private readonly Channel<JsonRpcMessage> _incomingToClient = Channel.CreateUnbounded<JsonRpcMessage>();
 
@@ -480,6 +547,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         public TaskCompletionSource<bool> DiscoverReceived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool InitializeReceived { get; private set; }
+
+        public TaskCompletionSource<bool> InitializeRequestReceived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string? InitializeProtocolVersion { get; private set; }
 
@@ -519,6 +588,11 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
 
                 case JsonRpcRequest { Method: RequestMethods.Initialize } initReq:
                     InitializeReceived = true;
+                    InitializeRequestReceived.TrySetResult(true);
+                    if (silentInitialize)
+                    {
+                        break;
+                    }
                     var initializeRequest = JsonSerializer.Deserialize<InitializeRequestParams>(initReq.Params, McpJsonUtilities.DefaultOptions);
                     InitializeProtocolVersion = initializeRequest?.ProtocolVersion;
                     _ = WriteAsync(new JsonRpcResponse
@@ -531,6 +605,10 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                             ServerInfo = new Implementation { Name = "initialize-handshake-test-server", Version = "1.0.0" },
                         }, McpJsonUtilities.DefaultOptions),
                     });
+                    break;
+
+                case JsonRpcRequest { Method: RequestMethods.Ping } ping:
+                    _ = WriteAsync(new JsonRpcResponse { Id = ping.Id, Result = new JsonObject() });
                     break;
             }
         }
