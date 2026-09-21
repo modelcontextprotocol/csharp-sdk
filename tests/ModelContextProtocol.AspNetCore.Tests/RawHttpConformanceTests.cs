@@ -132,6 +132,9 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
         var supported = json["result"]!["supportedVersions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
         Assert.Equal([McpProtocolVersions.July2026ProtocolVersion], supported);
+        var capabilities = json["result"]!["capabilities"]!.AsObject();
+        Assert.False(capabilities.ContainsKey("logging"));
+        Assert.True(capabilities.ContainsKey("tools"));
 
         // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult; the server emits the
         // safest defaults (immediately stale, not shareable) when the application hasn't customized.
@@ -349,12 +352,19 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Equal([McpProtocolVersions.November2025ProtocolVersion], supported);
     }
 
-    [Fact]
-    public async Task July2026Post_MissingBodyProtocolVersion_ReturnsInvalidParams_Minus32602()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    public async Task July2026Post_MissingOrMalformedBodyProtocolVersion_ReturnsInvalidParams_Minus32602(string? protocolVersionJson)
     {
         await StartAsync();
 
-        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{""_meta"":{""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
+        var versionProperty = protocolVersionJson is null ? "" : @"""io.modelcontextprotocol/protocolVersion"":" + protocolVersionJson + ",";
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{""_meta"":{" + versionProperty +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""raw"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.July2026ProtocolVersion);
@@ -370,8 +380,24 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.Contains(MetaKeys.ProtocolVersion, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("{}", McpErrorCode.InvalidParams)]
+    [InlineData(@"{""io.modelcontextprotocol/protocolVersion"":{}}", McpErrorCode.InvalidParams)]
+    [InlineData(@"{""io.modelcontextprotocol/protocolVersion"":""2025-11-25""}", McpErrorCode.UnsupportedProtocolVersion)]
+    public async Task ModernOnlyServer_HeaderlessRequest_StillRequiresModernMetadata(string metaJson, McpErrorCode expectedError)
+    {
+        await StartAsync(McpProtocolVersions.July2026ProtocolVersion);
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":" + metaJson + "}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)expectedError, json["error"]!["code"]!.GetValue<int>());
+    }
+
     [Fact]
-    public async Task July2026Post_MissingProtocolVersionHeader_ReturnsHeaderMismatch_Minus32020()
+    public async Task MissingProtocolVersionHeader_WithModernMetadata_IsServedFromBodyMetadata()
     {
         await StartAsync();
 
@@ -381,10 +407,61 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         request.Headers.Add("Mcp-Method", "server/discover");
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // The 2025-03-26 header default only applies when the server has "no other way to identify the
+        // version". The body metadata is another way, so the transport does not reject the request on the
+        // strength of a reserved _meta value. stdio, which has no header at all, behaves identically.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
-        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
-        Assert.Contains(ProtocolVersionHeader, json["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.NotNull(json["result"]);
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithUnsupportedMetadata_ReturnsUnsupportedProtocolVersion_Minus32022()
+    {
+        await StartAsync();
+
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment("9999-99-99") + "}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add("Mcp-Method", "server/discover");
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal("9999-99-99", json["error"]!["data"]!["requested"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithMalformedMetadata_IsIgnored()
+    {
+        await StartAsync();
+
+        // No header and no established era means legacy handling, where the reserved namespace is opaque.
+        // A value we cannot read is not a version claim, so it must not turn a legacy request into an error.
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":{""io.modelcontextprotocol/protocolVersion"":{}}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.NotNull(json["result"]!["tools"]);
+    }
+
+    [Fact]
+    public async Task MissingProtocolVersionHeader_WithLegacyMetadata_IsIgnored()
+    {
+        await StartAsync();
+
+        // A legacy reserved value on a headerless request stays opaque, which is the ChatGPT shape from #1783.
+        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2025-06-18""}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.NotNull(json["result"]!["tools"]);
     }
 
     [Fact]
@@ -405,11 +482,13 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     }
 
     [Fact]
-    public async Task InitializeHandshake_StillSucceeds_OnDefaultServer()
+    public async Task InitializeHandshake_IgnoresFutureMetadata_OnDefaultServer()
     {
         await StartAsync();
 
-        var body = @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}";
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":1,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}," +
+            @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":{},""io.modelcontextprotocol/clientInfo"":""invalid"",""io.modelcontextprotocol/clientCapabilities"":""invalid""}}}";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
@@ -451,6 +530,29 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
         Assert.False(result.ContainsKey("resultType"), "resultType must be absent on a 2025-11-25 tools/list result.");
         Assert.False(result.ContainsKey("ttlMs"), "ttlMs must be absent on a 2025-11-25 tools/list result.");
         Assert.False(result.ContainsKey("cacheScope"), "cacheScope must be absent on a 2025-11-25 tools/list result.");
+    }
+
+    [Theory]
+    [InlineData(@"""2025-11-25""")]
+    [InlineData(@"""2026-07-28""")]
+    [InlineData(@"""9999-99-99""")]
+    [InlineData("{}")]
+    public async Task Legacy2025Post_IgnoresFuturePerRequestMetadata(string protocolVersionJson)
+    {
+        await StartAsync();
+
+        var body =
+            @"{""jsonrpc"":""2.0"",""id"":3,""method"":""tools/call"",""params"":{""name"":""legacy_meta_probe"",""arguments"":{}," +
+            @"""_meta"":{""io.modelcontextprotocol/protocolVersion"":" + protocolVersionJson + "," +
+            @"""io.modelcontextprotocol/clientInfo"":{""name"":""chatgpt"",""version"":""1.0""}," +
+            @"""io.modelcontextprotocol/clientCapabilities"":{""sampling"":{}}}}}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, "") { Content = JsonContent(body) };
+        request.Headers.Add(ProtocolVersionHeader, McpProtocolVersions.November2025ProtocolVersion);
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await ReadJsonResponseAsync(response, TestContext.Current.CancellationToken);
+        Assert.Equal("future-metadata-ignored", json["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
 
     [Fact]
@@ -522,6 +624,18 @@ public class RawHttpConformanceTests(ITestOutputHelper outputHelper) : KestrelIn
     private sealed class CapabilityTools
     {
         private static readonly TimeSpan SlowHandlerDelay = TimeSpan.FromSeconds(1);
+
+        [McpServerTool(Name = "legacy_meta_probe")]
+        public static string LegacyMetaProbe(RequestContext<CallToolRequestParams> context)
+        {
+            var requestContext = context.JsonRpcRequest.Context;
+            Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, requestContext?.ProtocolVersion);
+            Assert.Null(requestContext?.ClientInfo);
+            Assert.Null(requestContext?.ClientCapabilities);
+            Assert.Null(context.Server.ClientInfo);
+            Assert.Null(context.Server.ClientCapabilities);
+            return "future-metadata-ignored";
+        }
 
         [McpServerTool(Name = "requires_sampling")]
         public static string RequiresSampling() =>
