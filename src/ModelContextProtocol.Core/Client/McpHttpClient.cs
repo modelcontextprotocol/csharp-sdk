@@ -1,12 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.Http.Headers;
-
-#if NET
-using System.Net.Http.Json;
-#else
 using System.Text.Json;
-#endif
 
 namespace ModelContextProtocol.Client;
 
@@ -31,13 +26,13 @@ internal class McpHttpClient(HttpClient httpClient)
             return null;
         }
 
-#if NET
-        return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage, s_applicationJsonContentType);
-#else
+        // Buffer the serialized message so the request carries a Content-Length rather than
+        // being streamed with Transfer-Encoding: chunked. JsonContent serializes lazily and
+        // cannot report a length, so HttpClient falls back to chunked encoding, which some
+        // hosts reject outright (for example the local Azure Functions Python worker).
         var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = s_applicationJsonContentType;
         return content;
-#endif
     }
 }
