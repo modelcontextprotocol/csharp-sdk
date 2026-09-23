@@ -35,10 +35,10 @@ Token validation itself is ordinary ASP.NET Core `JwtBearer`. There is no API in
 
 Any spec-compliant OAuth 2.0 authorization server that issues JWT access tokens works with the configuration below. `JwtBearer` validates the token itself, so a provider that hands out opaque tokens and expects the resource server to call an introspection endpoint needs a different validation path than the one shown here. Before committing to one, check that it can do the following, because these are the capabilities MCP leans on:
 
-- **Register your MCP server as an API with its own audience**, so issued tokens carry an `aud` claim matching your resource URI ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) resource indicators). Without this you cannot validate the audience, which means a token minted for an unrelated API would be accepted by your server.
+- **Register your MCP server as an API with its own audience**, so tokens requested for your resource URI ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) resource indicators) carry an `aud` claim that identifies this server and nothing else. That value is often the resource URI itself, but it does not have to be; see [the note on `ValidAudience`](#configuring-the-server) below. Without a dedicated audience you cannot validate it, which means a token minted for an unrelated API would be accepted by your server.
 - **Publish discovery metadata** at `/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`. Clients follow your protected resource metadata to the authorization server and then read its metadata to find the authorization and token endpoints. Your own server reads that metadata too, for signing keys. Setting `Authority` alone makes `JwtBearer` look at `<authority>/.well-known/openid-configuration`, so a provider that publishes only the [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) document needs `options.MetadataAddress` set explicitly. Note that RFC 8414 inserts `.well-known/oauth-authorization-server` between the host and the issuer path rather than appending it: for an issuer such as `https://login.example.com/tenant-id/v2.0`, the document lives at `https://login.example.com/.well-known/oauth-authorization-server/tenant-id/v2.0`.
 - **Support PKCE**, which OAuth 2.1 requires for public clients.
-- **Support [Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591), or client ID metadata documents.** This is the requirement most often overlooked. MCP clients such as desktop agents and IDE extensions are not yours to pre-register, so unless the authorization server can register them on demand, only clients you have provisioned by hand can connect.
+- **Support [Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591), or client ID metadata documents, if arbitrary clients need to connect.** This is the requirement most often overlooked. MCP clients such as desktop agents and IDE extensions are not yours to pre-register, so unless the authorization server can register them on demand, only clients you have provisioned by hand can connect. If you do control the set of clients, a statically registered public client using the authorization code flow with PKCE works without it.
 
 ## Configuring the server
 
@@ -75,6 +75,8 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuer = true,
         ValidIssuer = authority,
         ValidateAudience = true,
+        // The aud value your authorization server issues for this API. Often the same as
+        // resource, but not always; see the note below.
         ValidAudience = resource,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
@@ -110,7 +112,7 @@ app.MapMcp().RequireAuthorization();
 app.Run();
 ```
 
-`ValidAudience` is the part worth dwelling on. It is what stops a token issued for a different API in the same tenant from being replayed against your MCP server, so it needs to match the `Resource` you advertise, and your identity provider needs to be configured to mint tokens with that audience.
+`ValidAudience` is the part worth dwelling on. It is what stops a token issued for a different API in the same tenant from being replayed against your MCP server, so it needs to match the `aud` your authorization server puts in tokens requested for the `Resource` you advertise. With many providers that is the resource URI itself, but the two can differ. Microsoft Entra ID is the common case: the client sends the Application ID URI (for example `https://mcp.example.com`) as the `resource`, while v2 access tokens carry the API application's client ID in `aud`, so `ValidAudience` has to be that client ID rather than `resource` ([Entra guidance for MCP servers](https://learn.microsoft.com/entra/agent-id/secure-mcp-server-with-entra-id)). Check what your provider actually issues by decoding a token before settling this value.
 
 `MapInboundClaims` is the other line that changes behavior rather than just configuration. It defaults to `true`, which renames a set of well-known JWT claims to their `ClaimTypes` and Microsoft identity-platform equivalents on the way in: `sub` becomes `ClaimTypes.NameIdentifier`, `role` and `roles` become `ClaimTypes.Role`, and `scp` becomes `http://schemas.microsoft.com/identity/claims/scope`. So with mapping left on, `RoleClaimType = "roles"` names a claim type that is no longer there, and `[Authorize(Roles = "Admin")]` denies a caller who does hold the role. Turning mapping off keeps `RoleClaimType` and the `scp` half of the scope policy below matching what the token said.
 
@@ -257,7 +259,7 @@ Two kinds of staleness do exist, and neither involves `[Authorize]`. The first i
 ## Checklist
 
 - The MCP server validates tokens; it does not issue them.
-- `ValidateAudience` is on, and `ValidAudience` matches the advertised `Resource`.
+- `ValidateAudience` is on, and `ValidAudience` is the `aud` your authorization server issues for the advertised `Resource` (not necessarily the same string).
 - `ValidateIssuer` and `ValidateLifetime` are on, and `Authority` is HTTPS.
 - `Resource` is set explicitly rather than inferred, and forwarded headers are configured if a proxy is in front.
 - `AddAuthorizationFilters()` is called, and sensitive primitives carry `[Authorize]`.
