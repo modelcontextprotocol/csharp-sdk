@@ -196,7 +196,10 @@ public sealed class IdentityAssertionGrantProvider
             new RequestJwtAuthGrantOptions
             {
                 TokenEndpoint = idpTokenEndpoint,
-                Audience = authorizationServerUrl.ToString(),
+                // The JAG audience is the MCP authorization server's issuer identifier (RFC 8414), not the
+                // caller-supplied URL, which can differ from it (e.g. Uri.ToString() appends a trailing slash).
+                // OriginalString preserves the advertised issuer exactly as published.
+                Audience = mcpAuthMetadata.Issuer?.OriginalString ?? authorizationServerUrl.ToString(),
                 Resource = resourceUrl.ToString(),
                 IdToken = idToken,
                 ClientId = _options.IdpClientId,

@@ -95,6 +95,68 @@ public sealed class IdentityAssertionGrantTests : IDisposable
         Assert.Equal(3600, tokens.ExpiresIn);
     }
 
+    [Theory]
+    [InlineData("https://auth.example.com", "https://auth.example.com", "https://auth.example.com")]
+    [InlineData("https://auth.example.com/", "https://auth.example.com/tenant", "https://auth.example.com/tenant")]
+    [InlineData("https://auth.example.com", null, "https://auth.example.com/")]
+    public async Task IdentityAssertionGrantProvider_UsesDiscoveredIssuerAsJagAudience(
+        string authorizationServerUrl, string? advertisedIssuer, string expectedAudience)
+    {
+        string? audience = null;
+        _mockHandler.AsyncHandler = async request =>
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.Contains(".well-known"))
+            {
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["issuer"] = advertisedIssuer,
+                    ["token_endpoint"] = "https://auth.example.com/token",
+                });
+            }
+
+            if (url.Contains("idp.example.com"))
+            {
+                var body = await request.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                audience = body.Split('&')
+                    .Select(pair => pair.Split('='))
+                    .Where(kv => kv[0] == "audience")
+                    .Select(kv => WebUtility.UrlDecode(kv[1]))
+                    .Single();
+
+                return JsonResponse(HttpStatusCode.OK, new JsonObject
+                {
+                    ["access_token"] = "mock-jag",
+                    ["issued_token_type"] = "urn:ietf:params:oauth:token-type:id-jag",
+                    ["token_type"] = "N_A",
+                });
+            }
+
+            return JsonResponse(HttpStatusCode.OK, new JsonObject
+            {
+                ["access_token"] = "final-access-token",
+                ["token_type"] = "Bearer",
+            });
+        };
+
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "mcp-client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("mock-id-token"),
+            },
+            _httpClient);
+
+        await provider.GetAccessTokenAsync(
+            new Uri("https://resource.example.com"),
+            new Uri(authorizationServerUrl),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedAudience, audience);
+    }
+
     [Fact]
     public Task IdentityAssertionGrantProvider_DefaultsToPostRegardlessOfMetadataOrder() =>
         AssertMcpTokenEndpointAuthenticationAsync(
