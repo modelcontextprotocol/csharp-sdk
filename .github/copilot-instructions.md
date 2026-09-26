@@ -255,7 +255,7 @@ Two primary transport implementations with different invariants:
 - **IMcpServerBuilder** pattern provides fluent API for configuring servers via DI
 - Server primitives (tools, prompts, resources) are discovered via reflection using attributes
 - Support both attribute-based registration (`WithTools<T>()`) and instance-based (`WithTools(target)`)
-- Use `McpServerFactory` to create server instances with configured options
+- Use `McpServer.Create` to create server instances with configured options
 
 ### Tool/Prompt/Resource Discovery
 - Tools, prompts, and resources use attribute-based discovery: `[McpServerTool]`, `[McpServerPrompt]`, `[McpServerResource]`
