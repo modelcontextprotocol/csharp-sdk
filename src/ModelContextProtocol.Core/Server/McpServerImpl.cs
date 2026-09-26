@@ -33,14 +33,6 @@ internal sealed partial class McpServerImpl : McpServer
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, MrtrContinuation> _mrtrContinuations = new();
     private readonly ConcurrentDictionary<RequestId, MrtrContext> _mrtrContextsByRequestId = new();
-    private static readonly string[] s_perRequestMetadataKeys =
-    [
-        MetaKeys.ProtocolVersion,
-        MetaKeys.ClientInfo,
-        MetaKeys.ClientCapabilities,
-        MetaKeys.LogLevel,
-    ];
-
     // Track MRTR handler tasks using the same inFlightCount + TCS pattern as
     // McpSessionHandler.ProcessMessagesCoreAsync. Starts at 1 for DisposeAsync itself.
     private int _mrtrInFlightCount = 1;
@@ -121,9 +113,12 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // A stateful session can push unsolicited list-changed notifications, so subscribe to the
-        // collection change events. A stateless HTTP server cannot send unsolicited notifications, so
-        // instead suppress the listChanged capability it would otherwise advertise.
-        if (HasStatefulTransport())
+        // collection change events. A stateless HTTP server cannot push unsolicited notifications; whether it
+        // may still advertise the listChanged capability (over a custom subscriptions/listen stream to a
+        // 2026-07-28+ client) is decided per response in GetAdvertisedCapabilities rather than cleared here,
+        // because the same ServerCapabilities feeds both the legacy initialize handshake (which can never
+        // deliver it) and server/discover (which can, given a custom handler).
+        if (HasStatefulTransport)
         {
             Register(ServerOptions.ToolCollection, NotificationMethods.ToolListChangedNotification);
             Register(ServerOptions.PromptCollection, NotificationMethods.PromptListChangedNotification);
@@ -139,15 +134,6 @@ internal sealed partial class McpServerImpl : McpServer
                     _disposables.Add(() => collection.Changed -= changed);
                 }
             }
-        }
-        else
-        {
-            if (ServerCapabilities.Tools is not null)
-                ServerCapabilities.Tools.ListChanged = null;
-            if (ServerCapabilities.Prompts is not null)
-                ServerCapabilities.Prompts.ListChanged = null;
-            if (ServerCapabilities.Resources is not null)
-                ServerCapabilities.Resources.ListChanged = null;
         }
 
         // And initialize the session. The built-in protocol metadata filters run ahead of any
@@ -170,124 +156,46 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <summary>
     /// Wraps <paramref name="inner"/> so that, for every JSON-RPC request, a built-in filter first
-    /// synchronizes server-side state (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientInfo"/>)
-    /// from the per-request <c>_meta</c> values projected onto <see cref="JsonRpcMessageContext"/> and
-    /// validates the per-request protocol version, before delegating to the user-supplied incoming filters.
+    /// classifies and projects modern per-request <c>_meta</c>, synchronizes server-side state
+    /// (<see cref="_negotiatedProtocolVersion"/>, <see cref="_clientInfo"/>), and validates protocol
+    /// boundaries before delegating to user-supplied incoming filters.
     /// </summary>
     /// <remarks>
     /// Under the 2026-07-28 protocol revision (SEP-2575) there is no <c>initialize</c> handshake, so the protocol
     /// version and client capabilities MUST be populated per-request. Client info is optional. Per-request client
     /// capabilities and client info are consumed request-scoped by <see cref="DestinationBoundMcpServer"/> and are
     /// not read from server-wide state by request handlers. The shared <see cref="_clientInfo"/> write below is
-    /// best-effort and used only to derive the session endpoint name for logging/telemetry. For initialize-handshake
-    /// clients the per-request values are absent and the built-in filter is a no-op (the values were captured during
-    /// the initialize handler).
+    /// best-effort and used only to derive the session endpoint name for logging/telemetry. Under initialize-handshake
+    /// revisions, reserved per-request metadata is opaque and is not parsed or projected. Modern envelopes remain
+    /// strictly parsed.
     /// </remarks>
     private JsonRpcMessageFilter PrependMetaReadingFilter(JsonRpcMessageFilter inner)
     {
         JsonRpcMessageFilter metaReadingFilter = next => async (message, cancellationToken) =>
         {
-            if (message is JsonRpcRequest { Method: RequestMethods.Initialize } initializeRequest)
+            if (message is JsonRpcRequest request)
             {
-                ValidateInitializeRequestBoundary(initializeRequest);
-            }
-            else if (message is JsonRpcRequest request)
-            {
-                var context = request.Context;
-                bool endpointNameNeedsRefresh = false;
-                bool hasProtocolVersionMeta = HasMetaKey(request, MetaKeys.ProtocolVersion);
-                bool hasReservedPerRequestMeta = TryGetPerRequestMetadataKey(request, out var reservedPerRequestMetaKey);
-
-                if (context?.ProtocolVersion is { } protocolVersion)
+                if (request.Method == RequestMethods.Initialize)
                 {
-                    bool protocolVersionAlreadyEstablished = _negotiatedProtocolVersion is not null;
-                    if (protocolVersionAlreadyEstablished)
-                    {
-                        SetNegotiatedProtocolVersion(protocolVersion);
-                    }
-
-                    // Per SEP-2575, the server MUST reject any request whose per-request
-                    // _meta/io.modelcontextprotocol/protocolVersion is not one of its supported versions
-                    // with an UnsupportedProtocolVersionError (-32022) carrying the supported list.
-                    if (!_supportedProtocolVersions.Contains(protocolVersion))
-                    {
-                        var supportedVersions =
-                            hasProtocolVersionMeta && _perRequestMetadataProtocolVersions.Length > 0 ?
-                                _perRequestMetadataProtocolVersions :
-                                _supportedProtocolVersions;
-
-                        throw new UnsupportedProtocolVersionException(
-                            requested: protocolVersion,
-                            supported: supportedVersions);
-                    }
-
-                    if (McpProtocolVersions.RequiresPerRequestMetadata(protocolVersion))
-                    {
-                        ValidateRequiredPerRequestMetadata(
-                            protocolVersion,
-                            hasProtocolVersionMeta,
-                            context.ClientCapabilities is not null);
-                    }
-                    else if (McpProtocolVersions.SupportsInitializeHandshake(protocolVersion))
-                    {
-                        if (_negotiatedProtocolVersion is null && hasProtocolVersionMeta)
-                        {
-                            throw new UnsupportedProtocolVersionException(
-                                requested: protocolVersion,
-                                supported: _perRequestMetadataProtocolVersions,
-                                message: $"Protocol version '{protocolVersion}' requires the initialize handshake and cannot be selected through per-request metadata.");
-                        }
-
-                        if (hasReservedPerRequestMeta)
-                        {
-                            ThrowReservedPerRequestMetadata(requestedProtocolVersion: protocolVersion, reservedPerRequestMetaKey);
-                        }
-                    }
-
-                    if (!protocolVersionAlreadyEstablished)
-                    {
-                        SetNegotiatedProtocolVersion(protocolVersion);
-                    }
+                    ValidateInitializeRequestBoundary(request);
                 }
-                else if (_negotiatedProtocolVersion is null)
+                else
                 {
-                    if (request.Method == RequestMethods.ServerDiscover)
+                    ReadRequestMetadata(request);
+                    ValidateRequestMethodBoundary(request);
+
+                    var context = request.Context;
+                    if (McpProtocolVersions.RequiresPerRequestMetadata(context?.ProtocolVersion ?? _negotiatedProtocolVersion) &&
+                        context?.ClientInfo is { } clientInfo &&
+                        (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
+                         !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
                     {
-                        throw new McpProtocolException(
-                            $"The '{RequestMethods.ServerDiscover}' request requires per-request metadata declaring a supported protocol version.",
-                            McpErrorCode.InvalidParams);
+                        // Modern handlers resolve client info request-scoped through DestinationBoundMcpServer.
+                        // This shared write is only for endpoint logging.
+                        _clientInfo = clientInfo;
+                        UpdateEndpointNameWithClientInfo();
+                        _sessionHandler.EndpointName = _endpointName;
                     }
-
-                    if (hasReservedPerRequestMeta)
-                    {
-                        ThrowReservedPerRequestMetadata(requestedProtocolVersion: null, reservedPerRequestMetaKey);
-                    }
-                }
-                else if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion) && hasReservedPerRequestMeta)
-                {
-                    ThrowReservedPerRequestMetadata(_negotiatedProtocolVersion, reservedPerRequestMetaKey);
-                }
-
-                ValidateRequestMethodBoundary(request);
-
-                if (context?.ClientInfo is { } clientInfo &&
-                    (_clientInfo is null || !string.Equals(_clientInfo.Name, clientInfo.Name, StringComparison.Ordinal) ||
-                     !string.Equals(_clientInfo.Version, clientInfo.Version, StringComparison.Ordinal)))
-                {
-                    // This shared write is best-effort and used only to derive the session endpoint name for
-                    // logging/telemetry. It is intentionally NOT read by request handlers on 2026-07-28+ sessions:
-                    // DestinationBoundMcpServer resolves ClientInfo (and ClientCapabilities) request-scoped from
-                    // the per-request _meta so concurrent requests never observe each other's values. Under a
-                    // draft stateful session with differing per-request client info, the last writer wins here,
-                    // which only affects the logged endpoint name and never the request-scoped values handlers see.
-                    _clientInfo = clientInfo;
-                    endpointNameNeedsRefresh = true;
-                }
-
-                if (endpointNameNeedsRefresh)
-                {
-                    UpdateEndpointNameWithClientInfo();
-                    _sessionHandler.EndpointName = _endpointName;
                 }
             }
             else if (message is JsonRpcNotification notification)
@@ -301,55 +209,157 @@ internal sealed partial class McpServerImpl : McpServer
         return next => metaReadingFilter(inner(next));
     }
 
-    private static void ValidateRequiredPerRequestMetadata(
-        string protocolVersion,
-        bool hasProtocolVersionMeta,
-        bool hasClientCapabilitiesMeta)
+    private void ReadRequestMetadata(JsonRpcRequest request)
     {
-        if (!hasProtocolVersionMeta)
+        string? transportProtocolVersion = request.Context?.ProtocolVersion;
+
+        // An established legacy session or supported legacy transport header selects initialize-handshake
+        // semantics. Continue validating an authoritative transport version, but treat future body metadata
+        // as opaque under the negotiated legacy revision.
+        if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion) ||
+            McpProtocolVersions.SupportsInitializeHandshake(transportProtocolVersion))
         {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ProtocolVersion);
+            if (transportProtocolVersion is not null)
+            {
+                if (!_supportedProtocolVersions.Contains(transportProtocolVersion))
+                {
+                    throw new UnsupportedProtocolVersionException(
+                        requested: transportProtocolVersion,
+                        supported: _supportedProtocolVersions);
+                }
+
+                SetNegotiatedProtocolVersion(transportProtocolVersion);
+            }
+
+            return;
         }
 
-        // clientInfo is optional: requests whose _meta omits it are served, not rejected.
+        JsonObject? meta = request.Params is JsonObject paramsObj ? paramsObj["_meta"] as JsonObject : null;
+        // An unreadable value cannot select a protocol; only the modern path requires a usable version.
+        string? metadataProtocolVersion =
+            meta?[MetaKeys.ProtocolVersion] is JsonValue value && value.TryGetValue(out string? version) ? version : null;
 
-        if (!hasClientCapabilitiesMeta)
+        if (transportProtocolVersion is not null &&
+            metadataProtocolVersion is not null &&
+            !string.Equals(transportProtocolVersion, metadataProtocolVersion, StringComparison.Ordinal))
         {
-            ThrowMissingPerRequestMetadata(protocolVersion, MetaKeys.ClientCapabilities);
+            throw new McpProtocolException(
+                $"Header mismatch: the per-request _meta protocol version '{metadataProtocolVersion}' does not match the MCP-Protocol-Version header value '{transportProtocolVersion}'.",
+                McpErrorCode.HeaderMismatch);
+        }
+
+        if (McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ||
+            transportProtocolVersion is not null ||
+            (metadataProtocolVersion is not null && !McpProtocolVersions.SupportsInitializeHandshake(metadataProtocolVersion)) ||
+            _initializeHandshakeProtocolVersions.Length == 0)
+        {
+            if (metadataProtocolVersion is null)
+            {
+                if (transportProtocolVersion is not null &&
+                    !_supportedProtocolVersions.Contains(transportProtocolVersion))
+                {
+                    throw new UnsupportedProtocolVersionException(
+                        requested: transportProtocolVersion,
+                        supported: _supportedProtocolVersions);
+                }
+
+                throw MissingPerRequestMetadata(
+                    transportProtocolVersion ?? _negotiatedProtocolVersion ?? _perRequestMetadataProtocolVersions[0],
+                    MetaKeys.ProtocolVersion);
+            }
+
+            if (!_supportedProtocolVersions.Contains(metadataProtocolVersion))
+            {
+                throw new UnsupportedProtocolVersionException(
+                    requested: metadataProtocolVersion,
+                    supported: _perRequestMetadataProtocolVersions.Length > 0
+                        ? _perRequestMetadataProtocolVersions
+                        : _supportedProtocolVersions);
+            }
+
+            // Reject version changes before parsing, but establish a new version only after parsing succeeds.
+            bool protocolVersionAlreadyEstablished = _negotiatedProtocolVersion is not null;
+            if (protocolVersionAlreadyEstablished)
+            {
+                SetNegotiatedProtocolVersion(metadataProtocolVersion);
+            }
+
+            ProjectModernMetadata(request, meta!, metadataProtocolVersion);
+
+            if (!protocolVersionAlreadyEstablished)
+            {
+                SetNegotiatedProtocolVersion(metadataProtocolVersion);
+            }
+
+            return;
+        }
+
+        if (request.Method == RequestMethods.ServerDiscover)
+        {
+            throw new McpProtocolException(
+                $"The '{RequestMethods.ServerDiscover}' request requires per-request metadata declaring a supported protocol version.",
+                McpErrorCode.InvalidParams);
+        }
+
+        // With no established era, warn in case a modern peer accidentally fell back to legacy handling.
+        if (metadataProtocolVersion is null && meta?.ContainsKey(MetaKeys.ProtocolVersion) is true)
+        {
+            LogIgnoredUnreadableProtocolVersionMetadata(_endpointName, request.Method);
         }
     }
 
-    private static void ThrowMissingPerRequestMetadata(string protocolVersion, string key) =>
-        throw new McpProtocolException(
+    private static void ProjectModernMetadata(JsonRpcRequest request, JsonObject meta, string protocolVersion)
+    {
+        if (!meta.ContainsKey(MetaKeys.ClientCapabilities))
+        {
+            throw MissingPerRequestMetadata(protocolVersion, MetaKeys.ClientCapabilities);
+        }
+
+        var context = request.Context ??= new();
+        context.ProtocolVersion = protocolVersion;
+        context.ClientInfo = meta[MetaKeys.ClientInfo] is JsonNode clientInfoNode
+            ? DeserializeModernMetadata(
+                clientInfoNode,
+                McpJsonUtilities.JsonContext.Default.Implementation,
+                MetaKeys.ClientInfo)
+            : null;
+        context.ClientCapabilities = meta[MetaKeys.ClientCapabilities] is JsonNode clientCapabilitiesNode
+            ? DeserializeModernMetadata(
+                clientCapabilitiesNode,
+                McpJsonUtilities.JsonContext.Default.ClientCapabilities,
+                MetaKeys.ClientCapabilities)
+            : throw InvalidMetadata(MetaKeys.ClientCapabilities);
+        context.LogLevel = meta[MetaKeys.LogLevel] is JsonNode logLevelNode
+            ? DeserializeModernMetadata(
+                logLevelNode,
+                McpJsonUtilities.JsonContext.Default.LoggingLevel,
+                MetaKeys.LogLevel)
+            : null;
+    }
+
+    private static T DeserializeModernMetadata<T>(JsonNode node, JsonTypeInfo<T> typeInfo, string key)
+    {
+        try
+        {
+            T? value = JsonSerializer.Deserialize(node, typeInfo);
+            return value is not null ? value : throw new JsonException();
+        }
+        catch (JsonException ex)
+        {
+            throw new McpProtocolException(
+                $"The per-request metadata key '_meta/{key}' has an invalid value.",
+                ex,
+                McpErrorCode.InvalidParams);
+        }
+    }
+
+    private static McpProtocolException InvalidMetadata(string key) =>
+        new($"The per-request metadata key '_meta/{key}' has an invalid value.", McpErrorCode.InvalidParams);
+
+    private static McpProtocolException MissingPerRequestMetadata(string protocolVersion, string key) =>
+        new(
             $"Requests using protocol version '{protocolVersion}' must include '_meta/{key}'.",
             McpErrorCode.InvalidParams);
-
-    private static void ThrowReservedPerRequestMetadata(string? requestedProtocolVersion, string key) =>
-        throw new McpProtocolException(
-            requestedProtocolVersion is null
-                ? $"The reserved per-request metadata key '_meta/{key}' requires a protocol version that uses per-request metadata."
-                : $"The reserved per-request metadata key '_meta/{key}' is not valid with protocol version '{requestedProtocolVersion}'.",
-            McpErrorCode.InvalidRequest);
-
-    private static bool TryGetPerRequestMetadataKey(JsonRpcRequest request, out string key)
-    {
-        foreach (var candidate in s_perRequestMetadataKeys)
-        {
-            if (HasMetaKey(request, candidate))
-            {
-                key = candidate;
-                return true;
-            }
-        }
-
-        key = "";
-        return false;
-    }
-
-    private static bool HasMetaKey(JsonRpcRequest request, string key) =>
-        request.Params is JsonObject paramsObj &&
-        paramsObj["_meta"] is JsonObject metaObj &&
-        metaObj.ContainsKey(key);
 
     /// <summary>
     /// Adds the server identity to every successful result on per-request-metadata protocol revisions.
@@ -382,12 +392,17 @@ internal sealed partial class McpServerImpl : McpServer
 
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
-        // Per-request-metadata revisions (SEP-2575) removed the initialize handshake entirely:
-        // the request is for a method the server does not implement on that revision.
-        if (McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion))
+        // Modern revisions removed initialize. An established modern session is authoritative even when
+        // the new request has no version header; a failed discovery probe does not establish a version.
+        string? modernProtocolVersion =
+            McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion) ? request.Context!.ProtocolVersion :
+            McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ? _negotiatedProtocolVersion :
+            null;
+
+        if (modernProtocolVersion is not null)
         {
             throw new McpProtocolException(
-                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{request.Context?.ProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
+                $"Method '{RequestMethods.Initialize}' is not available on protocol version '{modernProtocolVersion}'. Use '{RequestMethods.ServerDiscover}' and per-request metadata instead.",
                 McpErrorCode.MethodNotFound);
         }
 
@@ -399,23 +414,6 @@ internal sealed partial class McpServerImpl : McpServer
                 supported: _initializeHandshakeProtocolVersions,
                 message: $"Protocol version '{protocolVersion}' is not available through the initialize handshake.");
         }
-
-        if (TryGetPerRequestMetadataKey(request, out var key))
-        {
-            ThrowReservedPerRequestMetadata(TryGetStringParam(request, "protocolVersion"), key);
-        }
-    }
-
-    private static string? TryGetStringParam(JsonRpcRequest request, string propertyName)
-    {
-        if (request.Params is JsonObject paramsObj &&
-            paramsObj[propertyName] is JsonValue value &&
-            value.TryGetValue(out string? result))
-        {
-            return result;
-        }
-
-        return null;
     }
 
     private static string[] GetConfiguredSupportedProtocolVersions(string? protocolVersion)
@@ -520,8 +518,68 @@ internal sealed partial class McpServerImpl : McpServer
     /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; }
 
+    /// <summary>
+    /// Returns the <see cref="ServerCapabilities"/> to advertise in a specific response, suppressing
+    /// capabilities that are not available on that response's protocol path.
+    /// </summary>
+    /// <param name="listenStreamCanDeliverListChanged">
+    /// <see langword="true"/> when the client this response targets can receive <c>*/list_changed</c>
+    /// notifications over a <c>subscriptions/listen</c> stream.
+    /// </param>
+    /// <param name="includeDeprecatedLogging">
+    /// <see langword="true"/> for legacy initialize responses that support <c>logging/setLevel</c>;
+    /// <see langword="false"/> for modern discover responses, where that method is unavailable.
+    /// </param>
+    /// <remarks>
+    /// A stateless HTTP server has no session-wide channel to push unsolicited <c>*/list_changed</c>
+    /// notifications. It can only deliver them over a <c>subscriptions/listen</c> stream, which requires both
+    /// a 2026-07-28+ client (so the request is reachable at all) and a custom
+    /// <see cref="McpServerHandlers.SubscriptionsListenHandler"/> to own that stream (the built-in stateless
+    /// handler grants no notifications). When neither the transport is stateful nor that stream can carry
+    /// them, the <c>listChanged</c> flags are dropped so the server never advertises a capability it cannot
+    /// deliver. The deprecated logging capability is likewise omitted from modern discovery because this SDK
+    /// rejects the legacy <c>logging/setLevel</c> method on that path. Everything else is preserved.
+    /// </remarks>
+    private ServerCapabilities GetAdvertisedCapabilities(
+        bool listenStreamCanDeliverListChanged,
+        bool includeDeprecatedLogging)
+    {
+        bool includeListChanged = HasStatefulTransport || listenStreamCanDeliverListChanged;
+        if (includeListChanged && includeDeprecatedLogging)
+        {
+            return ServerCapabilities;
+        }
+
+        // Copy onto a fresh instance so the shared ServerCapabilities keeps the authored listChanged flags;
+        // server/discover with a custom listen handler may still advertise them.
+        return new ServerCapabilities
+        {
+            Experimental = ServerCapabilities.Experimental,
+            Logging = includeDeprecatedLogging ? ServerCapabilities.Logging : null,
+            Completions = ServerCapabilities.Completions,
+            Extensions = ServerCapabilities.Extensions,
+            Prompts = ServerCapabilities.Prompts is null
+                ? null
+                : includeListChanged
+                    ? ServerCapabilities.Prompts
+                    : new PromptsCapability { ListChanged = null },
+            Resources = ServerCapabilities.Resources is { } resources
+                ? includeListChanged
+                    ? resources
+                    : new ResourcesCapability { Subscribe = resources.Subscribe, ListChanged = null }
+                : null,
+            Tools = ServerCapabilities.Tools is null
+                ? null
+                : includeListChanged
+                    ? ServerCapabilities.Tools
+                    : new ToolsCapability { ListChanged = null },
+        };
+    }
+
     /// <inheritdoc />
     public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
+
+    internal override bool SupportsServerToClientRequests => HasStatefulTransport;
 
     /// <inheritdoc />
     public override Implementation? ClientInfo => _clientInfo;
@@ -658,11 +716,8 @@ internal sealed partial class McpServerImpl : McpServer
 
                 string negotiatedProtocolVersion = protocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
 
-                // The initialize handshake is authoritative: it may supersede a protocol version
-                // a prior server/discover probe established on the same connection (the dual-path
-                // fallback path a permissive client takes against an unknown server). Unlike the
-                // per-request 2026-07-28 version - which SetNegotiatedProtocolVersion locks once negotiated -
-                // initialize force-sets the version.
+                // initialize may supersede a legacy transport version. ValidateInitializeRequestBoundary
+                // prevents it from downgrading an established modern session.
                 _negotiatedProtocolVersion = negotiatedProtocolVersion;
                 _sessionHandler.NegotiatedProtocolVersion = negotiatedProtocolVersion;
 
@@ -671,7 +726,13 @@ internal sealed partial class McpServerImpl : McpServer
                     ProtocolVersion = negotiatedProtocolVersion,
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
-                    Capabilities = ServerCapabilities ?? new(),
+
+                    // The initialize handshake only serves pre-2026-07-28 clients, which cannot open a
+                    // subscriptions/listen stream, so a stateless server has no way to deliver list-changed
+                    // notifications to them regardless of any custom handler.
+                    Capabilities = GetAdvertisedCapabilities(
+                        listenStreamCanDeliverListChanged: false,
+                        includeDeprecatedLogging: true),
 
                     // resultType is a 2026-07-28 result field. The initialize handshake is only available on
                     // 2025-11-25 and earlier revisions (2026-07-28+ negotiate via server/discover and throw
@@ -698,7 +759,14 @@ internal sealed partial class McpServerImpl : McpServer
                 return new ValueTask<DiscoverResult>(new DiscoverResult
                 {
                     SupportedVersions = [.. _perRequestMetadataProtocolVersions],
-                    Capabilities = ServerCapabilities ?? new(),
+
+                    // server/discover only serves 2026-07-28+ clients, which can open a subscriptions/listen
+                    // stream. A stateless server can therefore still deliver list-changed notifications if the
+                    // author supplied a custom handler to own that stream (the built-in stateless handler
+                    // grants nothing, so it cannot).
+                    Capabilities = GetAdvertisedCapabilities(
+                        listenStreamCanDeliverListChanged: options.Handlers.SubscriptionsListenHandler is not null,
+                        includeDeprecatedLogging: false),
                     Instructions = options.ServerInstructions,
                     // Spec PR #2855 makes ttlMs and cacheScope required on DiscoverResult. Default to
                     // the safest values (immediately stale, not shareable) so existing servers keep
@@ -726,9 +794,61 @@ internal sealed partial class McpServerImpl : McpServer
     /// Subscription-bound notifications carry the listen request's id in their
     /// <c>_meta/io.modelcontextprotocol/subscriptionId</c> field per SEP-2575 so clients can demultiplex.
     /// </para>
+    /// <para>
+    /// A server author may supply a custom <see cref="McpServerHandlers.SubscriptionsListenHandler"/> to take
+    /// over the stream entirely; see the design notes at the top of this method for the behavior.
+    /// </para>
     /// </remarks>
     private void ConfigureSubscriptions(McpServerOptions options)
     {
+        // Design decision 1 of issue #1662 (replacement vs. additive handler): a custom
+        // SubscriptionsListenHandler is a FULL REPLACEMENT for the built-in subscriptions/listen handler, not
+        // an additive/composed one. When one is set, that handler exclusively owns the stream: the SDK does
+        // not track the subscription in _activeSubscriptions, does not send the acknowledgement, and performs
+        // no automatic */list_changed fan-out for the request. This keeps the SEP-2575 contract trivial to
+        // honor (exactly one acknowledgement, no duplicate delivery) and mirrors the existing low-level
+        // replacement handlers such as CallToolWithAlternateHandler. An additive design was rejected because
+        // two writers on one stream create ambiguity over who sends the single acknowledgement, force the two
+        // lifetimes to be coordinated, and risk double-tagging the subscription id.
+        if (options.Handlers.SubscriptionsListenHandler is { } subscriptionsListenHandler)
+        {
+            // Route the custom handler through SetHandler so it receives the same DestinationBoundMcpServer as
+            // every other typed handler. That server sends notifications over this request's own response
+            // stream (its RelatedTransport), which is what lets the handler stream even under stateless
+            // Streamable HTTP, where the held-open POST response is the only solicited server-to-client
+            // channel (the core scenario of issue #1662). Going through SetHandler also applies the standard
+            // 2026-07-28 resultType stamping and provides the request-scoped service provider via
+            // request.Services.
+            SetHandler(RequestMethods.SubscriptionsListen,
+                (request, cancellationToken) =>
+                {
+                    // Protocol-version gating stays in the SDK rather than the custom handler, so a custom
+                    // handler can never be reached on a revision that predates SEP-2575. subscriptions/listen
+                    // is a 2026-07-28 feature; on older negotiated revisions it is rejected as an unknown
+                    // method, exactly as the built-in handler below does.
+                    if (!IsJuly2026OrLaterProtocolRequest(request.JsonRpcRequest))
+                    {
+                        throw new McpProtocolException(
+                            $"The method '{RequestMethods.SubscriptionsListen}' requires a newer protocol revision that supports per-request subscriptions; " +
+                            $"the negotiated protocol version is '{NegotiatedProtocolVersion ?? "(none)"}'.",
+                            McpErrorCode.MethodNotFound);
+                    }
+
+                    // Notifications is 'required', but that only enforces presence during deserialization,
+                    // not non-nullness: a '{"notifications": null}' payload produces a non-null params object
+                    // with a null Notifications (DefaultOptions does not set RespectNullableAnnotations).
+                    // Normalize null to empty so a custom handler can dereference request.Params.Notifications
+                    // without an NRE, matching the built-in handler's request?.Notifications guard below.
+                    request.Params ??= new SubscriptionsListenRequestParams { Notifications = new() };
+                    request.Params.Notifications ??= new SubscriptionsListenNotifications();
+
+                    return subscriptionsListenHandler(request, cancellationToken);
+                },
+                McpJsonUtilities.JsonContext.Default.SubscriptionsListenRequestParams,
+                McpJsonUtilities.JsonContext.Default.EmptyResult);
+            return;
+        }
+
         _requestHandlers.Set(RequestMethods.SubscriptionsListen,
             async (request, jsonRpcRequest, cancellationToken) =>
             {
@@ -749,7 +869,7 @@ internal sealed partial class McpServerImpl : McpServer
                 // request granting no notifications and complete immediately. This runs after protocol
                 // negotiation, so it is not an initialize-handshake-server signal and never triggers a client fallback to the
                 // initialize handshake.
-                if (!HasStatefulTransport())
+                if (!HasStatefulTransport)
                 {
                     var statelessSubscription = new ActiveSubscription(
                         jsonRpcRequest.Id,
@@ -2022,7 +2142,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// sites where the intent is "the client understands <see cref="InputRequiredResult"/>" rather than
     /// "the peer speaks the 2026-07-28 or later revision".
     /// </summary>
-    internal bool ClientSupportsMrtr() => IsJuly2026OrLaterProtocol();
+    private bool ClientSupportsMrtr => IsJuly2026OrLaterProtocol();
 
     /// <summary>
     /// Returns <see langword="true"/> when the session is stateful - the same server instance handles
@@ -2031,8 +2151,9 @@ internal sealed partial class McpServerImpl : McpServer
     /// <c>elicitation/create</c> / <c>sampling/createMessage</c> / <c>roots/list</c> to the client and
     /// retry the handler with the responses.
     /// </summary>
-    internal bool HasStatefulTransport() =>
+    private bool HasStatefulTransport =>
         _sessionTransport is not StreamableHttpServerTransport { Stateless: true };
+
     /// <summary>
     /// Returns <see langword="true"/> when the given request was negotiated under the 2026-07-28 or later protocol
     /// revision, derived from the per-request <c>_meta</c>/<c>MCP-Protocol-Version</c> value (so it works
@@ -2047,7 +2168,7 @@ internal sealed partial class McpServerImpl : McpServer
             requestContext?.ProtocolVersion ?? NegotiatedProtocolVersion);
 
     /// <inheritdoc />
-    public override bool IsMrtrSupported => ClientSupportsMrtr() || HasStatefulTransport();
+    public override bool IsMrtrSupported => ClientSupportsMrtr || HasStatefulTransport;
 
     /// <summary>
     /// Invokes a handler and catches <see cref="InputRequiredException"/> to convert it to an
@@ -2091,7 +2212,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             // If the client natively supports MRTR, serialize and return directly -
             // the client will drive the retry loop.
-            if (ClientSupportsMrtr())
+            if (ClientSupportsMrtr)
             {
                 return SerializeInputRequiredResult(inputRequiredResult);
             }
@@ -2099,7 +2220,7 @@ internal sealed partial class McpServerImpl : McpServer
             // In stateless mode without MRTR, the server can't resolve input requests via
             // JSON-RPC (no persistent session for server-to-client requests), and the client
             // won't recognize the InputRequiredResult. This is the one unsupported configuration.
-            if (!HasStatefulTransport())
+            if (!HasStatefulTransport)
             {
                 throw new McpException(
                     "A tool handler returned an incomplete result, but the server is stateless and the client does not support MRTR. " +
@@ -2338,7 +2459,7 @@ internal sealed partial class McpServerImpl : McpServer
             // For all other cases - legacy clients, stateless sessions - fall through to the
             // exception-based path, which transparently resolves InputRequiredException via
             // legacy JSON-RPC requests when the client doesn't speak MRTR.
-            if (!ClientSupportsMrtr() || !HasStatefulTransport())
+            if (!ClientSupportsMrtr || !HasStatefulTransport)
             {
                 return await InvokeWithInputRequiredResultHandlingAsync(originalHandler, request, cancellationToken).ConfigureAwait(false);
             }
@@ -2500,6 +2621,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "An MRTR handler threw an unhandled exception.")]
     private partial void MrtrHandlerError(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} ignored an unreadable '_meta/io.modelcontextprotocol/protocolVersion' value on '{Method}' and selected initialize-handshake semantics. The client may not be spec-compliant.")]
+    private partial void LogIgnoredUnreadableProtocolVersionMetadata(string endpointName, string method);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to deliver \"{NotificationMethod}\" to subscription \"{SubscriptionId}\".")]
     private partial void SubscriptionNotificationFailed(string notificationMethod, string subscriptionId, Exception exception);

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <ArtifactsTestResultsDir>$([MSBuild]::NormalizeDirectory('$(ArtifactsDir)', 'TestResults', '$(Configuration)'))</ArtifactsTestResultsDir>
+    <ArtifactsPackagesDir>$([MSBuild]::NormalizeDirectory('$(ArtifactsDir)', 'packages', '$(Configuration)'))</ArtifactsPackagesDir>
+    <PackageOutputPath>$(ArtifactsPackagesDir)</PackageOutputPath>
+    <VSTestResultsDirectory Condition="'$(VSTestResultsDirectory)' == ''">$(ArtifactsTestResultsDir)</VSTestResultsDirectory>
+  </PropertyGroup>
+</Project>

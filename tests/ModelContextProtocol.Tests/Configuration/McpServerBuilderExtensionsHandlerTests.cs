@@ -147,4 +147,17 @@ public class McpServerBuilderExtensionsHandlerTests
 
         Assert.Equal(handler, options.Handlers.UnsubscribeFromResourcesHandler);
     }
+
+    [Fact]
+    public void WithSubscriptionsListenHandler_Sets_Handler()
+    {
+        McpRequestHandler<SubscriptionsListenRequestParams, EmptyResult> handler = async (context, token) => new EmptyResult();
+
+        _builder.Object.WithSubscriptionsListenHandler(handler);
+
+        var serviceProvider = _services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        Assert.Equal(handler, options.Handlers.SubscriptionsListenHandler);
+    }
 }

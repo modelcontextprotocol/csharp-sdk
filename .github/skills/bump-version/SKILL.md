@@ -22,7 +22,7 @@ Read `src/Directory.Build.props` on the current branch and extract:
 
 The candidate version is `{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present (for example, `2.0.0-preview.1`). Display the current candidate version to the user.
 
-Determine the previous release tag from `gh release list` (most recent **published** release). Draft releases must be ignored — they represent a pending release that has not yet shipped. Use `--exclude-drafts` or filter to only published releases when querying. The lookup is branch-aware: from a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; from `main`, use the most recent published release globally. See [release-branches.md](../shared-resources/release-branches.md) for details.
+Determine the previous release tag from `gh release list` — the **highest semver** among published releases that are ancestors of the target commit, not the most recently published by date. Draft releases must be ignored — they represent a pending release that has not yet shipped. Use `--exclude-drafts` or filter to only published releases when querying. The lookup is branch-aware: from a `release/{MAJOR}.x` branch, restrict candidates to tags matching `v{MAJOR}.*`; from `main`, there is no MAJOR filter. See [release-branches.md](../shared-resources/release-branches.md#previous-release-tag-lookup) for details, including why date ordering picks the wrong tag.
 
 ### Step 2: Assess and Determine Next Version
 

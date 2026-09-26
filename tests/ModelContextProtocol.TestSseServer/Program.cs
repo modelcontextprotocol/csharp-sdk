@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Connections;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Serilog;
@@ -378,7 +379,7 @@ public class Program
         serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<DiagnosticListener>());
         serviceCollection.AddRoutingCore();
 
-        serviceCollection.AddMcpServer(ConfigureOptions).WithHttpTransport(options => options.Stateless = true);
+        serviceCollection.AddMcpServer(ConfigureOptions).WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless);
 
         var appBuilder = new ApplicationBuilder(serviceCollection.BuildServiceProvider());
         appBuilder.UseRouting();
@@ -428,8 +429,8 @@ public class Program
             .WithHttpTransport(options =>
             {
                 // The test fixture exercises legacy stateful behaviors (SSE + session-id flows).
-                // Set Stateless = false explicitly now that the 2026-07-28 protocol (SEP-2567) defaults to true.
-                options.Stateless = false;
+                // Set SessionMode = HttpServerSessionMode.Stateful explicitly since sessions are required.
+                options.SessionMode = HttpServerSessionMode.Stateful;
                 options.EnableLegacySse = true;
             });
 

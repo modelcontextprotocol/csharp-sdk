@@ -11,7 +11,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 public abstract partial class MapMcpTests
 {
     // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567):
-    // the handler refuses a request when the server opted into sessions (Stateless = false), so a client pinned
+    // the handler refuses a request when the server opted into sessions (SessionMode = HttpServerSessionMode.Stateful), so a client pinned
     // to that revision downgrades to legacy instead of negotiating 2026-07-28. These MRTR tests therefore can't
     // run on the stateful Streamable HTTP fixture; the same coverage runs on the stateless and legacy-SSE fixtures.
     private const string July2026StatefulStreamableHttpSkipReason =

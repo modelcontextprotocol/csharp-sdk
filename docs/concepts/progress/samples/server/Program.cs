@@ -1,3 +1,4 @@
+using ModelContextProtocol.AspNetCore;
 using Progress.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        options.Stateless = true;
+        options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithTools<LongRunningTools>();
 
