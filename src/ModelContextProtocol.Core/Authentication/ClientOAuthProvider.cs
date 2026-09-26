@@ -574,6 +574,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 // another well-known endpoint.
                 throw;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Caller cancellation or the initialization timeout must not be reported as missing metadata.
+                throw;
+            }
             catch (Exception ex)
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
