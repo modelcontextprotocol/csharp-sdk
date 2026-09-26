@@ -220,4 +220,40 @@ public sealed class McpServerOptions
     /// </remarks>
     [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
+
+    /// <summary>
+    /// Registers a filter that can replace the result of a Core-dispatched method with an alternate
+    /// <see cref="Result"/> subtype.
+    /// </summary>
+    /// <typeparam name="TParams">The request parameter type the server dispatches <paramref name="method"/> with.</typeparam>
+    /// <typeparam name="TResult">The result type the server dispatches <paramref name="method"/> with.</typeparam>
+    /// <param name="method">The JSON-RPC method to augment, for example <see cref="RequestMethods.PromptsGet"/>.</param>
+    /// <param name="filter">The filter to append to the method's alternate-result pipeline.</param>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="McpServerHandlers.CallToolWithAlternateHandler"/>, this seam is method-agnostic:
+    /// enabling alternate results for another method is a call to this method rather than a new pair of
+    /// Core APIs. Filters run outside the method's ordinary filter pipeline, in registration order, and
+    /// receive a handler that produces the method's normal result.
+    /// </para>
+    /// <para>
+    /// Registering a filter for a method the server does not dispatch (for example because the corresponding
+    /// capability is not configured) throws when the server is constructed, so a typo or a missing capability
+    /// fails loudly instead of silently dropping the filter.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="method"/> already carries alternate-result filters registered with different types.
+    /// </exception>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public void AddAlternateResultFilter<TParams, TResult>(
+        string method,
+        McpRequestInvocationFilter<TParams, ResultOrAlternate<TResult>> filter)
+        where TResult : Result
+    {
+        Throw.IfNullOrWhiteSpace(method);
+        Throw.IfNull(filter);
+
+        Filters.Request.AlternateResultFilters.GetOrAdd<TParams, TResult>(method).Add(filter);
+    }
 }
