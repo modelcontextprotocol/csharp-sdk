@@ -293,6 +293,22 @@ public partial class McpServerResourceTests
     }
 
     [Theory]
+    [InlineData("resource://coords/{lat,lon}", "resource://coords/45.4,9.1")]
+    [InlineData("resource://coords/{+lat,lon}", "resource://coords/45.4,9.1")]
+    [InlineData("resource://coords{#lat,lon}", "resource://coords#45.4,9.1")]
+    public async Task UriTemplate_MultipleVariablesInOneExpression_AreSplit(string uriTemplate, string uri)
+    {
+        McpServerResource t = McpServerResource.Create((string lat, string lon) => $"{lat}|{lon}", new() { UriTemplate = uriTemplate });
+        Assert.True(t.IsMatch(uri));
+
+        ReadResourceResult result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Uri = uri }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("45.4|9.1", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Theory]
     [InlineData("resource://MyCoolResource", "resource://mycoolresource")]
     [InlineData("resource://MyCoolResource{?arg1}", "resource://mycoolresource?arg1=42")]
     public async Task UriTemplate_IsHostCaseInsensitive(string actualUri, string queriedUri)
