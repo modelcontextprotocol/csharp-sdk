@@ -76,9 +76,6 @@ internal sealed partial class StreamableHttpPostTransport(
             return false;
         }
 
-        CancellationTokenSource? deferredFlushCts = null;
-        Task? deferredFlushTask = null;
-        bool deferHeaderFlush = false;
         using (await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
             var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
@@ -87,87 +84,32 @@ internal sealed partial class StreamableHttpPostTransport(
                 await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
                 await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
             }
-            else if (onResponseStarting is null)
+            else if (onResponseStarting is not null &&
+                McpProtocolVersions.RequiresPerRequestMetadata(message.Context.ProtocolVersion))
             {
-                // If there's no priming write, flush the stream to ensure HTTP response headers are
-                // sent to the client now that the server is ready to process the request.
-                // This prevents HttpClient timeout for long-running requests.
-                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                // Per-request-metadata protocol revisions map the first JSON-RPC error onto the HTTP
+                // status line. Keep the headers uncommitted until that message arrives so the mapping
+                // cannot depend on how long dispatch takes.
             }
             else
             {
-                deferHeaderFlush = true;
+                // Earlier protocol revisions keep the eager header flush for long-running handlers.
+                // Mark the response as started before flushing because any later JSON-RPC error must
+                // not attempt to change an already committed status line.
+                await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
+                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
             await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
-        if (deferHeaderFlush)
-        {
-            // Defer the flush (and the header commit it implies) so the callback can still choose
-            // the HTTP status line for an immediate JSON-RPC error. Start the bounded grace period
-            // only after the request has been queued for dispatch.
-            deferredFlushCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deferredFlushTask = DeferredHeaderFlushAsync(deferredFlushCts.Token);
-        }
-
-        try
-        {
-            // Wait for the response to be written before returning from the handler.
-            // This keeps the HTTP response open until the final response message is sent.
-            await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            if (deferredFlushCts is not null)
-            {
-                deferredFlushCts.Cancel();
-                await deferredFlushTask!.ConfigureAwait(false);
-                deferredFlushCts.Dispose();
-            }
-        }
+        // Wait for the response to be written before returning from the handler.
+        // This keeps the HTTP response open until the final response message is sent.
+        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         return true;
     }
-
-    /// <summary>
-    /// Bounds the deferred header flush: after a short grace window, flushes the response headers
-    /// if no response message has been written yet. Immediate rejections land well inside the
-    /// window, so the response-starting callback can still map their JSON-RPC error codes onto the
-    /// HTTP status line; a handler that runs longer commits the headers here so clients see them
-    /// promptly (long-running tool calls must not trip HttpClient's response timeout).
-    /// </summary>
-    private async Task DeferredHeaderFlushAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(DeferredHeaderFlushGrace, cancellationToken).ConfigureAwait(false);
-            using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
-            if (!_httpResponseStarted && !_httpResponseCompleted)
-            {
-                await NotifyResponseStartingAsync(firstMessage: null).ConfigureAwait(false);
-                await responseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // The response was written or the request ended before the grace window elapsed.
-        }
-        catch (Exception ex)
-        {
-            // Surface the failure to the awaiting HandlePostAsync when possible. If the response
-            // future has already been resolved (the response started or completed on another path),
-            // TrySetException is a no-op, so log here to keep the deferred-flush failure diagnosable.
-            if (!_httpResponseTcs.TrySetException(ex))
-            {
-                LogDeferredHeaderFlushFailed(ex);
-            }
-        }
-    }
-
-    /// <summary>How long the response-header flush may be deferred waiting for the first response message.</summary>
-    internal static readonly TimeSpan DeferredHeaderFlushGrace = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// Invokes the response-starting callback exactly once, immediately before the first write to
@@ -343,6 +285,4 @@ internal sealed partial class StreamableHttpPostTransport(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to dispose SSE event stream writer.")]
     private partial void LogStoreStreamDisposalFailed(Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to flush deferred Streamable HTTP response headers.")]
-    private partial void LogDeferredHeaderFlushFailed(Exception exception);
 }

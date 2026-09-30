@@ -88,13 +88,12 @@ public sealed class JsonRpcMessageContext
     public string? RoutingName { get; set; }
 
     /// <summary>
-    /// Gets or sets the protocol version from the transport-level header (e.g. <c>Mcp-Protocol-Version</c>)
-    /// that accompanied this JSON-RPC message.
+    /// Gets or sets the authoritative protocol version for this JSON-RPC message.
     /// </summary>
     /// <remarks>
-    /// In stateless Streamable HTTP mode, the protocol version cannot be negotiated via the <c>initialize</c>
-    /// handshake because each request creates a new server instance. This property allows the transport layer
-    /// to flow the protocol version header so the server can determine client capabilities.
+    /// The transport may populate this from a header such as <c>Mcp-Protocol-Version</c>. For modern revisions,
+    /// the server validates and projects the matching per-request <c>_meta</c> value. Under an established legacy
+    /// revision, future reserved metadata remains opaque and does not establish or change the negotiated session version.
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -104,7 +103,8 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). When the request was made under the 2026-07-28 or later revision,
-    /// the server uses this in lieu of the value previously captured during the <c>initialize</c> handshake.
+    /// the server uses this in lieu of the value previously captured during the <c>initialize</c> handshake. Future reserved
+    /// metadata remains opaque under legacy revisions, which continue to use their initialized identity.
     /// </remarks>
     public Implementation? ClientInfo { get; set; }
 
@@ -114,7 +114,9 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Per the spec, the server MUST NOT infer client
-    /// capabilities from previous requests; the authoritative value is the one declared on each request.
+    /// capabilities from previous modern requests; the authoritative value is the one declared on each request.
+    /// Future reserved metadata remains opaque under legacy revisions, which continue to use the capabilities
+    /// negotiated during initialization.
     /// </remarks>
     public ClientCapabilities? ClientCapabilities { get; set; }
 
@@ -124,8 +126,8 @@ public sealed class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// Introduced by the 2026-07-28 protocol revision (SEP-2575). Replaces the legacy
-    /// <see cref="RequestMethods.LoggingSetLevel"/> RPC. When absent, the server MUST NOT emit log notifications
-    /// for the request.
+    /// <see cref="RequestMethods.LoggingSetLevel"/> RPC. When absent from a modern request, the server MUST NOT emit
+    /// log notifications for the request. Legacy requests continue to use their negotiated logging behavior.
     /// </remarks>
     public LoggingLevel? LogLevel { get; set; }
 }

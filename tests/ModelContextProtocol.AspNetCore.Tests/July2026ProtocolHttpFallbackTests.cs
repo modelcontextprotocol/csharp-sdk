@@ -57,7 +57,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         base.Dispose();
     }
 
-    private async Task StartServerAsync(RequestDelegate handler)
+    private async Task StartServerAsync(RequestDelegate handler, bool acceptGet = false)
     {
         Builder.Services.Configure<JsonOptions>(options =>
         {
@@ -65,7 +65,14 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         });
 
         _app = Builder.Build();
-        _app.MapPost("/mcp", handler);
+        if (acceptGet)
+        {
+            _app.MapMethods("/mcp", [HttpMethods.Get, HttpMethods.Post], handler);
+        }
+        else
+        {
+            _app.MapPost("/mcp", handler);
+        }
         await _app.StartAsync(TestContext.Current.CancellationToken);
     }
 
@@ -300,6 +307,63 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         Assert.Equal(McpErrorCode.HeaderMismatch, exception.ErrorCode);
         Assert.False(initializeReceived);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task AutoDetect_OnNonModernJsonRpcErrorOutside400_PreservesHttpFailure_NoFallback(HttpStatusCode statusCode)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var initializeRequests = 0;
+        var sseGetRequests = 0;
+
+        await StartServerAsync(async context =>
+        {
+            if (HttpMethods.IsGet(context.Request.Method))
+            {
+                sseGetRequests++;
+                context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+                return;
+            }
+
+            var message = await JsonSerializer.DeserializeAsync(
+                context.Request.Body,
+                GetJsonTypeInfo<JsonRpcMessage>(),
+                ct);
+
+            if (message is JsonRpcRequest { Method: RequestMethods.Initialize })
+            {
+                initializeRequests++;
+            }
+
+            await WriteJsonRpcErrorAsync(
+                context,
+                statusCode,
+                code: (int)McpErrorCode.InvalidRequest,
+                message: "non-modern structured error");
+        }, acceptGet: true);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.AutoDetect,
+        }, HttpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(
+                transport,
+                new McpClientOptions(),
+                loggerFactory: LoggerFactory,
+                cancellationToken: ct);
+        });
+
+        Assert.Equal(statusCode, exception.StatusCode);
+        Assert.Contains("non-modern structured error", exception.Message);
+        Assert.Equal(0, initializeRequests);
+        Assert.Equal(0, sseGetRequests);
     }
 
     [Fact]

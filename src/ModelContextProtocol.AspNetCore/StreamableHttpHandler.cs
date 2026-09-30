@@ -846,23 +846,17 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
-
-        if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
-            !McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionMeta))
+        // Legacy headers leave reserved metadata opaque. Without a header, let the core server resolve
+        // the version from the session or metadata, falling back to legacy handling when neither selects one.
+        if (string.IsNullOrEmpty(protocolVersionHeader) ||
+            McpProtocolVersions.SupportsInitializeHandshake(protocolVersionHeader))
         {
             errorDetail = null;
             return true;
         }
 
-        if (string.IsNullOrEmpty(protocolVersionHeader))
-        {
-            errorDetail = CreateHeaderMismatchError(
-                $"Bad Request: The {McpProtocolVersionHeaderName} header is required when the request body declares a per-request metadata protocol version.");
-            return false;
-        }
-
-        if (!hasProtocolVersionMeta)
+        // Header validity was checked first, so only supported modern headers reach this point.
+        if (!TryGetProtocolVersionMeta(message, out var protocolVersionMeta))
         {
             // Notifications are exempt from the required-_meta rejection: they are fire-and-forget
             // (a JSON-RPC error response has no recipient), and rejecting them silently drops

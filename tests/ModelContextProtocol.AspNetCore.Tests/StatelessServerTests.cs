@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
@@ -9,6 +10,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -152,6 +154,43 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var toolResponse = await client.CallToolAsync("testElicitationErrors", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
         Assert.Equal("Server to client requests are not supported in stateless mode.", Assert.IsType<TextContentBlock>(toolContent).Text);
+    }
+
+    [Fact]
+    public async Task ClientCapabilities_AreAvailableFromInjectedServer()
+    {
+        await StartAsync();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = (_, _, _) => throw new UnreachableException();
+        clientOptions.Handlers.RootsHandler = (_, _) => throw new UnreachableException();
+        clientOptions.Handlers.ElicitationHandler = (_, _) => throw new UnreachableException();
+        await using var client = await ConnectMcpClientAsync(clientOptions);
+
+        var toolResponse = await client.CallToolAsync(
+            "getClientCapabilities",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "sampling|roots|elicitation",
+            Assert.IsType<TextContentBlock>(Assert.Single(toolResponse.Content)).Text);
+    }
+
+    [Fact]
+    public async Task InterceptedServerToClientRequests_Succeed_InStatelessMode()
+    {
+        await StartAsync();
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = (_, _, _) => throw new UnreachableException();
+        clientOptions.Handlers.ElicitationHandler = (_, _) => throw new UnreachableException();
+        await using var client = await ConnectMcpClientAsync(clientOptions);
+
+        var toolResponse = await client.CallToolAsync(
+            "testInterceptedRequests",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "intercepted-sample|Seattle",
+            Assert.IsType<TextContentBlock>(Assert.Single(toolResponse.Content)).Text);
     }
 
     [Fact]
@@ -575,8 +614,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedSamplingErrorMessage = "Sampling is not supported in stateless mode.";
 
-        // Even when the client has sampling support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Sampling);
 
         var asSamplingChatClientEx = Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
         Assert.Equal(expectedSamplingErrorMessage, asSamplingChatClientEx.Message);
@@ -596,8 +635,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedRootsErrorMessage = "Roots are not supported in stateless mode.";
 
-        // Even when the client has roots support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Roots);
 
         var requestRootsEx = Assert.Throws<InvalidOperationException>(() => server.RequestRootsAsync(new()));
         Assert.Equal(expectedRootsErrorMessage, requestRootsEx.Message);
@@ -614,8 +653,8 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         const string expectedElicitationErrorMessage = "Elicitation is not supported in stateless mode.";
 
-        // Even when the client has elicitation support, it should not be advertised in stateless mode.
-        Assert.Null(server.ClientCapabilities);
+        // The declaration is visible to application code, but it cannot make a session-dependent request safe.
+        Assert.NotNull(server.ClientCapabilities?.Elicitation);
 
         var requestElicitationEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.ElicitAsync(new() { Message = string.Empty }).AsTask());
         Assert.Equal(expectedElicitationErrorMessage, requestElicitationEx.Message);
@@ -625,6 +664,39 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
             Method = RequestMethods.ElicitationCreate
         }));
         return ex.Message;
+    }
+
+    [McpServerTool(Name = "getClientCapabilities")]
+    public static string GetClientCapabilities(McpServer server) =>
+        string.Join(
+            '|',
+            server.ClientCapabilities?.Sampling is null ? "no-sampling" : "sampling",
+            server.ClientCapabilities?.Roots is null ? "no-roots" : "roots",
+            server.ClientCapabilities?.Elicitation is null ? "no-elicitation" : "elicitation");
+
+    [McpServerTool(Name = "testInterceptedRequests")]
+    public static async Task<string> TestInterceptedRequests(McpServer server)
+    {
+        // Background task execution replaces the server-to-client channel with an interceptor that parks the
+        // request in an IMcpTaskStore, so the client can answer it on a later, unrelated request. That does not
+        // depend on session affinity, which is why these requests are allowed through in stateless mode.
+#pragma warning disable MCPEXP002
+        var intercepted = server.WithOutgoingRequestInterceptor((method, _, _) => new(JsonNode.Parse(method switch
+        {
+            RequestMethods.SamplingCreateMessage =>
+                """{"role":"assistant","content":{"type":"text","text":"intercepted-sample"},"model":"test-model"}""",
+            RequestMethods.ElicitationCreate =>
+                """{"action":"accept","content":{"city":"Seattle"}}""",
+            _ => throw new UnreachableException(),
+        })));
+#pragma warning restore MCPEXP002
+
+        var samplingResponse = await intercepted.AsSamplingChatClient().GetResponseAsync("Where am I?");
+        var elicitResult = await intercepted.ElicitAsync<CityForm>(
+            "Which city?",
+            options: new() { JsonSerializerOptions = StatelessInterceptorJsonContext.Default.Options });
+
+        return $"{samplingResponse.Text}|{elicitResult.Content?.City}";
     }
 
     [McpServerTool(Name = "testScope")]
@@ -640,3 +712,12 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         public void Report(T value) => handler(value);
     }
 }
+
+public class CityForm
+{
+    public string? City { get; set; }
+}
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(CityForm))]
+internal partial class StatelessInterceptorJsonContext : JsonSerializerContext;

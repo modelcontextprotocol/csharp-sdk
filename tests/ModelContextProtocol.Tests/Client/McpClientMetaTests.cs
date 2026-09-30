@@ -138,6 +138,53 @@ public class McpClientMetaTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task LegacyToolCall_WithPerRequestClientMetadata_PreservesInitializedSessionState()
+    {
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
+            (RequestContext<CallToolRequestParams> context) =>
+            {
+                Assert.Null(context.JsonRpcRequest.Context?.ClientInfo);
+                Assert.Null(context.JsonRpcRequest.Context?.ClientCapabilities);
+
+                Assert.Equal("initialized-client", context.Server.ClientInfo?.Name);
+                Assert.NotNull(context.Server.ClientCapabilities?.Elicitation);
+                Assert.Null(context.Server.ClientCapabilities?.Sampling);
+
+                return "ok";
+            },
+            new() { Name = "legacy_meta_tool" }));
+
+        var clientOptions = new McpClientOptions
+        {
+            ProtocolVersion = LatestStableVersion,
+            ClientInfo = new Implementation { Name = "initialized-client", Version = "1.0.0" },
+            Handlers = new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) => new ValueTask<ElicitResult>(new ElicitResult()),
+            },
+        };
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "legacy_meta_tool",
+                Meta = new JsonObject
+                {
+                    [MetaKeys.ClientInfo] = JsonSerializer.SerializeToNode(
+                        new Implementation { Name = "request-client", Version = "2.0.0" },
+                        McpJsonUtilities.DefaultOptions),
+                    [MetaKeys.ClientCapabilities] = JsonSerializer.SerializeToNode(
+                        new ClientCapabilities { Sampling = new SamplingCapability() },
+                        McpJsonUtilities.DefaultOptions),
+                },
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("ok", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
     public async Task ConcurrentToolCalls_WithPerRequestClientCapabilities_UseRequestScopedCapabilities()
     {
         var withSamplingReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -250,9 +297,9 @@ public class McpClientMetaTests : ClientServerTestBase
         ClientCapabilities? handlerObservedCapabilities = null;
 
         Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
-            (RequestContext<CallToolRequestParams> context) =>
+            (McpServer server) =>
             {
-                handlerObservedCapabilities = context.Server.ClientCapabilities;
+                handlerObservedCapabilities = server.ClientCapabilities;
                 return "ok";
             },
             new() { Name = "capability_probe_tool" }));

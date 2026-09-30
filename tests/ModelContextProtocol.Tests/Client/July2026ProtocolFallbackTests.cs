@@ -240,6 +240,28 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     }
 
     [Theory]
+    [InlineData(HttpTransportMode.StreamableHttp)]
+    [InlineData(HttpTransportMode.AutoDetect)]
+    public async Task Client_OnStructuredInvalidRequestFromHttpProbe_FallsBackTo_Initialize(
+        HttpTransportMode transportMode)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var initializeReceived = false;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = CreateStructuredInvalidRequestProbeServer(
+            () => initializeReceived = true);
+
+        await using var transport = CreateTransport(httpClient, transportMode);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.True(initializeReceived);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.Forbidden, HttpTransportMode.StreamableHttp)]
     [InlineData(HttpStatusCode.InternalServerError, HttpTransportMode.AutoDetect)]
@@ -315,6 +337,47 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
                 default:
                     return EmptyResponse(HttpStatusCode.Accepted);
             }
+        };
+
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> CreateStructuredInvalidRequestProbeServer(
+        Action onInitialize)
+        => async request =>
+        {
+            if (request.Method == HttpMethod.Get)
+                return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+
+            var body = await request.Content!.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("method", out var methodElement))
+                return EmptyResponse(HttpStatusCode.Accepted);
+
+            if (methodElement.GetString() == RequestMethods.ServerDiscover)
+            {
+                var id = doc.RootElement.GetProperty("id").GetRawText();
+                var error = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                    + ",\"error\":{\"code\":-32600,\"message\":\"Mcp-Session-Id header is required\"}}";
+                return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                {
+                    Content = new StringContent(error, Encoding.UTF8, "application/json"),
+                };
+            }
+
+            if (methodElement.GetString() == RequestMethods.Initialize)
+            {
+                onInitialize();
+                var id = doc.RootElement.GetProperty("id").GetRawText();
+                var result = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                    + ",\"result\":{\"protocolVersion\":\"" + McpProtocolVersions.November2025ProtocolVersion
+                    + "\",\"capabilities\":{},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}";
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(result, Encoding.UTF8, "application/json"),
+                };
+                response.Headers.Add("mcp-session-id", "test-session");
+                return response;
+            }
+
+            return EmptyResponse(HttpStatusCode.Accepted);
         };
 
     private static HttpResponseMessage EmptyResponse(HttpStatusCode status)
