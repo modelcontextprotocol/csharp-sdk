@@ -67,7 +67,10 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         {
             _process.StandardInput.Close();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            LogStandardInputCloseFailed(Name, ex);
+        }
 
         // Ensure all pending ErrorDataReceived events are drained before detaching
         // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
