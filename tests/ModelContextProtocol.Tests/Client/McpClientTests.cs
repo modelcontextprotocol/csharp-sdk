@@ -51,7 +51,7 @@ public class McpClientTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var serverInfo = client.ServerInfo;
+        var serverInfo = Assert.IsType<Implementation>(client.ServerInfo);
         Assert.Equal("test-server", serverInfo.Name);
         Assert.Equal("1.0.0", serverInfo.Version);
         Assert.Equal("A test server for unit testing", serverInfo.Description);
