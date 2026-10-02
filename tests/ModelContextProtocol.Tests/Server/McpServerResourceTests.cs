@@ -309,6 +309,34 @@ public partial class McpServerResourceTests
     }
 
     [Theory]
+    [InlineData("resource://coords/{lat,lon}", "resource://coords/a%2Cb,c", "a,b|c")]
+    [InlineData("resource://coords/{+lat,lon}", "resource://coords/a%2Cb,c", "a,b|c")]
+    [InlineData("resource://coords{#lat,lon}", "resource://coords#a%2Cb,c", "a,b|c")]
+    [InlineData("resource://coords/{+lat}", "resource://coords/a,b,c", "a,b,c")]
+    [InlineData("resource://coords{#lat}", "resource://coords#a,b,c", "a,b,c")]
+    public async Task UriTemplate_CommaInValue_ReachesTheMethod(string uriTemplate, string uri, string expected)
+    {
+        McpServerResource t = McpServerResource.Create((string lat, string? lon = null) => lon is null ? lat : $"{lat}|{lon}", new() { UriTemplate = uriTemplate });
+        Assert.True(t.IsMatch(uri));
+
+        ReadResourceResult result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Uri = uri }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Theory]
+    [InlineData("resource://coords/{+lat,lon}", "resource://coords/a,b,c")]
+    [InlineData("resource://coords{#lat,lon}", "resource://coords#a,b,c")]
+    public void UriTemplate_LiteralCommaInMultiVariableValue_DoesNotMatch(string uriTemplate, string uri)
+    {
+        // With several variables a literal comma is always the separator, so a value can only carry it encoded
+        McpServerResource t = McpServerResource.Create((string lat, string lon) => $"{lat}|{lon}", new() { UriTemplate = uriTemplate });
+        Assert.False(t.IsMatch(uri));
+    }
+
+    [Theory]
     [InlineData("resource://MyCoolResource", "resource://mycoolresource")]
     [InlineData("resource://MyCoolResource{?arg1}", "resource://mycoolresource?arg1=42")]
     public async Task UriTemplate_IsHostCaseInsensitive(string actualUri, string queriedUri)

@@ -170,9 +170,11 @@ internal static partial class UriTemplate
                     _ => "\\,"
                 };
 
-                // With more than one comma-separated variable, a value can't contain the comma, otherwise
-                // the first (greedy) group consumes the comma and every later value. Label expansion keeps
-                // matching greedily, since dots are unreserved and can appear in the values.
+                // With more than one comma-separated variable, the comma separates the values, otherwise the
+                // first (greedy) group consumes the comma and every later value. A comma inside a value has to be
+                // percent-encoded (%2C), which reserved and fragment expansion leave as is: a literal one can't be
+                // told apart from the separator, so such a URI doesn't match. Label expansion keeps matching
+                // greedily, since dots are unreserved and can appear in the values.
                 if (paramNames.Count > 1 && prefix is null or '#')
                 {
                     valueChars = valueChars == ".*" ? "[^,]*" : valueChars.Insert("[^".Length, ",");
