@@ -30,7 +30,7 @@ public sealed class WeatherTools
 
         if (!alerts.Any())
         {
-            return $"Hi {username}, No active alerts for this state.";
+            return $"Hi {username}, no active alerts for this state.";
         }
 
         return string.Join("\n--\n", alerts.Select(alert =>
@@ -66,7 +66,7 @@ public sealed class WeatherTools
         string username = user?.Identity?.Name ?? "Anonymous";
 
         return string.Join("\n---\n", periods.Select(period => $"""
-                Hi {username}, The forecast details are as below:
+                Hi {username}, the forecast details are as below:
                 {period.GetProperty("name").GetString()}
                 Temperature: {period.GetProperty("temperature").GetInt32()}°F
                 Wind: {period.GetProperty("windSpeed").GetString()} {period.GetProperty("windDirection").GetString()}
