@@ -100,6 +100,15 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     public Tool ProtocolTool { get; }
 
+    /// <summary>
+    /// Gets the <see cref="McpClient"/> used to invoke this tool.
+    /// </summary>
+    /// <remarks>
+    /// This property is useful when implementing extensions that need to perform operations associated
+    /// with the same client session as this tool.
+    /// </remarks>
+    public McpClient Client => _client;
+
     /// <inheritdoc/>
     public override string Name => _name;
 
@@ -212,28 +221,7 @@ public sealed class McpClientTool : AIFunction
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        // If there's any metadata provided with WithMeta, we can't just pass along the options as-is,
-        // and instead need to create new options that merges in _meta.
-        if (_meta is { } meta)
-        {
-            // Create a new RequestOptions, as we're going to need to store a new JsonObject for Meta (either
-            // _meta or _meta+options.Meta), and we don't want to mutate the user's options object.
-            RequestOptions newOptions = options?.Clone() ?? new();
-
-            // If we also have newOptions.Meta, merge that with _meta into a new JsonObject, preferring
-            // the objects from newOptions.Meta in case of conflicts.
-            if (newOptions.Meta is { } newOptionsMeta)
-            {
-                meta = (JsonObject)meta.DeepClone();
-                foreach (var p in newOptionsMeta)
-                {
-                    meta[p.Key] = p.Value?.DeepClone();
-                }
-            }
-            
-            newOptions.Meta = meta;
-            options = newOptions;
-        }
+        options = MergeOptions(options);
 
         return _client.CallToolAsync(
             ProtocolTool.Name,
@@ -241,6 +229,78 @@ public sealed class McpClientTool : AIFunction
             progress,
             options,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates protocol request parameters for invoking this tool.
+    /// </summary>
+    /// <param name="arguments">An optional dictionary of arguments to pass to the tool.</param>
+    /// <param name="options">Optional request options including metadata and serialization settings.</param>
+    /// <returns>
+    /// Request parameters that use the tool's original protocol name and include metadata configured by
+    /// <see cref="WithMeta"/> merged with metadata from <paramref name="options"/>.
+    /// </returns>
+    /// <remarks>
+    /// This method is intended for extensions that need to invoke a tool through a protocol operation other
+    /// than <see cref="CallAsync"/>. Metadata from <paramref name="options"/> takes precedence over metadata
+    /// configured by <see cref="WithMeta"/> when the same key appears in both.
+    /// </remarks>
+    public CallToolRequestParams CreateCallToolRequestParams(
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        RequestOptions? options = null)
+    {
+        options = MergeOptions(options);
+
+        JsonSerializerOptions serializerOptions = options?.JsonSerializerOptions ?? JsonSerializerOptions;
+        serializerOptions.MakeReadOnly();
+        var typeInfo = serializerOptions.GetTypeInfo<object?>();
+
+        Dictionary<string, JsonElement>? serializedArguments = null;
+        if (arguments is not null)
+        {
+            serializedArguments = new(arguments.Count);
+            foreach (var argument in arguments)
+            {
+                serializedArguments.Add(
+                    argument.Key,
+                    argument.Value is JsonElement element ? element : JsonSerializer.SerializeToElement(argument.Value, typeInfo));
+            }
+        }
+
+        return new CallToolRequestParams
+        {
+            Name = ProtocolTool.Name,
+            Arguments = serializedArguments,
+            Meta = options?.GetMetaForRequest(),
+        };
+    }
+
+    private RequestOptions? MergeOptions(RequestOptions? options)
+    {
+        // If there's any metadata provided with WithMeta, we can't just pass along the options as-is,
+        // and instead need to create new options that merges in _meta.
+        if (_meta is not { } meta)
+        {
+            return options;
+        }
+
+        // Create a new RequestOptions, as we're going to need to store a new JsonObject for Meta (either
+        // _meta or _meta+options.Meta), and we don't want to mutate the user's options object.
+        RequestOptions newOptions = options?.Clone() ?? new();
+
+        // If we also have newOptions.Meta, merge that with _meta into a new JsonObject, preferring
+        // the objects from newOptions.Meta in case of conflicts.
+        if (newOptions.Meta is { } newOptionsMeta)
+        {
+            meta = (JsonObject)meta.DeepClone();
+            foreach (var p in newOptionsMeta)
+            {
+                meta[p.Key] = p.Value?.DeepClone();
+            }
+        }
+
+        newOptions.Meta = meta;
+        return newOptions;
     }
 
     /// <summary>
