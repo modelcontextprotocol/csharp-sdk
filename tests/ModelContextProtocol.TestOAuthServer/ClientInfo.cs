@@ -23,6 +23,11 @@ internal sealed class ClientInfo
     public string? ClientSecret { get; init; }
 
     /// <summary>
+    /// Gets or sets the token endpoint authentication method assigned to this client.
+    /// </summary>
+    public string? TokenEndpointAuthMethod { get; init; }
+
+    /// <summary>
     /// Gets or sets the list of redirect URIs allowed for this client.
     /// </summary>
     public List<string> RedirectUris { get; init; } = [];

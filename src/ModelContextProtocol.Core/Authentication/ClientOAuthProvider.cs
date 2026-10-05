@@ -36,6 +36,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly bool _validateAuthorizationResponseIssuer;
     private readonly Uri? _clientMetadataDocumentUri;
     private readonly string? _configuredClientId;
+    private readonly string? _configuredTokenEndpointAuthMethod;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken, _dcrConfiguredApplicationType and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
@@ -97,9 +98,19 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new ArgumentNullException(nameof(options));
         }
 
+        if (options.TokenEndpointAuthMethod is not null &&
+            !IsSupportedTokenEndpointAuthMethod(options.TokenEndpointAuthMethod))
+        {
+            throw new ArgumentException(
+                $"{nameof(options.TokenEndpointAuthMethod)} must be 'client_secret_basic', 'client_secret_post', or 'none'.",
+                $"{nameof(options)}.{nameof(options.TokenEndpointAuthMethod)}");
+        }
+
         _clientId = options.ClientId;
         _configuredClientId = options.ClientId;
         _clientSecret = options.ClientSecret;
+        _configuredTokenEndpointAuthMethod = options.TokenEndpointAuthMethod;
+        _tokenEndpointAuthMethod = _configuredTokenEndpointAuthMethod;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _configuredScopes = options.Scopes is null ? null : string.Join(" ", options.Scopes);
         _scopeSelector = options.ScopeSelector;
@@ -847,11 +858,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             // Public client: include client_id in the body but no secret.
             formFields["client_id"] = clientId;
         }
-        else
+        else if (_tokenEndpointAuthMethod is null or "client_secret_post")
         {
             // Default to client_secret_post: include credentials in the body.
             formFields["client_id"] = clientId;
             formFields["client_secret"] = _clientSecret ?? string.Empty;
+        }
+        else
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                $"Token endpoint authentication method '{_tokenEndpointAuthMethod}' is not supported.");
         }
 
         request.Content = new FormUrlEncodedContent(formFields);
@@ -934,7 +950,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             RedirectUris = [_redirectUri.ToString()],
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
-            TokenEndpointAuthMethod = "client_secret_post",
+            TokenEndpointAuthMethod = _configuredTokenEndpointAuthMethod ?? "client_secret_post",
             ClientName = _dcrClientName,
             ClientUri = _dcrClientUri?.ToString(),
             Scope = ComputeEffectiveScope(protectedResourceMetadata, authServerMetadata),
@@ -983,9 +999,23 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             _clientSecret = registrationResponse.ClientSecret;
         }
 
-        if (!string.IsNullOrEmpty(registrationResponse.TokenEndpointAuthMethod))
+        // The response describes the registration the server created and is authoritative. Some servers omit the
+        // field, in which case use the method requested during registration.
+        var registeredTokenEndpointAuthMethod = registrationResponse.TokenEndpointAuthMethod;
+        if (!string.IsNullOrEmpty(registeredTokenEndpointAuthMethod))
         {
-            _tokenEndpointAuthMethod = registrationResponse.TokenEndpointAuthMethod;
+            if (!IsSupportedTokenEndpointAuthMethod(registeredTokenEndpointAuthMethod!))
+            {
+                ThrowFailedToHandleUnauthorizedResponse(
+                    $"Dynamic client registration returned unsupported token endpoint authentication method " +
+                    $"'{registeredTokenEndpointAuthMethod}'.");
+            }
+
+            _tokenEndpointAuthMethod = registeredTokenEndpointAuthMethod;
+        }
+        else
+        {
+            _tokenEndpointAuthMethod = registrationRequest.TokenEndpointAuthMethod;
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);
@@ -1007,6 +1037,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
         return "native";
     }
+
+    private static bool IsSupportedTokenEndpointAuthMethod(string tokenEndpointAuthMethod) =>
+        tokenEndpointAuthMethod is "client_secret_basic" or "client_secret_post" or "none";
 
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
@@ -1525,7 +1558,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Assign _clientId last. Callers treat a non-empty _clientId as "registration complete", so the
         // secret and auth method must already be in place before _clientId becomes observable.
         _clientSecret ??= cached.ClientSecret;
-        _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
+        if (string.Equals(cached.ClientId, _clientMetadataDocumentUri?.AbsoluteUri, StringComparison.Ordinal))
+        {
+            // Configured intent controls CIMD clients.
+            _tokenEndpointAuthMethod ??= cached.TokenEndpointAuthMethod;
+        }
+        else
+        {
+            // A DCR response is authoritative for the registration and must survive a cold start.
+            _tokenEndpointAuthMethod = cached.TokenEndpointAuthMethod ?? _configuredTokenEndpointAuthMethod;
+        }
         _clientId = cached.ClientId;
         _clientCredentialsAuthorizationServer = cached.AuthorizationServer;
     }
@@ -1554,7 +1596,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         _clientId = null;
         _clientSecret = null;
-        _tokenEndpointAuthMethod = null;
+        _tokenEndpointAuthMethod = _configuredTokenEndpointAuthMethod;
         _authServerMetadata = null;
         _clientCredentialsAuthorizationServer = null;
     }
