@@ -1,8 +1,10 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
+using ModelContextProtocol.ConformanceServer.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Extensions.Tasks;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -49,10 +51,17 @@ public class Program
         bool stateless)
     {
         services.AddDistributedMemoryCache();
+        var conformanceSkills = new ConformanceSkills();
         var mcpServerBuilder = services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
+            .WithSkills(conformanceSkills.CreateCatalog(), options =>
+            {
+                options.TimeToLive = TimeSpan.FromMinutes(5);
+                options.CacheScope = CacheScope.Public;
+            })
+            .WithResources(conformanceSkills.CreateResources())
             .WithTasks(
                 new InMemoryMcpTaskStore
                 {
