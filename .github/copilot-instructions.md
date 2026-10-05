@@ -74,7 +74,7 @@ The SDK consists of three main packages:
 - Set `JsonIgnoreCondition.WhenWritingNull` for optional properties to minimize payload size
 - Use `JsonSerializerDefaults.Web` for camelCase property naming
 - Protocol types are decorated with `[JsonSerializable]` attributes for AOT support
-- Enums are serialized as strings with the built-in `JsonStringEnumConverter`
+- When reflection-based serialization is enabled, user-defined enums are serialized as strings with the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`.
 
 ### Async Patterns
 - All I/O operations should be async
@@ -246,7 +246,7 @@ Two primary transport implementations with different invariants:
   - Default to `McpJsonUtilities.DefaultOptions` if not specified
   - Can use reflection-based serialization or custom source generators
   
-- **Enum handling**: the built-in `JsonStringEnumConverter` serializes enums as strings
+- **Enum handling**: reflection-based serialization uses the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`
 
 ## Architecture and Design Patterns
 
