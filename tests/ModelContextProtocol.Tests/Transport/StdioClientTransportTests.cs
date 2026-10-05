@@ -2,6 +2,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -303,6 +304,78 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         string allOutput = string.Join(Environment.NewLine, capturedLines);
         Assert.Contains(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "USERNAME_NOT_SET" : "HOME_NOT_SET", allOutput);
         Assert.Contains("EXPLICIT_IS_SET", allOutput);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForDescendantProcessesToExit()
+    {
+        // The server spawns a long-running descendant and reports its PID. On Windows the descendant sits
+        // below the cmd.exe /c wrapper, and on Unix below the shell, so it's never the process the transport started.
+        string pidFile = Path.Combine(Path.GetTempPath(), $"mcp-test-{Guid.NewGuid():N}.pid");
+        try
+        {
+            StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                new(new()
+                {
+                    Command = "powershell",
+                    Arguments = ["-NoProfile", "-NonInteractive", "-Command", $"Set-Content -LiteralPath '{pidFile}' -Value $PID; Start-Sleep -Seconds 60"],
+                    ShutdownTimeout = TimeSpan.FromSeconds(2),
+                }, LoggerFactory) :
+                new(new()
+                {
+                    Command = "sh",
+                    Arguments = ["-c", $"sleep 60 & echo $! > '{pidFile}'; wait"],
+                    ShutdownTimeout = TimeSpan.FromSeconds(2),
+                }, LoggerFactory);
+
+            var sessionTransport = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+            int descendantId = await ReadPidFileAsync(pidFile);
+            Assert.True(IsProcessRunning(descendantId), "The descendant process should be running before dispose.");
+
+            await sessionTransport.DisposeAsync();
+
+            Assert.False(IsProcessRunning(descendantId), "The descendant process should have exited by the time dispose returns.");
+        }
+        finally
+        {
+            try { File.Delete(pidFile); } catch { }
+        }
+
+        static async Task<int> ReadPidFileAsync(string path)
+        {
+            var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
+            while (true)
+            {
+                try
+                {
+                    if (int.TryParse(File.ReadAllText(path).Trim(), out int pid))
+                    {
+                        return pid;
+                    }
+                }
+                catch (IOException) when (DateTime.UtcNow < deadline)
+                {
+                }
+
+                Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the descendant process to report its PID.");
+                await Task.Delay(50, TestContext.Current.CancellationToken);
+            }
+        }
+
+        static bool IsProcessRunning(int pid)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                return !process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                // No process with this ID exists.
+                return false;
+            }
+        }
     }
 
     [Fact]
