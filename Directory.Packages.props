@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
