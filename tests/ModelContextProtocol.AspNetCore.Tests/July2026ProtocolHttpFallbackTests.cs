@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -77,6 +78,60 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
     }
 
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    [Theory]
+    [InlineData(null, 200)]
+    [InlineData("application/json", 200)]
+    [InlineData("text/event-stream", 200)]
+    [InlineData("application/json", 400)]
+    public async Task SilentDiscoverHeadersOrBody_UseProbeBudget(string? contentType, int statusCode)
+    {
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
+        var stalled = new AsyncGate();
+        var methods = new List<string>();
+        await StartServerAsync(async context =>
+        {
+            var message = await JsonSerializer.DeserializeAsync(context.Request.Body, GetJsonTypeInfo<JsonRpcMessage>(), context.RequestAborted);
+            if (message is not JsonRpcRequest request)
+            {
+                context.Response.StatusCode = StatusCodes.Status202Accepted;
+                return;
+            }
+            methods.Add(request.Method);
+            if (request.Method == RequestMethods.ServerDiscover)
+            {
+                if (contentType is not null)
+                {
+                    context.Response.StatusCode = statusCode;
+                    context.Response.ContentType = contentType;
+                    await context.Response.WriteAsync(contentType == "text/event-stream" ? ": waiting\n\n" : "{", context.RequestAborted);
+                    await context.Response.Body.FlushAsync(context.RequestAborted);
+                }
+                await stalled.WaitAsync(context.RequestAborted);
+                return;
+            }
+            var response = new JsonRpcResponse
+            {
+                Id = request.Id,
+                Result = JsonSerializer.SerializeToNode(new InitializeResult
+                {
+                    ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                    Capabilities = new(),
+                    ServerInfo = new() { Name = "legacy", Version = "1" },
+                }, McpJsonUtilities.DefaultOptions),
+            };
+            context.Response.ContentType = "application/json";
+            await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), context.RequestAborted);
+        });
+        await using var transport = new HttpClientTransport(new() { Endpoint = new("http://localhost:5000/mcp") }, HttpClient, LoggerFactory);
+        var connecting = McpClient.CreateAsync(transport, new() { TimeProvider = timeProvider, DiscoverProbeTimeout = probeBudget }, LoggerFactory, TestContext.Current.CancellationToken);
+        await stalled.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(probeBudget);
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal([RequestMethods.ServerDiscover, RequestMethods.Initialize], methods);
+    }
 
     private static async Task WriteJsonRpcErrorAsync(HttpContext context, HttpStatusCode statusCode, int code, string message)
     {

@@ -70,6 +70,10 @@ public sealed class McpClientOptions
     /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
     /// or retry the connection with a different value.
     /// </para>
+    /// <para>
+    /// HTTP+SSE connections use the <c>initialize</c> handshake by default.
+    /// An explicit protocol version is attempted when <see cref="HttpTransportMode.Sse"/> is selected.
+    /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
 
@@ -86,11 +90,35 @@ public sealed class McpClientOptions
     /// an exception is thrown.
     /// </para>
     /// <para>
+    /// This timeout includes OAuth token acquisition performed during the handshake. Neither this timeout nor
+    /// caller cancellation is suspended while authenticating. Transport connection establishment that precedes
+    /// the handshake, such as an explicitly selected SSE connection, retains its transport-specific timeout.
+    /// </para>
+    /// <para>
     /// Setting an appropriate timeout prevents the client from hanging indefinitely when
     /// connecting to unresponsive servers.
     /// </para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the time provider used for <see cref="InitializationTimeout"/> and <see cref="DiscoverProbeTimeout"/>.
+    /// </summary>
+    /// <value>The time provider. The default is <see cref="TimeProvider.System"/>.</value>
+    /// <remarks>
+    /// This provider does not control HTTP client timeouts, OAuth token expiration, or transport-specific
+    /// deadlines such as <see cref="HttpClientTransportOptions.ConnectionTimeout"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
+    public TimeProvider TimeProvider
+    {
+        get;
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    } = TimeProvider.System;
 
     /// <summary>
     /// Gets or sets the timeout applied to the <c>server/discover</c> probe that the client issues
@@ -120,6 +148,12 @@ public sealed class McpClientOptions
     /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// <para>
+    /// SDK OAuth token acquisition, including metadata discovery, registration, interactive authorization,
+    /// and token refresh or exchange, is excluded from the probe timeout. After token acquisition, the
+    /// HTTP request gets a fresh full probe budget, covering both response headers and body processing.
+    /// <see cref="InitializationTimeout"/> and caller cancellation continue to apply during authentication.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
