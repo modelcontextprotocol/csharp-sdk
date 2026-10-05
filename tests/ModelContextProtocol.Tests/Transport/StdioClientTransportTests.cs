@@ -14,6 +14,43 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
 
     [Fact]
+    public async Task DisposeAsync_ClosesServerStandardInputForGracefulExit()
+    {
+        TimeSpan shutdownTimeout = TimeSpan.FromSeconds(4);
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+
+        StdioClientTransport transport = new(new()
+        {
+            Name = "TestServer",
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => testServerExecutable,
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => [testServerExecutable],
+                (_, true) => [],
+                _ => [testServerDll],
+            },
+            ShutdownTimeout = shutdownTimeout,
+        }, LoggerFactory);
+
+        await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        await session.DisposeAsync();
+
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion);
+        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        // A zero exit code proves the server observed stdin EOF and exited on its own
+        // instead of being terminated after ShutdownTimeout.
+        Assert.Equal(0, completionDetails.ExitCode);
+    }
+
+    [Fact]
     public async Task ConnectAsync_DoesNotLogEnvironmentVariablesAtTrace()
     {
         string secretName = $"MCP_TEST_SECRET_{Guid.NewGuid():N}";
