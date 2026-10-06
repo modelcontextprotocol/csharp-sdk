@@ -13,14 +13,15 @@ namespace ModelContextProtocol.Extensions.Apps;
 public static class McpAppsBuilderExtensions
 {
     /// <summary>
-    /// Enables MCP Apps support by automatically processing <see cref="McpAppUiAttribute"/> on registered tools.
+    /// Enables MCP Apps support by automatically processing MCP Apps attributes on registered tools and resources.
     /// </summary>
     /// <param name="builder">The server builder.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <remarks>
     /// <para>
     /// Call this method after registering tools (e.g., after <c>WithTools&lt;T&gt;()</c>) to automatically
-    /// apply <see cref="McpAppUiAttribute"/> metadata to the tool's <c>_meta.ui</c> field.
+    /// apply <see cref="McpAppUiAttribute"/> and <see cref="McpAppResourceAttribute"/> metadata to the
+    /// corresponding <c>_meta.ui</c> fields.
     /// </para>
     /// <para>
     /// Tools that already have a <c>ui</c> key in their <see cref="Protocol.Tool.Meta"/> (e.g., set explicitly
@@ -64,6 +65,14 @@ public static class McpAppsBuilderExtensions
                 foreach (var tool in tools)
                 {
                     McpApps.ApplyAppUiAttributes(tool);
+                }
+            }
+
+            if (options.ResourceCollection is { IsEmpty: false } resources)
+            {
+                foreach (var resource in resources)
+                {
+                    McpApps.ApplyAppResourceAttributes(resource);
                 }
             }
         }
