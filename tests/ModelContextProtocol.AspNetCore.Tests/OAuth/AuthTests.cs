@@ -361,6 +361,34 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CanAuthenticate_WithClientMetadataDocument_WhenServerAdvertisesClientSecretBasicFirst()
+    {
+        // Auth0 advertises client_secret_basic ahead of none. A CIMD client is a public client and
+        // must use "none" (PKCE) regardless of the advertised order, otherwise the token exchange
+        // sends an empty-secret Basic header and is rejected with 401 access_denied (#1612).
+        TestOAuthServer.TokenEndpointAuthMethodsSupported = ["client_secret_basic", "client_secret_post", "private_key_jwt", "none"];
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl),
+                DynamicClientRegistration = new()
+                {
+                    ApplicationType = "web",
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task CannotAuthenticate_WhenMetadataOmitsPkceMethods()
     {
         TestOAuthServer.CodeChallengeMethodsSupported = null;

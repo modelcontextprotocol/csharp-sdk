@@ -81,6 +81,17 @@ public sealed class Program
     public bool ClientIdMetadataDocumentSupported { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the <c>token_endpoint_auth_methods_supported</c> values the authorization server
+    /// advertises in its discovery document. Tests set this to a list that does not lead with
+    /// <c>none</c> (e.g. <c>["client_secret_basic", "none"]</c>, mirroring Auth0) to verify that a
+    /// CIMD public client still authenticates with <c>none</c> rather than the first advertised method.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>["client_secret_post"]</c>.
+    /// </remarks>
+    public List<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_post"];
+
+    /// <summary>
     /// Gets or sets a value indicating whether the authorization server expects a resource parameter.
     /// When <c>true</c>, the resource parameter must be present and match a valid resource.
     /// When <c>false</c>, the resource parameter must be absent to simulate legacy servers that
@@ -276,7 +287,7 @@ public sealed class Program
                 ScopesSupported = IncludeOfflineAccessInMetadata
                     ? ["openid", "profile", "email", "mcp:tools", "offline_access"]
                     : ["openid", "profile", "email", "mcp:tools"],
-                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+                TokenEndpointAuthMethodsSupported = TokenEndpointAuthMethodsSupported,
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = MetadataPathsWithoutPkceSupport.Contains(context.Request.Path)
                     ? null
