@@ -29,6 +29,7 @@ public sealed class Program
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
     private int _authorizationCodeTokenRequestCount;
+    private readonly ConcurrentQueue<string?> _refreshTokenRequestResources = new();
 
     private readonly RSA _rsa;
     private readonly string _keyId;
@@ -92,6 +93,13 @@ public sealed class Program
     public bool ExpectResource { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets the OAuth error code returned for <c>refresh_token</c> grants that include a resource parameter.
+    /// When set, such grants are rejected and grants without a resource parameter are accepted, simulating
+    /// authorization servers like Microsoft Entra ID v2.0 that reject RFC 8707 resource indicators on refresh (AADSTS9010010).
+    /// </summary>
+    public string? RejectRefreshWithResourceError { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether the authorization server advertises support for
     /// <c>offline_access</c> in its <c>scopes_supported</c> metadata. This simulates an OIDC-flavored
     /// authorization server that issues refresh tokens when the client requests the <c>offline_access</c> scope.
@@ -140,6 +148,9 @@ public sealed class Program
 
     /// <summary>Gets the number of authorization-code token exchange requests received.</summary>
     public int AuthorizationCodeTokenRequestCount => Volatile.Read(ref _authorizationCodeTokenRequestCount);
+
+    /// <summary>Gets the <c>resource</c> field of each <c>refresh_token</c> grant received, or <see langword="null"/> where it was absent.</summary>
+    public IReadOnlyCollection<string?> RefreshTokenRequestResources => _refreshTokenRequestResources.ToArray();
 
     /// <summary>Gets the <c>scope</c> field from the most recent Dynamic Client Registration request.</summary>
     public string? LastRegistrationScope { get; private set; }
@@ -452,7 +463,23 @@ public sealed class Program
             // RFC 7523 JWT-bearer assertions carry the target resource inside the JWT itself,
             // so we skip the form-level resource check for that grant type.
             var resource = form["resource"].ToString();
-            if (grant_type != "urn:ietf:params:oauth:grant-type:jwt-bearer" &&
+            if (grant_type == "refresh_token")
+            {
+                _refreshTokenRequestResources.Enqueue(string.IsNullOrEmpty(resource) ? null : resource);
+            }
+
+            if (grant_type == "refresh_token" && RejectRefreshWithResourceError is { } refreshResourceError)
+            {
+                if (!string.IsNullOrEmpty(resource))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = refreshResourceError,
+                        ErrorDescription = "AADSTS9010010: The resource parameter provided in the request doesn't match with the requested scopes."
+                    });
+                }
+            }
+            else if (grant_type != "urn:ietf:params:oauth:grant-type:jwt-bearer" &&
                 (ExpectResource ? (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource)) : !string.IsNullOrEmpty(resource)))
             {
                 return Results.BadRequest(new OAuthErrorResponse
