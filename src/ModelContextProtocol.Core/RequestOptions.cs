@@ -79,7 +79,12 @@ public sealed class RequestOptions
         if (ProgressToken is not null)
         {
             meta = (JsonObject?)meta?.DeepClone() ?? [];
-            meta["progressToken"] = ProgressToken.ToString();
+
+            // Serialize through ProgressToken's own converter rather than ToString(), so that an integer
+            // token is written as a JSON number. Stringifying it changes the token the peer echoes back
+            // in progress notifications, and the caller then no longer recognizes its own token.
+            meta["progressToken"] = JsonSerializer.SerializeToNode(
+                ProgressToken.Value, McpJsonUtilities.JsonContext.Default.ProgressToken);
         }
 
         return meta;
