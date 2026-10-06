@@ -81,13 +81,18 @@ internal sealed class StreamableHttpHandler(
         {
             message = await ReadJsonRpcMessageAsync(context);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
             // The POST body was not a well-formed JSON-RPC message (malformed JSON, or a request whose
             // id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
-            // with a null id rather than letting the exception bubble up as an opaque 500.
+            // with a null id rather than letting the exception bubble up as an opaque 500. The parser's
+            // position detail is included so a truncated or corrupted body (e.g. one mangled by an
+            // intermediary) is diagnosable from the response alone (#1842).
+            var position = ex.BytePositionInLine is null
+                ? $"line {ex.LineNumber?.ToString() ?? "unknown"}"
+                : $"line {ex.LineNumber?.ToString() ?? "unknown"}, byte position {ex.BytePositionInLine}";
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The POST body did not contain a valid JSON-RPC message.",
+                $"Bad Request: The POST body did not contain a valid JSON-RPC message: {ex.Message} ({position}).",
                 StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidRequest);
             return;
         }
