@@ -23,4 +23,23 @@ public sealed record McpTaskInfo(
     string? StatusMessage = null,
     JsonElement? Result = null,
     JsonElement? Error = null,
-    IReadOnlyDictionary<string, InputRequest>? InputRequests = null);
+    IReadOnlyDictionary<string, InputRequest>? InputRequests = null)
+{
+    /// <summary>
+    /// Gets the executor-owned execution intent persisted with the task, or
+    /// <see langword="null"/> when the task's executor is stateless.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The intent is opaque to the SDK — its schema and versioning belong to the
+    /// <see cref="IMcpTaskExecutor"/> that created it — and exists so that an integration
+    /// can reconstruct an external submission for a task whose process exited between
+    /// task creation and a completed start (see
+    /// <see cref="IMcpTaskExecutor.CreateExecutionIntentAsync"/>).
+    /// </para>
+    /// <para>
+    /// It is server-only: it never surfaces in MCP responses, notifications, or errors.
+    /// </para>
+    /// </remarks>
+    public JsonElement? ExecutionIntent { get; init; }
+}
