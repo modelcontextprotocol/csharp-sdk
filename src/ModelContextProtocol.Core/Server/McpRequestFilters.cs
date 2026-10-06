@@ -67,6 +67,24 @@ public sealed class McpRequestFilters
     }
 
     /// <summary>
+    /// Gets the alternate-result filters registered for arbitrary JSON-RPC methods.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Alternate-result filters let an extension augment a Core-dispatched method so it can return an alternate
+    /// <see cref="Result"/> subtype (for example a task-creation result) in place of the method's normal result.
+    /// The collection is keyed by method name, so enabling a new method is an extension-only change rather than a
+    /// new <c>&lt;Method&gt;WithAlternateHandler</c>/<c>&lt;Method&gt;WithAlternateFilters</c> pair on Core.
+    /// </para>
+    /// <para>
+    /// <see cref="CallToolWithAlternateFilters"/> is a typed view over the <see cref="RequestMethods.ToolsCall"/>
+    /// entry of this collection, so the two stay in sync.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public AlternateResultFilterCollection AlternateResultFilters => field ??= new();
+
+    /// <summary>
     /// Gets or sets the filters for the call-tool handler pipeline with alternate result support.
     /// </summary>
     /// <remarks>
@@ -83,15 +101,19 @@ public sealed class McpRequestFilters
     /// Alternate-result filters run in registration order. If one filter dispatches the remainder of the pipeline
     /// asynchronously, filters registered after it execute as part of that asynchronous operation.
     /// </para>
+    /// <para>
+    /// This property is a view over the <see cref="RequestMethods.ToolsCall"/> entry of
+    /// <see cref="AlternateResultFilters"/>. Filters added through either API share one ordered list.
+    /// </para>
     /// </remarks>
     [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpRequestInvocationFilter<CallToolRequestParams, ResultOrAlternate<CallToolResult>>> CallToolWithAlternateFilters
     {
-        get => field ??= [];
+        get => AlternateResultFilters.GetOrAdd<CallToolRequestParams, CallToolResult>(RequestMethods.ToolsCall);
         set
         {
             Throw.IfNull(value);
-            field = value;
+            AlternateResultFilters.Set<CallToolRequestParams, CallToolResult>(RequestMethods.ToolsCall, value);
         }
     }
 #pragma warning restore MCPEXP002
