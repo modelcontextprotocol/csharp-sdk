@@ -27,6 +27,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly ConcurrentDictionary<string, Tool> _toolCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _registeredToolNames = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _cacheableConformanceWarnedMethods = new(StringComparer.Ordinal);
+    private readonly McpClientRequestHandler<CallToolRequestParams, CallToolResult>? _callToolHandler;
 
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
@@ -66,6 +67,21 @@ internal sealed partial class McpClientImpl : McpClient
             incomingMessageFilter: null,
             outgoingMessageFilter: null,
             _logger);
+
+#pragma warning disable MCPEXP002 // Client request filters are experimental
+        var callToolFilters = options.Filters.Request.CallToolFilters;
+        if (callToolFilters.Count > 0)
+        {
+            McpClientRequestHandler<CallToolRequestParams, CallToolResult> handler =
+                (request, cancellationToken) => base.CallToolCoreAsync(request.Params, cancellationToken);
+            for (int i = callToolFilters.Count - 1; i >= 0; i--)
+            {
+                handler = callToolFilters[i](handler);
+            }
+
+            _callToolHandler = handler;
+        }
+#pragma warning restore MCPEXP002
 
         ToolDiscovered = tool => _toolCache[tool.Name] = tool;
         ToolRejected = (tool, reason) => LogToolRejected(tool.Name, reason);
@@ -662,6 +678,23 @@ internal sealed partial class McpClientImpl : McpClient
 
         _registeredToolNames.Clear();
     }
+
+#pragma warning disable MCPEXP002 // Client request filters are experimental
+    private protected override ValueTask<CallToolResult> CallToolCoreAsync(CallToolRequestParams requestParams, CancellationToken cancellationToken)
+    {
+        if (_callToolHandler is null)
+        {
+            return base.CallToolCoreAsync(requestParams, cancellationToken);
+        }
+
+        return _callToolHandler(
+            new McpClientRequestContext<CallToolRequestParams>(this, requestParams)
+            {
+                Tool = requestParams.Name is { } name && _toolCache.TryGetValue(name, out var tool) ? tool : null,
+            },
+            cancellationToken);
+    }
+#pragma warning restore MCPEXP002
 
     /// <inheritdoc/>
     public override async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
