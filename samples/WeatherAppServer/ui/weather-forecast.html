@@ -217,7 +217,7 @@
     async function initialize() {
       try {
         setStatus('Connecting...');
-        const result = await sendRequest('ui/initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'weather-forecast', version: '1.0.0' } });
+        const result = await sendRequest('ui/initialize', { protocolVersion: '2026-01-26', appCapabilities: {}, appInfo: { name: 'weather-forecast', version: '1.0.0' } });
         sendNotification('ui/notifications/initialized', {});
 
         // Try to extract enum values from tool inputSchema via hostContext
