@@ -2,6 +2,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Globalization;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace ProtectedMcpServer.Tools;
@@ -17,7 +18,7 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather alerts for a US state.")]
-    public async Task<string> GetAlerts(
+    public async Task<string> GetAlerts(ClaimsPrincipal? user,
         [Description("The US state to get alerts for. Use the 2 letter abbreviation for the state (e.g. NY).")] string state)
     {
         var client = _httpClientFactory.CreateClient("WeatherApi");
@@ -25,16 +26,18 @@ public sealed class WeatherTools
             ?? throw new McpException("No JSON returned from alerts endpoint");
 
         var alerts = jsonDocument.RootElement.GetProperty("features").EnumerateArray();
+        string username = user?.Identity?.Name ?? "Anonymous";
 
         if (!alerts.Any())
         {
-            return "No active alerts for this state.";
+            return $"Hi {username}, no active alerts for this state.";
         }
 
         return string.Join("\n--\n", alerts.Select(alert =>
         {
             JsonElement properties = alert.GetProperty("properties");
             return $"""
+                    Hi {username}, the alert details are as below:
                     Event: {properties.GetProperty("event").GetString()}
                     Area: {properties.GetProperty("areaDesc").GetString()}
                     Severity: {properties.GetProperty("severity").GetString()}
@@ -45,7 +48,7 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather forecast for a location.")]
-    public async Task<string> GetForecast(
+    public async Task<string> GetForecast(ClaimsPrincipal? user,
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
@@ -60,7 +63,10 @@ public sealed class WeatherTools
         var periods = forecastDocument?.RootElement.GetProperty("properties").GetProperty("periods").EnumerateArray()
             ?? throw new McpException("No JSON returned from forecast endpoint");
 
+        string username = user?.Identity?.Name ?? "Anonymous";
+
         return string.Join("\n---\n", periods.Select(period => $"""
+                Hi {username}, the forecast details are as below:
                 {period.GetProperty("name").GetString()}
                 Temperature: {period.GetProperty("temperature").GetInt32()}°F
                 Wind: {period.GetProperty("windSpeed").GetString()} {period.GetProperty("windDirection").GetString()}
