@@ -14,14 +14,14 @@ namespace ModelContextProtocol.Authentication;
 /// </para>
 /// <list type="number">
 /// <item><description>
-/// The <see cref="IdentityAssertionGrantProviderOptions.IdTokenCallback"/> is called to obtain an OIDC ID token.
+/// The <see cref="IdentityAssertionGrantProviderOptions.IdTokenCallback"/> is called to obtain a subject token.
 /// It receives a <see cref="IdentityAssertionGrantContext"/> with the discovered resource and authorization
 /// server URLs.
 /// </description></item>
 /// <item><description>
 /// The provider performs the RFC 8693 token exchange at the enterprise Identity Provider
 /// (using the configured <c>IdpTokenEndpoint</c> or discovered from <c>IdpUrl</c>),
-/// exchanging the ID token for a JWT Authorization Grant (JAG).
+/// exchanging the subject token for a JWT Authorization Grant (JAG).
 /// </description></item>
 /// <item><description>
 /// The JAG is then exchanged for an access token at the MCP Server's authorization server
@@ -91,6 +91,7 @@ public sealed class IdentityAssertionGrantProvider
 
         Throw.IfNullOrWhiteSpace(options.ClientId);
         Throw.IfNullOrWhiteSpace(options.IdpClientId);
+        Throw.IfNullOrWhiteSpace(options.SubjectTokenType);
 
         if (string.IsNullOrEmpty(options.IdpUrl) && string.IsNullOrEmpty(options.IdpTokenEndpoint))
         {
@@ -173,22 +174,22 @@ public sealed class IdentityAssertionGrantProvider
             ?? throw new IdentityAssertionGrantException(
                 $"MCP authorization server metadata at {authorizationServerUrl} missing token_endpoint.");
 
-        // Step 2: Call the ID token callback to get the caller's OIDC ID token
+        // Step 2: Call the callback to get the caller's subject token
         var context = new IdentityAssertionGrantContext
         {
             ResourceUrl = resourceUrl,
             AuthorizationServerUrl = authorizationServerUrl,
         };
 
-        _logger.LogDebug("Requesting ID token via callback");
-        var idToken = await _options.IdTokenCallback(context, cancellationToken).ConfigureAwait(false);
+        _logger.LogDebug("Requesting subject token via callback");
+        var subjectToken = await _options.IdTokenCallback(context, cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(idToken))
+        if (string.IsNullOrEmpty(subjectToken))
         {
-            throw new IdentityAssertionGrantException("ID token callback returned a null or empty token.");
+            throw new IdentityAssertionGrantException("Subject token callback returned a null or empty token.");
         }
 
-        // Step 3: RFC 8693 token exchange — ID token → JWT Authorization Grant (JAG) at the enterprise IdP
+        // Step 3: RFC 8693 token exchange — subject token → JWT Authorization Grant (JAG) at the enterprise IdP
         _logger.LogDebug("Performing RFC 8693 token exchange at IdP");
         var idpTokenEndpoint = await ResolveIdpTokenEndpointAsync(cancellationToken).ConfigureAwait(false);
 
@@ -198,7 +199,8 @@ public sealed class IdentityAssertionGrantProvider
                 TokenEndpoint = idpTokenEndpoint,
                 Audience = authorizationServerUrl.ToString(),
                 Resource = resourceUrl.ToString(),
-                IdToken = idToken,
+                SubjectToken = subjectToken,
+                SubjectTokenType = _options.SubjectTokenType,
                 ClientId = _options.IdpClientId,
                 ClientSecret = _options.IdpClientSecret,
                 Scope = _options.IdpScope,
