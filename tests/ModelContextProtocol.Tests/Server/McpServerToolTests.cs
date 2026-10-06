@@ -457,6 +457,45 @@ public partial class McpServerToolTests
         );
     }
 
+    [Fact]
+    public async Task SupportsCustomResultMarshaling()
+    {
+        Type? seenDeclaredResultType = null;
+        Mock<McpServer> mockServer = new();
+        McpServerTool tool = McpServerTool.Create(() => 21 * 2, new()
+        {
+            Name = "marshaller",
+            MarshalResult = (result, declaredResultType, cancellationToken) =>
+            {
+                seenDeclaredResultType = declaredResultType;
+                Assert.False(cancellationToken.IsCancellationRequested);
+                return new ValueTask<object?>($"doubled:{result}");
+            },
+        });
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "marshaller" }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(typeof(int), seenDeclaredResultType);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        Assert.Equal("doubled:42", text.Text);
+    }
+
+    [Fact]
+    public async Task MarshalResult_Unset_ReturnsUnderlyingResultAsIs()
+    {
+        Mock<McpServer> mockServer = new();
+        McpServerTool tool = McpServerTool.Create(() => "42", new() { Name = "passthrough" });
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new() { Name = "passthrough" }),
+            TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        Assert.Equal("42", text.Text);
+    }
+
     [Theory]
     [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
     public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
