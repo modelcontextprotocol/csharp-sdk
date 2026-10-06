@@ -466,11 +466,84 @@ public class McpAppsTests
         Assert.NotNull(options.Capabilities);
         Assert.NotNull(options.Capabilities.Extensions);
         Assert.True(options.Capabilities.Extensions.ContainsKey(McpApps.ExtensionId));
+        var uiCapabilities = Assert.IsType<JsonObject>(
+            options.Capabilities.Extensions[McpApps.ExtensionId]
+        );
+        Assert.NotNull(uiCapabilities["elicitation"]);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesTypedServerCapability()
+    {
+        var existing = new McpUiServerCapabilities();
+        var options = GetMcpAppsOptions(existing);
+
+        Assert.Same(existing, options.Capabilities!.Extensions![McpApps.ExtensionId]);
+        Assert.NotNull(existing.Elicitation);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesJsonObjectServerCapabilityAndPreservesSettings()
+    {
+        var existingElicitation = new JsonObject { ["custom"] = true };
+        var existing = new JsonObject
+        {
+            ["customSetting"] = "preserved",
+            ["elicitation"] = existingElicitation,
+        };
+
+        var options = GetMcpAppsOptions(existing);
+
+        var merged = Assert.IsType<JsonObject>(
+            options.Capabilities!.Extensions![McpApps.ExtensionId]
+        );
+        Assert.Same(existing, merged);
+        Assert.Equal("preserved", merged["customSetting"]!.GetValue<string>());
+        Assert.Same(existingElicitation, merged["elicitation"]);
+    }
+
+    [Fact]
+    public void WithMcpApps_MergesJsonElementServerCapabilityAndIsIdempotent()
+    {
+        var existing = JsonDocument
+            .Parse("""{"customSetting":"preserved","nested":{"value":42}}""")
+            .RootElement.Clone();
+
+        var options = GetMcpAppsOptions(existing, callTwice: true);
+
+        var merged = Assert.IsType<JsonObject>(
+            options.Capabilities!.Extensions![McpApps.ExtensionId]
+        );
+        Assert.Equal("preserved", merged["customSetting"]!.GetValue<string>());
+        Assert.Equal(42, merged["nested"]!["value"]!.GetValue<int>());
+        Assert.IsType<JsonObject>(merged["elicitation"]);
+        Assert.Single(merged, property => property.Key == "elicitation");
     }
 
     #endregion
 
     #region Test helper types
+
+    private static McpServerOptions GetMcpAppsOptions(object existing, bool callTwice = false)
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.Capabilities = new ServerCapabilities
+            {
+                Extensions = new Dictionary<string, object> { [McpApps.ExtensionId] = existing },
+            };
+        });
+        builder.WithMcpApps();
+        if (callTwice)
+        {
+            builder.WithMcpApps();
+        }
+
+        using var serviceProvider = services.BuildServiceProvider();
+        return serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+    }
 
     [McpServerToolType]
     private static class TestToolsWithAppUi
