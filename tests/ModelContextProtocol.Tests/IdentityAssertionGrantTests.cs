@@ -97,7 +97,7 @@ public sealed class IdentityAssertionGrantTests : IDisposable
 
     [Theory]
     [InlineData("https://auth.example.com", "https://auth.example.com", "https://auth.example.com")]
-    [InlineData("https://auth.example.com/", "https://auth.example.com/tenant", "https://auth.example.com/tenant")]
+    [InlineData("https://auth.example.com/tenant", "https://auth.example.com/tenant", "https://auth.example.com/tenant")]
     [InlineData("https://auth.example.com", null, "https://auth.example.com/")]
     public async Task IdentityAssertionGrantProvider_UsesDiscoveredIssuerAsJagAudience(
         string authorizationServerUrl, string? advertisedIssuer, string expectedAudience)
@@ -155,6 +155,46 @@ public sealed class IdentityAssertionGrantTests : IDisposable
             TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedAudience, audience);
+    }
+
+    [Theory]
+    [InlineData("https://auth.example.com/", "https://auth.example.com/tenant")]
+    [InlineData("https://auth.example.com/", "https://auth.example.com")]
+    public async Task IdentityAssertionGrantProvider_RejectsMismatchedIssuer(
+        string authorizationServerUrl, string advertisedIssuer)
+    {
+        var idpCalled = false;
+        _mockHandler.Handler = request =>
+        {
+            if (request.RequestUri!.ToString().Contains("idp.example.com"))
+            {
+                idpCalled = true;
+            }
+
+            return JsonResponse(HttpStatusCode.OK, new JsonObject
+            {
+                ["issuer"] = advertisedIssuer,
+                ["token_endpoint"] = "https://auth.example.com/token",
+            });
+        };
+
+        var provider = new IdentityAssertionGrantProvider(
+            new IdentityAssertionGrantProviderOptions
+            {
+                ClientId = "mcp-client-id",
+                IdpTokenEndpoint = "https://idp.example.com/token",
+                IdpClientId = "idp-client-id",
+                IdTokenCallback = (_, _) => Task.FromResult("mock-id-token"),
+            },
+            _httpClient);
+
+        var ex = await Assert.ThrowsAsync<IdentityAssertionGrantException>(() => provider.GetAccessTokenAsync(
+            new Uri("https://resource.example.com"),
+            new Uri(authorizationServerUrl),
+            TestContext.Current.CancellationToken));
+
+        Assert.Contains("RFC 8414 Section 3.3", ex.Message);
+        Assert.False(idpCalled);
     }
 
     [Fact]

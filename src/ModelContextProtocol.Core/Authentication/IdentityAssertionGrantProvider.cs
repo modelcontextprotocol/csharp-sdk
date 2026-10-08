@@ -169,6 +169,16 @@ public sealed class IdentityAssertionGrantProvider
         var mcpAuthMetadata = await IdentityAssertionGrant.DiscoverAuthServerMetadataAsync(
             authorizationServerUrl, _httpClient, cancellationToken).ConfigureAwait(false);
 
+        // The issuer becomes the JAG audience below, so validate it first (RFC 8414 Section 3.3): it MUST be
+        // identical to the issuer identifier used for discovery. Like ClientOAuthProvider, compare the exact
+        // strings without normalizing case, trailing slashes or percent-encoding.
+        if (mcpAuthMetadata.Issuer is not null &&
+            !string.Equals(mcpAuthMetadata.Issuer.OriginalString, authorizationServerUrl.OriginalString, StringComparison.Ordinal))
+        {
+            throw new IdentityAssertionGrantException(
+                $"Authorization server metadata issuer '{mcpAuthMetadata.Issuer.OriginalString}' does not match the expected issuer '{authorizationServerUrl.OriginalString}' (RFC 8414 Section 3.3).");
+        }
+
         var mcpTokenEndpoint = mcpAuthMetadata.TokenEndpoint?.ToString()
             ?? throw new IdentityAssertionGrantException(
                 $"MCP authorization server metadata at {authorizationServerUrl} missing token_endpoint.");
