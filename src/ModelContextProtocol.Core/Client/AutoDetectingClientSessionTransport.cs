@@ -99,14 +99,32 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 // behavior. Capture the underlying error (status + body) before falling back so that,
                 // if SSE also fails, we can surface the real Streamable HTTP diagnostic to the caller
                 // instead of dropping it on the floor (see https://github.com/modelcontextprotocol/csharp-sdk/issues/1526).
-                LogStreamableHttpFailed(_name, response.StatusCode);
-
                 // This reads the response body a second time for the application/json case, where
                 // TryReadJsonRpcErrorAsync above already read it. HttpContent buffers after the first
                 // read, so this returns the same buffered content and is safe (not a second stream
                 // consumption). For the common non-JSON error responses (415, 405, plain text)
                 // TryReadJsonRpcErrorAsync returns early on the content type, so there is no double read.
                 var streamableHttpError = await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
+
+                if (IsDiscoverProbeRejection(message, response.StatusCode))
+                {
+                    // The server/discover probe is protocol negotiation, not transport detection. A server
+                    // predating SEP-2575 rejects the session-less POST with 400 (can't parse the request) or
+                    // 404 (requires Mcp-Session-Id on every non-initialize POST) whether it speaks Streamable
+                    // HTTP or SSE, so neither status is evidence about which transport to use. McpClientImpl
+                    // .ConnectAsync treats exactly these two statuses as "initialize-handshake server" and
+                    // immediately retries with initialize on this same transport — and that attempt still
+                    // falls back to SSE, so an SSE-only server is reached one POST later rather than not at
+                    // all. Attempting SSE here instead spends a GET whose result is discarded on every
+                    // connect to a Streamable-HTTP-only server that predates SEP-2575, and logs a "falling
+                    // back to SSE transport" line that misreports settled protocol negotiation as a failure.
+                    LogSkippingSseFallbackForDiscoverProbe(_name, response.StatusCode);
+
+                    await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
+                    throw streamableHttpError;
+                }
+
+                LogStreamableHttpFailed(_name, response.StatusCode);
 
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                 await InitializeSseTransportAsync(message, streamableHttpError, cancellationToken).ConfigureAwait(false);
@@ -121,6 +139,15 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             throw;
         }
     }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the failed request was the SEP-2575 <c>server/discover</c> probe and the
+    /// status is one of the two <see cref="McpClientImpl"/> already reads as "this server requires the initialize
+    /// handshake", meaning the SSE fallback cannot contribute anything the initialize retry won't.
+    /// </summary>
+    private static bool IsDiscoverProbeRejection(JsonRpcMessage message, HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound &&
+        message is JsonRpcRequest { Method: RequestMethods.ServerDiscover };
 
     private async Task InitializeSseTransportAsync(JsonRpcMessage message, HttpRequestException? streamableHttpError, CancellationToken cancellationToken)
     {
@@ -183,6 +210,9 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} streamable HTTP transport failed with status code {StatusCode}, falling back to SSE transport.")]
     private partial void LogStreamableHttpFailed(string endpointName, HttpStatusCode statusCode);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} server/discover probe rejected with status code {StatusCode}; skipping the SSE fallback so the initialize handshake is attempted instead.")]
+    private partial void LogSkippingSseFallbackForDiscoverProbe(string endpointName, HttpStatusCode statusCode);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using Streamable HTTP transport.")]
     private partial void LogUsingStreamableHttp(string endpointName);
