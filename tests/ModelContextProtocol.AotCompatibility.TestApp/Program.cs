@@ -17,8 +17,7 @@ services.AddMcpServer()
     [
         McpServerSkill.Create(
             "skill://aot/SKILL.md",
-            new System.Text.Json.Nodes.JsonObject { ["name"] = "aot", ["description"] = "An AOT-published skill." },
-            [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription: An AOT-published skill.\n---\n")]),
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")]),
     ]);
 
 await using var serviceProvider = services.BuildServiceProvider();
@@ -56,7 +55,21 @@ if (skills.Count != 1 || skills[0].Name != "aot")
     throw new Exception($"Unexpected skills listing: {skills.Count} entries.");
 }
 
-var skill = await client.GetSkillAsync("skill://aot/SKILL.md");
+var skillResult = await client.GetSkillAsync(new GetSkillRequestParams { Uri = "skill://aot/SKILL.md" });
+if (skillResult.ResultType != "complete" ||
+    skillResult.TimeToLive != TimeSpan.Zero ||
+    skillResult.CacheScope != CacheScope.Private)
+{
+    throw new Exception("Unexpected skill cache hints.");
+}
+
+var skill = skillResult.Skill;
+if (skill.Description != "An AOT-published skill." ||
+    skill.Frontmatter["metadata"]?["note"]?.GetValue<string>() != "First\n\tCode\nLast\n")
+{
+    throw new Exception("Unexpected skill frontmatter.");
+}
+
 var skillFile = await client.ReadSkillResourceAsync(skill, skill.Uri);
 if (skillFile.Contents is not [TextResourceContents { Text: var skillText }] || !skillText.Contains("name: aot"))
 {

@@ -16,11 +16,21 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// for details.
 /// </para>
 /// </remarks>
-public sealed class GetSkillResult : Result
+public sealed class GetSkillResult : Result, ICacheableResult
 {
     /// <summary>
     /// Gets or sets the skill's entry, identical in shape and meaning to an entry of <c>skills/list</c>.
     /// </summary>
     [JsonPropertyName("skill")]
     public required Skill Skill { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("ttlMs")]
+    [JsonConverter(typeof(TimeSpanMillisecondsConverter))]
+    public TimeSpan? TimeToLive { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("cacheScope")]
+    [JsonConverter(typeof(CacheScopeConverter))]
+    public CacheScope? CacheScope { get; set; }
 }

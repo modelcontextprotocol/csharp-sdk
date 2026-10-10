@@ -228,7 +228,13 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             TestContext.Current.CancellationToken)).Result!.AsObject();
         Assert.Equal("complete", get["resultType"]?.GetValue<string>());
         Assert.False(get.ContainsKey("nextCursor"));
-        Assert.False(get.ContainsKey("ttlMs"));
+        Assert.Equal(300_000, get["ttlMs"]?.GetValue<long>());
+        Assert.Equal("public", get["cacheScope"]?.GetValue<string>());
+
+        var typed = await client.GetSkillAsync(new GetSkillRequestParams { Uri = UnlistedUri }, TestContext.Current.CancellationToken);
+        var cacheable = Assert.IsAssignableFrom<ICacheableResult>(typed);
+        Assert.Equal(TimeSpan.FromMinutes(5), cacheable.TimeToLive);
+        Assert.Equal(CacheScope.Public, cacheable.CacheScope);
     }
 
     [Fact]
@@ -250,6 +256,8 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsGet, Params = new JsonObject { ["uri"] = UnlistedUri } },
             TestContext.Current.CancellationToken)).Result!.AsObject();
         Assert.False(get.ContainsKey("resultType"), "resultType must be absent on a 2025-11-25 skills/get result.");
+        Assert.False(get.ContainsKey("ttlMs"), "ttlMs must be absent on a 2025-11-25 skills/get result.");
+        Assert.False(get.ContainsKey("cacheScope"), "cacheScope must be absent on a 2025-11-25 skills/get result.");
         Assert.Equal(UnlistedUri, get["skill"]!["uri"]!.GetValue<string>());
     }
 

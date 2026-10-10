@@ -5,9 +5,16 @@ using System.Text.Json;
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// Extension methods for <see cref="McpClient"/> to discover, retrieve, and verify skills served under the
+/// Extension methods for <see cref="McpClient"/> to discover skills and verify their file manifests under the
 /// MCP Skills extension (SEP-2640).
 /// </summary>
+/// <remarks>
+/// Listing and retrieval validate structured entries, not the contents of their files.
+/// <see cref="ReadSkillResourceAsync"/> verifies manifest membership, URI, digest and size, not frontmatter.
+/// Before loading a skill, the host must separately parse the fetched <c>SKILL.md</c> and compare every
+/// frontmatter field with the held entry. Use <see cref="SkillFrontmatter"/> only for its supported subset;
+/// reject unsupported content or use a suitable full parser, never the server's JSON as a verification fallback.
+/// </remarks>
 public static class McpSkillsClientExtensions
 {
     /// <summary>
@@ -77,7 +84,7 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="requestParams">The request parameters, including the cursor of the page to retrieve.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The page, as returned by the server, with every entry validated against the specification.</returns>
+    /// <returns>The page with every entry structurally validated, but not compared with the skill's files.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
     /// <exception cref="SkillVerificationException">The server returned an entry that violates the specification.</exception>
@@ -125,7 +132,7 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="uri">The URI of the skill's <c>SKILL.md</c>.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The skill's entry, validated against the specification.</returns>
+    /// <returns>The structurally validated skill entry, not a verification of the file's frontmatter.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
     /// <exception cref="SkillVerificationException">
@@ -158,7 +165,7 @@ public static class McpSkillsClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="requestParams">The request parameters.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The result, as returned by the server, with the entry validated against the specification.</returns>
+    /// <returns>The result with its entry structurally validated, but not compared with the skill's files.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The server did not declare the MCP Skills extension.</exception>
     /// <exception cref="SkillVerificationException">
@@ -201,18 +208,18 @@ public static class McpSkillsClientExtensions
     }
 
     /// <summary>
-    /// Reads one of a skill's files through <c>resources/read</c> and verifies the content against the skill's manifest.
+    /// Reads one of a skill's files through <c>resources/read</c> and verifies its URI, digest and size against the manifest.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="skill">The skill entry being acted on.</param>
     /// <param name="uri">The URI of the file to read. It must be listed in <paramref name="skill"/>'s manifest.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The verified contents.</returns>
+    /// <returns>The manifest-verified contents. Frontmatter verification remains the host's responsibility.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">
     /// <paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>. Such a skill offers no content
     /// integrity; read its files with <see cref="McpClient.ReadResourceAsync(string, RequestOptions?, CancellationToken)"/>
-    /// only if the host has decided to load unverifiable skills.
+    /// only if the host permits content without digest verification. Frontmatter verification is still required.
     /// </exception>
     /// <exception cref="SkillVerificationException">
     /// <paramref name="uri"/> is not listed in the manifest, the server's response does not contain contents for
@@ -220,9 +227,15 @@ public static class McpSkillsClientExtensions
     /// </exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
+    /// <para>
     /// An unlisted file is treated as a verification failure before any request is sent, because the manifest is
     /// complete and an unlisted file is a change to the skill. To read it, refresh the entry with
     /// <see cref="GetSkillAsync(McpClient, string, CancellationToken)"/> and proceed from the new manifest.
+    /// </para>
+    /// <para>
+    /// For <c>SKILL.md</c>, the host must also parse the fetched frontmatter and compare it with
+    /// <see cref="Skill.Frontmatter"/> before loading. A digest match does not perform or replace that check.
+    /// </para>
     /// </remarks>
     public static async ValueTask<ReadResourceResult> ReadSkillResourceAsync(
         this McpClient client,

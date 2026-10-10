@@ -1,8 +1,8 @@
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// The exception thrown when a skill file's content does not match its manifest entry, or when a file is read
-/// that the manifest does not list.
+/// The exception thrown when a skill entry or its file content fails validation, including a manifest mismatch
+/// or an unlisted file. Hosts can also use it for a failed frontmatter comparison.
 /// </summary>
 /// <remarks>
 /// A mismatch means the content is not what the entry described. It may be corrupted, tampered with, or stale

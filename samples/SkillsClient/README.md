@@ -10,8 +10,9 @@ doing what a host's skill-loading path does:
    overload exposes the `ttlMs` and `cacheScope` hints).
 3. Retrieves one skill by URI with `skills/get` (`client.GetSkillAsync(uri)`), the way a host confirms a URI it
    found in server instructions.
-4. Reads the skill's files with `resources/read` and verifies each against the manifest's digest and size
-   (`client.ReadSkillResourceAsync(skill, uri)`).
+4. Reads the skill's files with `resources/read` and verifies manifest membership, URI, digest and size
+   (`client.ReadSkillResourceAsync(skill, uri)`). Before displaying `SKILL.md`, independently parses its
+   frontmatter and compares every field with the held entry.
 5. Shows that a file the manifest does not list is refused before any request is sent.
 
 ## Run
@@ -52,7 +53,7 @@ Expected output (abridged):
     ...
 
 === resources/read (verified) ===
-  skill://git-workflow/SKILL.md verified:
+  skill://git-workflow/SKILL.md manifest and frontmatter verified:
     | ---
     | name: git-workflow
     ...
@@ -65,5 +66,11 @@ Expected output (abridged):
 
 - Digest verification proves that the entry and the content are consistent. It is not a trust boundary: both come
   from the same server. Treat skill content as untrusted model input and tag it with its originating server.
-- The SDK does not verify frontmatter automatically. A host can re-parse the fetched `SKILL.md` with
-  `SkillFrontmatter.Parse` and compare it to the entry with `JsonNode.DeepEquals` before loading a skill.
+- Digest and size verification are not frontmatter verification. Every host must independently parse the
+  fetched `SKILL.md` and compare all fields with the held entry before loading, regardless of how the server
+  authored the metadata.
+- This sample accepts text `SKILL.md` resources and uses `SkillFrontmatter.Parse` for its supported subset.
+  It rejects mismatches, malformed input and unsupported YAML. A host needing other YAML forms must use a
+  suitable full parser, never the server-provided JSON as a verification fallback.
+- This is not a complete host implementation: approval binding, origin isolation and permission decisions
+  remain application responsibilities.
