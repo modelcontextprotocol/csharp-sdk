@@ -53,4 +53,5 @@ To install the SDK and build your first MCP client and server, see [Getting star
 | - | - |
 | [MCP Apps](apps/apps.md) | Learn how to use the MCP Apps extension to deliver interactive UIs from MCP servers. |
 | [Tasks](tasks/tasks.md) | Learn how to use task-based execution for long-running operations that can be polled for status and results. |
+| [Skills](skills/skills.md) | Learn how to serve and consume Agent Skills over MCP, with verifiable file manifests. |
 | [Identity and Roles](identity/identity.md) | Learn how to access caller identity and roles in MCP tool, prompt, and resource handlers. |
