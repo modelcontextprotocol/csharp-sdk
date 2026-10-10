@@ -253,6 +253,66 @@ public class SkillSerializationTests
         Assert.Equal("complete", deserialized.ResultType);
     }
 
+    [Theory]
+    [InlineData(0, CacheScope.Private)]
+    [InlineData(300_000, CacheScope.Public)]
+    [InlineData(-1, CacheScope.Private)]
+    public void GetSkillResult_RoundTripsCacheAttributes(long milliseconds, CacheScope scope)
+    {
+        var original = new GetSkillResult { Skill = CreateEntry(SkillResources.Dynamic), ResultType = "complete" };
+        var cacheable = Assert.IsAssignableFrom<ICacheableResult>(original);
+        cacheable.TimeToLive = TimeSpan.FromMilliseconds(milliseconds);
+        cacheable.CacheScope = scope;
+
+        var json = JsonSerializer.SerializeToNode(original, McpSkillsJsonContext.Default.GetSkillResult)!.AsObject();
+        Assert.Equal(milliseconds, json["ttlMs"]?.GetValue<long>());
+        Assert.Equal(scope == CacheScope.Public ? "public" : "private", json["cacheScope"]?.GetValue<string>());
+        Assert.Equal("complete", json["resultType"]?.GetValue<string>());
+        Assert.False(json.ContainsKey("nextCursor"));
+
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.GetSkillResult);
+        var deserializedCacheable = Assert.IsAssignableFrom<ICacheableResult>(deserialized);
+        Assert.Equal(cacheable.TimeToLive, deserializedCacheable.TimeToLive);
+        Assert.Equal(scope, deserializedCacheable.CacheScope);
+    }
+
+    [Theory]
+    [InlineData("\"regional\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void GetSkillResult_ToleratesUnknownCacheScopeOnRead(string cacheScope)
+    {
+        var json = $$"""
+            {
+              "skill": {
+                "uri": "skill://alpha/SKILL.md",
+                "frontmatter": { "name": "alpha", "description": "d" },
+                "resources": "dynamic"
+              },
+              "ttlMs": 0,
+              "cacheScope": {{cacheScope}}
+            }
+            """;
+
+        var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.GetSkillResult);
+        var cacheable = Assert.IsAssignableFrom<ICacheableResult>(deserialized);
+
+        Assert.Null(cacheable.CacheScope);
+        Assert.Equal(TimeSpan.Zero, cacheable.TimeToLive);
+    }
+
+    [Fact]
+    public void GetSkillResult_OmitsVersionedFieldsWhenUnset()
+    {
+        var result = new GetSkillResult { Skill = CreateEntry(SkillResources.Dynamic) };
+        var json = JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult)!.AsObject();
+
+        Assert.False(json.ContainsKey("ttlMs"));
+        Assert.False(json.ContainsKey("cacheScope"));
+        Assert.False(json.ContainsKey("resultType"));
+        Assert.False(json.ContainsKey("nextCursor"));
+    }
+
     [Fact]
     public void RequestParams_RoundTrip()
     {

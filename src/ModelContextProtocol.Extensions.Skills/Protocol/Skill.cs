@@ -35,9 +35,10 @@ public sealed class Skill
     /// </summary>
     /// <remarks>
     /// Every field the author wrote is passed through, not a curated subset. <c>name</c> and <c>description</c>
-    /// are always present. Hosts re-parse the fetched <c>SKILL.md</c> and compare its frontmatter against this
-    /// object field by field, treating any discrepancy as a verification failure, so this must reproduce the
-    /// authored frontmatter exactly.
+    /// are always present. The application or catalog author must supply metadata identical to the file's
+    /// complete frontmatter. Transport-level structural validation does not read or validate that file.
+    /// Hosts must independently parse the fetched <c>SKILL.md</c> and compare its frontmatter against this object
+    /// field by field before loading, treating any discrepancy as a verification failure.
     /// </remarks>
     [JsonPropertyName("frontmatter")]
     public required JsonObject Frontmatter { get; set; }

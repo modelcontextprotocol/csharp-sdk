@@ -31,6 +31,10 @@ public static class McpSkillsBuilderExtensions
     /// are served through <c>resources/list</c> and <c>resources/read</c>.
     /// </para>
     /// <para>
+    /// Frontmatter is read or supplied when each <see cref="McpServerSkill"/> is created. Registration does not
+    /// perform additional YAML parsing or establish that application-supplied metadata matches unsupported YAML.
+    /// </para>
+    /// <para>
     /// Nested skills may legitimately list the same file. A file URI shared by several skills is registered once,
     /// provided every skill lists it with the same digest and the identical URI text. URIs that differ only in the
     /// case of their scheme or authority are rejected, because the server's resource collection treats them as one.
@@ -132,8 +136,10 @@ public static class McpSkillsBuilderExtensions
     /// <remarks>
     /// <para>
     /// Each skill is built with <see cref="McpServerSkill.CreateFromDirectory(string)"/>: files are read once,
-    /// digests are computed from the bytes served, and symbolic links are rejected. Only immediate subdirectories
-    /// are considered skills; a <c>SKILL.md</c> nested deeper inside a skill is one of that skill's files.
+    /// digests are computed from the bytes served, and symbolic links are rejected. This optional provider uses
+    /// the bounded <see cref="SkillFrontmatter"/> reader; unsupported or malformed frontmatter is an error.
+    /// Only immediate subdirectories are considered skills; a <c>SKILL.md</c> nested deeper inside a skill is one
+    /// of that skill's files.
     /// </para>
     /// <para>
     /// A subdirectory without a <c>SKILL.md</c> is not a skill and is ignored, so shared assets or documentation can
@@ -233,6 +239,11 @@ public static class McpSkillsBuilderExtensions
     /// <c>resources/read</c>, so register them as well (for example with <c>WithResources</c>). To have this done
     /// automatically, build the skills with <see cref="McpServerSkill"/> and use the
     /// <see cref="WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/> overload.
+    /// </para>
+    /// <para>
+    /// The application or catalog author must supply structured frontmatter identical to the file. This
+    /// overload validates entry structure but does not fetch the files or validate their YAML. Hosts must
+    /// independently parse and compare fetched frontmatter before loading any skill.
     /// </para>
     /// <para>
     /// <c>skills/list</c> and <c>skills/get</c> are registered as raw request handlers and do not pass through the
@@ -351,6 +362,8 @@ public static class McpSkillsBuilderExtensions
             if (IsJuly2026OrLaterProtocolRequest(request))
             {
                 result.ResultType = "complete";
+                result.TimeToLive = skillsOptions.TimeToLive.GetValueOrDefault();
+                result.CacheScope = skillsOptions.CacheScope.GetValueOrDefault(CacheScope.Private);
             }
 
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult);

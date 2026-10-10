@@ -15,6 +15,11 @@ SHA-256 digest and size of every file, and registers the `skills/list` and `skil
 resources that serve the files, in one call. Each skill's URI is `skill://{name}/SKILL.md`, where `name` comes from
 its frontmatter; pass a `uriPrefix` to place skills under an organizational path such as `skill://acme/billing/`.
 
+This is the optional automatic provider path. Its bounded `SkillFrontmatter` reader rejects unsupported or
+malformed input rather than guessing metadata. Applications may instead supply structured metadata through a
+catalog. When using explicit-metadata authoring for unsupported YAML, the application must parse and validate
+the entire frontmatter and supply identical JSON; acceptance by the helper is not proof of full YAML validity.
+
 ## Run
 
 ```bash
@@ -39,5 +44,7 @@ Any MCP host that supports Streamable HTTP can also be pointed at `http://localh
   URI with `skills/get` and read it with `resources/read` without ever listing the catalog.
 - The listing is identical for every caller, so it advertises `cacheScope: public` with a five-minute `ttlMs`.
   A catalog that varies by principal must not do that.
+- Hosts must independently parse fetched `SKILL.md` and compare its frontmatter with the held entry before
+  loading, regardless of the server's authoring path. Digest/size checks alone do not perform that comparison.
 - See [docs/concepts/skills/skills.md](../../docs/concepts/skills/skills.md) for the full walkthrough,
   including how to implement a custom `IMcpSkillCatalog`.

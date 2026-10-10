@@ -8,12 +8,13 @@ namespace ModelContextProtocol.Extensions.Skills;
 public sealed class McpSkillsOptions
 {
     /// <summary>
-    /// Gets or sets the freshness hint advertised on <c>skills/list</c> results.
+    /// Gets or sets the freshness hint advertised on <c>skills/list</c> and <c>skills/get</c> results.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the base protocol's <c>ttlMs</c> list-caching attribute, with the same semantics as on
-    /// <c>tools/list</c>. It is a hint about the listing, not an integrity property of the skills' content.
+    /// This is the base protocol's <c>ttlMs</c> caching attribute, with the same semantics as on
+    /// <c>tools/list</c>. It is a freshness hint about the returned listing or entry, not an integrity property
+    /// of the skills' content.
     /// </para>
     /// <para>
     /// The attribute is defined from protocol revision <c>2026-07-28</c>. On a request negotiated under that
@@ -24,12 +25,12 @@ public sealed class McpSkillsOptions
     public TimeSpan? TimeToLive { get; set; }
 
     /// <summary>
-    /// Gets or sets the cache scope advertised on <c>skills/list</c> results.
+    /// Gets or sets the cache scope advertised on <c>skills/list</c> and <c>skills/get</c> results.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Set this to <see cref="Protocol.CacheScope.Public"/> only when the catalog is identical for every caller.
-    /// A listing that varies by principal must not be advertised as publicly cacheable.
+    /// A listing or entry that varies by principal must not be advertised as publicly cacheable.
     /// </para>
     /// <para>
     /// The attribute is defined from protocol revision <c>2026-07-28</c>. On a request negotiated under that

@@ -3,7 +3,7 @@
 //   1. Connect over Streamable HTTP and check that the server declares the extension.
 //   2. Enumerate the skills with skills/list (the client extension follows pagination for you).
 //   3. Retrieve a single skill by URI with skills/get, as a host does for a URI mentioned in server instructions.
-//   4. Read the skill's files with resources/read and verify each one against the manifest's digest and size.
+//   4. Verify fetched bytes against the manifest, then independently parse and compare SKILL.md frontmatter.
 //   5. Show that a file the manifest does not list is refused before any request is sent.
 //
 // Start the SkillsServer sample first (dotnet run --project samples/SkillsServer). Pass a different endpoint as
@@ -12,6 +12,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using System.Text.Json.Nodes;
 
 var endpoint = new Uri(args.Length > 0 ? args[0] : "http://localhost:3001");
 
@@ -63,12 +64,32 @@ foreach (SkillResource file in skill.Resources.Resources!)
 
 Console.WriteLine();
 
-// 4. Verified reads. ReadSkillResourceAsync issues resources/read and checks size and digest against the held
-//    entry; a mismatch throws SkillVerificationException and the content must not be used.
+// 4. ReadSkillResourceAsync checks manifest membership, URI, size and digest, not frontmatter.
+//    The host must independently verify frontmatter before loading, regardless of the server's authoring path.
 Console.WriteLine("=== resources/read (verified) ===");
 ReadResourceResult skillFile = await client.ReadSkillResourceAsync(skill, SkillUri);
-Console.WriteLine($"  {SkillUri} verified:");
-Console.WriteLine(Indent(((TextResourceContents)skillFile.Contents[0]).Text));
+if (skillFile.Contents.Single(content => content.Uri == SkillUri) is not TextResourceContents skillText)
+{
+    throw new SkillVerificationException("This sample requires text SKILL.md contents for frontmatter verification.");
+}
+
+try
+{
+    var fetchedFrontmatter = SkillFrontmatter.Parse(skillText.Text);
+    if (!JsonNode.DeepEquals(fetchedFrontmatter, skill.Frontmatter))
+    {
+        throw new SkillVerificationException("The fetched SKILL.md frontmatter differs from the held entry.");
+    }
+}
+catch (FormatException exception)
+{
+    // This sample rejects unsupported YAML. A full host may instead use a suitable full parser,
+    // but must never treat the server-provided JSON as verification of the fetched file.
+    throw new SkillVerificationException("The fetched SKILL.md frontmatter could not be verified.", exception);
+}
+
+Console.WriteLine($"  {SkillUri} manifest and frontmatter verified:");
+Console.WriteLine(Indent(skillText.Text));
 
 string supportingFileUri = skill.Resources.Resources.First(r => r.Uri != SkillUri).Uri;
 ReadResourceResult supportingFile = await client.ReadSkillResourceAsync(skill, supportingFileUri);

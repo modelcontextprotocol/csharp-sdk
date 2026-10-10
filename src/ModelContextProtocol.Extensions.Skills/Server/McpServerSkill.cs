@@ -18,11 +18,16 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// resources serve, so the two cannot disagree.
 /// </para>
 /// <para>
-/// The skill's frontmatter is read from its <c>SKILL.md</c> by <see cref="SkillFrontmatter"/>. Hosts re-parse the
-/// fetched <c>SKILL.md</c> and compare it field by field against the published entry, treating any discrepancy as
-/// a verification failure, so the two must agree. The overloads that accept an explicit <see cref="JsonObject"/>
-/// exist for frontmatter the reader cannot handle; when it can read the file, an explicit object that differs from
-/// it is rejected.
+/// Overloads without explicit metadata use the optional bounded <see cref="SkillFrontmatter"/> reader and
+/// reject unsupported or malformed input. Overloads accepting a <see cref="JsonObject"/> compare it with the
+/// file when the reader can read the complete frontmatter, and reject a mismatch or a detected format error.
+/// When parsing stops at an unsupported construct, the application must have parsed and validated the entire
+/// frontmatter with a suitable mechanism and supplied identical JSON. This is not a whole-document YAML validator.
+/// </para>
+/// <para>
+/// Hosts must independently parse the fetched <c>SKILL.md</c> and compare its frontmatter field by field with
+/// the held entry before loading the skill, regardless of the authoring overload. Manifest digest and size
+/// verification does not perform that comparison.
 /// </para>
 /// <para>
 /// Register skills with <see cref="McpSkillsBuilderExtensions.WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/>,
@@ -47,8 +52,8 @@ public sealed class McpServerSkill
     /// Gets a copy of the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
     /// <remarks>
-    /// Each access returns a new copy. The entry was computed from the same bytes <see cref="Resources"/> serve,
-    /// and the skill keeps that entry itself, so changes made to a returned copy affect neither the skill nor
+    /// Each access returns a new copy. The manifest was computed from the same bytes <see cref="Resources"/> serve;
+    /// frontmatter was read or supplied at creation. Changes to a returned copy affect neither the skill nor
     /// what <c>WithSkills</c> registers.
     /// </remarks>
     public Skill ProtocolSkill => SkillValidation.Snapshot(_entry);
@@ -70,6 +75,10 @@ public sealed class McpServerSkill
     /// specification's per-skill limits; or the <c>SKILL.md</c> frontmatter cannot be read (see
     /// <see cref="SkillFrontmatter"/>) or is missing a required field.
     /// </exception>
+    /// <remarks>
+    /// The bounded reader must read the frontmatter successfully. Unsupported or malformed input is rejected,
+    /// not replaced with guessed metadata. Hosts still verify frontmatter independently when loading the skill.
+    /// </remarks>
     public static McpServerSkill Create(IEnumerable<McpServerSkillFile> files)
     {
 #if NET
@@ -97,6 +106,9 @@ public sealed class McpServerSkill
     /// frontmatter cannot be read (see <see cref="SkillFrontmatter"/>), is missing a required field, or has a
     /// name that does not match <paramref name="uri"/>.
     /// </exception>
+    /// <remarks>
+    /// Uses the same bounded reader and rejection behavior as <see cref="Create(IEnumerable{McpServerSkillFile})"/>.
+    /// </remarks>
     public static McpServerSkill Create(string uri, IEnumerable<McpServerSkillFile> files)
     {
 #if NET
@@ -126,15 +138,24 @@ public sealed class McpServerSkill
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="uri"/> does not end in <c>/SKILL.md</c>; <paramref name="frontmatter"/> is missing a required
-    /// field, has a name that does not match <paramref name="uri"/>, or differs from the frontmatter in
-    /// <c>SKILL.md</c>; or <paramref name="files"/> omits <c>SKILL.md</c>, contains a duplicate or unsafe path, or
-    /// exceeds the specification's per-skill limits.
+    /// field, has a name that does not match <paramref name="uri"/>, or differs from frontmatter the reader can
+    /// read completely; or <paramref name="files"/> omits <c>SKILL.md</c>, contains a duplicate or unsafe path,
+    /// exceeds the specification's per-skill limits, or has invalid UTF-8, missing frontmatter boundaries,
+    /// or a format error detected by the reader.
     /// </exception>
     /// <remarks>
-    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>, which reads the frontmatter from the
-    /// file. This overload exists for frontmatter that <see cref="SkillFrontmatter"/> cannot read. When it can read
-    /// the file, the supplied object must match it exactly, since hosts compare the two field by field and refuse
-    /// the skill on any difference.
+    /// <para>
+    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/> for the supported YAML subset. This
+    /// overload retains UTF-8 and frontmatter-boundary checks, structural entry and URI validation, and manifest
+    /// computation from the served bytes. Detected malformed input is rejected. When <see cref="SkillFrontmatter"/>
+    /// reads the complete block, the supplied object must match it exactly.
+    /// </para>
+    /// <para>
+    /// When the bounded reader reports unsupported syntax, it may not examine later content. The application
+    /// must parse and validate the entire frontmatter with a suitable mechanism and supply identical JSON.
+    /// Acceptance of an explicit object is not proof that unsupported YAML is valid or matches the file.
+    /// Hosts still perform their own frontmatter verification before loading the skill.
+    /// </para>
     /// </remarks>
     public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files)
     {
@@ -167,6 +188,10 @@ public sealed class McpServerSkill
     /// <para>
     /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
     /// manifest or the served content.
+    /// </para>
+    /// <para>
+    /// This automatic overload uses the bounded <see cref="SkillFrontmatter"/> reader. Unsupported or malformed
+    /// frontmatter is an error, not a reason to publish guessed metadata.
     /// </para>
     /// <para>
     /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
@@ -237,10 +262,17 @@ public sealed class McpServerSkill
     /// or the directory contains a symbolic link or other reparse point.
     /// </exception>
     /// <remarks>
-    /// Prefer <see cref="CreateFromDirectory(string, string)"/>, which reads the frontmatter from the file. This
-    /// overload exists for frontmatter that <see cref="SkillFrontmatter"/> cannot read. When it can read the file,
-    /// the supplied object must match it exactly. See <see cref="CreateFromDirectory(string)"/> for how files and
-    /// links are handled.
+    /// <para>
+    /// Prefer <see cref="CreateFromDirectory(string, string)"/> for supported YAML. This overload has the same
+    /// checks and application-owned full-frontmatter validation responsibility as
+    /// <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>. An unsupported construct can
+    /// stop the reader before later content is examined; the application must validate the complete block and
+    /// provide matching JSON. When the reader can read it completely, mismatched metadata is rejected.
+    /// </para>
+    /// <para>
+    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled. Hosts independently
+    /// verify fetched frontmatter regardless of this authoring path.
+    /// </para>
     /// </remarks>
     public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
     {
@@ -316,10 +348,10 @@ public sealed class McpServerSkill
             contents[i] = normalized[i].File.Content.ToArray();
         }
 
-        // Read the frontmatter from SKILL.md (always first after sorting). When the caller supplied frontmatter,
-        // the file is still read so that the two can be checked against each other. The caller's frontmatter
-        // stands on its own only when the file uses valid YAML the reader does not support; a file that is not
-        // UTF-8, has no frontmatter block, or is malformed cannot be reproduced by any host and is rejected.
+        // Read frontmatter from SKILL.md (always first after sorting). UTF-8, boundaries, detected format errors,
+        // and equality for completely parsed blocks are checked even when metadata was supplied. An unsupported
+        // construct can stop the reader before later content is examined. In that case the caller owns parsing
+        // and validating the entire frontmatter and supplying matching JSON; this is not full YAML validation.
         if (!TryDecodeUtf8(contents[0], out string? skillMarkdown))
         {
             throw new ArgumentException($"{SkillsProtocol.SkillFileName} is not valid UTF-8.", filesParamName);
@@ -339,7 +371,8 @@ public sealed class McpServerSkill
         }
         catch (SkillFrontmatter.UnsupportedYamlException)
         {
-            // Explicit frontmatter covers this case.
+            // The application must already have validated the entire frontmatter and supplied matching JSON.
+            // Reaching an unsupported construct establishes neither whole-document validity nor equality.
         }
         catch (FormatException e)
         {

@@ -6,22 +6,28 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// Reads the YAML frontmatter of a <c>SKILL.md</c> into a <see cref="JsonObject"/>, without a YAML library.
-/// Servers use it to publish a skill's entry from its file; hosts can use it to compare a fetched <c>SKILL.md</c> against the entry.
+/// Reads a supported subset of <c>SKILL.md</c> YAML frontmatter into a <see cref="JsonObject"/>, without a YAML library.
+/// This optional helper supports server authoring and host-side comparison for that subset.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Agent Skills frontmatter is a small, regular subset of YAML: a block mapping of scalars, with at most a nested
-/// mapping (<c>metadata</c>) and the occasional sequence. This reader accepts that subset deliberately and
-/// rejects everything else with a <see cref="FormatException"/> naming the construct, so that a skill whose
-/// frontmatter it cannot represent faithfully is never published with a guessed rendering. Anchors, aliases,
-/// tags, multi-document streams, complex keys, multi-line flow collections, and tab indentation are rejected.
+/// This reader supports block mappings, nested mappings and sequences, plain, quoted and block scalars,
+/// and comments within its bounded YAML subset. Detected malformed input and unsupported constructs throw
+/// <see cref="FormatException"/>; unsupported forms include anchors, aliases, tags, complex keys and multi-line
+/// flow collections. Parsing can stop at the first unsupported construct, so an exception is not proof that
+/// the rest of the frontmatter is valid. This helper is not a general-purpose YAML validator.
 /// </para>
 /// <para>
 /// Unquoted scalars are resolved per the YAML 1.2 core schema (<c>null</c>, booleans, integers, finite floats,
-/// otherwise strings), which is what the YAML libraries used by other MCP SDKs and hosts do. A host verifies a
-/// skill by parsing the fetched <c>SKILL.md</c> with its own YAML library and comparing field by field against the
-/// entry, so matching that resolution is what makes the published frontmatter verifiable.
+/// otherwise strings). Other YAML parsers can differ in the forms and values they support; an application
+/// supplying explicit metadata is responsible for parsing and validating the entire frontmatter with a
+/// suitable mechanism and providing the correct JSON representation.
+/// </para>
+/// <para>
+/// Before loading a skill, hosts must parse the fetched <c>SKILL.md</c> and compare every frontmatter field with
+/// the held entry, regardless of how the server authored it. A host may use this reader for its supported subset.
+/// On unsupported or malformed input, the host must reject the content or use a suitable full parser; it must
+/// not substitute the server-provided JSON for verification.
 /// </para>
 /// </remarks>
 public static class SkillFrontmatter
@@ -35,18 +41,18 @@ public static class SkillFrontmatter
     private const int MaxNestingDepth = 32;
 
     /// <summary>
-    /// Thrown for YAML that is valid but outside the subset this reader supports, as opposed to malformed
-    /// frontmatter. Callers that accept explicitly supplied frontmatter may fall back on it for this case only.
+    /// Thrown when the reader encounters an unsupported construct. Parsing may stop before the remaining
+    /// frontmatter is examined; this exception does not establish whole-document validity or metadata equality.
     /// </summary>
     internal sealed class UnsupportedYamlException(string message) : FormatException(message);
 
-    /// <summary>Thrown when a quoted scalar has no closing quote on its line. Malformed unless a later line closes it.</summary>
+    /// <summary>Thrown when a quoted scalar has no closing quote on its line; a later delimiter may indicate an unsupported multi-line form.</summary>
     private sealed class UnterminatedQuoteException(string message, char quote) : FormatException(message)
     {
         public char Quote { get; } = quote;
     }
 
-    /// <summary>Thrown when a flow collection has no closing bracket on its line. Malformed unless a later line closes it.</summary>
+    /// <summary>Thrown when a flow collection has no closing bracket on its line; a later delimiter may indicate an unsupported multi-line form.</summary>
     private sealed class UnterminatedFlowException(string message, char closer) : FormatException(message)
     {
         public char Closer { get; } = closer;
@@ -214,7 +220,7 @@ public static class SkillFrontmatter
         }
 
         /// <summary>Parses the block node formed by the lines at <paramref name="indent"/>.</summary>
-        private JsonNode? ParseBlock(int indent)
+        private JsonNode? ParseBlock(int indent, int parentIndent = -1)
         {
             SkipBlank();
             var line = _lines[_pos];
@@ -226,7 +232,27 @@ public static class SkillFrontmatter
             _depth++;
             try
             {
-                return IsSequenceEntry(line.Content) ? ParseSequence(indent) : ParseMapping(indent);
+                if (IsSequenceEntry(line.Content))
+                {
+                    return ParseSequence(indent);
+                }
+
+                bool isExplicitMappingKey = line.Content[0] == '?' &&
+                    (line.Content.Length == 1 || line.Content[1] is ' ' or '\t');
+                bool isScalarValue = parentIndent >= 0 &&
+                    line.Content[0] is not ('&' or '*' or '!') &&
+                    !isExplicitMappingKey &&
+                    !IsCompactMappingEntry(line.Content, line.Number) &&
+                    !IsFlowCollectionKey(line.Content, line.Number);
+                if (isScalarValue)
+                {
+                    ThrowIfTabIndented(line);
+                    var rest = PrepareValue(line.Content, out bool commentEndedValue);
+                    _pos++;
+                    return ParseValue(rest, commentEndedValue, parentIndent, line.Number, allowSameIndentSequence: false);
+                }
+
+                return ParseMapping(indent);
             }
             finally
             {
@@ -236,6 +262,84 @@ public static class SkillFrontmatter
 
         private static bool IsSequenceEntry(string content) =>
             content.Length > 0 && content[0] == '-' && (content.Length == 1 || content[1] is ' ' or '\t');
+
+        private bool IsFlowCollectionKey(string text, int lineNumber)
+        {
+            if (text[0] is not ('[' or '{'))
+            {
+                return false;
+            }
+
+            // Find the flow node's boundary without resolving its contents as JSON values.
+            var closers = new Stack<char>();
+            bool inPlainScalar = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                switch (c)
+                {
+                    case '[' or '{':
+                        if (closers.Count >= MaxNestingDepth)
+                        {
+                            return false;
+                        }
+
+                        closers.Push(c == '[' ? ']' : '}');
+                        inPlainScalar = false;
+                        break;
+
+                    case ']' or '}':
+                        if (closers.Count == 0 ||
+                            closers.Pop() != c)
+                        {
+                            return false;
+                        }
+
+                        if (closers.Count == 0)
+                        {
+                            int colon = SkipSpaces(text, i + 1);
+                            return colon < text.Length &&
+                                text[colon] == ':' &&
+                                (colon + 1 == text.Length || text[colon + 1] is ' ' or '\t');
+                        }
+
+                        inPlainScalar = false;
+                        break;
+
+                    case '"' or '\'' when !inPlainScalar:
+                        try
+                        {
+                            ParseQuotedScalar(text, i, lineNumber, out int end);
+                            i = end - 1;
+                        }
+                        catch (FormatException)
+                        {
+                            return false;
+                        }
+
+                        break;
+
+                    case ',':
+                    case ':' when !inPlainScalar ||
+                        i + 1 == text.Length ||
+                        text[i + 1] is ' ' or '\t':
+                        inPlainScalar = false;
+                        break;
+
+                    case '#' when i == 0 || text[i - 1] is ' ' or '\t':
+                        return false;
+
+                    case ' ' or '\t':
+                        break;
+
+                    default:
+                        inPlainScalar = true;
+                        break;
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Whether a sequence item's text is a "key: value" line, with a plain or quoted key, that begins a nested
@@ -271,7 +375,7 @@ public static class SkillFrontmatter
 
         /// <summary>
         /// Rejects a plain scalar that starts with a character YAML gives another meaning: an anchor, alias, or tag
-        /// (valid YAML this reader does not support), a reserved character, a flow indicator, a block scalar header,
+        /// (constructs this reader does not support), a reserved character, a flow indicator, a block scalar header,
         /// or a block indicator followed by white space.
         /// </summary>
         private static void ThrowIfReservedPlainStart(string text, int lineNumber)
@@ -419,7 +523,7 @@ public static class SkillFrontmatter
                 {
                     // "- " followed by nothing: the value is the more-indented block that follows, or null.
                     var next = PeekSignificant();
-                    result.Add(next is { } n && n.Indent > indent ? ParseBlock(n.Indent) : null);
+                    result.Add(next is { } n && n.Indent > indent ? ParseBlock(n.Indent, indent) : null);
                     continue;
                 }
 
@@ -460,7 +564,7 @@ public static class SkillFrontmatter
                 {
                     if (n.Indent > parentIndent)
                     {
-                        return ParseBlock(n.Indent);
+                        return ParseBlock(n.Indent, parentIndent);
                     }
 
                     if (allowSameIndentSequence && n.Indent == parentIndent && IsSequenceEntry(n.Content))
@@ -487,8 +591,8 @@ public static class SkillFrontmatter
                     }
                     catch (UnterminatedFlowException e) when (ClosesLater(e.Closer))
                     {
-                        // Valid YAML (a flow collection spanning lines) that this reader does not support, as
-                        // opposed to a collection that is never closed, which is malformed.
+                        // A later delimiter may indicate an unsupported multi-line flow collection. This
+                        // classification does not validate its contents or the rest of the frontmatter.
                         throw new UnsupportedYamlException($"Line {lineNumber}: multi-line flow collections are not supported in frontmatter.");
                     }
 
@@ -501,12 +605,12 @@ public static class SkillFrontmatter
                     }
                     catch (UnterminatedQuoteException e) when (ClosesLater(e.Quote))
                     {
-                        // Valid YAML (a quoted scalar spanning lines) that this reader does not support, as opposed
-                        // to a quote that is never closed, which is malformed and stays a plain FormatException.
+                        // A later delimiter may indicate an unsupported multi-line quoted scalar. This
+                        // classification does not validate its contents or the rest of the frontmatter.
                         throw new UnsupportedYamlException($"Line {lineNumber}: multi-line quoted scalars are not supported in frontmatter.");
                     }
 
-                    if (StripComment(rest.Substring(consumed)).Trim(s_yamlWhitespace).Length != 0)
+                    if (StripComment(rest.Substring(consumed), allowLeadingComment: false).Trim(s_yamlWhitespace).Length != 0)
                     {
                         throw new FormatException($"Line {lineNumber}: unexpected content after the quoted value.");
                     }
@@ -737,7 +841,7 @@ public static class SkillFrontmatter
                         continue;
                     }
 
-                    bool moreIndented = text[0] == ' ';
+                    bool moreIndented = text[0] is ' ' or '\t';
                     if (builder.Length == 0)
                     {
                         // Leading empty lines are content: each becomes a line break.
@@ -819,7 +923,7 @@ public static class SkillFrontmatter
                 }
             }
 
-            if (StripComment(text.Substring(pos)).Trim(s_yamlWhitespace).Length != 0)
+            if (StripComment(text.Substring(pos), allowLeadingComment: false).Trim(s_yamlWhitespace).Length != 0)
             {
                 throw new FormatException($"Line {lineNumber}: unexpected content after the flow sequence.");
             }
@@ -923,7 +1027,7 @@ public static class SkillFrontmatter
                 }
             }
 
-            if (StripComment(text.Substring(pos)).Trim(s_yamlWhitespace).Length != 0)
+            if (StripComment(text.Substring(pos), allowLeadingComment: false).Trim(s_yamlWhitespace).Length != 0)
             {
                 throw new FormatException($"Line {lineNumber}: unexpected content after the flow mapping.");
             }
@@ -1282,14 +1386,16 @@ public static class SkillFrontmatter
         }
 
         /// <summary>
-        /// Removes a trailing comment from plain text. A comment starts at a '#' that begins the text or follows
-        /// whitespace; quotes inside plain text are ordinary characters, so an apostrophe never suppresses a comment.
+        /// Removes a trailing comment from plain text. A comment must follow whitespace unless the text already
+        /// starts at a separation boundary; quotes inside plain text never suppress a comment.
         /// </summary>
-        private static string StripComment(string text)
+        private static string StripComment(string text, bool allowLeadingComment = true)
         {
             for (int i = 0; i < text.Length; i++)
             {
-                if (text[i] == '#' && (i == 0 || text[i - 1] is ' ' or '\t'))
+                bool isSeparated = i == 0 ? allowLeadingComment : text[i - 1] is ' ' or '\t';
+                if (text[i] == '#' &&
+                    isSeparated)
                 {
                     return text.Substring(0, i);
                 }

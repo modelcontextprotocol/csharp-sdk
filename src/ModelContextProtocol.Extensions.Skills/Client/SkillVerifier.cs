@@ -12,9 +12,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <para>
 /// When a host retrieves a file listed in a skill's manifest, it must verify the content against that entry's
 /// digest and size, and must treat a read of a file the manifest does not list as a verification failure. These
-/// helpers implement those checks. Frontmatter verification (re-parsing the fetched <c>SKILL.md</c> and comparing
-/// its YAML frontmatter against the entry) is not performed automatically; a host can do it with
-/// <see cref="SkillFrontmatter.Parse"/> and <see cref="System.Text.Json.Nodes.JsonNode.DeepEquals"/>.
+/// helpers implement those manifest checks, not frontmatter verification. Before loading a skill, the host must
+/// independently parse the fetched <c>SKILL.md</c> and compare every frontmatter field with the held entry,
+/// regardless of the server's authoring path. It can use <see cref="SkillFrontmatter.Parse"/> and
+/// <see cref="System.Text.Json.Nodes.JsonNode.DeepEquals"/> for the supported subset. Unsupported content must be
+/// rejected or read with a suitable full parser; server-supplied JSON is never a verification fallback.
 /// </para>
 /// <para>
 /// Digests are unsigned and supplied by the same server that supplies the content. A match proves the manifest
@@ -234,7 +236,7 @@ public static class SkillVerifier
 
     /// <summary>
     /// Rejects a skill whose manifest is missing (the property is <c>required</c> but can still be assigned
-    /// <see langword="null"/>) or dynamic, neither of which can be verified.
+    /// <see langword="null"/>) or dynamic, neither of which has a manifest that can be digest-verified.
     /// </summary>
     internal static void ThrowIfDynamic(Skill skill)
     {
