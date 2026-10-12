@@ -592,4 +592,107 @@ public class McpServerPrimitiveCollectionTests
         Assert.Equal(1, changeCount);
         Assert.Equal(3, collection.Count);
     }
+
+    // -------------------------------------------------------------------------
+    // Enumeration order
+    // -------------------------------------------------------------------------
+
+    private static readonly string[] s_unorderedNames =
+    [
+        "zulu", "alpha", "mike", "echo", "yankee", "bravo", "kilo", "xray", "charlie", "lima",
+        "whiskey", "delta", "november", "victor", "foxtrot", "oscar", "uniform", "golf", "papa", "tango",
+    ];
+
+    private static McpServerResource CreateResource(string uri) =>
+        McpServerResource.Create(() => uri, new() { UriTemplate = uri, Name = uri });
+
+    [Fact]
+    public void Enumeration_YieldsPrimitivesInInsertionOrder()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        foreach (var name in s_unorderedNames)
+        {
+            collection.Add(CreateTool(name));
+        }
+
+        Assert.Equal(s_unorderedNames, collection.Select(t => t.ProtocolTool.Name));
+        Assert.Equal(s_unorderedNames, collection.ToArray().Select(t => t.ProtocolTool.Name));
+        Assert.Equal(s_unorderedNames, collection.PrimitiveNames);
+
+        var copy = new McpServerTool[collection.Count + 1];
+        collection.CopyTo(copy, 1);
+        Assert.Null(copy[0]);
+        Assert.Equal(s_unorderedNames, copy.Skip(1).Select(t => t.ProtocolTool.Name));
+    }
+
+    [Fact]
+    public void Enumeration_PromptCollection_YieldsPromptsInInsertionOrder()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerPrompt>();
+        foreach (var name in s_unorderedNames)
+        {
+            collection.Add(CreatePrompt(name));
+        }
+
+        Assert.Equal(s_unorderedNames, collection.Select(p => p.ProtocolPrompt.Name));
+    }
+
+    [Fact]
+    public void Enumeration_ResourceCollection_YieldsResourcesInInsertionOrder()
+    {
+        string[] uris = [.. s_unorderedNames.Select(name => $"test://{name}")];
+
+        var collection = new McpServerResourceCollection();
+        foreach (var uri in uris)
+        {
+            collection.Add(CreateResource(uri));
+        }
+
+        Assert.Equal(uris, collection.Select(r => r.ProtocolResourceTemplate.UriTemplate));
+        Assert.Equal(uris, collection.PrimitiveNames);
+    }
+
+    [Fact]
+    public void Enumeration_RemovedAndReaddedPrimitive_MovesToEnd()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        var first = CreateTool("first");
+        collection.Add(first);
+        collection.Add(CreateTool("second"));
+        collection.Add(CreateTool("third"));
+
+        Assert.True(collection.Remove(first));
+        collection.Add(CreateTool("first"));
+
+        Assert.Equal(["second", "third", "first"], collection.Select(t => t.ProtocolTool.Name));
+    }
+
+    [Fact]
+    public void Enumeration_AfterClear_UsesNewInsertionOrder()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.Add(CreateTool("alpha"));
+        collection.Add(CreateTool("bravo"));
+
+        collection.Clear();
+        collection.Add(CreateTool("bravo"));
+        collection.Add(CreateTool("alpha"));
+
+        Assert.Equal(["bravo", "alpha"], collection.Select(t => t.ProtocolTool.Name));
+    }
+
+    [Fact]
+    public void Remove_DifferentInstanceWithSameName_ReturnsFalse()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        var stored = CreateTool("tool1");
+        collection.Add(stored);
+
+        var other = CreateTool("tool1");
+
+        Assert.DoesNotContain(other, collection);
+        Assert.False(collection.Remove(other));
+        Assert.Contains(stored, collection);
+        Assert.Same(stored, collection["tool1"]);
+    }
 }

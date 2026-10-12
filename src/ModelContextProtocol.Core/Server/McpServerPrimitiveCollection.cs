@@ -6,11 +6,18 @@ namespace ModelContextProtocol.Server;
 
 /// <summary>Provides a thread-safe collection of <typeparamref name="T"/> instances, indexed by their names.</summary>
 /// <typeparam name="T">The type of primitive stored in the collection.</typeparam>
+/// <remarks>
+/// Enumerating the collection, including via <see cref="ToArray"/>, <see cref="CopyTo"/>, and <see cref="PrimitiveNames"/>,
+/// yields primitives in the order they were added. A primitive that is removed and then added again moves to the end.
+/// </remarks>
 public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollection<T>
     where T : IMcpServerPrimitive
 {
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
-    private readonly ConcurrentDictionary<string, T> _primitives;
+    private readonly ConcurrentDictionary<string, Entry> _primitives;
+
+    /// <summary>The sequence number assigned to the most recently added primitive, used to preserve insertion order.</summary>
+    private long _lastSequence;
 
     /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_hasDeferredChangeEvents"/>.</summary>
     private readonly object _deferralLock = new();
@@ -132,7 +139,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         get
         {
             Throw.IfNull(name);
-            return _primitives[name];
+            return _primitives[name].Primitive;
         }
     }
 
@@ -163,7 +170,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool added = _primitives.TryAdd(primitive.Id, primitive);
+        bool added = _primitives.TryAdd(primitive.Id, new(primitive, Interlocked.Increment(ref _lastSequence)));
         if (added)
         {
             RaiseChanged();
@@ -182,7 +189,12 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool removed = ((ICollection<KeyValuePair<string, T>>)_primitives).Remove(new(primitive.Id, primitive));
+        // Remove the entry only if it is still the one found above. Entry compares by reference, so an entry
+        // that another thread removed and re-added under the same name in the meantime isn't removed.
+        bool removed =
+            _primitives.TryGetValue(primitive.Id, out Entry? entry) &&
+            EqualityComparer<T>.Default.Equals(entry.Primitive, primitive) &&
+            ((ICollection<KeyValuePair<string, Entry>>)_primitives).Remove(new(primitive.Id, entry));
         if (removed)
         {
             RaiseChanged();
@@ -201,7 +213,15 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public virtual bool TryGetPrimitive(string name, [NotNullWhen(true)] out T? primitive)
     {
         Throw.IfNull(name);
-        return _primitives.TryGetValue(name, out primitive);
+
+        if (_primitives.TryGetValue(name, out Entry? entry))
+        {
+            primitive = entry.Primitive;
+            return true;
+        }
+
+        primitive = default;
+        return false;
     }
 
     /// <summary>Checks if a specific primitive is present in the collection of primitives.</summary>
@@ -211,31 +231,49 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public virtual bool Contains(T primitive)
     {
         Throw.IfNull(primitive);
-        return ((ICollection<KeyValuePair<string, T>>)_primitives).Contains(new(primitive.Id, primitive));
+        return
+            _primitives.TryGetValue(primitive.Id, out Entry? entry) &&
+            EqualityComparer<T>.Default.Equals(entry.Primitive, primitive);
     }
 
-    /// <summary>Gets the names of all of the primitives in the collection.</summary>
-    public virtual ICollection<string> PrimitiveNames => _primitives.Keys;
+    /// <summary>Gets the names of all of the primitives in the collection, in the order the primitives were added.</summary>
+    public virtual ICollection<string> PrimitiveNames => Array.ConvertAll(GetOrderedEntries(), static e => e.Primitive.Id);
 
     /// <summary>Creates an array containing all of the primitives in the collection.</summary>
-    /// <returns>An array containing all of the primitives in the collection.</returns>
-    public virtual T[] ToArray() => _primitives.Values.ToArray();
+    /// <returns>An array containing all of the primitives in the collection, in the order they were added.</returns>
+    public virtual T[] ToArray() => Array.ConvertAll(GetOrderedEntries(), static e => e.Primitive);
 
     /// <inheritdoc/>
     public virtual void CopyTo(T[] array, int arrayIndex)
     {
         Throw.IfNull(array);
 
-        _primitives.Values.CopyTo(array, arrayIndex);
+        ToArray().CopyTo(array, arrayIndex);
     }
 
     /// <inheritdoc/>
     public virtual IEnumerator<T> GetEnumerator()
     {
-        foreach (var entry in _primitives)
+        foreach (var entry in GetOrderedEntries())
         {
-            yield return entry.Value;
+            yield return entry.Primitive;
         }
+    }
+
+    /// <summary>Takes a snapshot of the collection's entries, sorted into insertion order.</summary>
+    private Entry[] GetOrderedEntries()
+    {
+        Entry[] entries = _primitives.Values.ToArray();
+        Array.Sort(entries, static (x, y) => x.Sequence.CompareTo(y.Sequence));
+        return entries;
+    }
+
+    /// <summary>A primitive together with the sequence number recording when it was added.</summary>
+    private sealed class Entry(T primitive, long sequence)
+    {
+        public T Primitive { get; } = primitive;
+
+        public long Sequence { get; } = sequence;
     }
 
     /// <inheritdoc/>
