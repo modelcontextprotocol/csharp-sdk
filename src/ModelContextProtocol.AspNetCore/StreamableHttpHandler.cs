@@ -43,6 +43,7 @@ internal sealed class StreamableHttpHandler(
     /// </summary>
     private static readonly string[] s_sessionSupportingProtocolVersions = McpProtocolVersions.InitializeHandshakeProtocolVersions;
 
+    private static readonly JsonTypeInfo<JsonElement> s_jsonElementTypeInfo = GetRequiredJsonTypeInfo<JsonElement>();
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
@@ -76,15 +77,32 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        JsonRpcMessage? message;
+        // Parse the body as JSON first, so that invalid JSON (Parse error, -32700) can be told apart from
+        // JSON that is not a valid JSON-RPC message (Invalid Request, -32600), per JSON-RPC 2.0 §5.1.
+        JsonElement body;
         try
         {
-            message = await ReadJsonRpcMessageAsync(context);
+            body = await context.Request.ReadFromJsonAsync(s_jsonElementTypeInfo, context.RequestAborted);
         }
         catch (JsonException)
         {
-            // The POST body was not a well-formed JSON-RPC message (malformed JSON, or a request whose
-            // id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
+            // The POST body was not valid JSON, so no request id can be read: answer with a null id rather
+            // than letting the exception bubble up as an opaque 500.
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: The POST body was not valid JSON.",
+                StatusCodes.Status400BadRequest, (int)McpErrorCode.ParseError);
+            return;
+        }
+
+        JsonRpcMessage? message;
+        try
+        {
+            message = AddRequestContext(context, body.Deserialize(s_messageTypeInfo));
+        }
+        catch (JsonException)
+        {
+            // The POST body was valid JSON but not a well-formed JSON-RPC message (for example a request
+            // whose id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
             // with a null id rather than letting the exception bubble up as an opaque 500.
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: The POST body did not contain a valid JSON-RPC message.",
@@ -663,10 +681,10 @@ internal sealed class StreamableHttpHandler(
     }
 
     internal static async Task<JsonRpcMessage?> ReadJsonRpcMessageAsync(HttpContext context)
-    {
-        // Implementation for reading a JSON-RPC message from the request body
-        var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
+        => AddRequestContext(context, await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted));
 
+    private static JsonRpcMessage? AddRequestContext(HttpContext context, JsonRpcMessage? message)
+    {
         if (message is not null)
         {
             var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
