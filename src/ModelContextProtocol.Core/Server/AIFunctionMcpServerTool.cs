@@ -241,29 +241,29 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
     /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
     /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
-    /// before emission. Returns <see cref="ProtocolTool"/> unchanged when there is no
+    /// before emission. Returns <paramref name="protocolTool"/> unchanged when there is no
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
-    internal Tool BuildLegacyWireProtocolTool()
+    internal static Tool BuildLegacyWireProtocolTool(Tool protocolTool)
     {
-        if (ProtocolTool.OutputSchema is not { } natural)
+        if (protocolTool.OutputSchema is not { } natural)
         {
-            return ProtocolTool;
+            return protocolTool;
         }
 
         JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(natural);
 
         return new Tool
         {
-            Name = ProtocolTool.Name,
-            Title = ProtocolTool.Title,
-            Description = ProtocolTool.Description,
-            InputSchema = ProtocolTool.InputSchema,
+            Name = protocolTool.Name,
+            Title = protocolTool.Title,
+            Description = protocolTool.Description,
+            InputSchema = protocolTool.InputSchema,
             OutputSchema = legacyOutputSchema,
-            Annotations = ProtocolTool.Annotations,
-            Icons = ProtocolTool.Icons,
-            Meta = ProtocolTool.Meta,
+            Annotations = protocolTool.Annotations,
+            Icons = protocolTool.Icons,
+            Meta = protocolTool.Meta,
         };
     }
 
