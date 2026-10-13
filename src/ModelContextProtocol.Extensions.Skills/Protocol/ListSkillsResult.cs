@@ -26,6 +26,7 @@ public sealed class ListSkillsResult : PaginatedResult, ICacheableResult
     /// Gets or sets the skill entries.
     /// </summary>
     [JsonPropertyName("skills")]
+    [JsonRequired]
     public IList<Skill> Skills { get; set; } = [];
 
     /// <inheritdoc />

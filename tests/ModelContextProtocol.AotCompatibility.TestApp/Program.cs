@@ -6,20 +6,26 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
+using System.Text.Json.Nodes;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
+
+var authoredSkill = McpServerSkill.Create(
+    "skill://aot/SKILL.md",
+    [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")]);
+var expectedMeta = JsonNode.Parse("""{"example.com/aot":{"values":["native",42,true]}}""")!.AsObject();
+var entry = authoredSkill.ProtocolSkill;
+entry.Meta = (JsonObject)expectedMeta.DeepClone();
+var catalog = new InMemoryMcpSkillCatalog([entry]);
+entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
 
 var services = new ServiceCollection();
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
     .WithMcpApps()
-    .WithSkills(
-    [
-        McpServerSkill.Create(
-            "skill://aot/SKILL.md",
-            [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")]),
-    ]);
+    .WithSkills(catalog)
+    .WithResources(authoredSkill.Resources);
 
 await using var serviceProvider = services.BuildServiceProvider();
 var server = serviceProvider.GetRequiredService<McpServer>();
@@ -56,6 +62,11 @@ if (skills.Count != 1 || skills[0].Name != "aot")
     throw new Exception($"Unexpected skills listing: {skills.Count} entries.");
 }
 
+if (!JsonNode.DeepEquals(expectedMeta, skills[0].Meta))
+{
+    throw new Exception("Unexpected skill entry metadata in the listing.");
+}
+
 var skillResult = await client.GetSkillAsync(new GetSkillRequestParams { Uri = "skill://aot/SKILL.md" });
 if (skillResult.ResultType != "complete" ||
     skillResult.TimeToLive != TimeSpan.Zero ||
@@ -65,6 +76,11 @@ if (skillResult.ResultType != "complete" ||
 }
 
 var skill = skillResult.Skill;
+if (!JsonNode.DeepEquals(expectedMeta, skill.Meta))
+{
+    throw new Exception("Unexpected skill entry metadata in the lookup.");
+}
+
 if (skill.Description != "An AOT-published skill." ||
     skill.Frontmatter["metadata"]?["note"]?.GetValue<string>() != "First\n\tCode\nLast\n")
 {

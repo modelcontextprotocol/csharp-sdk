@@ -24,7 +24,7 @@ public sealed class Skill
     /// Gets or sets the resource URI of the skill's <c>SKILL.md</c>, readable via <c>resources/read</c>.
     /// </summary>
     /// <remarks>
-    /// The path segment preceding <c>/SKILL.md</c> must equal the <c>name</c> field of <see cref="Frontmatter"/>,
+    /// The decoded path segment preceding <c>/SKILL.md</c> must equal the <c>name</c> field of <see cref="Frontmatter"/>,
     /// so that a skill's name is recoverable from its URI alone.
     /// </remarks>
     [JsonPropertyName("uri")]
@@ -50,6 +50,16 @@ public sealed class Skill
     public required SkillResources Resources { get; set; }
 
     /// <summary>
+    /// Gets or sets metadata reserved by the protocol for clients and servers to associate with this skill.
+    /// </summary>
+    /// <remarks>
+    /// This metadata is separate from the <c>metadata</c> field in <see cref="Frontmatter"/>.
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
+
+    /// <summary>
     /// Gets the skill's name from <see cref="Frontmatter"/>, or <see langword="null"/> if it is absent or not a string.
     /// </summary>
     /// <remarks>
@@ -64,6 +74,37 @@ public sealed class Skill
     /// </summary>
     [JsonIgnore]
     public string? Description => GetFrontmatterString("description");
+
+    /// <summary>
+    /// Gets the skill's license from <see cref="Frontmatter"/>, or <see langword="null"/> if it is absent or not a string.
+    /// </summary>
+    /// <remarks>
+    /// The Agent Skills specification defines it as a license name or a reference to a license file bundled with the skill.
+    /// </remarks>
+    [JsonIgnore]
+    public string? License => GetFrontmatterString("license");
+
+    /// <summary>
+    /// Gets the skill's compatibility from <see cref="Frontmatter"/>, or <see langword="null"/> if it is absent or not a string.
+    /// </summary>
+    /// <remarks>
+    /// The Agent Skills specification uses it to state environment requirements, such as the intended product,
+    /// system packages, or network access.
+    /// </remarks>
+    [JsonIgnore]
+    public string? Compatibility => GetFrontmatterString("compatibility");
+
+    /// <summary>
+    /// Gets the skill's <c>allowed-tools</c> value from <see cref="Frontmatter"/>, a space-separated string of tools,
+    /// or <see langword="null"/> if it is absent or not a string.
+    /// </summary>
+    /// <remarks>
+    /// The Agent Skills specification marks this field as experimental. A server that sets it is asking for elevated
+    /// access on the host, so the Skills extension specification requires hosts to ignore it for skills that arrive
+    /// over MCP unless the user has explicitly approved that grant for that skill.
+    /// </remarks>
+    [JsonIgnore]
+    public string? AllowedTools => GetFrontmatterString("allowed-tools");
 
     private string? GetFrontmatterString(string key) =>
         Frontmatter.TryGetPropertyValue(key, out var node) &&

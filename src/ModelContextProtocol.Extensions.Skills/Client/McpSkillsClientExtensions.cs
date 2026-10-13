@@ -1,6 +1,8 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Extensions.Skills;
 
@@ -36,7 +38,7 @@ public static class McpSkillsClientExtensions
     }
 
     /// <summary>
-    /// Retrieves the entries of every skill the server lists, following pagination to the end.
+    /// Retrieves the listed skills, following at most 100 pages and collecting at most 1,000 entries.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -47,7 +49,9 @@ public static class McpSkillsClientExtensions
     /// The server returned an entry that violates the specification (for example, a name that does not match its
     /// URI, a malformed digest, or a manifest over the per-skill limits). Hosts must not load such entries.
     /// </exception>
-    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <exception cref="McpException">
+    /// The request failed, a pagination cursor repeated, or the listing exceeded the page or entry limit.
+    /// </exception>
     /// <remarks>
     /// <para>
     /// The listing may be empty or partial: a server whose catalog is large or generated may list fewer skills than
@@ -57,22 +61,74 @@ public static class McpSkillsClientExtensions
     /// <para>
     /// This overload aggregates every page and does not surface the per-result caching hints. To read those, use
     /// <see cref="ListSkillsAsync(McpClient, ListSkillsRequestParams, CancellationToken)"/>, which returns one page at a time.
+    /// Use <see cref="ListSkillsAsync(McpClient, int, int, CancellationToken)"/> to choose different limits.
+    /// Exceeding a limit fails the operation rather than returning a silently truncated listing.
     /// </para>
     /// </remarks>
-    public static async ValueTask<IList<Skill>> ListSkillsAsync(this McpClient client, CancellationToken cancellationToken = default)
+    public static ValueTask<IList<Skill>> ListSkillsAsync(this McpClient client, CancellationToken cancellationToken = default) =>
+        ListSkillsAsync(client, maxPages: 100, maxSkills: 1000, cancellationToken);
+
+    /// <summary>
+    /// Retrieves the listed skills with explicit page and entry limits.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="maxPages">The maximum number of pages to request. Must be positive.</param>
+    /// <param name="maxSkills">The maximum number of entries to collect. Must be positive.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>The complete listing within the supplied limits.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A limit is not positive.</exception>
+    /// <exception cref="InvalidOperationException">The server did not declare the Skills extension.</exception>
+    /// <exception cref="SkillVerificationException">An entry is invalid.</exception>
+    /// <exception cref="McpException">The request failed, a cursor repeated, or a limit was exceeded.</exception>
+    /// <remarks>
+    /// Cursors are opaque, including an empty string. Only a null cursor ends the listing.
+    /// Use the paged overload when the application needs to stream a larger listing.
+    /// </remarks>
+    public static async ValueTask<IList<Skill>> ListSkillsAsync(
+        this McpClient client,
+        int maxPages,
+        int maxSkills,
+        CancellationToken cancellationToken = default)
     {
-        List<Skill>? skills = null;
-        ListSkillsRequestParams requestParams = new();
-        do
+#if NET
+        ArgumentNullException.ThrowIfNull(client);
+#else
+        if (client is null) throw new ArgumentNullException(nameof(client));
+#endif
+        if (maxPages <= 0)
         {
+            throw new ArgumentOutOfRangeException(nameof(maxPages), "The page limit must be positive.");
+        }
+        if (maxSkills <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxSkills), "The skill limit must be positive.");
+        }
+
+        var skills = new List<Skill>();
+        var requestParams = new ListSkillsRequestParams();
+        var cursors = new HashSet<string>(StringComparer.Ordinal);
+        for (int pageNumber = 0; pageNumber < maxPages; pageNumber++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             var page = await ListSkillsAsync(client, requestParams, cancellationToken).ConfigureAwait(false);
-            skills ??= new(page.Skills.Count);
+            if (page.Skills.Count > maxSkills - skills.Count)
+            {
+                throw new McpException($"The skill listing exceeded the limit of {maxSkills} entries. Use the paged overload or a larger explicit limit.");
+            }
             skills.AddRange(page.Skills);
+            if (page.NextCursor is null)
+            {
+                return skills;
+            }
+            if (!cursors.Add(page.NextCursor))
+            {
+                throw new McpException("The server repeated a skills/list pagination cursor.");
+            }
             requestParams.Cursor = page.NextCursor;
         }
-        while (requestParams.Cursor is not null);
 
-        return skills;
+        throw new McpException($"The skill listing exceeded the limit of {maxPages} pages. Use the paged overload or a larger explicit limit.");
     }
 
     /// <summary>
@@ -108,7 +164,7 @@ public static class McpSkillsClientExtensions
         };
 
         JsonRpcResponse response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        var result = response.Result?.Deserialize(McpSkillsJsonContext.Default.ListSkillsResult) ??
+        var result = DeserializeReceived(response.Result, McpSkillsJsonContext.Default.ListSkillsResult, SkillsProtocol.MethodSkillsList) ??
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsList}'.");
         if (result.Skills is null)
         {
@@ -121,6 +177,74 @@ public static class McpSkillsClientExtensions
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Retrieves a page's valid entries and reports each rejected entry without discarding the rest of the page.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="requestParams">The request parameters, including the page cursor.</param>
+    /// <param name="cancellationToken">The token used to cancel the operation.</param>
+    /// <returns>The valid entries, original pagination/cache hints, and explicit per-entry failures.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The server did not declare the Skills extension.</exception>
+    /// <exception cref="JsonException">The page envelope is malformed or lacks a skills array.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error.</exception>
+    /// <remarks>
+    /// This is an explicit partial-results API. The ordinary list overloads remain strict.
+    /// Callers must inspect <see cref="SkillListingResult.RejectedEntries"/>; an empty valid-entry list can
+    /// mean that every entry was rejected. Valid entries still require normal file/frontmatter verification.
+    /// </remarks>
+    public static async ValueTask<SkillListingResult> ListSkillsWithDiagnosticsAsync(
+        this McpClient client,
+        ListSkillsRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(requestParams);
+#else
+        if (client is null) throw new ArgumentNullException(nameof(client));
+        if (requestParams is null) throw new ArgumentNullException(nameof(requestParams));
+#endif
+        ThrowIfSkillsNotSupported(client, nameof(ListSkillsWithDiagnosticsAsync));
+
+        var request = new JsonRpcRequest
+        {
+            Method = SkillsProtocol.MethodSkillsList,
+            Params = JsonSerializer.SerializeToNode(requestParams, McpSkillsJsonContext.Default.ListSkillsRequestParams),
+        };
+        var response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        if (response.Result is not JsonObject rawResult ||
+            rawResult["skills"] is not JsonArray entries)
+        {
+            throw new JsonException($"The response to '{SkillsProtocol.MethodSkillsList}' has no 'skills' array.");
+        }
+
+        var envelope = new JsonObject();
+        foreach (var property in rawResult)
+        {
+            envelope[property.Key] = property.Key == "skills" ? new JsonArray() : property.Value?.DeepClone();
+        }
+        var page = DeserializeReceived(envelope, McpSkillsJsonContext.Default.ListSkillsResult, SkillsProtocol.MethodSkillsList) ??
+            throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsList}'.");
+        var rejected = new List<SkillEntryRejection>();
+        for (int index = 0; index < entries.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var skill = DeserializeReceived(entries[index], McpSkillsJsonContext.Default.Skill, SkillsProtocol.MethodSkillsList);
+                SkillValidation.ValidateReceived(skill!, SkillsProtocol.MethodSkillsList);
+                page.Skills.Add(skill!);
+            }
+            catch (Exception error) when (error is JsonException or SkillVerificationException)
+            {
+                rejected.Add(new SkillEntryRejection(index, error));
+            }
+        }
+
+        return new SkillListingResult(page, rejected.AsReadOnly());
     }
 
     /// <summary>
@@ -191,7 +315,7 @@ public static class McpSkillsClientExtensions
         };
 
         JsonRpcResponse response = await client.SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        var result = response.Result?.Deserialize(McpSkillsJsonContext.Default.GetSkillResult) ??
+        var result = DeserializeReceived(response.Result, McpSkillsJsonContext.Default.GetSkillResult, SkillsProtocol.MethodSkillsGet) ??
             throw new JsonException($"Unexpected JSON result in the response to '{SkillsProtocol.MethodSkillsGet}'.");
 
         SkillValidation.ValidateReceived(result.Skill, SkillsProtocol.MethodSkillsGet);
@@ -269,6 +393,59 @@ public static class McpSkillsClientExtensions
         {
             throw new InvalidOperationException(
                 $"'{operationName}' requires the server to declare the '{SkillsProtocol.ExtensionId}' extension in its capabilities, and it did not.");
+        }
+    }
+
+    /// <summary>
+    /// Deserializes part of a response. An escaped unpaired surrogate such as <c>"\uD800"</c> is valid JSON syntax but
+    /// not text. System.Text.Json throws a <see cref="JsonException"/> for it when it reads a string from JSON text, but
+    /// an <see cref="InvalidOperationException"/> when it deserializes a <see cref="JsonNode"/>, so that case is turned
+    /// into a <see cref="JsonException"/> here and fails like any other malformed entry. Other exceptions propagate
+    /// unchanged.
+    /// </summary>
+    private static T? DeserializeReceived<T>(JsonNode? node, JsonTypeInfo<T> typeInfo, string method)
+    {
+        try
+        {
+            return node is null ? default : node.Deserialize(typeInfo);
+        }
+        catch (InvalidOperationException error) when (ContainsUnreadableText(node))
+        {
+            throw new JsonException(
+                $"The response to '{method}' contains a string that is not valid Unicode text, such as an unpaired surrogate.",
+                error);
+        }
+    }
+
+    /// <summary>Gets whether a property name or string value in <paramref name="node"/> cannot be read as text.</summary>
+    private static bool ContainsUnreadableText(JsonNode? node)
+    {
+        try
+        {
+            switch (node)
+            {
+                case JsonObject jsonObject:
+                    return jsonObject.Any(property => ContainsUnreadableText(property.Value));
+
+                case JsonArray jsonArray:
+                    return jsonArray.Any(ContainsUnreadableText);
+
+                case JsonValue jsonValue:
+                    if (jsonValue.TryGetValue(out JsonElement element) &&
+                        element.ValueKind == JsonValueKind.String)
+                    {
+                        _ = element.GetString();
+                    }
+
+                    return false;
+
+                default:
+                    return false;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
         }
     }
 }

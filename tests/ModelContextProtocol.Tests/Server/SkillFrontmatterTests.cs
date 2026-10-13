@@ -9,10 +9,10 @@ namespace ModelContextProtocol.Tests.Server;
 /// </summary>
 public class SkillFrontmatterTests
 {
-    private static JsonObject Parse(string yamlBody, string suffix = "\n# Body\n") =>
+    private JsonObject Parse(string yamlBody, string suffix = "\n# Body\n") =>
         SkillFrontmatter.Parse("---\n" + yamlBody + "\n---" + suffix);
 
-    private static void AssertJson(string expectedJson, JsonNode? actual) =>
+    private void AssertJson(string expectedJson, JsonNode? actual) =>
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expectedJson), actual), $"Expected {expectedJson} but got {actual?.ToJsonString() ?? "null"}.");
 
     [Fact]
@@ -62,7 +62,7 @@ public class SkillFrontmatterTests
     [InlineData("0x1F", "31")]
     [InlineData("0o17", "15")]
     [InlineData("0xffffffffffffffff", "18446744073709551615")]
-    [InlineData("0o777777777777777777777777", "4722366482869645213695")]
+    [InlineData("0o1777777777777777777777", "18446744073709551615")]
     [InlineData("+0x10", "\"+0x10\"")]
     [InlineData("-0o10", "\"-0o10\"")]
     [InlineData("0x", "\"0x\"")]
@@ -273,7 +273,9 @@ public class SkillFrontmatterTests
     {
         string deep = string.Join("\n", Enumerable.Range(0, 40).Select(i => new string(' ', i) + $"k{i}:")) + " v";
 
-        var exception = Assert.Throws<FormatException>(() => Parse(deep));
+        // Deeper nesting is valid YAML that the reader does not support, rather than malformed input.
+        var exception = Assert.ThrowsAny<FormatException>(() => Parse(deep));
+        Assert.Equal("UnsupportedYamlException", exception.GetType().Name);
         Assert.Contains("nested more than", exception.Message);
 
         string shallow = string.Join("\n", Enumerable.Range(0, 20).Select(i => new string(' ', i) + $"k{i}:")) + " v";
@@ -406,9 +408,11 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: ,x\n---", "flow indicator")]
     [InlineData("---\nvalue: ?\n---", "block indicator")]
     [InlineData("---\nvalue: ? a\n---", "block indicator")]
-    [InlineData("---\n&a: x\n---", "anchors")]
-    [InlineData("---\n*a: x\n---", "anchors")]
-    [InlineData("---\n!t: x\n---", "anchors")]
+    [InlineData("---\n&a: x\n---", "must be a YAML mapping")]
+    [InlineData("---\n*a: x\n---", "cannot start with an alias")]
+    [InlineData("---\n!t: x\n---", "must be a YAML mapping")]
+    [InlineData("---\n&a k: x\n---", "anchors")]
+    [InlineData("---\n!t k: x\n---", "anchors")]
     [InlineData("---\n@a: x\n---", "reserves")]
     [InlineData("---\n`a: x\n---", "reserves")]
     [InlineData("---\n%a: x\n---", "reserves")]
@@ -428,6 +432,7 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: [\"a\": b]\n---", "compact mappings inside flow sequences")]
     [InlineData("---\nvalue: |\n    \n  a\n---", "leading empty line")]
     [InlineData("---\nvalue: .inf\n---", "cannot be represented")]
+    [InlineData("---\nvalue: 0o777777777777777777777777\n---", "wider than 64 bits")]
     [InlineData("---\nvalue: @handle\n---", "reserves")]
     [InlineData("---\nvalue: `tick\n---", "reserves")]
     [InlineData("---\nvalue: %pct\n---", "reserves")]
@@ -452,7 +457,7 @@ public class SkillFrontmatterTests
     [InlineData("---\nvalue: [a, b: c]\n---", "compact mappings inside flow sequences")]
     [InlineData("---\nvalue: -\n---", "same line as its key")]
     [InlineData("---\nvalue: \"\\q\"\n---", "unsupported escape")]
-    [InlineData("---\njust a scalar\n---", "key: value")]
+    [InlineData("---\njust a scalar\n---", "must be a YAML mapping")]
     [InlineData("---\n- item\n---", "must be a YAML mapping")]
     [InlineData("---\nname: a: b\n---", "cannot contain ': '")]
     [InlineData("---\ndescription: text\n  other: mis-indented key\n---", "cannot contain ': '")]
@@ -475,5 +480,15 @@ public class SkillFrontmatterTests
         Assert.Equal("skill://git-workflow/SKILL.md", skill.ProtocolSkill.Uri);
         Assert.Equal("git-workflow", skill.ProtocolSkill.Name);
         Assert.Equal("Git conventions", skill.ProtocolSkill.Description);
+    }
+
+    [Fact]
+    public void Reader_IsNotPartOfThePublicApi()
+    {
+        // Server authoring uses the reader internally; hosts verify fetched frontmatter with a full YAML parser.
+        var reader = typeof(McpServerSkill).Assembly.GetType("ModelContextProtocol.Extensions.Skills.SkillFrontmatter");
+
+        Assert.NotNull(reader);
+        Assert.False(reader.IsVisible);
     }
 }

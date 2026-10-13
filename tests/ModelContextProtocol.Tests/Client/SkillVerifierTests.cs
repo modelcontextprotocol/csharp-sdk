@@ -1,6 +1,7 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -12,7 +13,7 @@ public class SkillVerifierTests
 {
     private const string Uri = "skill://alpha/SKILL.md";
 
-    private static SkillResource Entry(byte[] content) => new()
+    private SkillResource Entry(byte[] content) => new()
     {
         Uri = Uri,
         Digest = SkillVerifier.ComputeDigest(content),
@@ -131,6 +132,21 @@ public class SkillVerifierTests
         Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, new ReadResourceResult()));
     }
 
+    [Theory]
+    [InlineData("""{"contents":[null]}""")]
+    [InlineData("""{"contents":[null,{"uri":"skill://alpha/SKILL.md","text":"x"}]}""")]
+    [InlineData("""{"contents":[{"uri":"skill://alpha/SKILL.md","text":"x"},null]}""")]
+    public void Verify_Skill_RejectsNullWireContentsAsVerificationFailure(string json)
+    {
+        var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));
+        var result = JsonSerializer.Deserialize<ReadResourceResult>(json, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(result);
+
+        var error = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, result));
+        Assert.Contains("null", error.Message);
+        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, Uri, result));
+    }
+
     [Fact]
     public void Verify_Skill_RejectsMissingManifestWithoutCrashing()
     {
@@ -177,7 +193,7 @@ public class SkillVerifierTests
             SkillVerifier.Verify(skill, "skill://alpha/unlisted.md", new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
     }
 
-    private static Skill CreateSkill(byte[] skillFileContent) => new()
+    private Skill CreateSkill(byte[] skillFileContent) => new()
     {
         Uri = Uri,
         Frontmatter = new JsonObject { ["name"] = "alpha", ["description"] = "d" },

@@ -27,6 +27,10 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// catalog whose skills are not visible to every caller must decide what to return from the
 /// <see cref="McpSkillRequestContext"/> it receives, and the corresponding resources must be guarded the same way.
 /// </para>
+/// <para>
+/// One catalog instance serves every request, so it must not capture scoped services directly. A catalog that
+/// needs them can create its own scope for each call; such a scope is independent of the request's scope.
+/// </para>
 /// </remarks>
 public interface IMcpSkillCatalog
 {

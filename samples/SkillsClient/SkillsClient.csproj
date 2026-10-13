@@ -13,4 +13,8 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Skills\ModelContextProtocol.Extensions.Skills.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
 </Project>

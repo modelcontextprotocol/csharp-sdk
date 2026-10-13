@@ -16,10 +16,9 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </para>
 /// <para>
 /// They do not verify frontmatter. Before loading a skill, the host must also parse the fetched <c>SKILL.md</c>
-/// itself and compare its frontmatter field by field with the held entry, treating any difference as a
-/// verification failure. <see cref="SkillFrontmatter.Parse"/> and <see cref="System.Text.Json.Nodes.JsonNode.DeepEquals"/>
-/// do this for the YAML the reader supports. For anything else, the host rejects the skill or uses a full YAML
-/// parser; the entry's own frontmatter is never a substitute for parsing the file.
+/// itself with a full YAML parser and compare its frontmatter field by field with the held entry, for example with
+/// <see cref="System.Text.Json.Nodes.JsonNode.DeepEquals"/>, treating any difference or any parse failure as a
+/// verification failure. The entry's own frontmatter is never a substitute for parsing the file.
 /// </para>
 /// <para>
 /// Digests are unsigned and supplied by the same server that supplies the content. A match proves the manifest
@@ -153,8 +152,8 @@ public static class SkillVerifier
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>, which cannot be verified.</exception>
     /// <exception cref="SkillVerificationException">
-    /// The result is empty, contains contents for a URI the manifest does not list, or contains contents whose
-    /// size or digest does not match the manifest.
+    /// The result is empty, contains a null entry or contents for a URI the manifest does not list,
+    /// or contains contents whose size or digest does not match the manifest.
     /// </exception>
     public static void Verify(Skill skill, ReadResourceResult result)
     {
@@ -175,6 +174,11 @@ public static class SkillVerifier
 
         foreach (var contents in result.Contents)
         {
+            if (contents is null)
+            {
+                throw new SkillVerificationException($"The read returned a null content entry for skill '{skill.Uri}'.");
+            }
+
             var expected = FindResource(skill, contents.Uri) ??
                 throw new SkillVerificationException(
                     $"'{contents.Uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +

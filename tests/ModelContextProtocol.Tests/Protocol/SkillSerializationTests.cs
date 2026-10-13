@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Tests.Protocol;
 /// </summary>
 public class SkillSerializationTests
 {
-    private static Skill CreateEntry(SkillResources resources) => new()
+    private Skill CreateEntry(SkillResources resources) => new()
     {
         Uri = "skill://git-workflow/SKILL.md",
         Frontmatter = new JsonObject
@@ -22,7 +22,7 @@ public class SkillSerializationTests
         Resources = resources,
     };
 
-    private static SkillResource CreateResource(string uri, string digest, long size) => new()
+    private SkillResource CreateResource(string uri, string digest, long size) => new()
     {
         Uri = uri,
         Digest = digest,
@@ -114,6 +114,69 @@ public class SkillSerializationTests
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Json), JsonNode.Parse(reserialized)));
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"io.modelcontextprotocol.skills/x":{"values":[true,42,null,{"text":"value"}]}}""")]
+    public void Skill_WithMeta_RoundTrips(string meta)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d", "metadata": { "version": "2.1" } },
+              "resources": "dynamic",
+              "_meta": {{meta}}
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(meta), skill.Meta));
+        Assert.Equal("2.1", skill.Frontmatter["metadata"]!["version"]!.GetValue<string>());
+        var reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(reserialized)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(""", "_meta": null""")]
+    public void Skill_OmitsUnsetOrNullMeta(string metaProperty)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d" },
+              "resources": "dynamic"{{metaProperty}}
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.Null(skill.Meta);
+        var reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.False(JsonNode.Parse(reserialized)!.AsObject().ContainsKey("_meta"));
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("\"metadata\"")]
+    public void Skill_RejectsNonObjectMeta(string meta)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d" },
+              "resources": "dynamic",
+              "_meta": {{meta}}
+            }
+            """;
+
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill));
+    }
+
     [Fact]
     public void Skill_NameAndDescription_AreNullWhenAbsentOrNotStrings()
     {
@@ -126,6 +189,54 @@ public class SkillSerializationTests
 
         Assert.Null(skill.Name);
         Assert.Null(skill.Description);
+    }
+
+    [Fact]
+    public void Skill_TypedAccessors_ReadTheStringFieldsTheSpecificationDefines()
+    {
+        const string Json = """
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": {
+                "name": "refunds",
+                "description": "Process refunds",
+                "license": "Apache-2.0",
+                "compatibility": "Requires git",
+                "allowed-tools": "Bash(git:*) Read"
+              },
+              "resources": "dynamic"
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(Json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.Equal("refunds", skill.Name);
+        Assert.Equal("Process refunds", skill.Description);
+        Assert.Equal("Apache-2.0", skill.License);
+        Assert.Equal("Requires git", skill.Compatibility);
+        Assert.Equal("Bash(git:*) Read", skill.AllowedTools);
+
+        // The accessors read the frontmatter; they are not part of the wire shape.
+        string reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Json), JsonNode.Parse(reserialized)));
+    }
+
+    [Fact]
+    public void Skill_TypedAccessors_AreNullWhenAbsentOrNotStrings()
+    {
+        var absent = CreateEntry(SkillResources.Dynamic);
+        Assert.Null(absent.License);
+        Assert.Null(absent.Compatibility);
+        Assert.Null(absent.AllowedTools);
+
+        var notStrings = CreateEntry(SkillResources.Dynamic);
+        notStrings.Frontmatter["license"] = 1;
+        notStrings.Frontmatter["compatibility"] = true;
+        notStrings.Frontmatter["allowed-tools"] = new JsonArray("Read", "Write");
+        Assert.Null(notStrings.License);
+        Assert.Null(notStrings.Compatibility);
+        Assert.Null(notStrings.AllowedTools);
     }
 
     [Theory]

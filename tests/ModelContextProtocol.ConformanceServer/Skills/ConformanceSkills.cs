@@ -11,8 +11,8 @@ namespace ModelContextProtocol.ConformanceServer.Skills;
 /// <para>
 /// The three static skills are authored through <see cref="McpServerSkill"/>, so their frontmatter is read from
 /// their <c>SKILL.md</c> and their manifests are computed from the same bytes their resources serve. A fourth,
-/// deliberately unenumerable skill is added to the catalog by hand: it is served and answerable through
-/// <c>skills/get</c>, but carries no digests and so cannot be content-bound.
+/// dynamically generated skill is included in the same catalog: it is listed and answerable through
+/// <c>skills/get</c>, but its dynamic manifest carries no digests and so cannot be content-bound.
 /// </para>
 /// <para>
 /// The page size is deliberately small so the scenarios exercise cursor pagination.

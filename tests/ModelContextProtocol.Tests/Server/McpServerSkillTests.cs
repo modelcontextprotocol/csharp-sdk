@@ -13,7 +13,7 @@ public class McpServerSkillTests
     private const string SkillUri = "skill://git-workflow/SKILL.md";
     private const string SkillMarkdown = "---\nname: git-workflow\ndescription: Git conventions\n---\n\n# Git workflow\n";
 
-    private static JsonObject Frontmatter(string name = "git-workflow", string? description = "Git conventions") => new()
+    private JsonObject Frontmatter(string name = "git-workflow", string? description = "Git conventions") => new()
     {
         ["name"] = name,
         ["description"] = description,
@@ -230,11 +230,31 @@ public class McpServerSkillTests
         Assert.Equal("Git conventions", multiLine.ProtocolSkill.Description);
 
         // So is a flow collection that closes on a later line.
-        var explicitTools = Frontmatter();
-        explicitTools["allowed-tools"] = new JsonArray("Read", "Write");
-        var multiLineFlow = McpServerSkill.Create(SkillUri, explicitTools,
-            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: Git conventions\nallowed-tools: [Read,\n  Write]\n---\n")]);
-        Assert.Equal(2, multiLineFlow.ProtocolSkill.Frontmatter["allowed-tools"]!.AsArray().Count);
+        var explicitTags = Frontmatter();
+        explicitTags["tags"] = new JsonArray("Read", "Write");
+        var multiLineFlow = McpServerSkill.Create(SkillUri, explicitTags,
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: Git conventions\ntags: [Read,\n  Write]\n---\n")]);
+        Assert.Equal(2, multiLineFlow.ProtocolSkill.Frontmatter["tags"]!.AsArray().Count);
+    }
+
+    [Theory]
+    [InlineData("allowed-tools", "\n  - Read\n  - Write")]
+    [InlineData("allowed-tools", " [Read, Write]")]
+    [InlineData("allowed-tools", " 1")]
+    [InlineData("allowed-tools", "\n  Read: true")]
+    [InlineData("allowed-tools", " true")]
+    [InlineData("allowed-tools", "")]
+    [InlineData("license", " [MIT]")]
+    [InlineData("license", " 2")]
+    [InlineData("license", "\n  name: MIT")]
+    [InlineData("license", " false")]
+    [InlineData("license", "")]
+    public void Create_RejectsSpecFieldsThatAreNotStrings(string field, string yamlValue)
+    {
+        var exception = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: git-workflow\ndescription: Git conventions\n" + field + ":" + yamlValue + "\n---\n")]));
+
+        Assert.Contains($"'{field}' frontmatter field that is not a string", exception.Message);
     }
 
     [Theory]

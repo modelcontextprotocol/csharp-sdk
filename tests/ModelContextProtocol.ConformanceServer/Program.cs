@@ -16,6 +16,12 @@ public class Program
 {
     public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, CancellationToken cancellationToken = default)
     {
+        var app = new Program().CreateApplication(args, loggerProvider);
+        await app.RunAsync(cancellationToken);
+    }
+
+    public WebApplication CreateApplication(string[] args, ILoggerProvider? loggerProvider = null)
+    {
         var builder = WebApplication.CreateBuilder(args);
 
         if (loggerProvider != null)
@@ -39,7 +45,7 @@ public class Program
 
         app.MapGet("/health", () => "Healthy");
 
-        await app.RunAsync(cancellationToken);
+        return app;
     }
 
     // Registers the conformance MCP server (tools, prompts, resources, filters, and handlers)
